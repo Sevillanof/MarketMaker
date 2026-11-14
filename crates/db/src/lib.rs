@@ -3,7 +3,7 @@
 //! Se usa `sqlx::query_as` sin las macros verificadas en compilación, para
 //! que compilar no dependa de tener la base levantada.
 
-use domain::Product;
+use domain::{PageDoc, Product, SaveOutcome};
 use sqlx::{FromRow, PgExecutor, PgPool};
 use uuid::Uuid;
 
@@ -97,4 +97,61 @@ where
     .execute(exec)
     .await?;
     Ok(())
+}
+
+/// Cuántas versiones se conservan por página.
+pub const KEEP_VERSIONS: i32 = 20;
+
+/// Guarda `doc` como nueva versión de la página, todo dentro de una transacción:
+/// bloquea la página, compara `base_version` con la vigente, valida, inserta la
+/// versión `number + 1`, la marca como vigente y borra las que quedan fuera de
+/// las últimas [`KEEP_VERSIONS`].
+///
+/// Devuelve `RowNotFound` si la página no existe.
+pub async fn save_page(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    slug: &str,
+    doc: &PageDoc,
+    base_version: u32,
+) -> sqlx::Result<SaveOutcome> {
+    let mut tx = pool.begin().await?;
+
+    let (page_id, current): (Uuid, i32) = sqlx::query_as(
+        "SELECT p.id, COALESCE(v.number, 0) AS number
+         FROM pages p
+         LEFT JOIN page_versions v ON v.id = p.current_version_id
+         WHERE p.tenant_id = $1 AND p.slug = $2
+         FOR UPDATE OF p",
+    )
+    .bind(tenant_id)
+    .bind(slug)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(sqlx::Error::RowNotFound)?;
+
+    let current_u32 = u32::try_from(current).unwrap_or(0);
+    if current_u32 != base_version {
+        return Ok(SaveOutcome::Conflict {
+            current: current_u32,
+        });
+    }
+    if let Err(errors) = domain::validate(doc) {
+        return Ok(SaveOutcome::Invalid { errors });
+    }
+
+    let number = current + 1;
+    let value = serde_json::to_value(doc).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+    save_page_version(&mut *tx, tenant_id, page_id, number, &value).await?;
+
+    sqlx::query("DELETE FROM page_versions WHERE page_id = $1 AND number <= $2")
+        .bind(page_id)
+        .bind(number - KEEP_VERSIONS)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(SaveOutcome::Saved {
+        version: u32::try_from(number).unwrap_or(0),
+    })
 }
