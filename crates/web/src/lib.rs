@@ -2,8 +2,10 @@ use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
-    StaticSegment,
+    path, StaticSegment,
 };
+
+mod dev;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -39,6 +41,7 @@ pub fn App() -> impl IntoView {
             <main>
                 <Routes fallback=|| "Page not found.".into_view()>
                     <Route path=StaticSegment("") view=HomePage/>
+                    <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                 </Routes>
             </main>
         </Router>

@@ -3024,6 +3024,9 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 [[package]]
 name = "ui"
 version = "0.1.0"
+dependencies = [
+ "leptos",
+]
 
 [[package]]
 name = "unicase"
@@ -3253,12 +3256,14 @@ name = "web"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "domain",
  "http",
  "leptos",
  "leptos_axum",
  "leptos_meta",
  "leptos_router",
  "thiserror 2.0.21",
+ "widgets",
 ]
 
 [[package]]
@@ -3280,6 +3285,11 @@ checksum = "626c4bac6755d76ffc12cb01b2eac751db1996b9e0041de9aa02c8c211ddc82c"
 [[package]]
 name = "widgets"
 version = "0.1.0"
+dependencies = [
+ "domain",
+ "leptos",
+ "ui",
+]
 
 [[package]]
 name = "winapi-util"
