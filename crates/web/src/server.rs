@@ -31,7 +31,7 @@ pub async fn load_page(slug: String) -> Result<PageView, ServerFnError> {
         .map_err(internal)?
         .ok_or_else(|| ServerFnError::new(format!("no existe la página {slug}")))?;
     let doc = match page.doc {
-        Some(v) => serde_json::from_value(v).map_err(internal)?,
+        Some(v) => domain::parse_doc(v).map_err(internal)?,
         None => domain::PageDoc::default(),
     };
     let products = db::list_products(&pool, tenant.id)

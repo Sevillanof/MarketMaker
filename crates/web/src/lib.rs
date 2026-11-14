@@ -57,7 +57,7 @@ pub fn App() -> impl IntoView {
 fn HomePage() -> impl IntoView {
     let page = Resource::new(|| (), |_| load_page("home".to_string()));
     view! {
-        <Suspense fallback=|| view! { <div class="p-8">"Cargando…"</div> }>
+        <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
             {move || Suspend::new(async move {
                 match page.await {
                     Ok(view) => view! { <StorefrontPage view/> }.into_any(),
@@ -82,7 +82,7 @@ fn EditorPage() -> impl IntoView {
     });
     view! {
         <Title text="Editor · Marketplace"/>
-        <Suspense fallback=|| view! { <div class="p-8">"Cargando…"</div> }>
+        <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
             {move || Suspend::new(async move {
                 match page.await {
                     Ok(initial) => view! { <Editor initial save/> }.into_any(),

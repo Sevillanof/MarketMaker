@@ -3,8 +3,7 @@
 //! No llama al servidor: recibe la acción de guardado como parámetro.
 
 use domain::{
-    Field, FieldKind, Node, PageDoc, PageView, Pos, Product, SaveOutcome, Widget, THEMES,
-    WIDGET_TYPES,
+    Field, FieldKind, Node, PageDoc, PageView, Product, SaveOutcome, Widget, THEMES, WIDGET_TYPES,
 };
 use leptos::ev::PointerEvent;
 use leptos::html::Div;
@@ -82,14 +81,50 @@ impl EditorState {
     }
 }
 
+/// Qué borde se arrastra al redimensionar.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Edge {
+    /// Borde derecho: cambia el ancho.
+    Right,
+    /// Borde inferior: cambia el alto.
+    Bottom,
+    /// Esquina inferior derecha: cambia los dos.
+    Corner,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum DragKind {
+    /// Mover. Distancia del puntero a la esquina superior izquierda del nodo.
+    Move { offset_x: f64, offset_y: f64 },
+    /// Redimensionar desde `edge`. Puntero y tamaño al empezar.
+    Resize {
+        edge: Edge,
+        start_x: f64,
+        start_y: f64,
+        start_w: u8,
+        start_h: u8,
+    },
+}
+
 /// Arrastre en curso.
 #[derive(Clone, Debug)]
 struct Drag {
     id: String,
-    /// Distancia del puntero a la esquina superior izquierda del nodo.
-    offset_x: f64,
-    offset_y: f64,
+    kind: DragKind,
     moved: bool,
+}
+
+/// Nuevo `(w, h)` al arrastrar `edge` `dx`, `dy` píxeles, con imán a la grilla.
+fn resized(edge: Edge, start_w: u8, start_h: u8, dx: f64, dy: f64, col_pitch: f64) -> (i32, i32) {
+    let row_pitch = grid::ROW_HEIGHT_PX + grid::GAP_PX;
+    let dw = (dx / col_pitch.max(1.0)).round() as i32;
+    let dh = (dy / row_pitch).round() as i32;
+    let (w, h) = (i32::from(start_w), i32::from(start_h));
+    match edge {
+        Edge::Right => (w + dw, h),
+        Edge::Bottom => (w, h + dh),
+        Edge::Corner => (w + dw, h + dh),
+    }
 }
 
 /// Resultado del último guardado, para mostrar al usuario.
@@ -301,13 +336,7 @@ fn Palette(state: EditorState) -> impl IntoView {
                                             return;
                                         };
                                         let id = new_node_id(&state.doc.get_untracked());
-                                        let size = widget.sizes()[0].id.to_string();
-                                        let node = Node {
-                                            id: id.clone(),
-                                            widget,
-                                            pos: Pos { x: 0, y: 0 },
-                                            size,
-                                        };
+                                        let node = Node::new(id.clone(), widget);
                                         state.apply(|d| grid::add_node(&mut d.nodes, node));
                                         state.selected.set(Some(id));
                                     }
@@ -349,8 +378,38 @@ fn Canvas(state: EditorState, products: StoredValue<Vec<Product>>) -> impl IntoV
         }
         drag.set(Some(Drag {
             id,
-            offset_x: f64::from(ev.client_x()) - rect.left(),
-            offset_y: f64::from(ev.client_y()) - rect.top(),
+            kind: DragKind::Move {
+                offset_x: f64::from(ev.client_x()) - rect.left(),
+                offset_y: f64::from(ev.client_y()) - rect.top(),
+            },
+            moved: false,
+        }));
+    };
+
+    let on_resize_down = move |ev: PointerEvent, id: String, edge: Edge| {
+        if ev.button() != 0 {
+            return;
+        }
+        ev.prevent_default();
+        ev.stop_propagation();
+        let Some(size) = state
+            .doc
+            .with_untracked(|d| d.nodes.iter().find(|n| n.id == id).map(|n| n.size))
+        else {
+            return;
+        };
+        if let Some(grid_el) = grid_ref.get_untracked() {
+            _ = grid_el.set_pointer_capture(ev.pointer_id());
+        }
+        drag.set(Some(Drag {
+            id,
+            kind: DragKind::Resize {
+                edge,
+                start_x: f64::from(ev.client_x()),
+                start_y: f64::from(ev.client_y()),
+                start_w: size.w,
+                start_h: size.h,
+            },
             moved: false,
         }));
     };
@@ -363,15 +422,41 @@ fn Canvas(state: EditorState, products: StoredValue<Vec<Product>>) -> impl IntoV
             return;
         };
         let g = grid_el.get_bounding_client_rect();
-        let px = f64::from(ev.client_x()) - g.left() - d.offset_x;
-        let py = f64::from(ev.client_y()) - g.top() - d.offset_y;
-        // Medio paso de celda para que el imán redondee en vez de truncar.
         let col_pitch = (g.width() - grid::GAP_PX * 11.0) / 12.0 + grid::GAP_PX;
         let row_pitch = grid::ROW_HEIGHT_PX + grid::GAP_PX;
-        let (cx, cy) = grid::cell_from_point(px + col_pitch / 2.0, py + row_pitch / 2.0, g.width());
-
         let mut nodes = state.doc.with_untracked(|doc| doc.nodes.clone());
-        grid::move_node(&mut nodes, &d.id, cx, cy);
+        match d.kind {
+            DragKind::Move { offset_x, offset_y } => {
+                let px = f64::from(ev.client_x()) - g.left() - offset_x;
+                let py = f64::from(ev.client_y()) - g.top() - offset_y;
+                // Medio paso de celda para que el imán redondee en vez de truncar.
+                let (cx, cy) =
+                    grid::cell_from_point(px + col_pitch / 2.0, py + row_pitch / 2.0, g.width());
+                grid::move_node(&mut nodes, &d.id, cx, cy);
+            }
+            DragKind::Resize {
+                edge,
+                start_x,
+                start_y,
+                start_w,
+                start_h,
+            } => {
+                let dx = f64::from(ev.client_x()) - start_x;
+                let dy = f64::from(ev.client_y()) - start_y;
+                let (w, h) = resized(edge, start_w, start_h, dx, dy, col_pitch);
+                // Al tirar del borde derecho el nodo no se corre: el ancho topa en la columna 12.
+                let x = nodes
+                    .iter()
+                    .find(|n| n.id == d.id)
+                    .map_or(0, |n| i32::from(n.pos.x));
+                grid::resize_node(
+                    &mut nodes,
+                    &d.id,
+                    w.min(i32::from(domain::GRID_COLS) - x),
+                    h,
+                );
+            }
+        }
         let changed = state.doc.with_untracked(|doc| doc.nodes != nodes);
         if changed || d.moved {
             if !d.moved {
@@ -427,18 +512,45 @@ fn Canvas(state: EditorState, products: StoredValue<Vec<Product>>) -> impl IntoV
                             };
                             let selected = state.selected.get();
                             let dragging = drag.with(|d| d.as_ref().map(|d| d.id.clone()));
+                            let resizing = drag.with(|d| {
+                                d.as_ref().is_some_and(|d| matches!(d.kind, DragKind::Resize { .. }))
+                            });
                             shown_nodes()
                                 .into_iter()
                                 .map(|node| {
                                     let id = node.id.clone();
-                                    let class = if dragging.as_deref() == Some(id.as_str()) {
+                                    let is_selected = selected.as_deref() == Some(id.as_str());
+                                    let is_dragged = dragging.as_deref() == Some(id.as_str());
+                                    let class = if is_dragged && !resizing {
                                         "mk-node relative cursor-grabbing touch-none rounded-box outline outline-2 outline-offset-2 outline-primary opacity-80"
-                                    } else if selected.as_deref() == Some(id.as_str()) {
+                                    } else if is_selected || is_dragged {
                                         "mk-node relative cursor-grab touch-none rounded-box outline outline-2 outline-offset-2 outline-primary"
                                     } else {
                                         "mk-node relative cursor-grab touch-none rounded-box outline outline-1 outline-dashed outline-base-300 hover:outline-primary"
                                     };
-                                    let content = render_widget(&node.widget, &ctx);
+                                    let content = render_widget(&node, &ctx);
+                                    let size_label = format!("{}×{}", node.size.w, node.size.h);
+                                    let handles = (is_selected || is_dragged).then(|| {
+                                        let (r, b, c) = (id.clone(), id.clone(), id.clone());
+                                        view! {
+                                            <div
+                                                class="mk-handle mk-handle-e"
+                                                title="Arrastrá para cambiar el ancho"
+                                                on:pointerdown=move |ev| on_resize_down(ev, r.clone(), Edge::Right)
+                                            ></div>
+                                            <div
+                                                class="mk-handle mk-handle-s"
+                                                title="Arrastrá para cambiar el alto"
+                                                on:pointerdown=move |ev| on_resize_down(ev, b.clone(), Edge::Bottom)
+                                            ></div>
+                                            <div
+                                                class="mk-handle mk-handle-se"
+                                                title="Arrastrá para cambiar ancho y alto"
+                                                on:pointerdown=move |ev| on_resize_down(ev, c.clone(), Edge::Corner)
+                                            ></div>
+                                            <span class="badge badge-primary badge-sm pointer-events-none absolute right-2 top-2 z-10">{size_label}</span>
+                                        }
+                                    });
                                     view! {
                                         <div
                                             class=class
@@ -446,6 +558,7 @@ fn Canvas(state: EditorState, products: StoredValue<Vec<Product>>) -> impl IntoV
                                             on:pointerdown=move |ev| on_pointer_down(ev, id.clone())
                                         >
                                             <div class="pointer-events-none h-full">{content}</div>
+                                            {handles}
                                         </div>
                                     }
                                 })
@@ -500,22 +613,23 @@ fn NodeInspector(
     id: String,
     widget: Widget,
 ) -> impl IntoView {
-    let label = WIDGET_TYPES
-        .iter()
-        .find(|(t, _)| *t == widget.type_name())
-        .map(|(_, l)| *l)
-        .unwrap_or("Widget");
-    let size_id = id.clone();
-    let size_value = move || {
+    let label = widget.label();
+    let limits = widget.limits();
+    let size_id = StoredValue::new(id.clone());
+    let size = move || {
         state.doc.with(|d| {
-            d.nodes
-                .iter()
-                .find(|n| n.id == size_id)
-                .map(|n| n.size.clone())
-                .unwrap_or_default()
+            size_id.with_value(|sid| {
+                d.nodes
+                    .iter()
+                    .find(|n| &n.id == sid)
+                    .map(|n| n.size)
+                    .unwrap_or(limits.default)
+            })
         })
     };
-    let change_id = id.clone();
+    let resize = move |w: i32, h: i32| {
+        size_id.with_value(|sid| state.apply(|d| grid::resize_node(&mut d.nodes, sid, w, h)));
+    };
     let delete_id = id.clone();
     let basic: Vec<&'static Field> = widget.fields().iter().filter(|f| !f.advanced).collect();
     let advanced: Vec<&'static Field> = widget.fields().iter().filter(|f| f.advanced).collect();
@@ -526,26 +640,44 @@ fn NodeInspector(
     view! {
         <div class="flex flex-col gap-4">
             <h2 class="text-lg font-bold">{label}</h2>
-            <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium">"Tamaño"</span>
-                <select
-                    class="select select-sm w-full"
-                    prop:value=size_value
-                    on:change=move |ev| {
-                        let size = event_target_value(&ev);
-                        state.apply(|d| grid::change_size(&mut d.nodes, &change_id, &size));
-                    }
-                >
-                    {widget
-                        .sizes()
-                        .iter()
-                        .map(|s| view! { <option value=s.id>{format!("{} ({}×{})", s.label, s.w, s.h)}</option> })
-                        .collect_view()}
-                </select>
-            </label>
+            <div class="grid grid-cols-2 gap-2">
+                <label class="flex flex-col gap-1">
+                    <span class="text-sm font-medium">"Ancho"</span>
+                    <input
+                        type="number"
+                        class="input input-sm w-full"
+                        min=limits.min_w
+                        max=limits.max_w
+                        prop:value=move || size().w.to_string()
+                        on:change=move |ev| {
+                            if let Ok(w) = event_target_value(&ev).parse::<i32>() {
+                                resize(w, i32::from(size().h));
+                            }
+                        }
+                    />
+                    <span class="text-xs opacity-60">{format!("{} a {} columnas", limits.min_w, limits.max_w)}</span>
+                </label>
+                <label class="flex flex-col gap-1">
+                    <span class="text-sm font-medium">"Alto"</span>
+                    <input
+                        type="number"
+                        class="input input-sm w-full"
+                        min=limits.min_h
+                        max=limits.max_h
+                        prop:value=move || size().h.to_string()
+                        on:change=move |ev| {
+                            if let Ok(h) = event_target_value(&ev).parse::<i32>() {
+                                resize(i32::from(size().w), h);
+                            }
+                        }
+                    />
+                    <span class="text-xs opacity-60">{format!("{} a {} filas", limits.min_h, limits.max_h)}</span>
+                </label>
+            </div>
+            <p class="text-xs opacity-60">"También podés arrastrar los bordes del widget en el lienzo."</p>
             {basic
                 .into_iter()
-                .map(|f| view! { <FieldInput state products id=basic_id.clone() field=f/> })
+                .map(|f| view! { <PropField state products id=basic_id.clone() field=f/> })
                 .collect_view()}
             {has_advanced.then(|| view! {
                 <details class="collapse collapse-arrow border border-base-300">
@@ -553,7 +685,7 @@ fn NodeInspector(
                     <div class="collapse-content flex flex-col gap-4">
                         {advanced
                             .into_iter()
-                            .map(|f| view! { <FieldInput state products id=advanced_id.clone() field=f/> })
+                            .map(|f| view! { <PropField state products id=advanced_id.clone() field=f/> })
                             .collect_view()}
                     </div>
                 </details>
@@ -572,22 +704,64 @@ fn NodeInspector(
     }
 }
 
+/// Campo de primer nivel de las props de un nodo.
 #[component]
-fn FieldInput(
+fn PropField(
     state: EditorState,
     products: StoredValue<Vec<Product>>,
     id: String,
     field: &'static Field,
 ) -> impl IntoView {
     let key = field.key;
-    let read_id = StoredValue::new(id.clone());
-    let value = move || {
+    let id = StoredValue::new(id);
+    let value = Signal::derive(move || {
         state
             .doc
-            .with(|d| read_id.with_value(|rid| field_value(d, rid, key)))
-    };
-    let text = move || value().as_str().unwrap_or_default().to_string();
-    let set = move |v: serde_json::Value| state.apply(|d| set_field(d, &id, key, v));
+            .with(|d| id.with_value(|rid| field_value(d, rid, key)))
+    });
+    let set = Callback::new(move |v: serde_json::Value| {
+        id.with_value(|rid| state.apply(|d| set_field(d, rid, key, v)));
+    });
+    view! { <FieldInput products field value set/> }
+}
+
+/// Valor inicial de un campo, para elementos nuevos de una lista.
+fn empty_value(kind: &FieldKind) -> serde_json::Value {
+    use serde_json::Value;
+    match kind {
+        FieldKind::Number { min, .. } => Value::from(*min),
+        FieldKind::Bool => Value::Bool(false),
+        FieldKind::Select { options } => {
+            Value::String(options.first().map(|(k, _)| *k).unwrap_or_default().into())
+        }
+        FieldKind::List { .. } => Value::Array(Vec::new()),
+        _ => Value::String(String::new()),
+    }
+}
+
+/// Elemento nuevo para una lista: copia del último (así hereda imagen y
+/// estilo) o, si está vacía, uno con los valores iniciales de cada campo.
+fn new_list_item(items: &[serde_json::Value], item: &[Field]) -> serde_json::Value {
+    items.last().cloned().unwrap_or_else(|| {
+        serde_json::Value::Object(
+            item.iter()
+                .map(|f| (f.key.to_string(), empty_value(&f.kind)))
+                .collect(),
+        )
+    })
+}
+
+/// Control de un campo según su tipo. `value` es el valor actual y `set`
+/// reemplaza el valor entero (en una lista, la lista entera).
+#[component]
+fn FieldInput(
+    products: StoredValue<Vec<Product>>,
+    field: &'static Field,
+    value: Signal<serde_json::Value>,
+    set: Callback<serde_json::Value>,
+) -> impl IntoView {
+    let text = move || value.get().as_str().unwrap_or_default().to_string();
+    let set_str = move |s: String| set.run(serde_json::Value::String(s));
 
     let input = match &field.kind {
         FieldKind::Text { max } => view! {
@@ -596,16 +770,16 @@ fn FieldInput(
                 class="input input-sm w-full"
                 maxlength=*max
                 prop:value=text
-                on:input=move |ev| set(serde_json::Value::String(event_target_value(&ev)))
+                on:input=move |ev| set_str(event_target_value(&ev))
             />
         }
         .into_any(),
         FieldKind::LongText { max } => view! {
             <textarea
-                class="textarea textarea-sm h-32 w-full"
+                class="textarea textarea-sm h-24 w-full"
                 maxlength=*max
                 prop:value=text
-                on:input=move |ev| set(serde_json::Value::String(event_target_value(&ev)))
+                on:input=move |ev| set_str(event_target_value(&ev))
             ></textarea>
         }
         .into_any(),
@@ -613,9 +787,18 @@ fn FieldInput(
             <input
                 type="text"
                 class="input input-sm w-full"
-                placeholder="https://"
+                placeholder="https:// o /ruta"
                 prop:value=text
-                on:input=move |ev| set(serde_json::Value::String(event_target_value(&ev)))
+                on:input=move |ev| set_str(event_target_value(&ev))
+            />
+        }
+        .into_any(),
+        FieldKind::DateTime => view! {
+            <input
+                type="datetime-local"
+                class="input input-sm w-full"
+                prop:value=text
+                on:input=move |ev| set_str(event_target_value(&ev))
             />
         }
         .into_any(),
@@ -627,10 +810,10 @@ fn FieldInput(
                     class="input input-sm w-full"
                     min=min
                     max=max
-                    prop:value=move || value().as_i64().map(|n| n.to_string()).unwrap_or_default()
+                    prop:value=move || value.get().as_i64().map(|n| n.to_string()).unwrap_or_default()
                     on:input=move |ev| {
                         if let Ok(n) = event_target_value(&ev).parse::<i64>() {
-                            set(serde_json::Value::from(n.clamp(min, max)));
+                            set.run(serde_json::Value::from(n.clamp(min, max)));
                         }
                     }
                 />
@@ -641,8 +824,8 @@ fn FieldInput(
             <input
                 type="checkbox"
                 class="toggle toggle-sm"
-                prop:checked=move || value().as_bool().unwrap_or(false)
-                on:change=move |ev| set(serde_json::Value::Bool(event_target_checked(&ev)))
+                prop:checked=move || value.get().as_bool().unwrap_or(false)
+                on:change=move |ev| set.run(serde_json::Value::Bool(event_target_checked(&ev)))
             />
         }
         .into_any(),
@@ -650,7 +833,7 @@ fn FieldInput(
             <select
                 class="select select-sm w-full"
                 prop:value=text
-                on:change=move |ev| set(serde_json::Value::String(event_target_value(&ev)))
+                on:change=move |ev| set_str(event_target_value(&ev))
             >
                 {options.iter().map(|(v, l)| view! { <option value=*v>{*l}</option> }).collect_view()}
             </select>
@@ -660,7 +843,7 @@ fn FieldInput(
             <select
                 class="select select-sm w-full"
                 prop:value=text
-                on:change=move |ev| set(serde_json::Value::String(event_target_value(&ev)))
+                on:change=move |ev| set_str(event_target_value(&ev))
             >
                 <option value="">"Elegí un producto"</option>
                 {products
@@ -673,6 +856,9 @@ fn FieldInput(
             </select>
         }
         .into_any(),
+        FieldKind::List { item, min, max } => {
+            return view! { <ListInput products field item min=*min max=*max value set/> }.into_any();
+        }
     };
 
     view! {
@@ -680,6 +866,109 @@ fn FieldInput(
             <span class="text-sm font-medium">{field.label}</span>
             {input}
         </label>
+    }
+    .into_any()
+}
+
+/// Lista editable: cada elemento con sus campos, y botones para agregar,
+/// subir, bajar y quitar. Solo se redibuja entera cuando cambia la cantidad.
+#[component]
+fn ListInput(
+    products: StoredValue<Vec<Product>>,
+    field: &'static Field,
+    item: &'static [Field],
+    min: usize,
+    max: usize,
+    value: Signal<serde_json::Value>,
+    set: Callback<serde_json::Value>,
+) -> impl IntoView {
+    let items = move || {
+        value
+            .get_untracked()
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    };
+    let len = Memo::new(move |_| value.with(|v| v.as_array().map_or(0, Vec::len)));
+    let update = move |f: &dyn Fn(&mut Vec<serde_json::Value>)| {
+        let mut list = value
+            .get_untracked()
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        f(&mut list);
+        set.run(serde_json::Value::Array(list));
+    };
+
+    view! {
+        <fieldset class="flex flex-col gap-2">
+            <legend class="mb-1 text-sm font-medium">{field.label}</legend>
+            {move || {
+                let n = len.get();
+                (0..n)
+                    .map(|i| {
+                        let fields = item
+                            .iter()
+                            .map(|sub| {
+                                let key = sub.key;
+                                let sub_value = Signal::derive(move || {
+                                    value.with(|v| v.get(i).and_then(|it| it.get(key)).cloned())
+                                        .unwrap_or(serde_json::Value::Null)
+                                });
+                                let sub_set = Callback::new(move |v: serde_json::Value| {
+                                    update(&|list| {
+                                        if let Some(obj) = list.get_mut(i).and_then(|it| it.as_object_mut()) {
+                                            obj.insert(key.to_string(), v.clone());
+                                        }
+                                    });
+                                });
+                                view! { <FieldInput products field=sub value=sub_value set=sub_set/> }
+                            })
+                            .collect_view();
+                        view! {
+                            <div class="flex flex-col gap-2 rounded-box border border-base-300 p-3">
+                                <div class="flex items-center gap-1">
+                                    <span class="flex-1 text-xs font-semibold opacity-60">{format!("#{}", i + 1)}</span>
+                                    <button
+                                        type="button"
+                                        class="btn btn-ghost btn-xs"
+                                        aria-label="Subir"
+                                        disabled={i == 0}
+                                        on:click=move |_| update(&|list| list.swap(i, i - 1))
+                                    >"↑"</button>
+                                    <button
+                                        type="button"
+                                        class="btn btn-ghost btn-xs"
+                                        aria-label="Bajar"
+                                        disabled={i + 1 >= n}
+                                        on:click=move |_| update(&|list| list.swap(i, i + 1))
+                                    >"↓"</button>
+                                    <button
+                                        type="button"
+                                        class="btn btn-ghost btn-xs text-error"
+                                        aria-label="Quitar"
+                                        disabled={n <= min}
+                                        on:click=move |_| update(&|list| { list.remove(i); })
+                                    >"✕"</button>
+                                </div>
+                                {fields}
+                            </div>
+                        }
+                    })
+                    .collect_view()
+            }}
+            <button
+                type="button"
+                class="btn btn-sm btn-outline"
+                disabled=move || { len.get() >= max }
+                on:click=move |_| {
+                    let next = new_list_item(&items(), item);
+                    update(&|list| list.push(next.clone()));
+                }
+            >
+                {format!("Agregar ({max} como máximo)")}
+            </button>
+        </fieldset>
     }
 }
 
@@ -690,16 +979,48 @@ mod tests {
     #[test]
     fn set_field_changes_one_prop() {
         let mut doc = PageDoc::default();
-        let widget = Widget::defaults("Banner").unwrap();
-        doc.nodes.push(Node {
-            id: "n1".into(),
-            widget,
-            pos: Pos { x: 0, y: 0 },
-            size: "full".into(),
-        });
+        doc.nodes
+            .push(Node::new("n1", Widget::defaults("Banner").unwrap()));
         set_field(&mut doc, "n1", "title", serde_json::json!("Hola"));
         assert_eq!(field_value(&doc, "n1", "title"), serde_json::json!("Hola"));
         assert!(matches!(&doc.nodes[0].widget, Widget::Banner(b) if b.title == "Hola"));
         assert_eq!(new_node_id(&doc), "n2");
+    }
+
+    #[test]
+    fn set_field_replaces_a_whole_list() {
+        let mut doc = PageDoc::default();
+        doc.nodes
+            .push(Node::new("n1", Widget::defaults("Faq").unwrap()));
+        let mut items = field_value(&doc, "n1", "items");
+        let list = items.as_array_mut().unwrap();
+        list.push(new_list_item(list, &[]));
+        list[3]["question"] = serde_json::json!("¿Nueva?");
+        set_field(&mut doc, "n1", "items", items);
+        assert!(
+            matches!(&doc.nodes[0].widget, Widget::Faq(f) if f.items.len() == 4 && f.items[3].question == "¿Nueva?")
+        );
+        assert_eq!(domain::validate(&doc), Ok(()));
+    }
+
+    #[test]
+    fn new_list_item_has_every_field() {
+        let fields = Widget::defaults("Testimonials").unwrap().fields();
+        let FieldKind::List { item, .. } = &fields[1].kind else {
+            panic!("se esperaba una lista");
+        };
+        let v = new_list_item(&[], item);
+        assert_eq!(
+            v,
+            serde_json::json!({ "name": "", "text": "", "rating": 1 })
+        );
+    }
+
+    #[test]
+    fn resize_snaps_to_cells() {
+        // Columnas de 80 px de paso y filas de 96 px.
+        assert_eq!(resized(Edge::Right, 4, 2, 130.0, 500.0, 80.0), (6, 2));
+        assert_eq!(resized(Edge::Bottom, 4, 2, 500.0, -100.0, 80.0), (4, 1));
+        assert_eq!(resized(Edge::Corner, 4, 2, -50.0, 150.0, 80.0), (3, 4));
     }
 }

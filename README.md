@@ -49,7 +49,21 @@ La primera compilación tarda unos minutos. Al arrancar, el servidor aplica las 
 - Editor: <http://localhost:3000/editor>
 - Catálogo de widgets (solo en desarrollo): <http://localhost:3000/dev/widgets>
 
-En el editor: agregá widgets desde la paleta, arrastralos por la grilla, elegí el tamaño y los campos en el inspector, y tocá **Guardar**. Recargá `/` para ver el resultado.
+En el editor: agregá widgets desde la paleta, arrastralos por la grilla, cambiá su ancho y alto tirando de los bordes (o desde el inspector), editá sus campos y tocá **Guardar**. Recargá `/` para ver el resultado.
+
+## Widgets
+
+Navbar, Banner, Carrusel, Categorías, Grilla de productos, Producto destacado, Beneficios, Oferta con cuenta regresiva, Tarjeta, Texto, Pestañas, Preguntas frecuentes, Galería al pasar el mouse, Testimonios, Logos de marcas, Imagen y Footer.
+
+Cada widget define su ancho (columnas, de 12) y alto (filas de 80 px) mínimos, máximos y por defecto en `Widget::limits` (`crates/domain/src/widgets.rs`). El editor y el guardado no permiten salir de esos límites. `/dev/widgets` muestra cada widget en su tamaño mínimo, por defecto y máximo.
+
+Mientras carga una página o una imagen se ve un skeleton de daisyUI.
+
+## Imágenes
+
+Las imágenes de ejemplo se sirven desde `public/img`, sin depender de servicios externos: las fotos en AVIF con respaldo WebP (`<picture>`), y los logos en SVG. Para regenerarlas: `python3 scripts/gen_images.py` (necesita Pillow 11.3 o más nuevo).
+
+Para una imagen propia en `public/img`, alcanza con poner `/img/nombre.webp` en el editor: si existe `/img/nombre.avif`, el navegador la usa automáticamente.
 
 ## Comprobaciones
 
@@ -74,6 +88,8 @@ Cargo.toml        workspace + configuración de cargo-leptos
 .env              DATABASE_URL
 migrations/       SQL versionado (esquema y datos de ejemplo)
 style/            tailwind.css, daisyui.mjs, daisyui-theme.mjs
+public/img/       imágenes de ejemplo (AVIF + WebP, logos SVG)
+scripts/          gen_images.py (genera public/img)
 crates/
   domain/         tipos y validación del panel
   grid/           matemática de la grilla (mover, empujar, compactar)
@@ -91,7 +107,7 @@ Las dependencias van en una sola dirección: `server` y `wasm` dependen de `web`
 
 ## Datos
 
-Cada página guarda su panel como un documento JSON entero en `page_versions`. Cada Guardar inserta una versión nueva y se conservan las últimas 20. Si otra pestaña guardó antes, el editor avisa del conflicto y ofrece recargar.
+Cada página guarda su panel como un documento JSON entero en `page_versions`. El campo `schema` indica el formato: en el 2 cada nodo guarda `"size": { "w": 6, "h": 4 }`. Los documentos del schema 1 (tamaños fijos como `"size": "full"`) se convierten con una migración y, por las dudas, también al leerlos (`domain::parse_doc`). Cada Guardar inserta una versión nueva y se conservan las últimas 20. Si otra pestaña guardó antes, el editor avisa del conflicto y ofrece recargar.
 
 ## Para crear una migración nueva
 

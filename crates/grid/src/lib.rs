@@ -25,15 +25,13 @@ impl Rect {
     }
 }
 
-/// Rectángulo que ocupa un nodo. Si el `size` no es válido se usa el
-/// primer tamaño del widget.
+/// Rectángulo que ocupa un nodo.
 pub fn rect_of(node: &Node) -> Rect {
-    let preset = node.preset().unwrap_or(&node.widget.sizes()[0]);
     Rect {
         x: node.pos.x,
         y: node.pos.y,
-        w: preset.w,
-        h: preset.h,
+        w: node.size.w.clamp(1, GRID_COLS),
+        h: node.size.h.max(1),
     }
 }
 
@@ -63,16 +61,16 @@ pub fn move_node(nodes: &mut Vec<Node>, id: &str, x: i32, y: i32) {
     settle(nodes, id);
 }
 
-/// Aplica una nueva opción de tamaño. Si no es válida para el widget no hace nada.
-pub fn change_size(nodes: &mut Vec<Node>, id: &str, size: &str) {
+/// Cambia el ancho (columnas) y el alto (filas) de un nodo, limitados a los
+/// mínimos y máximos de su widget. Si el nuevo ancho no entra desde su `x`, el
+/// nodo se corre a la izquierda. Empuja a los que pise.
+pub fn resize_node(nodes: &mut Vec<Node>, id: &str, w: i32, h: i32) {
     let Some(node) = nodes.iter_mut().find(|n| n.id == id) else {
         return;
     };
-    let Some(preset) = node.widget.size(size) else {
-        return;
-    };
-    node.size = preset.id.to_string();
-    node.pos.x = node.pos.x.min(GRID_COLS - preset.w);
+    let size = node.widget.limits().clamp(w, h);
+    node.size = size;
+    node.pos.x = node.pos.x.min(GRID_COLS - size.w);
     settle(nodes, id);
 }
 
@@ -155,17 +153,22 @@ fn push_down(nodes: &mut [Node], fixed_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::{Pos, Widget};
+    use domain::{Pos, Size, Widget, WIDGET_TYPES};
 
+    /// Nodo con el tamaño de una de las opciones fijas de antes.
     fn node(id: &str, type_name: &str, size: &str, x: u8, y: u16) -> Node {
-        let widget = Widget::defaults(type_name).unwrap();
-        assert!(widget.size(size).is_some());
-        Node {
-            id: id.into(),
-            widget,
-            pos: Pos { x, y },
-            size: size.into(),
-        }
+        let (w, h) = match (type_name, size) {
+            ("Text", "small") => (4, 2),
+            ("Text", "medium") => (6, 3),
+            ("Text", "full") => (12, 2),
+            ("Banner", "full") => (12, 4),
+            ("FeaturedProduct", "small") => (3, 4),
+            _ => panic!("tamaño de prueba desconocido"),
+        };
+        let mut n = Node::new(id, Widget::defaults(type_name).unwrap());
+        n.pos = Pos { x, y };
+        n.size = Size { w, h };
+        n
     }
 
     fn pos(nodes: &[Node], id: &str) -> (u8, u16) {
@@ -251,11 +254,31 @@ mod tests {
     #[test]
     fn wider_size_on_the_right_edge_fixes_x() {
         let mut nodes = vec![node("a", "Text", "small", 8, 0)];
-        change_size(&mut nodes, "a", "medium");
+        resize_node(&mut nodes, "a", 6, 3);
         assert_eq!(pos(&nodes, "a"), (6, 0));
-        change_size(&mut nodes, "a", "full");
+        resize_node(&mut nodes, "a", 12, 2);
         assert_eq!(pos(&nodes, "a"), (0, 0));
-        assert_eq!(nodes[0].size, "full");
+        assert_eq!(nodes[0].size, Size { w: 12, h: 2 });
+        assert_invariants(&nodes);
+    }
+
+    #[test]
+    fn resize_is_clamped_to_widget_limits() {
+        let mut nodes = vec![node("a", "FeaturedProduct", "small", 0, 0)];
+        resize_node(&mut nodes, "a", 1, 20);
+        assert_eq!(nodes[0].size, Size { w: 2, h: 8 });
+        resize_node(&mut nodes, "a", 12, 0);
+        assert_eq!(nodes[0].size, Size { w: 6, h: 3 });
+    }
+
+    #[test]
+    fn growing_taller_pushes_the_node_below() {
+        let mut nodes = vec![
+            node("a", "Text", "full", 0, 0),
+            node("b", "Text", "full", 0, 2),
+        ];
+        resize_node(&mut nodes, "a", 12, 5);
+        assert_eq!(pos(&nodes, "b"), (0, 5));
         assert_invariants(&nodes);
     }
 
@@ -284,23 +307,17 @@ mod tests {
                 .wrapping_add(1442695040888963407);
             (seed >> 33) % n
         };
-        let types = ["Banner", "Text", "ProductGrid", "FeaturedProduct"];
+        let types: Vec<&str> = WIDGET_TYPES.iter().map(|(t, _)| *t).collect();
         let mut nodes: Vec<Node> = Vec::new();
         let mut counter = 0;
         for _ in 0..200 {
             let op = if nodes.is_empty() { 0 } else { next(4) };
             match op {
                 0 => {
-                    let widget = Widget::defaults(types[next(4) as usize]).unwrap();
-                    let size = widget.sizes()[0].id.to_string();
+                    let widget =
+                        Widget::defaults(types[next(types.len() as u64) as usize]).unwrap();
                     counter += 1;
-                    let n = Node {
-                        id: format!("n{counter}"),
-                        widget,
-                        pos: Pos { x: 0, y: 0 },
-                        size,
-                    };
-                    add_node(&mut nodes, n);
+                    add_node(&mut nodes, Node::new(format!("n{counter}"), widget));
                 }
                 1 => {
                     let id = nodes[next(nodes.len() as u64) as usize].id.clone();
@@ -311,9 +328,11 @@ mod tests {
                 2 => {
                     let i = next(nodes.len() as u64) as usize;
                     let id = nodes[i].id.clone();
-                    let sizes = nodes[i].widget.sizes();
-                    let size = sizes[next(sizes.len() as u64) as usize].id;
-                    change_size(&mut nodes, &id, size);
+                    let w = next(16) as i32 - 2;
+                    let h = next(14) as i32 - 2;
+                    resize_node(&mut nodes, &id, w, h);
+                    let l = nodes.iter().find(|n| n.id == id).unwrap();
+                    assert!(l.widget.limits().contains(l.size));
                 }
                 _ => {
                     let id = nodes[next(nodes.len() as u64) as usize].id.clone();
