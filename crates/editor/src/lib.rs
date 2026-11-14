@@ -5,6 +5,8 @@
 //! o con teclado, los errores se explican junto al campo y cada cambio se
 //! puede deshacer.
 
+#![recursion_limit = "512"]
+
 mod canvas;
 mod fields;
 mod icons;
