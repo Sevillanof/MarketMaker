@@ -1,0 +1,9 @@
+[package]
+name = "widgets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+domain = { path = "../domain" }
+ui = { path = "../ui" }
+leptos = { workspace = true }

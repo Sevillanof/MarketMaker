@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@source "../crates/**/*.rs";
+@source not "./daisyui{,*}.mjs";
+@plugin "./daisyui.mjs" {
+  themes: light --default, dark, cupcake, emerald, corporate, retro;
+}
+
+/* Grilla compartida por el editor y el marketplace.
+   La posición de cada nodo viaja en variables CSS dentro de `style`. */
+.mk-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 80px;
+  gap: 16px;
+}
+.mk-node {
+  grid-column: var(--x) / span var(--w);
+  grid-row: var(--y) / span var(--h);
+  min-width: 0;
+  overflow: hidden;
+}
+@media (max-width: 767px) {
+  .mk-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Apilados, cada nodo conserva el alto de su opción de tamaño. */
+  .mk-node {
+    height: calc(var(--h) * 80px + (var(--h) - 1) * 16px);
+    flex: none;
+  }
+}
