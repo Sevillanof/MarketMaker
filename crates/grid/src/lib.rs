@@ -74,6 +74,50 @@ pub fn resize_node(nodes: &mut Vec<Node>, id: &str, w: i32, h: i32) {
     settle(nodes, id);
 }
 
+/// Sube el nodo un lugar en el orden de lectura: pasa a ocupar la fila del
+/// nodo anterior, que queda debajo. Es la alternativa a arrastrar.
+pub fn move_up(nodes: &mut Vec<Node>, id: &str) {
+    let mut order = nodes.clone();
+    sort_by_position(&mut order);
+    let Some(i) = order.iter().position(|n| n.id == id) else {
+        return;
+    };
+    if i == 0 {
+        return;
+    }
+    let (x, y) = (i32::from(order[i].pos.x), i32::from(order[i - 1].pos.y));
+    move_node(nodes, id, x, y);
+}
+
+/// Baja el nodo un lugar en el orden de lectura: pasa debajo del siguiente.
+pub fn move_down(nodes: &mut Vec<Node>, id: &str) {
+    let mut order = nodes.clone();
+    sort_by_position(&mut order);
+    let Some(i) = order.iter().position(|n| n.id == id) else {
+        return;
+    };
+    let Some(next) = order.get(i + 1) else {
+        return;
+    };
+    let next_id = next.id.clone();
+    // El siguiente toma el lugar del nodo, que queda debajo de él.
+    let (x, y) = (i32::from(next.pos.x), i32::from(order[i].pos.y));
+    move_node(nodes, &next_id, x, y);
+}
+
+/// Inserta `node` justo debajo del nodo `after_id` y empuja a los demás.
+pub fn insert_below(nodes: &mut Vec<Node>, after_id: &str, mut node: Node) {
+    let Some(r) = nodes.iter().find(|n| n.id == after_id).map(rect_of) else {
+        add_node(nodes, node);
+        return;
+    };
+    node.pos.x = r.x.min(GRID_COLS - rect_of(&node).w);
+    node.pos.y = r.bottom();
+    let id = node.id.clone();
+    nodes.push(node);
+    settle(nodes, &id);
+}
+
 pub fn remove_node(nodes: &mut Vec<Node>, id: &str) {
     nodes.retain(|n| n.id != id);
     if COMPACT {
@@ -349,5 +393,37 @@ mod tests {
         assert_eq!(cell_from_point(0.0, 0.0, 944.0), (0, 0));
         assert_eq!(cell_from_point(80.0, 96.0, 944.0), (1, 1));
         assert_eq!(cell_from_point(-10.0, -10.0, 944.0), (-1, -1));
+    }
+
+    #[test]
+    fn move_up_and_down_swap_reading_order() {
+        let mut nodes = vec![
+            node("a", "Text", "full", 0, 0),
+            node("b", "Banner", "full", 0, 2),
+            node("c", "Text", "full", 0, 6),
+        ];
+        move_up(&mut nodes, "b");
+        assert_eq!(order(&nodes), ["b", "a", "c"]);
+        move_down(&mut nodes, "b");
+        assert_eq!(order(&nodes), ["a", "b", "c"]);
+        move_down(&mut nodes, "c");
+        move_up(&mut nodes, "a");
+        assert_eq!(order(&nodes), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn insert_below_places_copy_after_original() {
+        let mut nodes = vec![
+            node("a", "Text", "full", 0, 0),
+            node("b", "Banner", "full", 0, 2),
+        ];
+        insert_below(&mut nodes, "a", node("a2", "Text", "full", 0, 0));
+        assert_eq!(order(&nodes), ["a", "a2", "b"]);
+    }
+
+    fn order(nodes: &[Node]) -> Vec<String> {
+        let mut v = nodes.to_vec();
+        sort_by_position(&mut v);
+        v.into_iter().map(|n| n.id).collect()
     }
 }

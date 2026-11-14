@@ -13,6 +13,24 @@ pub const GRID_COLS: u8 = 12;
 pub const MAX_NODES: usize = 100;
 pub const THEMES: &[&str] = &["light", "dark", "cupcake", "emerald", "corporate", "retro"];
 
+/// Nombre para mostrar de cada tema, en el mismo orden que [`THEMES`].
+pub const THEME_LABELS: &[&str] = &[
+    "Claro",
+    "Oscuro",
+    "Pastel",
+    "Esmeralda",
+    "Corporativo",
+    "Retro",
+];
+
+/// Nombre para mostrar de un tema; si no se conoce, el nombre interno.
+pub fn theme_label(theme: &str) -> &str {
+    THEMES
+        .iter()
+        .position(|t| *t == theme)
+        .map_or(theme, |i| THEME_LABELS[i])
+}
+
 /// Documento del panel de una página. Se guarda entero en `page_versions.doc`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PageDoc {
@@ -231,6 +249,52 @@ fn datetime_ok(s: &str) -> bool {
         && (s.len() == 16 || (b[16] == b':' && digits(17..19)))
 }
 
+/// Problema de un valor según el tipo de su campo, en palabras para el
+/// usuario (sin nombres internos). `None` si el valor es válido.
+///
+/// Las listas solo se chequean por cantidad: sus elementos se validan campo
+/// por campo con esta misma función.
+pub fn field_error(kind: &FieldKind, v: Option<&serde_json::Value>) -> Option<String> {
+    match kind {
+        FieldKind::Text { max } | FieldKind::LongText { max } => match v.and_then(|v| v.as_str()) {
+            Some(s) if s.chars().count() <= *max => None,
+            Some(_) => Some(format!("Usá {max} caracteres como máximo.")),
+            None => Some("Tiene que ser un texto.".to_string()),
+        },
+        FieldKind::Url => match v.and_then(|v| v.as_str()) {
+            Some(s) if url_ok(s) => None,
+            Some(_) => {
+                Some("Escribí una dirección que empiece con https://, http:// o /.".to_string())
+            }
+            None => Some("Tiene que ser un texto.".to_string()),
+        },
+        FieldKind::Number { min, max } => match v.and_then(|v| v.as_i64()) {
+            Some(n) if (*min..=*max).contains(&n) => None,
+            Some(_) => Some(format!("Elegí un número entre {min} y {max}.")),
+            None => Some("Escribí un número entero.".to_string()),
+        },
+        FieldKind::Bool => {
+            (!v.is_some_and(|v| v.is_boolean())).then(|| "Tiene que ser sí o no.".to_string())
+        }
+        FieldKind::Select { options } => match v.and_then(|v| v.as_str()) {
+            Some(s) if options.iter().any(|(k, _)| *k == s) => None,
+            _ => Some("Elegí una de las opciones.".to_string()),
+        },
+        FieldKind::ProductRef => {
+            (!v.is_some_and(|v| v.is_string())).then(|| "Elegí un producto.".to_string())
+        }
+        FieldKind::DateTime => match v.and_then(|v| v.as_str()) {
+            Some(s) if datetime_ok(s) => None,
+            _ => Some("Elegí una fecha y una hora.".to_string()),
+        },
+        FieldKind::List { min, max, .. } => match v.and_then(|v| v.as_array()) {
+            Some(items) if (*min..=*max).contains(&items.len()) => None,
+            Some(_) => Some(format!("Tiene que tener entre {min} y {max} elementos.")),
+            None => Some("Tiene que ser una lista.".to_string()),
+        },
+    }
+}
+
 fn validate_props(
     fields: &[Field],
     props: Option<&serde_json::Value>,
@@ -239,55 +303,19 @@ fn validate_props(
 ) {
     for field in fields {
         let v = props.and_then(|p| p.get(field.key));
-        let err = |msg: &str| format!("{path}campo {}: {msg}", field.key);
-        match &field.kind {
-            FieldKind::Text { max } | FieldKind::LongText { max } => {
-                match v.and_then(|v| v.as_str()) {
-                    Some(s) if s.chars().count() <= *max => {}
-                    Some(_) => errors.push(err(&format!("supera {max} caracteres"))),
-                    None => errors.push(err("debe ser texto")),
-                }
+        if let Some(msg) = field_error(&field.kind, v) {
+            errors.push(format!("{path}{}: {msg}", field.label));
+        }
+        if let FieldKind::List { item, .. } = &field.kind {
+            for (i, it) in v
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let sub = format!("{path}{} {} › ", field.label, i + 1);
+                validate_props(item, Some(it), &sub, errors);
             }
-            FieldKind::Url => match v.and_then(|v| v.as_str()) {
-                Some(s) if url_ok(s) => {}
-                Some(_) => errors.push(err("la URL debe empezar con https://, http:// o /")),
-                None => errors.push(err("debe ser texto")),
-            },
-            FieldKind::Number { min, max } => match v.and_then(|v| v.as_i64()) {
-                Some(n) if (*min..=*max).contains(&n) => {}
-                Some(_) => errors.push(err(&format!("debe estar entre {min} y {max}"))),
-                None => errors.push(err("debe ser un número entero")),
-            },
-            FieldKind::Bool => {
-                if !v.is_some_and(|v| v.is_boolean()) {
-                    errors.push(err("debe ser sí o no"));
-                }
-            }
-            FieldKind::Select { options } => match v.and_then(|v| v.as_str()) {
-                Some(s) if options.iter().any(|(k, _)| *k == s) => {}
-                _ => errors.push(err("opción inexistente")),
-            },
-            FieldKind::ProductRef => {
-                if !v.is_some_and(|v| v.is_string()) {
-                    errors.push(err("debe ser un id de producto"));
-                }
-            }
-            FieldKind::DateTime => match v.and_then(|v| v.as_str()) {
-                Some(s) if datetime_ok(s) => {}
-                _ => errors.push(err("debe ser una fecha AAAA-MM-DDTHH:MM")),
-            },
-            FieldKind::List { item, min, max } => match v.and_then(|v| v.as_array()) {
-                Some(items) => {
-                    if items.len() < *min || items.len() > *max {
-                        errors.push(err(&format!("debe tener entre {min} y {max} elementos")));
-                    }
-                    for (i, it) in items.iter().enumerate() {
-                        let sub = format!("{path}{}[{}]: ", field.key, i + 1);
-                        validate_props(item, Some(it), &sub, errors);
-                    }
-                }
-                None => errors.push(err("debe ser una lista")),
-            },
         }
     }
 }
@@ -300,7 +328,7 @@ fn validate_fields(node: &Node, errors: &mut Vec<String>) {
             return;
         }
     };
-    let path = format!("nodo {}: ", node.id);
+    let path = format!("{} › ", node.widget.label());
     validate_props(node.widget.fields(), value.get("props"), &path, errors);
 }
 
@@ -578,7 +606,7 @@ mod tests {
         if let Widget::Text(t) = &mut doc.nodes[0].widget {
             t.align = "right".into();
         }
-        assert_invalid(&doc, "opción");
+        assert_invalid(&doc, "Alineación: Elegí una de las opciones");
     }
 
     #[test]
@@ -587,7 +615,7 @@ mod tests {
         if let Widget::Banner(b) = &mut doc.nodes[0].widget {
             b.button_href = "javascript:alert(1)".into();
         }
-        assert_invalid(&doc, "URL");
+        assert_invalid(&doc, "Banner › Enlace del botón: Escribí una dirección");
     }
 
     #[test]
@@ -609,7 +637,7 @@ mod tests {
         if let Widget::Carousel(c) = &mut doc.nodes[0].widget {
             c.slides[1].button_href = "javascript:alert(1)".into();
         }
-        assert_invalid(&doc, "slides[2]");
+        assert_invalid(&doc, "Carrusel › Diapositivas 2 › Enlace del botón");
         if let Widget::Carousel(c) = &mut doc.nodes[0].widget {
             c.slides.clear();
         }
