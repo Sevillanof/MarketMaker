@@ -576,26 +576,27 @@ impl Widget {
             .unwrap_or("Widget")
     }
 
-    /// Ancho (columnas) y alto (filas) mínimos, máximos y por defecto.
+    /// Ancho (columnas de 48) y alto (filas de 8 px) mínimos, máximos y por
+    /// defecto.
     pub fn limits(&self) -> SizeLimits {
         match self {
-            Widget::Banner(_) => limits(4, 12, 2, 8, 12, 4),
-            Widget::Text(_) => limits(2, 12, 1, 8, 6, 2),
-            Widget::ProductGrid(_) => limits(3, 12, 3, 12, 12, 5),
-            Widget::FeaturedProduct(_) => limits(2, 6, 3, 8, 3, 4),
-            Widget::Navbar(_) => limits(6, 12, 1, 2, 12, 1),
-            Widget::Carousel(_) => limits(6, 12, 3, 8, 12, 4),
-            Widget::Categories(_) => limits(3, 12, 2, 8, 12, 3),
-            Widget::Benefits(_) => limits(3, 12, 1, 4, 12, 2),
-            Widget::Countdown(_) => limits(4, 12, 3, 6, 12, 3),
-            Widget::Card(_) => limits(2, 12, 3, 8, 4, 4),
-            Widget::Tabs(_) => limits(3, 12, 2, 8, 6, 3),
-            Widget::Faq(_) => limits(3, 12, 2, 10, 6, 4),
-            Widget::HoverGallery(_) => limits(2, 6, 3, 8, 3, 4),
-            Widget::Testimonials(_) => limits(4, 12, 3, 6, 12, 3),
-            Widget::Logos(_) => limits(3, 12, 1, 3, 12, 2),
-            Widget::Image(_) => limits(1, 12, 1, 10, 4, 3),
-            Widget::Footer(_) => limits(6, 12, 2, 5, 12, 2),
+            Widget::Banner(_) => limits(16, 48, 24, 96, 48, 48),
+            Widget::Text(_) => limits(8, 48, 12, 96, 24, 24),
+            Widget::ProductGrid(_) => limits(12, 48, 36, 144, 48, 60),
+            Widget::FeaturedProduct(_) => limits(8, 24, 36, 96, 12, 48),
+            Widget::Navbar(_) => limits(24, 48, 12, 24, 48, 12),
+            Widget::Carousel(_) => limits(24, 48, 36, 96, 48, 48),
+            Widget::Categories(_) => limits(12, 48, 24, 96, 48, 36),
+            Widget::Benefits(_) => limits(12, 48, 12, 48, 48, 24),
+            Widget::Countdown(_) => limits(16, 48, 36, 72, 48, 36),
+            Widget::Card(_) => limits(8, 48, 36, 96, 16, 48),
+            Widget::Tabs(_) => limits(12, 48, 24, 96, 24, 36),
+            Widget::Faq(_) => limits(12, 48, 24, 120, 24, 48),
+            Widget::HoverGallery(_) => limits(8, 24, 36, 96, 12, 48),
+            Widget::Testimonials(_) => limits(16, 48, 36, 72, 48, 36),
+            Widget::Logos(_) => limits(12, 48, 12, 36, 48, 24),
+            Widget::Image(_) => limits(4, 48, 12, 120, 16, 36),
+            Widget::Footer(_) => limits(24, 48, 24, 60, 48, 24),
         }
     }
 

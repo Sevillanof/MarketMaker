@@ -2,10 +2,12 @@
 //! buscador.
 
 use domain::WIDGET_TYPES;
+use leptos::ev::PointerEvent;
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 
 use crate::icons::Icon;
-use crate::Actions;
+use crate::{Actions, NewDrag, Ui};
 
 /// Grupo, ícono y descripción breve de cada tipo de bloque, en el orden en
 /// que se muestran.
@@ -74,7 +76,7 @@ pub(crate) fn block_info(type_name: &str) -> (&'static str, &'static str) {
         .map_or(("text", ""), |b| (b.2, b.3))
 }
 
-fn label_of(type_name: &str) -> &'static str {
+pub(crate) fn label_of(type_name: &str) -> &'static str {
     WIDGET_TYPES
         .iter()
         .find(|(t, _)| *t == type_name)
@@ -99,6 +101,41 @@ fn fold(s: &str) -> String {
 #[component]
 pub(crate) fn Palette() -> impl IntoView {
     let actions = expect_context::<Actions>();
+    let ui = expect_context::<Ui>();
+    // Apretar con el mouse prepara un arrastre; el lienzo lo sigue desde ahí
+    // (ver `canvas::Canvas`) y decide si fue un clic o un arrastre.
+    let on_pointer_down = move |ev: PointerEvent, type_name: &'static str| {
+        if ev.button() != 0 || ev.pointer_type() == "touch" {
+            return;
+        }
+        // Sin selección de texto mientras se arrastra; el foco se da a mano.
+        ev.prevent_default();
+        if let Some(el) = ev
+            .current_target()
+            .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+        {
+            let opts = web_sys::FocusOptions::new();
+            opts.set_prevent_scroll(true);
+            _ = el.focus_with_options(&opts);
+        }
+        let (x, y) = (f64::from(ev.client_x()), f64::from(ev.client_y()));
+        ui.swallow_click.set_value(false);
+        ui.new_drag.set(Some(NewDrag {
+            type_name,
+            start_x: x,
+            start_y: y,
+            x,
+            y,
+            active: false,
+        }));
+    };
+    let on_click = move |type_name: &'static str| {
+        if ui.swallow_click.get_value() {
+            ui.swallow_click.set_value(false);
+            return;
+        }
+        actions.add(type_name);
+    };
     let query = RwSignal::new(String::new());
     let matches = move |type_name: &str, desc: &str| {
         let q = fold(query.get().trim());
@@ -109,7 +146,7 @@ pub(crate) fn Palette() -> impl IntoView {
         <nav class="flex w-72 shrink-0 flex-col border-r border-base-300 bg-base-100" aria-labelledby="mk-palette-title">
             <div class="flex flex-col gap-2 border-b border-base-300 p-3">
                 <h2 id="mk-palette-title" class="font-semibold">"Agregá un bloque"</h2>
-                <p class="text-xs text-base-content/75">"Hacé clic en uno y se suma al final de la página."</p>
+                <p class="text-xs text-base-content/75">"Hacé clic en uno y se suma al final de la página, o arrastralo al lugar del lienzo donde lo quieras."</p>
                 <label class="input input-sm w-full">
                     <span class="sr-only">"Buscar bloque"</span>
                     <svg class="h-4 w-4 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-4-4"/></svg>
@@ -140,8 +177,10 @@ pub(crate) fn Palette() -> impl IntoView {
                                             <li class:hidden=move || !matches(type_name, desc)>
                                                 <button
                                                     type="button"
-                                                    class="flex h-full w-full flex-col items-stretch gap-1.5 rounded-box border border-base-300 bg-base-100 p-2 text-left transition hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                                                    on:click=move |_| actions.add(type_name)
+                                                    class="flex h-full w-full cursor-grab select-none flex-col items-stretch gap-1.5 rounded-box border border-base-300 bg-base-100 p-2 text-left transition hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                                    title="Clic para agregarlo al final, o arrastralo al lienzo"
+                                                    on:pointerdown=move |ev| on_pointer_down(ev, type_name)
+                                                    on:click=move |_| on_click(type_name)
                                                 >
                                                     <span class="flex h-14 items-center justify-center rounded-field bg-base-200 text-base-content/70" aria-hidden="true">
                                                         <Icon name=icon class="h-8 w-8"/>

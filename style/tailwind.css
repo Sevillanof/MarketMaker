@@ -5,28 +5,47 @@
   themes: light --default, dark, cupcake, emerald, corporate, retro;
 }
 
-/* Grilla compartida por el editor y el marketplace.
-   La posición de cada nodo viaja en variables CSS dentro de `style`. */
+/* Grilla compartida por el editor y el marketplace: 48 columnas y filas de
+   8 px, sin huecos, para poder ubicar y medir los bloques con precisión.
+   La separación entre bloques es un margen de 8 px alrededor de cada uno
+   (16 px entre dos vecinos); el margen negativo de la grilla compensa el de
+   los bordes. Ver `grid::GAP_PX`. La posición de cada nodo viaja en
+   variables CSS dentro de `style`. */
 .mk-grid {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-auto-rows: 80px;
-  gap: 16px;
+  grid-template-columns: repeat(48, minmax(0, 1fr));
+  grid-auto-rows: 8px;
+  margin: -8px;
 }
 .mk-node {
   grid-column: var(--x) / span var(--w);
   grid-row: var(--y) / span var(--h);
   min-width: 0;
+  margin: 8px;
   overflow: hidden;
+}
+/* Guías de la grilla en el editor, mientras se arrastra un bloque. */
+.mk-grid-guides {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-primary) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-primary) 10%, transparent) 1px, transparent 1px);
+  background-size: calc(100% / 48) 8px, calc(100% / 48) 8px;
+}
+/* Lugar donde va a quedar el bloque que se está arrastrando desde la paleta. */
+.mk-drop-preview {
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: 0;
+  border-radius: var(--radius-box);
 }
 @media (max-width: 767px) {
   .mk-grid {
     display: flex;
     flex-direction: column;
   }
-  /* Apilados, cada nodo conserva el alto de su opción de tamaño. */
+  /* Apilados, cada nodo conserva su alto. */
   .mk-node {
-    height: calc(var(--h) * 80px + (var(--h) - 1) * 16px);
+    height: calc(var(--h) * 8px - 16px);
     flex: none;
   }
 }

@@ -152,12 +152,12 @@ pub fn PageSkeleton() -> impl IntoView {
         <div class="min-h-screen bg-base-200" aria-busy="true" aria-label="Cargando">
             <div class="mx-auto max-w-6xl p-4">
                 <div class="mk-grid">
-                    <div class="mk-node skeleton" style="--x:1; --y:1; --w:12; --h:1"></div>
-                    <div class="mk-node skeleton" style="--x:1; --y:2; --w:12; --h:4"></div>
-                    <div class="mk-node skeleton" style="--x:1; --y:6; --w:3; --h:4"></div>
-                    <div class="mk-node skeleton" style="--x:4; --y:6; --w:3; --h:4"></div>
-                    <div class="mk-node skeleton" style="--x:7; --y:6; --w:3; --h:4"></div>
-                    <div class="mk-node skeleton" style="--x:10; --y:6; --w:3; --h:4"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:1; --w:48; --h:12"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:13; --w:48; --h:48"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:61; --w:12; --h:48"></div>
+                    <div class="mk-node skeleton" style="--x:13; --y:61; --w:12; --h:48"></div>
+                    <div class="mk-node skeleton" style="--x:25; --y:61; --w:12; --h:48"></div>
+                    <div class="mk-node skeleton" style="--x:37; --y:61; --w:12; --h:48"></div>
                 </div>
             </div>
         </div>

@@ -63,7 +63,7 @@ En el editor (pensado para alguien sin experiencia):
 
 Menú superior, Banner, Carrusel, Categorías, Cuadrícula de productos, Producto destacado, Beneficios, Oferta con cuenta regresiva, Tarjeta, Texto, Pestañas, Preguntas frecuentes, Galería de fotos, Testimonios, Logos de marcas, Imagen y Pie de página.
 
-Cada widget define su ancho (columnas, de 12) y alto (filas de 80 px) mínimos, máximos y por defecto en `Widget::limits` (`crates/domain/src/widgets.rs`). El editor y el guardado no permiten salir de esos límites. `/dev/widgets` muestra cada widget en su tamaño mínimo, por defecto y máximo.
+La grilla del panel tiene 48 columnas y filas de 8 px, con imán: los bloques se ubican y miden con precisión sin salirse de la grilla. Cada widget define su ancho (columnas, de 48) y alto (filas de 8 px) mínimos, máximos y por defecto en `Widget::limits` (`crates/domain/src/widgets.rs`). El editor y el guardado no permiten salir de esos límites. `/dev/widgets` muestra cada widget en su tamaño mínimo, por defecto y máximo.
 
 Mientras carga una página o una imagen se ve un skeleton de daisyUI.
 
