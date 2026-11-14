@@ -63,7 +63,8 @@ site-pkg-dir = "pkg"
 # The assets-dir cannot have a sub directory with the same name/path as site-pkg-dir.
 #
 # Optional. Env: LEPTOS_ASSETS_DIR.
-style-file = "style/main.scss"
+# Tailwind 4 + daisyUI 5 (plugin en style/daisyui.mjs)
+tailwind-input-file = "style/tailwind.css"
 
 assets-dir = "public"
 

@@ -53,7 +53,9 @@ fn HomePage() -> impl IntoView {
     let on_click = move |_| *count.write() += 1;
 
     view! {
-        <h1>"Welcome to Leptos!"</h1>
-        <button on:click=on_click>"Click Me: " {count}</button>
+        <div data-theme="light" class="p-8 bg-base-100 text-base-content">
+            <h1 class="text-2xl font-bold">"Welcome to Leptos!"</h1>
+            <button class="btn btn-primary" on:click=on_click>"Click Me: " {count}</button>
+        </div>
     }
 }
