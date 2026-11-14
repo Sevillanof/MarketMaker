@@ -4,3 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+domain = { path = "../domain" }
+grid = { path = "../grid" }
+widgets = { path = "../widgets" }
+ui = { path = "../ui" }
+leptos = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true }

@@ -14,6 +14,7 @@ leptos_axum = { workspace = true, optional = true }
 domain = { path = "../domain" }
 widgets = { path = "../widgets" }
 storefront = { path = "../storefront" }
+editor = { path = "../editor" }
 db = { path = "../db", optional = true }
 serde_json = { workspace = true }
 

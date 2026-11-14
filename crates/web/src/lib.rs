@@ -1,3 +1,5 @@
+use domain::PageDoc;
+use editor::{Editor, SaveAction};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
@@ -42,6 +44,7 @@ pub fn App() -> impl IntoView {
             <main>
                 <Routes fallback=|| "Página no encontrada.".into_view()>
                     <Route path=StaticSegment("") view=HomePage ssr=SsrMode::Async/>
+                    <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                 </Routes>
             </main>
@@ -58,6 +61,31 @@ fn HomePage() -> impl IntoView {
             {move || Suspend::new(async move {
                 match page.await {
                     Ok(view) => view! { <StorefrontPage view/> }.into_any(),
+                    Err(e) => view! {
+                        <div class="p-8">
+                            <div class="alert alert-error">{format!("No se pudo cargar la página: {e}")}</div>
+                        </div>
+                    }
+                    .into_any(),
+                }
+            })}
+        </Suspense>
+    }
+}
+
+/// Editor en `/editor`: arranca desde la última versión guardada de `home`.
+#[component]
+fn EditorPage() -> impl IntoView {
+    let page = Resource::new(|| (), |_| load_page("home".to_string()));
+    let save: SaveAction = Action::new(|(doc, base_version): &(PageDoc, u32)| {
+        save_page("home".to_string(), doc.clone(), *base_version)
+    });
+    view! {
+        <Title text="Editor · Marketplace"/>
+        <Suspense fallback=|| view! { <div class="p-8">"Cargando…"</div> }>
+            {move || Suspend::new(async move {
+                match page.await {
+                    Ok(initial) => view! { <Editor initial save/> }.into_any(),
                     Err(e) => view! {
                         <div class="p-8">
                             <div class="alert alert-error">{format!("No se pudo cargar la página: {e}")}</div>
