@@ -227,11 +227,11 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                     {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
                 </button>
             </div>
-            <StatusBar status/>
+            {view! { <StatusBar status/> }.into_any()}
             <div class="flex min-h-0 flex-1">
-                <Palette state/>
-                <Canvas state products/>
-                <Inspector state products/>
+                {view! { <Palette state/> }.into_any()}
+                {view! { <Canvas state products/> }.into_any()}
+                {view! { <Inspector state products/> }.into_any()}
             </div>
         </div>
     }

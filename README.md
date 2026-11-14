@@ -59,7 +59,13 @@ cargo clippy --workspace -- -D warnings
 cargo test --workspace
 ```
 
-Los tests de guardado (`crates/db/tests/save.rs`) usan la base local: `sqlx::test` crea una base temporal por test a partir de `DATABASE_URL`, le aplica las migraciones y la borra al terminar. El usuario de Postgres necesita permiso para crear bases (con Homebrew ya lo tiene).
+Los tests de guardado (`crates/db/tests/save.rs`) necesitan saber con qué usuario entrar a Postgres. Si la URL no lo trae, exportá `PGUSER` (una sola vez):
+
+```bash
+echo 'export PGUSER=$USER' >> ~/.zshrc && source ~/.zshrc
+```
+
+Usan la base local: `sqlx::test` crea una base temporal por test a partir de `DATABASE_URL`, le aplica las migraciones y la borra al terminar. El usuario de Postgres necesita permiso para crear bases (con Homebrew ya lo tiene).
 
 ## Estructura
 

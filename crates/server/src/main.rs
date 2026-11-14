@@ -2,7 +2,7 @@ use axum::Router;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_axum::{generate_route_list, LeptosRoutes};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use web::*;
 
 #[tokio::main]
@@ -11,9 +11,19 @@ async fn main() {
     _ = dotenvy::dotenv();
     let database_url = std::env::var("DATABASE_URL").expect("falta DATABASE_URL (ver .env)");
 
+    let mut connect: PgConnectOptions = database_url
+        .parse()
+        .expect("DATABASE_URL no es una URL de PostgreSQL válida");
+    // Sin usuario en la URL ni PGUSER, SQLx 0.9 entra como "anonymous".
+    // Usamos el usuario del sistema, que es el que crea Postgres de Homebrew.
+    if !database_url.contains('@') && std::env::var_os("PGUSER").is_none() {
+        if let Ok(user) = std::env::var("USER") {
+            connect = connect.username(&user);
+        }
+    }
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&database_url)
+        .connect_with(connect)
         .await
         .expect("no se pudo conectar a PostgreSQL");
     sqlx::migrate!("../../migrations")
