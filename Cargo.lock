@@ -940,6 +940,9 @@ dependencies = [
 [[package]]
 name = "grid"
 version = "0.1.0"
+dependencies = [
+ "domain",
+]
 
 [[package]]
 name = "guardian"
