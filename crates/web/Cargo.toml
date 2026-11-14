@@ -13,6 +13,9 @@ leptos_axum = { workspace = true, optional = true }
 
 domain = { path = "../domain" }
 widgets = { path = "../widgets" }
+storefront = { path = "../storefront" }
+db = { path = "../db", optional = true }
+serde_json = { workspace = true }
 
 http.workspace = true
 cfg-if.workspace = true
@@ -21,5 +24,5 @@ thiserror.workspace = true
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr", "dep:leptos_axum"]
+ssr = ["leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr", "dep:leptos_axum", "dep:db"]
 

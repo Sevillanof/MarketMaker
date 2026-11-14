@@ -24,4 +24,9 @@
     display: flex;
     flex-direction: column;
   }
+  /* Apilados, cada nodo conserva el alto de su opción de tamaño. */
+  .mk-node {
+    height: calc(var(--h) * 80px + (var(--h) - 1) * 16px);
+    flex: none;
+  }
 }

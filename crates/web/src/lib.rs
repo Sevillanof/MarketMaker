@@ -2,15 +2,19 @@ use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
-    path, StaticSegment,
+    path, SsrMode, StaticSegment,
 };
+use storefront::StorefrontPage;
 
 mod dev;
+pub mod server;
+
+pub use server::*;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang="es">
             <head>
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -32,15 +36,12 @@ pub fn App() -> impl IntoView {
 
     view! {
         <Stylesheet id="leptos" href="/pkg/marketplace.css"/>
+        <Title text="Marketplace"/>
 
-        // sets the document title
-        <Title text="Welcome to Leptos"/>
-
-        // content for this welcome page
         <Router>
             <main>
-                <Routes fallback=|| "Page not found.".into_view()>
-                    <Route path=StaticSegment("") view=HomePage/>
+                <Routes fallback=|| "Página no encontrada.".into_view()>
+                    <Route path=StaticSegment("") view=HomePage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                 </Routes>
             </main>
@@ -48,17 +49,23 @@ pub fn App() -> impl IntoView {
     }
 }
 
-/// Renders the home page of your application.
+/// Marketplace en `/`: la última versión guardada de la página `home`.
 #[component]
 fn HomePage() -> impl IntoView {
-    // Creates a reactive value to update the button
-    let count = RwSignal::new(0);
-    let on_click = move |_| *count.write() += 1;
-
+    let page = Resource::new(|| (), |_| load_page("home".to_string()));
     view! {
-        <div data-theme="light" class="p-8 bg-base-100 text-base-content">
-            <h1 class="text-2xl font-bold">"Welcome to Leptos!"</h1>
-            <button class="btn btn-primary" on:click=on_click>"Click Me: " {count}</button>
-        </div>
+        <Suspense fallback=|| view! { <div class="p-8">"Cargando…"</div> }>
+            {move || Suspend::new(async move {
+                match page.await {
+                    Ok(view) => view! { <StorefrontPage view/> }.into_any(),
+                    Err(e) => view! {
+                        <div class="p-8">
+                            <div class="alert alert-error">{format!("No se pudo cargar la página: {e}")}</div>
+                        </div>
+                    }
+                    .into_any(),
+                }
+            })}
+        </Suspense>
     }
 }
