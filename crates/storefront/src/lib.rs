@@ -23,7 +23,7 @@ pub fn StorefrontPage(view: PageView) -> impl IntoView {
                         .into_iter()
                         .map(|node| {
                             let style = node_style(&node);
-                            let content = render_widget(&node.widget, &ctx);
+                            let content = render_widget(&node, &ctx);
                             view! { <div class="mk-node" style=style>{content}</div> }
                         })
                         .collect_view()}

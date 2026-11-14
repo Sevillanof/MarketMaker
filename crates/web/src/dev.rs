@@ -1,8 +1,9 @@
-//! Ruta de desarrollo `/dev/widgets`: cada widget en cada uno de sus tamaños.
+//! Ruta de desarrollo `/dev/widgets`: cada widget en su tamaño mínimo, por
+//! defecto y máximo.
 //! Solo responde en compilaciones de desarrollo (`cargo leptos watch`); en
 //! `--release` muestra "Página no encontrada".
 
-use domain::{Node, Pos, Product, Widget, WIDGET_TYPES};
+use domain::{Node, Product, Size, Widget, WIDGET_TYPES};
 use leptos::prelude::*;
 use widgets::{node_style, render_widget, RenderCtx};
 
@@ -24,7 +25,7 @@ fn sample_products() -> Vec<Product> {
             id: format!("p{i}"),
             name: (*name).to_string(),
             price_cents: 1_234_500 + i as i64 * 250_050,
-            image_url: format!("https://picsum.photos/seed/mk-product-{}/600/400", i + 1),
+            image_url: format!("/img/product-{}.webp", i + 1),
         })
         .collect()
 }
@@ -48,19 +49,31 @@ pub fn DevWidgetsPage() -> impl IntoView {
             if let Widget::FeaturedProduct(p) = &mut widget {
                 p.product_id = first_id.clone();
             }
-            widget
-                .sizes()
-                .iter()
-                .map(|s| {
-                    let node = Node {
-                        id: format!("{type_name}-{}", s.id),
-                        widget: widget.clone(),
-                        pos: Pos { x: 0, y: 0 },
-                        size: s.id.to_string(),
-                    };
-                    (format!("{label} · {} ({}×{})", s.id, s.w, s.h), node)
-                })
-                .collect::<Vec<_>>()
+            let l = widget.limits();
+            [
+                (
+                    "mínimo",
+                    Size {
+                        w: l.min_w,
+                        h: l.min_h,
+                    },
+                ),
+                ("por defecto", l.default),
+                (
+                    "máximo",
+                    Size {
+                        w: l.max_w,
+                        h: l.max_h,
+                    },
+                ),
+            ]
+            .into_iter()
+            .map(|(name, size)| {
+                let mut node = Node::new(format!("{type_name}-{name}"), widget.clone());
+                node.size = size;
+                (format!("{label} · {name} ({}×{})", size.w, size.h), node)
+            })
+            .collect::<Vec<_>>()
         })
         .collect();
 
@@ -71,7 +84,7 @@ pub fn DevWidgetsPage() -> impl IntoView {
                 .into_iter()
                 .map(|(title, node)| {
                     let style = node_style(&node);
-                    let content = render_widget(&node.widget, &ctx);
+                    let content = render_widget(&node, &ctx);
                     view! {
                         <section class="mb-10">
                             <h2 class="text-lg font-semibold mb-2">{title}</h2>

@@ -3284,6 +3284,7 @@ dependencies = [
  "serde_json",
  "storefront",
  "thiserror 2.0.21",
+ "ui",
  "widgets",
 ]
 
@@ -3308,8 +3309,11 @@ name = "widgets"
 version = "0.1.0"
 dependencies = [
  "domain",
+ "js-sys",
  "leptos",
  "ui",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

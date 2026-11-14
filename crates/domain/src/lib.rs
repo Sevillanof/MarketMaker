@@ -2,7 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA_VERSION: u32 = 1;
+mod widgets;
+
+pub use widgets::*;
+
+/// Versión del formato del documento. La 1 guardaba el tamaño como el id de
+/// una opción fija (`"size": "full"`); la 2 guarda ancho y alto libres.
+pub const SCHEMA_VERSION: u32 = 2;
 pub const GRID_COLS: u8 = 12;
 pub const MAX_NODES: usize = 100;
 pub const THEMES: &[&str] = &["light", "dark", "cupcake", "emerald", "corporate", "retro"];
@@ -31,14 +37,19 @@ pub struct Node {
     #[serde(flatten)]
     pub widget: Widget,
     pub pos: Pos,
-    /// `id` de una opción de [`Widget::sizes`]. El ancho y el alto nunca se guardan.
-    pub size: String,
+    pub size: Size,
 }
 
 impl Node {
-    /// La opción de tamaño elegida, si es válida para el widget.
-    pub fn preset(&self) -> Option<&'static SizePreset> {
-        self.widget.size(&self.size)
+    /// Nodo nuevo en `(0, 0)` con el tamaño por defecto del widget.
+    pub fn new(id: impl Into<String>, widget: Widget) -> Self {
+        let size = widget.limits().default;
+        Self {
+            id: id.into(),
+            widget,
+            pos: Pos { x: 0, y: 0 },
+            size,
+        }
     }
 }
 
@@ -49,50 +60,35 @@ pub struct Pos {
     pub y: u16,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(tag = "type", content = "props")]
-pub enum Widget {
-    Banner(BannerProps),
-    Text(TextProps),
-    ProductGrid(ProductGridProps),
-    FeaturedProduct(FeaturedProductProps),
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct BannerProps {
-    pub title: String,
-    pub subtitle: String,
-    pub image_url: String,
-    pub button_label: String,
-    pub button_href: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct TextProps {
-    pub heading: String,
-    pub body: String,
-    pub align: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct ProductGridProps {
-    pub title: String,
-    pub limit: i64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct FeaturedProductProps {
-    pub product_id: String,
-    pub show_price: bool,
-}
-
-/// Opción de tamaño de un widget, en columnas × filas de la grilla.
-#[derive(Debug, PartialEq)]
-pub struct SizePreset {
-    pub id: &'static str,
-    pub label: &'static str,
+/// Tamaño en celdas: `w` columnas (de 12) por `h` filas.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Size {
     pub w: u8,
     pub h: u8,
+}
+
+/// Ancho y alto permitidos para un tipo de widget, en celdas.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SizeLimits {
+    pub min_w: u8,
+    pub max_w: u8,
+    pub min_h: u8,
+    pub max_h: u8,
+    pub default: Size,
+}
+
+impl SizeLimits {
+    /// Lleva `w` y `h` al rango permitido.
+    pub fn clamp(&self, w: i32, h: i32) -> Size {
+        Size {
+            w: w.clamp(i32::from(self.min_w), i32::from(self.max_w)) as u8,
+            h: h.clamp(i32::from(self.min_h), i32::from(self.max_h)) as u8,
+        }
+    }
+
+    pub fn contains(&self, size: Size) -> bool {
+        (self.min_w..=self.max_w).contains(&size.w) && (self.min_h..=self.max_h).contains(&size.h)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -113,6 +109,14 @@ pub enum FieldKind {
         options: &'static [(&'static str, &'static str)],
     },
     ProductRef,
+    /// Fecha y hora local `AAAA-MM-DDTHH:MM`.
+    DateTime,
+    /// Lista de elementos, cada uno con los campos de `item`.
+    List {
+        item: &'static [Field],
+        min: usize,
+        max: usize,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -123,233 +127,55 @@ pub struct Field {
     pub advanced: bool,
 }
 
-/// Tipos de widget disponibles, con su nombre para mostrar.
-pub const WIDGET_TYPES: &[(&str, &str)] = &[
-    ("Banner", "Banner"),
-    ("Text", "Texto"),
-    ("ProductGrid", "Grilla de productos"),
-    ("FeaturedProduct", "Producto destacado"),
+/// Tamaños de las opciones fijas del schema 1, por tipo de widget.
+const LEGACY_SIZES: &[(&str, &str, u8, u8)] = &[
+    ("Banner", "full", 12, 4),
+    ("Banner", "half", 6, 4),
+    ("Text", "small", 4, 2),
+    ("Text", "medium", 6, 3),
+    ("Text", "full", 12, 2),
+    ("ProductGrid", "one_row", 12, 5),
+    ("ProductGrid", "two_rows", 12, 9),
+    ("ProductGrid", "half", 6, 9),
+    ("FeaturedProduct", "small", 3, 4),
+    ("FeaturedProduct", "medium", 4, 5),
+    ("FeaturedProduct", "large", 6, 5),
 ];
 
-const BANNER_SIZES: &[SizePreset] = &[
-    SizePreset {
-        id: "full",
-        label: "Ancho completo",
-        w: 12,
-        h: 4,
-    },
-    SizePreset {
-        id: "half",
-        label: "Mitad",
-        w: 6,
-        h: 4,
-    },
-];
-const TEXT_SIZES: &[SizePreset] = &[
-    SizePreset {
-        id: "small",
-        label: "Chico",
-        w: 4,
-        h: 2,
-    },
-    SizePreset {
-        id: "medium",
-        label: "Mediano",
-        w: 6,
-        h: 3,
-    },
-    SizePreset {
-        id: "full",
-        label: "Ancho completo",
-        w: 12,
-        h: 2,
-    },
-];
-const PRODUCT_GRID_SIZES: &[SizePreset] = &[
-    SizePreset {
-        id: "one_row",
-        label: "Una fila",
-        w: 12,
-        h: 5,
-    },
-    SizePreset {
-        id: "two_rows",
-        label: "Dos filas",
-        w: 12,
-        h: 9,
-    },
-    SizePreset {
-        id: "half",
-        label: "Mitad",
-        w: 6,
-        h: 9,
-    },
-];
-const FEATURED_PRODUCT_SIZES: &[SizePreset] = &[
-    SizePreset {
-        id: "small",
-        label: "Chico",
-        w: 3,
-        h: 4,
-    },
-    SizePreset {
-        id: "medium",
-        label: "Mediano",
-        w: 4,
-        h: 5,
-    },
-    SizePreset {
-        id: "large",
-        label: "Grande",
-        w: 6,
-        h: 5,
-    },
-];
-
-const BANNER_FIELDS: &[Field] = &[
-    Field {
-        key: "title",
-        label: "Título",
-        kind: FieldKind::Text { max: 80 },
-        advanced: false,
-    },
-    Field {
-        key: "subtitle",
-        label: "Subtítulo",
-        kind: FieldKind::Text { max: 160 },
-        advanced: false,
-    },
-    Field {
-        key: "image_url",
-        label: "URL de la imagen",
-        kind: FieldKind::Url,
-        advanced: false,
-    },
-    Field {
-        key: "button_label",
-        label: "Texto del botón",
-        kind: FieldKind::Text { max: 30 },
-        advanced: true,
-    },
-    Field {
-        key: "button_href",
-        label: "Enlace del botón",
-        kind: FieldKind::Url,
-        advanced: true,
-    },
-];
-const TEXT_ALIGN_OPTIONS: &[(&str, &str)] = &[("left", "Izquierda"), ("center", "Centro")];
-const TEXT_FIELDS: &[Field] = &[
-    Field {
-        key: "heading",
-        label: "Título",
-        kind: FieldKind::Text { max: 80 },
-        advanced: false,
-    },
-    Field {
-        key: "body",
-        label: "Texto",
-        kind: FieldKind::LongText { max: 1000 },
-        advanced: false,
-    },
-    Field {
-        key: "align",
-        label: "Alineación",
-        kind: FieldKind::Select {
-            options: TEXT_ALIGN_OPTIONS,
-        },
-        advanced: true,
-    },
-];
-const PRODUCT_GRID_FIELDS: &[Field] = &[
-    Field {
-        key: "title",
-        label: "Título",
-        kind: FieldKind::Text { max: 80 },
-        advanced: false,
-    },
-    Field {
-        key: "limit",
-        label: "Cantidad de productos",
-        kind: FieldKind::Number { min: 1, max: 12 },
-        advanced: false,
-    },
-];
-const FEATURED_PRODUCT_FIELDS: &[Field] = &[
-    Field {
-        key: "product_id",
-        label: "Producto",
-        kind: FieldKind::ProductRef,
-        advanced: false,
-    },
-    Field {
-        key: "show_price",
-        label: "Mostrar precio",
-        kind: FieldKind::Bool,
-        advanced: true,
-    },
-];
-
-impl Widget {
-    /// Nombre del tipo tal como se guarda en `type`.
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            Widget::Banner(_) => "Banner",
-            Widget::Text(_) => "Text",
-            Widget::ProductGrid(_) => "ProductGrid",
-            Widget::FeaturedProduct(_) => "FeaturedProduct",
+/// Lee un documento guardado, de cualquier versión, y lo lleva a la actual.
+///
+/// Los documentos del schema 1 traen `"size": "<opción>"`; se convierten a
+/// `{ "w", "h" }` con la tabla de las opciones de entonces.
+pub fn parse_doc(mut value: serde_json::Value) -> Result<PageDoc, String> {
+    let schema = value.get("schema").and_then(|s| s.as_u64()).unwrap_or(0);
+    if schema == 1 {
+        if let Some(nodes) = value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+            for node in nodes {
+                let t = node
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or_default();
+                let preset = node
+                    .get("size")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default();
+                let (w, h) = LEGACY_SIZES
+                    .iter()
+                    .find(|(lt, lp, _, _)| *lt == t && *lp == preset)
+                    .map(|(_, _, w, h)| (*w, *h))
+                    .or_else(|| {
+                        Widget::defaults(t).map(|w| {
+                            let d = w.limits().default;
+                            (d.w, d.h)
+                        })
+                    })
+                    .unwrap_or((12, 2));
+                node["size"] = serde_json::json!({ "w": w, "h": h });
+            }
         }
+        value["schema"] = serde_json::json!(SCHEMA_VERSION);
     }
-
-    pub fn sizes(&self) -> &'static [SizePreset] {
-        match self {
-            Widget::Banner(_) => BANNER_SIZES,
-            Widget::Text(_) => TEXT_SIZES,
-            Widget::ProductGrid(_) => PRODUCT_GRID_SIZES,
-            Widget::FeaturedProduct(_) => FEATURED_PRODUCT_SIZES,
-        }
-    }
-
-    pub fn size(&self, id: &str) -> Option<&'static SizePreset> {
-        self.sizes().iter().find(|s| s.id == id)
-    }
-
-    pub fn fields(&self) -> &'static [Field] {
-        match self {
-            Widget::Banner(_) => BANNER_FIELDS,
-            Widget::Text(_) => TEXT_FIELDS,
-            Widget::ProductGrid(_) => PRODUCT_GRID_FIELDS,
-            Widget::FeaturedProduct(_) => FEATURED_PRODUCT_FIELDS,
-        }
-    }
-
-    /// Widget nuevo con contenido de ejemplo, para que se vea bien sin configurar nada.
-    pub fn defaults(type_name: &str) -> Option<Widget> {
-        let widget = match type_name {
-            "Banner" => Widget::Banner(BannerProps {
-                title: "Bienvenidos a nuestra tienda".into(),
-                subtitle: "Encontrá lo que buscás al mejor precio".into(),
-                image_url: "https://picsum.photos/seed/marketmaker-banner/1600/600".into(),
-                button_label: String::new(),
-                button_href: String::new(),
-            }),
-            "Text" => Widget::Text(TextProps {
-                heading: "Sobre nosotros".into(),
-                body: "Somos una tienda local con envíos a todo el país.".into(),
-                align: "left".into(),
-            }),
-            "ProductGrid" => Widget::ProductGrid(ProductGridProps {
-                title: "Productos".into(),
-                limit: 4,
-            }),
-            "FeaturedProduct" => Widget::FeaturedProduct(FeaturedProductProps {
-                product_id: String::new(),
-                show_price: true,
-            }),
-            _ => return None,
-        };
-        Some(widget)
-    }
+    serde_json::from_value(value).map_err(|e| e.to_string())
 }
 
 /// Lo que necesita el marketplace (y el editor) para mostrar una página.
@@ -384,18 +210,36 @@ fn url_ok(s: &str) -> bool {
     s.is_empty() || s.starts_with("https://") || s.starts_with("http://") || s.starts_with('/')
 }
 
-fn validate_fields(node: &Node, errors: &mut Vec<String>) {
-    let value = match serde_json::to_value(&node.widget) {
-        Ok(v) => v,
-        Err(e) => {
-            errors.push(format!("nodo {}: no se pudo leer: {e}", node.id));
-            return;
-        }
-    };
-    let props = value.get("props");
-    for field in node.widget.fields() {
+/// `AAAA-MM-DDTHH:MM` (o con segundos), o vacío.
+fn datetime_ok(s: &str) -> bool {
+    if s.is_empty() {
+        return true;
+    }
+    let b = s.as_bytes();
+    let digits =
+        |r: std::ops::Range<usize>| b.get(r).is_some_and(|d| d.iter().all(u8::is_ascii_digit));
+    (s.len() == 16 || s.len() == 19)
+        && digits(0..4)
+        && b[4] == b'-'
+        && digits(5..7)
+        && b[7] == b'-'
+        && digits(8..10)
+        && b[10] == b'T'
+        && digits(11..13)
+        && b[13] == b':'
+        && digits(14..16)
+        && (s.len() == 16 || (b[16] == b':' && digits(17..19)))
+}
+
+fn validate_props(
+    fields: &[Field],
+    props: Option<&serde_json::Value>,
+    path: &str,
+    errors: &mut Vec<String>,
+) {
+    for field in fields {
         let v = props.and_then(|p| p.get(field.key));
-        let err = |msg: &str| format!("nodo {}: campo {}: {msg}", node.id, field.key);
+        let err = |msg: &str| format!("{path}campo {}: {msg}", field.key);
         match &field.kind {
             FieldKind::Text { max } | FieldKind::LongText { max } => {
                 match v.and_then(|v| v.as_str()) {
@@ -428,8 +272,36 @@ fn validate_fields(node: &Node, errors: &mut Vec<String>) {
                     errors.push(err("debe ser un id de producto"));
                 }
             }
+            FieldKind::DateTime => match v.and_then(|v| v.as_str()) {
+                Some(s) if datetime_ok(s) => {}
+                _ => errors.push(err("debe ser una fecha AAAA-MM-DDTHH:MM")),
+            },
+            FieldKind::List { item, min, max } => match v.and_then(|v| v.as_array()) {
+                Some(items) => {
+                    if items.len() < *min || items.len() > *max {
+                        errors.push(err(&format!("debe tener entre {min} y {max} elementos")));
+                    }
+                    for (i, it) in items.iter().enumerate() {
+                        let sub = format!("{path}{}[{}]: ", field.key, i + 1);
+                        validate_props(item, Some(it), &sub, errors);
+                    }
+                }
+                None => errors.push(err("debe ser una lista")),
+            },
         }
     }
+}
+
+fn validate_fields(node: &Node, errors: &mut Vec<String>) {
+    let value = match serde_json::to_value(&node.widget) {
+        Ok(v) => v,
+        Err(e) => {
+            errors.push(format!("nodo {}: no se pudo leer: {e}", node.id));
+            return;
+        }
+    };
+    let path = format!("nodo {}: ", node.id);
+    validate_props(node.widget.fields(), value.get("props"), &path, errors);
 }
 
 /// Valida un documento completo. El servidor rechaza el guardado si hay algún error.
@@ -453,7 +325,7 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
     }
 
     let mut ids = std::collections::HashSet::new();
-    // (id, x, y, w, h) de los nodos con tamaño válido, para chequear superposiciones.
+    // (id, x, y, w, h) de cada nodo, para chequear superposiciones.
     let mut rects: Vec<(&str, u32, u32, u32, u32)> = Vec::new();
     for node in &doc.nodes {
         if node.id.is_empty() {
@@ -462,29 +334,33 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
             errors.push(format!("id repetido: {}", node.id));
         }
 
-        match node.preset() {
-            None => errors.push(format!(
-                "nodo {}: tamaño {} no válido para {}",
+        let l = node.widget.limits();
+        if !l.contains(node.size) {
+            errors.push(format!(
+                "nodo {}: tamaño {}×{} fuera de los límites de {} ({}–{} columnas, {}–{} filas)",
                 node.id,
-                node.size,
-                node.widget.type_name()
-            )),
-            Some(p) => {
-                if u32::from(node.pos.x) + u32::from(p.w) > u32::from(GRID_COLS) {
-                    errors.push(format!(
-                        "nodo {}: se sale de las {GRID_COLS} columnas",
-                        node.id
-                    ));
-                }
-                rects.push((
-                    node.id.as_str(),
-                    u32::from(node.pos.x),
-                    u32::from(node.pos.y),
-                    u32::from(p.w),
-                    u32::from(p.h),
-                ));
-            }
+                node.size.w,
+                node.size.h,
+                node.widget.label(),
+                l.min_w,
+                l.max_w,
+                l.min_h,
+                l.max_h
+            ));
         }
+        if u32::from(node.pos.x) + u32::from(node.size.w) > u32::from(GRID_COLS) {
+            errors.push(format!(
+                "nodo {}: se sale de las {GRID_COLS} columnas",
+                node.id
+            ));
+        }
+        rects.push((
+            node.id.as_str(),
+            u32::from(node.pos.x),
+            u32::from(node.pos.y),
+            u32::from(node.size.w),
+            u32::from(node.size.h),
+        ));
 
         validate_fields(node, &mut errors);
     }
@@ -510,16 +386,16 @@ mod tests {
     use super::*;
 
     const EXAMPLE: &str = r#"{
-      "schema": 1,
+      "schema": 2,
       "theme": "light",
       "nodes": [
         { "id": "n1", "type": "Banner",
           "props": { "title": "Ofertas de la semana", "subtitle": "", "image_url": "https://example.com/hero.jpg",
                      "button_label": "", "button_href": "" },
-          "pos": { "x": 0, "y": 0 }, "size": "full" },
+          "pos": { "x": 0, "y": 0 }, "size": { "w": 12, "h": 4 } },
         { "id": "n2", "type": "ProductGrid",
           "props": { "title": "Destacados", "limit": 8 },
-          "pos": { "x": 0, "y": 4 }, "size": "one_row" }
+          "pos": { "x": 0, "y": 4 }, "size": { "w": 12, "h": 5 } }
       ]
     }"#;
 
@@ -528,14 +404,9 @@ mod tests {
     }
 
     fn node(id: &str, type_name: &str, x: u8, y: u16) -> Node {
-        let widget = Widget::defaults(type_name).unwrap();
-        let size = widget.sizes()[0].id.to_string();
-        Node {
-            id: id.into(),
-            widget,
-            pos: Pos { x, y },
-            size,
-        }
+        let mut n = Node::new(id, Widget::defaults(type_name).unwrap());
+        n.pos = Pos { x, y };
+        n
     }
 
     fn assert_invalid(doc: &PageDoc, needle: &str) {
@@ -562,6 +433,36 @@ mod tests {
     }
 
     #[test]
+    fn schema_1_docs_are_migrated() {
+        let v1 = serde_json::json!({
+            "schema": 1,
+            "theme": "light",
+            "nodes": [
+                { "id": "n1", "type": "Banner",
+                  "props": { "title": "Hola", "subtitle": "", "image_url": "", "button_label": "", "button_href": "" },
+                  "pos": { "x": 0, "y": 0 }, "size": "half" },
+                { "id": "n2", "type": "FeaturedProduct",
+                  "props": { "product_id": "", "show_price": true },
+                  "pos": { "x": 6, "y": 0 }, "size": "large" },
+                { "id": "n3", "type": "Text",
+                  "props": { "heading": "", "body": "", "align": "left" },
+                  "pos": { "x": 0, "y": 5 }, "size": "inexistente" }
+            ]
+        });
+        let doc = parse_doc(v1).unwrap();
+        assert_eq!(doc.schema, SCHEMA_VERSION);
+        assert_eq!(doc.nodes[0].size, Size { w: 6, h: 4 });
+        assert_eq!(doc.nodes[1].size, Size { w: 6, h: 5 });
+        assert_eq!(
+            doc.nodes[2].size,
+            Widget::defaults("Text").unwrap().limits().default
+        );
+        assert_eq!(validate(&doc), Ok(()));
+        // Un documento actual pasa sin cambios.
+        assert_eq!(parse_doc(serde_json::to_value(&doc).unwrap()), Ok(doc));
+    }
+
+    #[test]
     fn defaults_are_valid_for_every_widget() {
         for (i, (t, _)) in WIDGET_TYPES.iter().enumerate() {
             let doc = PageDoc {
@@ -569,14 +470,29 @@ mod tests {
                 ..PageDoc::default()
             };
             assert_eq!(validate(&doc), Ok(()), "{t}");
+            let w = Widget::defaults(t).unwrap();
+            assert_eq!(w.type_name(), *t);
+            let l = w.limits();
+            assert!(
+                l.min_w <= l.max_w && l.max_w <= GRID_COLS && l.min_w >= 1,
+                "{t}"
+            );
+            assert!(l.min_h <= l.max_h && l.min_h >= 1, "{t}");
         }
         assert_eq!(Widget::defaults("Nada"), None);
     }
 
     #[test]
+    fn clamp_respects_limits() {
+        let l = Widget::defaults("Navbar").unwrap().limits();
+        assert_eq!(l.clamp(1, 9), Size { w: 6, h: 2 });
+        assert_eq!(l.clamp(20, 0), Size { w: 12, h: 1 });
+    }
+
+    #[test]
     fn rejects_wrong_schema() {
         let mut doc = example();
-        doc.schema = 2;
+        doc.schema = 1;
         assert_invalid(&doc, "schema");
     }
 
@@ -613,10 +529,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_size() {
+    fn rejects_size_outside_limits() {
         let mut doc = example();
-        doc.nodes[0].size = "small".into();
-        assert_invalid(&doc, "tamaño");
+        doc.nodes[0].size = Size { w: 2, h: 4 };
+        assert_invalid(&doc, "límites");
+        doc.nodes[0].size = Size { w: 12, h: 9 };
+        assert_invalid(&doc, "límites");
     }
 
     #[test]
@@ -680,5 +598,37 @@ mod tests {
             b.button_href = "/productos".into();
         }
         assert_eq!(validate(&doc), Ok(()));
+    }
+
+    #[test]
+    fn validates_list_items_and_length() {
+        let mut doc = PageDoc {
+            nodes: vec![node("c", "Carousel", 0, 0)],
+            ..PageDoc::default()
+        };
+        if let Widget::Carousel(c) = &mut doc.nodes[0].widget {
+            c.slides[1].button_href = "javascript:alert(1)".into();
+        }
+        assert_invalid(&doc, "slides[2]");
+        if let Widget::Carousel(c) = &mut doc.nodes[0].widget {
+            c.slides.clear();
+        }
+        assert_invalid(&doc, "entre 1 y 8 elementos");
+    }
+
+    #[test]
+    fn validates_datetime() {
+        assert!(datetime_ok("2026-12-31T23:59"));
+        assert!(datetime_ok("2026-12-31T23:59:00"));
+        assert!(datetime_ok(""));
+        assert!(!datetime_ok("31/12/2026"));
+        let mut doc = PageDoc {
+            nodes: vec![node("o", "Countdown", 0, 0)],
+            ..PageDoc::default()
+        };
+        if let Widget::Countdown(c) = &mut doc.nodes[0].widget {
+            c.ends_at = "mañana".into();
+        }
+        assert_invalid(&doc, "fecha");
     }
 }

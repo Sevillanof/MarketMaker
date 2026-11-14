@@ -33,12 +33,124 @@ pub fn Card(children: Children) -> impl IntoView {
     }
 }
 
-/// Imagen que cubre su contenedor sin deformarse. No se puede arrastrar,
-/// para no interferir con el arrastre del editor.
+/// Imagen que llena su contenedor sin deformarse.
+///
+/// Mientras carga se ve un skeleton de daisyUI; si falla, un aviso en lugar
+/// del ícono de imagen rota. Los handlers `onload`/`onerror` van en línea en
+/// el HTML para que funcionen también antes de que hidrate el WASM.
+///
+/// Las imágenes propias (`/img/*.webp`) se sirven en AVIF con WebP de
+/// respaldo. No se puede arrastrar, para no interferir con el editor.
 #[component]
-pub fn Image(#[prop(into)] src: String, #[prop(into)] alt: String) -> impl IntoView {
+pub fn Image(
+    #[prop(into)] src: String,
+    #[prop(into)] alt: String,
+    /// `object-fit`: `"cover"` (por defecto) o `"contain"`.
+    #[prop(optional)]
+    contain: bool,
+) -> impl IntoView {
+    if src.is_empty() {
+        return view! {
+            <div class="mk-img h-full w-full bg-base-200" data-state="empty" role="img" aria-label=alt></div>
+        }
+        .into_any();
+    }
+    let class = if contain {
+        "block h-full w-full object-contain"
+    } else {
+        "block h-full w-full object-cover"
+    };
     view! {
-        <img class="block w-full h-full object-cover" src=src alt=alt draggable="false" loading="lazy"/>
+        <div class="mk-img skeleton h-full w-full rounded-none">
+            <Picture src alt class/>
+        </div>
+    }
+    .into_any()
+}
+
+/// `<picture>` con AVIF para las imágenes propias y la imagen original de
+/// respaldo. Al cargar (o fallar) marca el `.skeleton` más cercano con
+/// `data-state`, que apaga la animación (ver `style/tailwind.css`).
+#[component]
+pub fn Picture(
+    #[prop(into)] src: String,
+    #[prop(into)] alt: String,
+    #[prop(into)] class: String,
+) -> impl IntoView {
+    let avif = avif_variant(&src);
+    view! {
+        <picture>
+            {avif.map(|a| view! { <source type="image/avif" srcset=a/> })}
+            <img
+                class=class
+                src=src
+                alt=alt
+                draggable="false"
+                loading="lazy"
+                decoding="async"
+                onload="var s=this.closest('.skeleton');if(s)s.dataset.state='ok'"
+                onerror="var s=this.closest('.skeleton');if(s)s.dataset.state='error'"
+            />
+        </picture>
+    }
+}
+
+/// Para `/img/x.webp` devuelve `/img/x.avif`: las imágenes propias se generan
+/// en los dos formatos (ver `scripts/gen_images.py`).
+pub fn avif_variant(src: &str) -> Option<String> {
+    src.strip_prefix("/img/")
+        .and_then(|rest| rest.strip_suffix(".webp"))
+        .map(|name| format!("/img/{name}.avif"))
+}
+
+/// Bloque de carga de daisyUI.
+#[component]
+pub fn Skeleton(#[prop(into, optional)] class: String) -> impl IntoView {
+    let class = format!("skeleton {class}");
+    view! { <div class=class></div> }
+}
+
+/// Skeleton de una página mientras llega del servidor: barra, banner y una
+/// grilla de tarjetas, con la misma grilla que el marketplace.
+#[component]
+pub fn PageSkeleton() -> impl IntoView {
+    view! {
+        <div class="min-h-screen bg-base-200" aria-busy="true" aria-label="Cargando">
+            <div class="mx-auto max-w-6xl p-4">
+                <div class="mk-grid">
+                    <div class="mk-node skeleton" style="--x:1; --y:1; --w:12; --h:1"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:2; --w:12; --h:4"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:6; --w:3; --h:4"></div>
+                    <div class="mk-node skeleton" style="--x:4; --y:6; --w:3; --h:4"></div>
+                    <div class="mk-node skeleton" style="--x:7; --y:6; --w:3; --h:4"></div>
+                    <div class="mk-node skeleton" style="--x:10; --y:6; --w:3; --h:4"></div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+/// Ícono de línea (24×24) de la lista de beneficios. Si el nombre no existe
+/// se dibuja una estrella.
+#[component]
+pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -> impl IntoView {
+    let d = match name.as_str() {
+        "truck" => {
+            "M3 6h11v9H3zM14 9h4l3 3v3h-7zM7 18.5a1.5 1.5 0 1 0 0-.01M17 18.5a1.5 1.5 0 1 0 0-.01"
+        }
+        "shield" => "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6zM9 12l2 2 4-4",
+        "refresh" => "M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5",
+        "card" => "M3 6h18v12H3zM3 10h18M7 15h4",
+        "chat" => "M4 5h16v11H9l-5 4z",
+        "gift" => "M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7c-2-4-6-3-5 0M12 7c2-4 6-3 5 0",
+        "clock" => "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l3 2",
+        _ => "M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
+    };
+    let class = format!("inline-block {class}");
+    view! {
+        <svg class=class viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d=d/>
+        </svg>
     }
 }
 
@@ -65,7 +177,17 @@ pub fn format_price(cents: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::format_price;
+    use super::{avif_variant, format_price};
+
+    #[test]
+    fn avif_only_for_own_webp_images() {
+        assert_eq!(
+            avif_variant("/img/hero.webp").as_deref(),
+            Some("/img/hero.avif")
+        );
+        assert_eq!(avif_variant("/img/brand-1.svg"), None);
+        assert_eq!(avif_variant("https://example.com/a.webp"), None);
+    }
 
     #[test]
     fn formats_argentine_prices() {
