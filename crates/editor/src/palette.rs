@@ -177,7 +177,9 @@ pub(crate) fn Palette() -> impl IntoView {
                                             <li class:hidden=move || !matches(type_name, desc)>
                                                 <button
                                                     type="button"
-                                                    class="flex h-full w-full cursor-grab select-none flex-col items-stretch gap-1.5 rounded-box border border-base-300 bg-base-100 p-2 text-left transition hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                                    class="flex h-full w-full cursor-grab select-none flex-col items-stretch gap-1.5 rounded-box border border-base-300 bg-base-100 p-2 text-left transition duration-150 hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                                    class:opacity-50=move || ui.new_drag.with(|d| d.as_ref().is_some_and(|d| d.active && d.type_name == type_name))
+                                                    class:scale-95=move || ui.new_drag.with(|d| d.as_ref().is_some_and(|d| d.active && d.type_name == type_name))
                                                     title="Clic para agregarlo al final, o arrastralo al lienzo"
                                                     on:pointerdown=move |ev| on_pointer_down(ev, type_name)
                                                     on:click=move |_| on_click(type_name)

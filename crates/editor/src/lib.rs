@@ -453,6 +453,12 @@ pub(crate) fn reveal_node(id: &str, flash: bool) {
             });
         }
         if flash {
+            // El resalte va sobre la caja del bloque, no sobre su celda.
+            let el = el
+                .query_selector(".mk-anode-box")
+                .ok()
+                .flatten()
+                .unwrap_or(el);
             _ = el.class_list().add_1("mk-flash");
             set_timeout(
                 move || _ = el.class_list().remove_1("mk-flash"),
