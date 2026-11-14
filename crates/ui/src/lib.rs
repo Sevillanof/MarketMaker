@@ -95,6 +95,40 @@ pub fn Picture(
     }
 }
 
+/// Imágenes de la biblioteca propia (`public/img`), con una descripción para
+/// mostrar en el selector del editor.
+pub const LIBRARY_IMAGES: &[(&str, &str)] = &[
+    ("/img/hero.webp", "Portada"),
+    ("/img/banner.webp", "Banner de ofertas"),
+    ("/img/card.webp", "Tarjeta"),
+    ("/img/slide-1.webp", "Diapositiva 1"),
+    ("/img/slide-2.webp", "Diapositiva 2"),
+    ("/img/slide-3.webp", "Diapositiva 3"),
+    ("/img/category-moda.webp", "Moda"),
+    ("/img/category-tecnologia.webp", "Tecnología"),
+    ("/img/category-hogar.webp", "Hogar"),
+    ("/img/category-deportes.webp", "Deportes"),
+    ("/img/gallery-1.webp", "Galería 1"),
+    ("/img/gallery-2.webp", "Galería 2"),
+    ("/img/gallery-3.webp", "Galería 3"),
+    ("/img/gallery-4.webp", "Galería 4"),
+    ("/img/product-1.webp", "Producto 1"),
+    ("/img/product-2.webp", "Producto 2"),
+    ("/img/product-3.webp", "Producto 3"),
+    ("/img/product-4.webp", "Producto 4"),
+    ("/img/product-5.webp", "Producto 5"),
+    ("/img/product-6.webp", "Producto 6"),
+    ("/img/product-7.webp", "Producto 7"),
+    ("/img/product-8.webp", "Producto 8"),
+    ("/img/logo.svg", "Logo de la tienda"),
+    ("/img/brand-1.svg", "Marca 1"),
+    ("/img/brand-2.svg", "Marca 2"),
+    ("/img/brand-3.svg", "Marca 3"),
+    ("/img/brand-4.svg", "Marca 4"),
+    ("/img/brand-5.svg", "Marca 5"),
+    ("/img/brand-6.svg", "Marca 6"),
+];
+
 /// Para `/img/x.webp` devuelve `/img/x.avif`: las imágenes propias se generan
 /// en los dos formatos (ver `scripts/gen_images.py`).
 pub fn avif_variant(src: &str) -> Option<String> {

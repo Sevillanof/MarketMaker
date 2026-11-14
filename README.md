@@ -49,11 +49,19 @@ La primera compilación tarda unos minutos. Al arrancar, el servidor aplica las 
 - Editor: <http://localhost:3000/editor>
 - Catálogo de widgets (solo en desarrollo): <http://localhost:3000/dev/widgets>
 
-En el editor: agregá widgets desde la paleta, arrastralos por la grilla, cambiá su ancho y alto tirando de los bordes (o desde el inspector), editá sus campos y tocá **Guardar**. Recargá `/` para ver el resultado.
+En el editor (pensado para alguien sin experiencia):
+
+- Agregá bloques desde la paleta de la izquierda (miniaturas agrupadas, con buscador). El bloque nuevo se agrega al final, queda elegido y la vista lo lleva hasta él.
+- Elegí un bloque con un clic (o con Tab y Enter) y editá sus textos e imágenes en el inspector de la derecha. Las imágenes se eligen de una galería; también se puede pegar una dirección.
+- Movelo arrastrando, con los botones Subir y Bajar o con las flechas del teclado. Cambiá el tamaño tirando de los bordes, con los botones de ancho o con Mayús + flechas.
+- Los errores aparecen junto al campo y en un aviso al guardar, en palabras simples.
+- Atajos: Ctrl/⌘+Z deshacer, Ctrl/⌘+Mayús+Z rehacer, Ctrl/⌘+S guardar, Suprimir borrar, Esc soltar el bloque. Lo que escribís en un campo se deshace de una sola vez.
+- Los cambios sin guardar quedan también en el navegador: si cerrás la pestaña, al volver el editor ofrece recuperarlos.
+- **Vista previa** muestra la página sin bordes ni controles. **Guardar** publica los cambios; recargá `/` para verlos.
 
 ## Widgets
 
-Navbar, Banner, Carrusel, Categorías, Grilla de productos, Producto destacado, Beneficios, Oferta con cuenta regresiva, Tarjeta, Texto, Pestañas, Preguntas frecuentes, Galería al pasar el mouse, Testimonios, Logos de marcas, Imagen y Footer.
+Menú superior, Banner, Carrusel, Categorías, Cuadrícula de productos, Producto destacado, Beneficios, Oferta con cuenta regresiva, Tarjeta, Texto, Pestañas, Preguntas frecuentes, Galería de fotos, Testimonios, Logos de marcas, Imagen y Pie de página.
 
 Cada widget define su ancho (columnas, de 12) y alto (filas de 80 px) mínimos, máximos y por defecto en `Widget::limits` (`crates/domain/src/widgets.rs`). El editor y el guardado no permiten salir de esos límites. `/dev/widgets` muestra cada widget en su tamaño mínimo, por defecto y máximo.
 

@@ -214,11 +214,11 @@ pub struct FooterProps {
 
 /// Tipos de widget disponibles, con su nombre para mostrar, en el orden de la paleta.
 pub const WIDGET_TYPES: &[(&str, &str)] = &[
-    ("Navbar", "Navbar"),
+    ("Navbar", "Menú superior"),
     ("Banner", "Banner"),
     ("Carousel", "Carrusel"),
     ("Categories", "Categorías"),
-    ("ProductGrid", "Grilla de productos"),
+    ("ProductGrid", "Cuadrícula de productos"),
     ("FeaturedProduct", "Producto destacado"),
     ("Benefits", "Beneficios"),
     ("Countdown", "Oferta con cuenta regresiva"),
@@ -226,11 +226,11 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Text", "Texto"),
     ("Tabs", "Pestañas"),
     ("Faq", "Preguntas frecuentes"),
-    ("HoverGallery", "Galería al pasar el mouse"),
+    ("HoverGallery", "Galería de fotos"),
     ("Testimonials", "Testimonios"),
     ("Logos", "Logos de marcas"),
     ("Image", "Imagen"),
-    ("Footer", "Footer"),
+    ("Footer", "Pie de página"),
 ];
 
 // ---------------------------------------------------------------------------

@@ -1,15 +1,25 @@
 //! Editor del panel: lienzo, paleta e inspector.
 //!
 //! No llama al servidor: recibe la acción de guardado como parámetro.
+//! Está pensado para alguien sin experiencia: todo se puede hacer con mouse
+//! o con teclado, los errores se explican junto al campo y cada cambio se
+//! puede deshacer.
 
-use domain::{
-    Field, FieldKind, Node, PageDoc, PageView, Product, SaveOutcome, Widget, THEMES, WIDGET_TYPES,
-};
-use leptos::ev::PointerEvent;
-use leptos::html::Div;
+mod canvas;
+mod fields;
+mod icons;
+mod inspector;
+mod palette;
+
+use domain::{Node, PageDoc, PageView, SaveOutcome, THEMES, THEME_LABELS};
 use leptos::prelude::*;
+use std::time::Duration;
 use wasm_bindgen::JsCast;
-use widgets::{node_style, render_widget, RenderCtx};
+
+use canvas::Canvas;
+use icons::Icon;
+use inspector::Inspector;
+use palette::Palette;
 
 /// Cuántos pasos de deshacer se guardan.
 pub const MAX_UNDO: usize = 50;
@@ -17,16 +27,24 @@ pub const MAX_UNDO: usize = 50;
 /// Acción de guardado: recibe el documento y la versión base.
 pub type SaveAction = Action<(PageDoc, u32), Result<SaveOutcome, ServerFnError>>;
 
-/// Todo el estado del editor en un solo lugar. Toda modificación del
-/// documento pasa por [`EditorState::apply`].
+/// Clave del borrador guardado en el navegador.
+const DRAFT_KEY: &str = "mk-editor-borrador:home";
+/// Clave que recuerda que ya se cerró la guía de primeros pasos.
+pub(crate) const WELCOME_KEY: &str = "mk-editor-bienvenida";
+
+/// Todo el estado del documento en un solo lugar. Toda modificación pasa
+/// por [`EditorState::apply`] o [`EditorState::apply_grouped`].
 #[derive(Clone, Copy)]
-struct EditorState {
-    doc: RwSignal<PageDoc>,
-    saved: RwSignal<PageDoc>,
-    base_version: RwSignal<u32>,
-    selected: RwSignal<Option<String>>,
-    undo: RwSignal<Vec<PageDoc>>,
-    redo: RwSignal<Vec<PageDoc>>,
+pub(crate) struct EditorState {
+    pub doc: RwSignal<PageDoc>,
+    pub saved: RwSignal<PageDoc>,
+    pub base_version: RwSignal<u32>,
+    pub selected: RwSignal<Option<String>>,
+    pub undo: RwSignal<Vec<PageDoc>>,
+    pub redo: RwSignal<Vec<PageDoc>>,
+    /// Grupo de la última edición. Las ediciones seguidas del mismo grupo
+    /// (las teclas de un mismo campo) son un solo paso de deshacer.
+    group: RwSignal<Option<String>>,
 }
 
 impl EditorState {
@@ -38,29 +56,44 @@ impl EditorState {
             selected: RwSignal::new(None),
             undo: RwSignal::new(Vec::new()),
             redo: RwSignal::new(Vec::new()),
+            group: RwSignal::new(None),
         }
     }
 
-    /// Aplica un cambio: apila el documento anterior en `undo` (máximo
-    /// [`MAX_UNDO`]) y vacía `redo`. Si el cambio no modifica nada, no hace nada.
-    fn apply(&self, f: impl FnOnce(&mut PageDoc)) {
+    /// Aplica un cambio como un paso de deshacer propio.
+    pub fn apply(&self, f: impl FnOnce(&mut PageDoc)) {
+        self.end_group();
+        self.apply_grouped(None, f);
+    }
+
+    /// Aplica un cambio. Si `group` es el mismo que el de la edición anterior,
+    /// se suma a ese paso de deshacer en vez de crear uno nuevo. Si el cambio
+    /// no modifica nada, no hace nada.
+    pub fn apply_grouped(&self, group: Option<&str>, f: impl FnOnce(&mut PageDoc)) {
         let before = self.doc.get_untracked();
         let mut next = before.clone();
         f(&mut next);
         if next == before {
             return;
         }
-        self.undo.update(|u| {
-            u.push(before);
-            if u.len() > MAX_UNDO {
-                u.remove(0);
-            }
-        });
+        let same_group = group.is_some() && self.group.with_untracked(|g| g.as_deref() == group);
+        if !same_group {
+            push_capped(self.undo, before);
+        }
+        self.group.set(group.map(str::to_string));
         self.redo.update(Vec::clear);
         self.doc.set(next);
     }
 
-    fn undo(&self) {
+    /// Cierra el paso de deshacer en curso: la próxima edición abre uno nuevo.
+    pub fn end_group(&self) {
+        if self.group.with_untracked(Option::is_some) {
+            self.group.set(None);
+        }
+    }
+
+    pub fn undo(&self) {
+        self.end_group();
         if let Some(prev) = self.undo.try_update(Vec::pop).flatten() {
             let current = self.doc.get_untracked();
             self.redo.update(|r| r.push(current));
@@ -68,105 +101,324 @@ impl EditorState {
         }
     }
 
-    fn redo(&self) {
+    pub fn redo(&self) {
+        self.end_group();
         if let Some(next) = self.redo.try_update(Vec::pop).flatten() {
             let current = self.doc.get_untracked();
-            self.undo.update(|u| u.push(current));
+            push_capped(self.undo, current);
             self.doc.set(next);
         }
     }
 
-    fn dirty(&self) -> bool {
+    pub fn dirty(&self) -> bool {
         self.doc.with(|d| self.saved.with(|s| d != s))
     }
-}
 
-/// Qué borde se arrastra al redimensionar.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Edge {
-    /// Borde derecho: cambia el ancho.
-    Right,
-    /// Borde inferior: cambia el alto.
-    Bottom,
-    /// Esquina inferior derecha: cambia los dos.
-    Corner,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum DragKind {
-    /// Mover. Distancia del puntero a la esquina superior izquierda del nodo.
-    Move { offset_x: f64, offset_y: f64 },
-    /// Redimensionar desde `edge`. Puntero y tamaño al empezar.
-    Resize {
-        edge: Edge,
-        start_x: f64,
-        start_y: f64,
-        start_w: u8,
-        start_h: u8,
-    },
-}
-
-/// Arrastre en curso.
-#[derive(Clone, Debug)]
-struct Drag {
-    id: String,
-    kind: DragKind,
-    moved: bool,
-}
-
-/// Nuevo `(w, h)` al arrastrar `edge` `dx`, `dy` píxeles, con imán a la grilla.
-fn resized(edge: Edge, start_w: u8, start_h: u8, dx: f64, dy: f64, col_pitch: f64) -> (i32, i32) {
-    let row_pitch = grid::ROW_HEIGHT_PX + grid::GAP_PX;
-    let dw = (dx / col_pitch.max(1.0)).round() as i32;
-    let dh = (dy / row_pitch).round() as i32;
-    let (w, h) = (i32::from(start_w), i32::from(start_h));
-    match edge {
-        Edge::Right => (w + dw, h),
-        Edge::Bottom => (w, h + dh),
-        Edge::Corner => (w + dw, h + dh),
+    pub fn node(&self, id: &str) -> Option<Node> {
+        self.doc
+            .with_untracked(|d| d.nodes.iter().find(|n| n.id == id).cloned())
     }
 }
 
-/// Resultado del último guardado, para mostrar al usuario.
+fn push_capped(stack: RwSignal<Vec<PageDoc>>, doc: PageDoc) {
+    stack.update(|u| {
+        u.push(doc);
+        if u.len() > MAX_UNDO {
+            u.remove(0);
+        }
+    });
+}
+
+/// Un problema que impide guardar, con el bloque donde está.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Problem {
+    pub node_id: String,
+    pub text: String,
+}
+
+/// Resultado del último guardado que necesita atención.
 #[derive(Clone, Debug, PartialEq)]
 enum Status {
     Idle,
-    Saved(u32),
     Conflict,
+    /// Problemas encontrados en el navegador antes de enviar.
+    Problems(Vec<Problem>),
+    /// Problemas que devolvió el servidor.
     Invalid(Vec<String>),
     Error(String),
 }
 
-fn new_node_id(doc: &PageDoc) -> String {
+/// Aviso breve que se va solo, con un "Deshacer" opcional.
+#[derive(Clone, Debug, PartialEq)]
+struct Toast {
+    text: String,
+    undo: bool,
+}
+
+/// Estado de la interfaz compartido por todo el editor (por contexto).
+#[derive(Clone, Copy)]
+pub(crate) struct Ui {
+    toast: RwSignal<Option<Toast>>,
+    toast_seq: StoredValue<u64>,
+    /// Texto para lectores de pantalla (región `role=status` invisible).
+    announce: RwSignal<String>,
+    pub preview: RwSignal<bool>,
+}
+
+impl Ui {
+    fn toast(&self, text: impl Into<String>, undo: bool) {
+        let seq = self.toast_seq.get_value() + 1;
+        self.toast_seq.set_value(seq);
+        self.toast.set(Some(Toast {
+            text: text.into(),
+            undo,
+        }));
+        let (toast, toast_seq) = (self.toast, self.toast_seq);
+        set_timeout(
+            move || {
+                if toast_seq.get_value() == seq {
+                    toast.set(None);
+                }
+            },
+            Duration::from_secs(6),
+        );
+    }
+
+    pub fn announce(&self, text: impl Into<String>) {
+        // Vaciar primero para que se repita el anuncio aunque el texto sea igual.
+        self.announce.set(String::new());
+        let (announce, text) = (self.announce, text.into());
+        request_animation_frame(move || announce.set(text));
+    }
+}
+
+/// Acciones sobre un bloque, compartidas por el lienzo, el inspector y el
+/// teclado.
+#[derive(Clone, Copy)]
+pub(crate) struct Actions {
+    state: EditorState,
+    ui: Ui,
+}
+
+impl Actions {
+    pub fn label(&self, id: &str) -> &'static str {
+        self.state.node(id).map_or("Bloque", |n| n.widget.label())
+    }
+
+    /// Texto que describe dónde quedó un bloque.
+    pub fn position_text(&self, id: &str) -> String {
+        let mut nodes = self.state.doc.with_untracked(|d| d.nodes.clone());
+        grid::sort_by_position(&mut nodes);
+        let total = nodes.len();
+        nodes
+            .iter()
+            .position(|n| n.id == id)
+            .map(|i| {
+                let n = &nodes[i];
+                format!(
+                    "{}: bloque {} de {total}, ancho {} de 12, alto {}",
+                    n.widget.label(),
+                    i + 1,
+                    n.size.w,
+                    n.size.h
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn add(&self, type_name: &str) {
+        let Some(widget) = domain::Widget::defaults(type_name) else {
+            return;
+        };
+        let label = widget.label();
+        let id = new_node_id(&self.state.doc.get_untracked());
+        let node = Node::new(id.clone(), widget);
+        self.state.apply(|d| grid::add_node(&mut d.nodes, node));
+        self.state.selected.set(Some(id.clone()));
+        self.ui
+            .announce(format!("Agregaste {label} al final de la página."));
+        reveal_node(&id, true);
+    }
+
+    pub fn move_up(&self, id: &str) {
+        self.state.apply(|d| grid::move_up(&mut d.nodes, id));
+        self.after_move(id);
+    }
+
+    pub fn move_down(&self, id: &str) {
+        self.state.apply(|d| grid::move_down(&mut d.nodes, id));
+        self.after_move(id);
+    }
+
+    /// Mueve una columna a la izquierda (`-1`) o a la derecha (`1`).
+    pub fn shift(&self, id: &str, dx: i32) {
+        self.state.apply(|d| {
+            if let Some(n) = d.nodes.iter().find(|n| n.id == id) {
+                let (x, y) = (i32::from(n.pos.x) + dx, i32::from(n.pos.y));
+                grid::move_node(&mut d.nodes, id, x, y);
+            }
+        });
+        self.after_move(id);
+    }
+
+    pub fn resize_by(&self, id: &str, dw: i32, dh: i32) {
+        self.state.apply(|d| {
+            if let Some(n) = d.nodes.iter().find(|n| n.id == id) {
+                let (w, h) = (i32::from(n.size.w) + dw, i32::from(n.size.h) + dh);
+                grid::resize_node(&mut d.nodes, id, w, h);
+            }
+        });
+        self.after_move(id);
+    }
+
+    fn after_move(&self, id: &str) {
+        self.ui.announce(self.position_text(id));
+        reveal_node(id, false);
+    }
+
+    pub fn duplicate(&self, id: &str) {
+        let Some(mut copy) = self.state.node(id) else {
+            return;
+        };
+        let new_id = new_node_id(&self.state.doc.get_untracked());
+        copy.id = new_id.clone();
+        let label = copy.widget.label();
+        self.state
+            .apply(|d| grid::insert_below(&mut d.nodes, id, copy));
+        self.state.selected.set(Some(new_id.clone()));
+        self.ui
+            .announce(format!("Duplicaste {label}. La copia quedó debajo."));
+        reveal_node(&new_id, true);
+    }
+
+    pub fn delete(&self, id: &str) {
+        let label = self.label(id);
+        self.state.apply(|d| grid::remove_node(&mut d.nodes, id));
+        self.state.selected.set(None);
+        self.ui.toast(format!("{label} borrado."), true);
+    }
+
+    /// Elige un bloque y lleva el foco al inspector.
+    pub fn edit(&self, id: &str) {
+        self.state.selected.set(Some(id.to_string()));
+        request_animation_frame(|| focus_selector("#mk-inspector-title"));
+    }
+}
+
+pub(crate) fn new_node_id(doc: &PageDoc) -> String {
     (1..)
         .map(|k| format!("n{k}"))
         .find(|id| doc.nodes.iter().all(|n| &n.id != id))
         .expect("siempre hay un id libre")
 }
 
-/// Cambia una prop de un nodo pasando por `serde_json::Value`.
-fn set_field(doc: &mut PageDoc, id: &str, key: &str, value: serde_json::Value) {
-    let Some(node) = doc.nodes.iter_mut().find(|n| n.id == id) else {
-        return;
-    };
-    let Ok(mut v) = serde_json::to_value(&node.widget) else {
-        return;
-    };
-    if let Some(props) = v.get_mut("props").and_then(|p| p.as_object_mut()) {
-        props.insert(key.to_string(), value);
+/// Problemas de los campos de todos los bloques, en el orden de la página.
+pub(crate) fn problems(doc: &PageDoc) -> Vec<Problem> {
+    let mut nodes = doc.nodes.clone();
+    grid::sort_by_position(&mut nodes);
+    let mut out = Vec::new();
+    for node in &nodes {
+        let Ok(value) = serde_json::to_value(&node.widget) else {
+            continue;
+        };
+        let mut texts = Vec::new();
+        field_problems(
+            node.widget.fields(),
+            value.get("props"),
+            node.widget.label(),
+            &mut texts,
+        );
+        out.extend(texts.into_iter().map(|text| Problem {
+            node_id: node.id.clone(),
+            text,
+        }));
     }
-    if let Ok(widget) = serde_json::from_value::<Widget>(v) {
-        node.widget = widget;
+    out
+}
+
+fn field_problems(
+    fields: &[domain::Field],
+    props: Option<&serde_json::Value>,
+    path: &str,
+    out: &mut Vec<String>,
+) {
+    for field in fields {
+        let v = props.and_then(|p| p.get(field.key));
+        if let Some(msg) = domain::field_error(&field.kind, v) {
+            out.push(format!("{path} › {}: {msg}", field.label));
+        }
+        if let domain::FieldKind::List { item, .. } = &field.kind {
+            for (i, it) in v
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let sub = format!("{path} › {} {}", field.label, i + 1);
+                field_problems(item, Some(it), &sub, out);
+            }
+        }
     }
 }
 
-fn field_value(doc: &PageDoc, id: &str, key: &str) -> serde_json::Value {
-    doc.nodes
-        .iter()
-        .find(|n| n.id == id)
-        .and_then(|n| serde_json::to_value(&n.widget).ok())
-        .and_then(|v| v.get("props").and_then(|p| p.get(key)).cloned())
-        .unwrap_or(serde_json::Value::Null)
+/// Enfoca el primer elemento que coincide con `selector`.
+pub(crate) fn focus_selector(selector: &str) {
+    if let Some(el) = document()
+        .query_selector(selector)
+        .ok()
+        .flatten()
+        .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        _ = el.focus();
+    }
+}
+
+/// Después de redibujar: lleva la vista al bloque, lo enfoca y, si `flash`,
+/// lo resalta un instante.
+pub(crate) fn reveal_node(id: &str, flash: bool) {
+    let id = id.to_string();
+    request_animation_frame(move || {
+        let selector = format!("[data-node-id='{id}']");
+        let Some(el) = document().query_selector(&selector).ok().flatten() else {
+            return;
+        };
+        let opts = web_sys::ScrollIntoViewOptions::new();
+        opts.set_block(web_sys::ScrollLogicalPosition::Nearest);
+        opts.set_behavior(if flash {
+            web_sys::ScrollBehavior::Smooth
+        } else {
+            web_sys::ScrollBehavior::Auto
+        });
+        el.scroll_into_view_with_scroll_into_view_options(&opts);
+        if let Ok(html) = el.clone().dyn_into::<web_sys::HtmlElement>() {
+            _ = html.focus_with_options(&{
+                let o = web_sys::FocusOptions::new();
+                o.set_prevent_scroll(true);
+                o
+            });
+        }
+        if flash {
+            _ = el.class_list().add_1("mk-flash");
+            set_timeout(
+                move || _ = el.class_list().remove_1("mk-flash"),
+                Duration::from_millis(1600),
+            );
+        }
+    });
+}
+
+pub(crate) fn storage() -> Option<web_sys::Storage> {
+    window().local_storage().ok().flatten()
+}
+
+/// ¿El foco está en un campo donde se escribe?
+fn typing_in_field(ev: &web_sys::KeyboardEvent) -> bool {
+    ev.target()
+        .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+        .is_some_and(|el| {
+            matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                || el.is_content_editable()
+        })
 }
 
 #[component]
@@ -174,8 +426,21 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
     let state = EditorState::new(&initial);
     let products = StoredValue::new(initial.products.clone());
     let status = RwSignal::new(Status::Idle);
+    let ui = Ui {
+        toast: RwSignal::new(None),
+        toast_seq: StoredValue::new(0),
+        announce: RwSignal::new(String::new()),
+        preview: RwSignal::new(false),
+    };
+    let actions = Actions { state, ui };
+    provide_context(state);
+    provide_context(ui);
+    provide_context(actions);
     // Documento enviado en el guardado en curso.
     let sent = RwSignal::new(None::<PageDoc>);
+    // Borrador de una sesión anterior que se puede recuperar.
+    let recover = RwSignal::new(None::<PageDoc>);
+    let welcome = RwSignal::new(false);
 
     // Resultado del guardado.
     Effect::new(move |_| {
@@ -188,7 +453,8 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                     state.saved.set(doc);
                 }
                 state.base_version.set(version);
-                status.set(Status::Saved(version));
+                status.set(Status::Idle);
+                ui.toast("Guardado. Tu tienda ya muestra estos cambios.", false);
             }
             Ok(SaveOutcome::Conflict { .. }) => status.set(Status::Conflict),
             Ok(SaveOutcome::Invalid { errors }) => status.set(Status::Invalid(errors)),
@@ -210,817 +476,375 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         on_cleanup(move || handle.remove());
     });
 
-    let on_save = move |_| {
+    // Al abrir: ¿hay un borrador sin guardar de otra sesión? ¿es la primera vez?
+    Effect::new(move |_| {
+        let Some(st) = storage() else {
+            return;
+        };
+        if st.get_item(WELCOME_KEY).ok().flatten().is_none() {
+            welcome.set(true);
+        }
+        let draft = st
+            .get_item(DRAFT_KEY)
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|v| domain::parse_doc(v).ok());
+        match draft {
+            Some(doc) if state.saved.with_untracked(|s| s != &doc) => recover.set(Some(doc)),
+            _ => _ = st.remove_item(DRAFT_KEY),
+        }
+    });
+
+    // Cada cambio sin guardar queda también en el navegador.
+    Effect::new(move |prev: Option<()>| {
+        let dirty = state.dirty();
+        let doc = state.doc.get();
+        // La primera vez no se toca: puede haber un borrador por recuperar.
+        if prev.is_none() {
+            return;
+        }
+        let Some(st) = storage() else {
+            return;
+        };
+        if dirty {
+            if let Ok(json) = serde_json::to_string(&doc) {
+                _ = st.set_item(DRAFT_KEY, &json);
+            }
+        } else if recover.with_untracked(Option::is_none) {
+            _ = st.remove_item(DRAFT_KEY);
+        }
+    });
+
+    let save_now = move || {
+        if save.pending().get_untracked() || !state.dirty() {
+            return;
+        }
+        state.end_group();
         let doc = state.doc.get_untracked();
+        let found = problems(&doc);
+        if !found.is_empty() {
+            ui.announce(format!(
+                "No se guardó: hay {} {} para corregir.",
+                found.len(),
+                if found.len() == 1 { "dato" } else { "datos" }
+            ));
+            status.set(Status::Problems(found));
+            return;
+        }
         sent.set(Some(doc.clone()));
         status.set(Status::Idle);
         save.dispatch((doc, state.base_version.get_untracked()));
     };
 
+    // Atajos de teclado de todo el editor.
+    Effect::new(move |_| {
+        let handle = window_event_listener(leptos::ev::keydown, move |ev| {
+            let key = ev.key();
+            let cmd = ev.ctrl_key() || ev.meta_key();
+            if cmd && !ev.alt_key() {
+                match key.to_lowercase().as_str() {
+                    "z" if ev.shift_key() => {
+                        ev.prevent_default();
+                        state.redo();
+                    }
+                    "z" => {
+                        ev.prevent_default();
+                        state.undo();
+                    }
+                    "y" => {
+                        ev.prevent_default();
+                        state.redo();
+                    }
+                    "s" => {
+                        ev.prevent_default();
+                        save_now();
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            if typing_in_field(&ev) {
+                return;
+            }
+            match key.as_str() {
+                "Escape" if ui.preview.get_untracked() => ui.preview.set(false),
+                "Escape" => state.selected.set(None),
+                "Delete" | "Backspace" => {
+                    if let Some(id) = state.selected.get_untracked() {
+                        ev.prevent_default();
+                        actions.delete(&id);
+                    }
+                }
+                _ => {}
+            }
+        });
+        on_cleanup(move || handle.remove());
+    });
+
+    let theme = move || state.doc.with(|d| d.theme.clone());
+
     view! {
         <div data-theme="light" class="flex h-screen flex-col bg-base-200 text-base-content">
-            <div class="navbar gap-2 border-b border-base-300 bg-base-100 px-4">
-                <div class="flex-1">
-                    <span class="text-lg font-bold">"Editor"</span>
-                    <a class="link link-hover ml-4 text-sm" href="/" target="_blank">"Ver marketplace"</a>
+            <header class="navbar min-h-14 gap-3 border-b border-base-300 bg-base-100 px-4">
+                <div class="flex flex-1 items-center gap-4">
+                    <h1 class="text-lg font-bold">"Editor de tu tienda"</h1>
+                    <a class="link link-hover inline-flex items-center gap-1 text-sm" href="/" target="_blank" rel="noopener">
+                        "Ver tienda publicada"
+                        <Icon name="external" class="h-3.5 w-3.5"/>
+                        <span class="sr-only">"(se abre en otra pestaña)"</span>
+                    </a>
                 </div>
                 <label class="flex items-center gap-2 text-sm">
                     "Tema"
+                    <span data-theme=theme class="flex gap-0.5 rounded-field border border-base-content/20 bg-base-100 p-1" aria-hidden="true">
+                        <span class="h-3 w-3 rounded-full bg-primary"></span>
+                        <span class="h-3 w-3 rounded-full bg-secondary"></span>
+                        <span class="h-3 w-3 rounded-full bg-accent"></span>
+                    </span>
                     <select
                         class="select select-sm w-36"
-                        prop:value=move || state.doc.with(|d| d.theme.clone())
+                        prop:value=theme
                         on:change=move |ev| {
                             let theme = event_target_value(&ev);
                             state.apply(|d| d.theme = theme);
                         }
                     >
-                        {THEMES.iter().map(|t| view! { <option value=*t>{*t}</option> }).collect_view()}
+                        {THEMES
+                            .iter()
+                            .zip(THEME_LABELS)
+                            .map(|(t, l)| view! { <option value=*t>{*l}</option> })
+                            .collect_view()}
                     </select>
                 </label>
                 <button
                     type="button"
                     class="btn btn-sm"
+                    aria-pressed=move || ui.preview.get().to_string()
+                    on:click=move |_| ui.preview.update(|p| *p = !*p)
+                >
+                    <Icon name="eye"/>
+                    "Vista previa"
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-sm"
+                    title="Deshacer (Ctrl+Z o ⌘Z)"
+                    aria-keyshortcuts="Control+Z Meta+Z"
                     disabled=move || state.undo.with(Vec::is_empty)
                     on:click=move |_| state.undo()
                 >
+                    <Icon name="undo"/>
                     "Deshacer"
                 </button>
                 <button
                     type="button"
                     class="btn btn-sm"
+                    title="Rehacer (Ctrl+Mayús+Z o ⇧⌘Z)"
+                    aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
                     disabled=move || state.redo.with(Vec::is_empty)
                     on:click=move |_| state.redo()
                 >
+                    <Icon name="redo"/>
                     "Rehacer"
                 </button>
+                <span class="flex items-center gap-1.5 text-sm" title="La tienda publicada muestra lo último que guardaste">
+                    {move || if state.dirty() {
+                        view! {
+                            <span class="h-2 w-2 rounded-full bg-warning" aria-hidden="true"></span>
+                            <span>"Cambios sin guardar"</span>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <Icon name="check" class="h-4 w-4 text-success"/>
+                            <span>"Todo guardado"</span>
+                        }.into_any()
+                    }}
+                </span>
                 <button
                     type="button"
                     class="btn btn-sm btn-primary"
+                    title="Guardar (Ctrl+S o ⌘S)"
+                    aria-keyshortcuts="Control+S Meta+S"
                     disabled=move || !state.dirty() || save.pending().get()
-                    on:click=on_save
+                    on:click=move |_| save_now()
                 >
                     {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
                 </button>
-            </div>
-            {view! { <StatusBar status/> }.into_any()}
+            </header>
+            {move || recover.get().map(|doc| {
+                let doc = StoredValue::new(doc);
+                view! {
+                    <div class="flex items-center gap-3 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm" role="region" aria-label="Cambios recuperados">
+                        <Icon name="info" class="h-5 w-5"/>
+                        <span class="flex-1">"Encontramos cambios que no guardaste la última vez que usaste el editor."</span>
+                        <button type="button" class="btn btn-sm btn-primary" on:click=move |_| {
+                            let draft = doc.get_value();
+                            state.apply(|d| *d = draft);
+                            recover.set(None);
+                            ui.toast("Recuperaste tus cambios. Guardalos para publicarlos.", false);
+                        }>"Recuperar cambios"</button>
+                        <button type="button" class="btn btn-sm" on:click=move |_| {
+                            recover.set(None);
+                            if let Some(st) = storage() {
+                                _ = st.remove_item(DRAFT_KEY);
+                            }
+                        }>"Descartar"</button>
+                    </div>
+                }
+            })}
             <div class="flex min-h-0 flex-1">
-                {view! { <Palette state/> }.into_any()}
-                {view! { <Canvas state products/> }.into_any()}
-                {view! { <Inspector state products/> }.into_any()}
+                {move || (!ui.preview.get()).then(|| view! { <Palette/> })}
+                {view! { <Canvas products welcome/> }.into_any()}
+                {move || (!ui.preview.get()).then(|| view! { <Inspector products/> })}
             </div>
+            {view! { <Notices status save_now/> }.into_any()}
+            <div class="sr-only" role="status" aria-live="polite">{move || ui.announce.get()}</div>
         </div>
     }
 }
 
+/// Avisos flotantes abajo a la izquierda: el resultado del guardado y los
+/// avisos breves. No mueven el resto de la pantalla.
 #[component]
-fn StatusBar(status: RwSignal<Status>) -> impl IntoView {
-    move || {
+fn Notices(
+    status: RwSignal<Status>,
+    save_now: impl Fn() + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let ui = expect_context::<Ui>();
+    let close = move |_| status.set(Status::Idle);
+    let alert = move || {
+        let close_btn = move || {
+            view! {
+                <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar aviso" on:click=close>
+                    <Icon name="close"/>
+                </button>
+            }
+        };
         match status.get() {
-        Status::Idle => ().into_any(),
-        Status::Saved(v) => view! {
-            <div class="alert alert-success rounded-none py-2">{format!("Guardado como versión {v}.")}</div>
-        }
-        .into_any(),
-        Status::Conflict => view! {
-            <div class="alert alert-warning rounded-none py-2">
-                <span>"Alguien guardó otra versión mientras editabas. Recargá para ver la última; tus cambios sin guardar se pierden."</span>
-                <button
-                    type="button"
-                    class="btn btn-sm"
-                    on:click=move |_| {
+            Status::Idle => ().into_any(),
+            Status::Conflict => view! {
+                <div class="alert alert-warning shadow-lg">
+                    <Icon name="alert" class="h-5 w-5"/>
+                    <span>"Alguien guardó otra versión mientras editabas. Tus cambios quedaron guardados en este navegador: recargá y vas a poder recuperarlos."</span>
+                    <button type="button" class="btn btn-sm" on:click=move |_| {
                         if let Some(w) = web_sys::window() {
                             _ = w.location().reload();
                         }
-                    }
-                >
-                    "Recargar"
-                </button>
-            </div>
-        }
-        .into_any(),
-        Status::Invalid(errors) => view! {
-            <div class="alert alert-error rounded-none py-2">
-                <div>
-                    <p class="font-semibold">"No se pudo guardar:"</p>
-                    <ul class="list-disc pl-5">
-                        {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
-                    </ul>
+                    }>"Recargar"</button>
                 </div>
-            </div>
-        }
-        .into_any(),
-        Status::Error(e) => view! {
-            <div class="alert alert-error rounded-none py-2">{format!("Error al guardar: {e}")}</div>
-        }
-        .into_any(),
-    }
-    }
-}
-
-#[component]
-fn Palette(state: EditorState) -> impl IntoView {
-    view! {
-        <aside class="w-56 shrink-0 overflow-y-auto border-r border-base-300 bg-base-100 p-3">
-            <h2 class="mb-2 text-sm font-semibold uppercase opacity-60">"Widgets"</h2>
-            <ul class="menu w-full p-0">
-                {WIDGET_TYPES
-                    .iter()
-                    .map(|(type_name, label)| {
-                        let type_name = *type_name;
-                        view! {
-                            <li>
-                                <button
-                                    type="button"
-                                    on:click=move |_| {
-                                        let Some(widget) = Widget::defaults(type_name) else {
-                                            return;
-                                        };
-                                        let id = new_node_id(&state.doc.get_untracked());
-                                        let node = Node::new(id.clone(), widget);
-                                        state.apply(|d| grid::add_node(&mut d.nodes, node));
-                                        state.selected.set(Some(id));
-                                    }
-                                >
-                                    {*label}
-                                </button>
-                            </li>
-                        }
-                    })
-                    .collect_view()}
-            </ul>
-        </aside>
-    }
-}
-
-#[component]
-fn Canvas(state: EditorState, products: StoredValue<Vec<Product>>) -> impl IntoView {
-    let grid_ref = NodeRef::<Div>::new();
-    let drag = RwSignal::new(None::<Drag>);
-    // Vista previa del arrastre: los nodos como quedarían al soltar.
-    let preview = RwSignal::new(None::<Vec<Node>>);
-
-    let on_pointer_down = move |ev: PointerEvent, id: String| {
-        if ev.button() != 0 {
-            return;
-        }
-        ev.prevent_default();
-        state.selected.set(Some(id.clone()));
-        let Some(node_el) = ev
-            .current_target()
-            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
-        else {
-            return;
-        };
-        let rect = node_el.get_bounding_client_rect();
-        // La captura va sobre la grilla, que no se vuelve a crear al redibujar los nodos.
-        if let Some(grid_el) = grid_ref.get_untracked() {
-            _ = grid_el.set_pointer_capture(ev.pointer_id());
-        }
-        drag.set(Some(Drag {
-            id,
-            kind: DragKind::Move {
-                offset_x: f64::from(ev.client_x()) - rect.left(),
-                offset_y: f64::from(ev.client_y()) - rect.top(),
-            },
-            moved: false,
-        }));
-    };
-
-    let on_resize_down = move |ev: PointerEvent, id: String, edge: Edge| {
-        if ev.button() != 0 {
-            return;
-        }
-        ev.prevent_default();
-        ev.stop_propagation();
-        let Some(size) = state
-            .doc
-            .with_untracked(|d| d.nodes.iter().find(|n| n.id == id).map(|n| n.size))
-        else {
-            return;
-        };
-        if let Some(grid_el) = grid_ref.get_untracked() {
-            _ = grid_el.set_pointer_capture(ev.pointer_id());
-        }
-        drag.set(Some(Drag {
-            id,
-            kind: DragKind::Resize {
-                edge,
-                start_x: f64::from(ev.client_x()),
-                start_y: f64::from(ev.client_y()),
-                start_w: size.w,
-                start_h: size.h,
-            },
-            moved: false,
-        }));
-    };
-
-    let on_pointer_move = move |ev: PointerEvent| {
-        let Some(d) = drag.get_untracked() else {
-            return;
-        };
-        let Some(grid_el) = grid_ref.get_untracked() else {
-            return;
-        };
-        let g = grid_el.get_bounding_client_rect();
-        let col_pitch = (g.width() - grid::GAP_PX * 11.0) / 12.0 + grid::GAP_PX;
-        let row_pitch = grid::ROW_HEIGHT_PX + grid::GAP_PX;
-        let mut nodes = state.doc.with_untracked(|doc| doc.nodes.clone());
-        match d.kind {
-            DragKind::Move { offset_x, offset_y } => {
-                let px = f64::from(ev.client_x()) - g.left() - offset_x;
-                let py = f64::from(ev.client_y()) - g.top() - offset_y;
-                // Medio paso de celda para que el imán redondee en vez de truncar.
-                let (cx, cy) =
-                    grid::cell_from_point(px + col_pitch / 2.0, py + row_pitch / 2.0, g.width());
-                grid::move_node(&mut nodes, &d.id, cx, cy);
-            }
-            DragKind::Resize {
-                edge,
-                start_x,
-                start_y,
-                start_w,
-                start_h,
-            } => {
-                let dx = f64::from(ev.client_x()) - start_x;
-                let dy = f64::from(ev.client_y()) - start_y;
-                let (w, h) = resized(edge, start_w, start_h, dx, dy, col_pitch);
-                // Al tirar del borde derecho el nodo no se corre: el ancho topa en la columna 12.
-                let x = nodes
-                    .iter()
-                    .find(|n| n.id == d.id)
-                    .map_or(0, |n| i32::from(n.pos.x));
-                grid::resize_node(
-                    &mut nodes,
-                    &d.id,
-                    w.min(i32::from(domain::GRID_COLS) - x),
-                    h,
-                );
-            }
-        }
-        let changed = state.doc.with_untracked(|doc| doc.nodes != nodes);
-        if changed || d.moved {
-            if !d.moved {
-                drag.update(|d| {
-                    if let Some(d) = d {
-                        d.moved = true;
-                    }
-                });
-            }
-            if preview.with_untracked(|p| p.as_ref() != Some(&nodes)) {
-                preview.set(Some(nodes));
-            }
-        }
-    };
-
-    let on_pointer_up = move |ev: PointerEvent| {
-        if drag.get_untracked().is_none() {
-            return;
-        }
-        if let Some(grid_el) = grid_ref.get_untracked() {
-            _ = grid_el.release_pointer_capture(ev.pointer_id());
-        }
-        if let Some(nodes) = preview.get_untracked() {
-            state.apply(|d| d.nodes = nodes);
-        }
-        preview.set(None);
-        drag.set(None);
-    };
-
-    let shown_nodes = move || {
-        let mut nodes = preview
-            .get()
-            .unwrap_or_else(|| state.doc.with(|d| d.nodes.clone()));
-        grid::sort_by_position(&mut nodes);
-        nodes
-    };
-
-    view! {
-        <section class="min-w-0 flex-1 overflow-auto">
-            <div data-theme=move || state.doc.with(|d| d.theme.clone()) class="min-h-full bg-base-200 text-base-content">
-                <div class="mx-auto max-w-6xl p-4">
-                    <div
-                        node_ref=grid_ref
-                        class="mk-grid min-h-96 select-none"
-                        on:pointermove=on_pointer_move
-                        on:pointerup=on_pointer_up
-                        on:pointercancel=on_pointer_up
-                    >
-                        {move || {
-                            let ctx = RenderCtx {
-                                products: products.get_value(),
-                                editing: true,
-                            };
-                            let selected = state.selected.get();
-                            let dragging = drag.with(|d| d.as_ref().map(|d| d.id.clone()));
-                            let resizing = drag.with(|d| {
-                                d.as_ref().is_some_and(|d| matches!(d.kind, DragKind::Resize { .. }))
-                            });
-                            shown_nodes()
-                                .into_iter()
-                                .map(|node| {
-                                    let id = node.id.clone();
-                                    let is_selected = selected.as_deref() == Some(id.as_str());
-                                    let is_dragged = dragging.as_deref() == Some(id.as_str());
-                                    let class = if is_dragged && !resizing {
-                                        "mk-node relative cursor-grabbing touch-none rounded-box outline outline-2 outline-offset-2 outline-primary opacity-80"
-                                    } else if is_selected || is_dragged {
-                                        "mk-node relative cursor-grab touch-none rounded-box outline outline-2 outline-offset-2 outline-primary"
-                                    } else {
-                                        "mk-node relative cursor-grab touch-none rounded-box outline outline-1 outline-dashed outline-base-300 hover:outline-primary"
-                                    };
-                                    let content = render_widget(&node, &ctx);
-                                    let size_label = format!("{}×{}", node.size.w, node.size.h);
-                                    let handles = (is_selected || is_dragged).then(|| {
-                                        let (r, b, c) = (id.clone(), id.clone(), id.clone());
-                                        view! {
-                                            <div
-                                                class="mk-handle mk-handle-e"
-                                                title="Arrastrá para cambiar el ancho"
-                                                on:pointerdown=move |ev| on_resize_down(ev, r.clone(), Edge::Right)
-                                            ></div>
-                                            <div
-                                                class="mk-handle mk-handle-s"
-                                                title="Arrastrá para cambiar el alto"
-                                                on:pointerdown=move |ev| on_resize_down(ev, b.clone(), Edge::Bottom)
-                                            ></div>
-                                            <div
-                                                class="mk-handle mk-handle-se"
-                                                title="Arrastrá para cambiar ancho y alto"
-                                                on:pointerdown=move |ev| on_resize_down(ev, c.clone(), Edge::Corner)
-                                            ></div>
-                                            <span class="badge badge-primary badge-sm pointer-events-none absolute right-2 top-2 z-10">{size_label}</span>
-                                        }
-                                    });
+            }.into_any(),
+            Status::Problems(list) => {
+                let n = list.len();
+                view! {
+                    <div class="alert items-start border-error bg-base-100 text-base-content shadow-lg">
+                        <Icon name="alert" class="h-5 w-5 text-error"/>
+                        <div class="flex flex-col gap-1">
+                            <p class="font-semibold">{if n == 1 {
+                                "No se guardó: hay un dato para corregir.".to_string()
+                            } else {
+                                format!("No se guardó: hay {n} datos para corregir.")
+                            }}</p>
+                            <ul class="flex flex-col gap-1">
+                                {list.into_iter().map(|p| {
+                                    let id = p.node_id.clone();
                                     view! {
-                                        <div
-                                            class=class
-                                            style=node_style(&node)
-                                            on:pointerdown=move |ev| on_pointer_down(ev, id.clone())
-                                        >
-                                            <div class="pointer-events-none h-full">{content}</div>
-                                            {handles}
-                                        </div>
+                                        <li>
+                                            <button type="button" class="link text-left" on:click=move |_| {
+                                                state.selected.set(Some(id.clone()));
+                                                reveal_node(&id, true);
+                                            }>{p.text}</button>
+                                        </li>
                                     }
-                                })
-                                .collect_view()
-                        }}
+                                }).collect_view()}
+                            </ul>
+                            <button type="button" class="btn btn-sm btn-primary mt-1 self-start" on:click=move |_| save_now()>"Intentar de nuevo"</button>
+                        </div>
+                        {close_btn()}
                     </div>
-                    {move || state.doc.with(|d| d.nodes.is_empty()).then(|| view! {
-                        <p class="py-8 text-center opacity-60">"Agregá widgets desde la paleta de la izquierda."</p>
-                    })}
-                </div>
-            </div>
-        </section>
-    }
-}
-
-#[component]
-fn Inspector(state: EditorState, products: StoredValue<Vec<Product>>) -> impl IntoView {
-    // Se redibuja solo cuando cambia el nodo seleccionado (o deja de existir),
-    // no con cada tecla, para no perder el foco de los campos.
-    let current = Memo::new(move |_| {
-        state
-            .selected
-            .get()
-            .filter(|id| state.doc.with(|d| d.nodes.iter().any(|n| &n.id == id)))
-    });
-
-    view! {
-        <aside class="w-80 shrink-0 overflow-y-auto border-l border-base-300 bg-base-100 p-4">
-            {move || match current.get() {
-                None => view! {
-                    <p class="text-sm opacity-60">"Seleccioná un widget del lienzo para editarlo."</p>
-                }
-                .into_any(),
-                Some(id) => {
-                    let widget = state.doc.with_untracked(|d| {
-                        d.nodes.iter().find(|n| n.id == id).map(|n| n.widget.clone())
-                    });
-                    match widget {
-                        Some(widget) => view! { <NodeInspector state products id widget/> }.into_any(),
-                        None => ().into_any(),
-                    }
-                }
-            }}
-        </aside>
-    }
-}
-
-#[component]
-fn NodeInspector(
-    state: EditorState,
-    products: StoredValue<Vec<Product>>,
-    id: String,
-    widget: Widget,
-) -> impl IntoView {
-    let label = widget.label();
-    let limits = widget.limits();
-    let size_id = StoredValue::new(id.clone());
-    let size = move || {
-        state.doc.with(|d| {
-            size_id.with_value(|sid| {
-                d.nodes
-                    .iter()
-                    .find(|n| &n.id == sid)
-                    .map(|n| n.size)
-                    .unwrap_or(limits.default)
-            })
-        })
-    };
-    let resize = move |w: i32, h: i32| {
-        size_id.with_value(|sid| state.apply(|d| grid::resize_node(&mut d.nodes, sid, w, h)));
-    };
-    let delete_id = id.clone();
-    let basic: Vec<&'static Field> = widget.fields().iter().filter(|f| !f.advanced).collect();
-    let advanced: Vec<&'static Field> = widget.fields().iter().filter(|f| f.advanced).collect();
-    let has_advanced = !advanced.is_empty();
-    let basic_id = id.clone();
-    let advanced_id = id.clone();
-
-    view! {
-        <div class="flex flex-col gap-4">
-            <h2 class="text-lg font-bold">{label}</h2>
-            <div class="grid grid-cols-2 gap-2">
-                <label class="flex flex-col gap-1">
-                    <span class="text-sm font-medium">"Ancho"</span>
-                    <input
-                        type="number"
-                        class="input input-sm w-full"
-                        min=limits.min_w
-                        max=limits.max_w
-                        prop:value=move || size().w.to_string()
-                        on:change=move |ev| {
-                            if let Ok(w) = event_target_value(&ev).parse::<i32>() {
-                                resize(w, i32::from(size().h));
-                            }
-                        }
-                    />
-                    <span class="text-xs opacity-60">{format!("{} a {} columnas", limits.min_w, limits.max_w)}</span>
-                </label>
-                <label class="flex flex-col gap-1">
-                    <span class="text-sm font-medium">"Alto"</span>
-                    <input
-                        type="number"
-                        class="input input-sm w-full"
-                        min=limits.min_h
-                        max=limits.max_h
-                        prop:value=move || size().h.to_string()
-                        on:change=move |ev| {
-                            if let Ok(h) = event_target_value(&ev).parse::<i32>() {
-                                resize(i32::from(size().w), h);
-                            }
-                        }
-                    />
-                    <span class="text-xs opacity-60">{format!("{} a {} filas", limits.min_h, limits.max_h)}</span>
-                </label>
-            </div>
-            <p class="text-xs opacity-60">"También podés arrastrar los bordes del widget en el lienzo."</p>
-            {basic
-                .into_iter()
-                .map(|f| view! { <PropField state products id=basic_id.clone() field=f/> })
-                .collect_view()}
-            {has_advanced.then(|| view! {
-                <details class="collapse collapse-arrow border border-base-300">
-                    <summary class="collapse-title text-sm font-medium">"Avanzado"</summary>
-                    <div class="collapse-content flex flex-col gap-4">
-                        {advanced
-                            .into_iter()
-                            .map(|f| view! { <PropField state products id=advanced_id.clone() field=f/> })
-                            .collect_view()}
-                    </div>
-                </details>
-            })}
-            <button
-                type="button"
-                class="btn btn-error btn-outline btn-sm"
-                on:click=move |_| {
-                    state.apply(|d| grid::remove_node(&mut d.nodes, &delete_id));
-                    state.selected.set(None);
-                }
-            >
-                "Borrar"
-            </button>
-        </div>
-    }
-}
-
-/// Campo de primer nivel de las props de un nodo.
-#[component]
-fn PropField(
-    state: EditorState,
-    products: StoredValue<Vec<Product>>,
-    id: String,
-    field: &'static Field,
-) -> impl IntoView {
-    let key = field.key;
-    let id = StoredValue::new(id);
-    let value = Signal::derive(move || {
-        state
-            .doc
-            .with(|d| id.with_value(|rid| field_value(d, rid, key)))
-    });
-    let set = Callback::new(move |v: serde_json::Value| {
-        id.with_value(|rid| state.apply(|d| set_field(d, rid, key, v)));
-    });
-    view! { <FieldInput products field value set/> }
-}
-
-/// Valor inicial de un campo, para elementos nuevos de una lista.
-fn empty_value(kind: &FieldKind) -> serde_json::Value {
-    use serde_json::Value;
-    match kind {
-        FieldKind::Number { min, .. } => Value::from(*min),
-        FieldKind::Bool => Value::Bool(false),
-        FieldKind::Select { options } => {
-            Value::String(options.first().map(|(k, _)| *k).unwrap_or_default().into())
-        }
-        FieldKind::List { .. } => Value::Array(Vec::new()),
-        _ => Value::String(String::new()),
-    }
-}
-
-/// Elemento nuevo para una lista: copia del último (así hereda imagen y
-/// estilo) o, si está vacía, uno con los valores iniciales de cada campo.
-fn new_list_item(items: &[serde_json::Value], item: &[Field]) -> serde_json::Value {
-    items.last().cloned().unwrap_or_else(|| {
-        serde_json::Value::Object(
-            item.iter()
-                .map(|f| (f.key.to_string(), empty_value(&f.kind)))
-                .collect(),
-        )
-    })
-}
-
-/// Control de un campo según su tipo. `value` es el valor actual y `set`
-/// reemplaza el valor entero (en una lista, la lista entera).
-#[component]
-fn FieldInput(
-    products: StoredValue<Vec<Product>>,
-    field: &'static Field,
-    value: Signal<serde_json::Value>,
-    set: Callback<serde_json::Value>,
-) -> impl IntoView {
-    let text = move || value.get().as_str().unwrap_or_default().to_string();
-    let set_str = move |s: String| set.run(serde_json::Value::String(s));
-
-    let input = match &field.kind {
-        FieldKind::Text { max } => view! {
-            <input
-                type="text"
-                class="input input-sm w-full"
-                maxlength=*max
-                prop:value=text
-                on:input=move |ev| set_str(event_target_value(&ev))
-            />
-        }
-        .into_any(),
-        FieldKind::LongText { max } => view! {
-            <textarea
-                class="textarea textarea-sm h-24 w-full"
-                maxlength=*max
-                prop:value=text
-                on:input=move |ev| set_str(event_target_value(&ev))
-            ></textarea>
-        }
-        .into_any(),
-        FieldKind::Url => view! {
-            <input
-                type="text"
-                class="input input-sm w-full"
-                placeholder="https:// o /ruta"
-                prop:value=text
-                on:input=move |ev| set_str(event_target_value(&ev))
-            />
-        }
-        .into_any(),
-        FieldKind::DateTime => view! {
-            <input
-                type="datetime-local"
-                class="input input-sm w-full"
-                prop:value=text
-                on:input=move |ev| set_str(event_target_value(&ev))
-            />
-        }
-        .into_any(),
-        FieldKind::Number { min, max } => {
-            let (min, max) = (*min, *max);
-            view! {
-                <input
-                    type="number"
-                    class="input input-sm w-full"
-                    min=min
-                    max=max
-                    prop:value=move || value.get().as_i64().map(|n| n.to_string()).unwrap_or_default()
-                    on:input=move |ev| {
-                        if let Ok(n) = event_target_value(&ev).parse::<i64>() {
-                            set.run(serde_json::Value::from(n.clamp(min, max)));
-                        }
-                    }
-                />
+                }.into_any()
             }
-            .into_any()
-        }
-        FieldKind::Bool => view! {
-            <input
-                type="checkbox"
-                class="toggle toggle-sm"
-                prop:checked=move || value.get().as_bool().unwrap_or(false)
-                on:change=move |ev| set.run(serde_json::Value::Bool(event_target_checked(&ev)))
-            />
-        }
-        .into_any(),
-        FieldKind::Select { options } => view! {
-            <select
-                class="select select-sm w-full"
-                prop:value=text
-                on:change=move |ev| set_str(event_target_value(&ev))
-            >
-                {options.iter().map(|(v, l)| view! { <option value=*v>{*l}</option> }).collect_view()}
-            </select>
-        }
-        .into_any(),
-        FieldKind::ProductRef => view! {
-            <select
-                class="select select-sm w-full"
-                prop:value=text
-                on:change=move |ev| set_str(event_target_value(&ev))
-            >
-                <option value="">"Elegí un producto"</option>
-                {products
-                    .get_value()
-                    .into_iter()
-                    .map(|p| view! {
-                        <option value=p.id.clone()>{format!("{} · {}", p.name, ui::format_price(p.price_cents))}</option>
-                    })
-                    .collect_view()}
-            </select>
-        }
-        .into_any(),
-        FieldKind::List { item, min, max } => {
-            return view! { <ListInput products field item min=*min max=*max value set/> }.into_any();
+            Status::Invalid(errors) => view! {
+                <div class="alert items-start border-error bg-base-100 text-base-content shadow-lg">
+                    <Icon name="alert" class="h-5 w-5 text-error"/>
+                    <div>
+                        <p class="font-semibold">"No se pudo guardar:"</p>
+                        <ul class="list-disc pl-5">
+                            {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
+                        </ul>
+                    </div>
+                    {close_btn()}
+                </div>
+            }.into_any(),
+            Status::Error(e) => view! {
+                <div class="alert items-start border-error bg-base-100 text-base-content shadow-lg">
+                    <Icon name="alert" class="h-5 w-5 text-error"/>
+                    <div>
+                        <p class="font-semibold">"No se pudo guardar. Revisá tu conexión y probá de nuevo."</p>
+                        <p class="text-sm text-base-content/75">{format!("Detalle: {e}")}</p>
+                    </div>
+                    {close_btn()}
+                </div>
+            }.into_any(),
         }
     };
-
     view! {
-        <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium">{field.label}</span>
-            {input}
-        </label>
-    }
-    .into_any()
-}
-
-/// Lista editable: cada elemento con sus campos, y botones para agregar,
-/// subir, bajar y quitar. Solo se redibuja entera cuando cambia la cantidad.
-#[component]
-fn ListInput(
-    products: StoredValue<Vec<Product>>,
-    field: &'static Field,
-    item: &'static [Field],
-    min: usize,
-    max: usize,
-    value: Signal<serde_json::Value>,
-    set: Callback<serde_json::Value>,
-) -> impl IntoView {
-    let items = move || {
-        value
-            .get_untracked()
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-    };
-    let len = Memo::new(move |_| value.with(|v| v.as_array().map_or(0, Vec::len)));
-    let update = move |f: &dyn Fn(&mut Vec<serde_json::Value>)| {
-        let mut list = value
-            .get_untracked()
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
-        f(&mut list);
-        set.run(serde_json::Value::Array(list));
-    };
-
-    view! {
-        <fieldset class="flex flex-col gap-2">
-            <legend class="mb-1 text-sm font-medium">{field.label}</legend>
-            {move || {
-                let n = len.get();
-                (0..n)
-                    .map(|i| {
-                        let fields = item
-                            .iter()
-                            .map(|sub| {
-                                let key = sub.key;
-                                let sub_value = Signal::derive(move || {
-                                    value.with(|v| v.get(i).and_then(|it| it.get(key)).cloned())
-                                        .unwrap_or(serde_json::Value::Null)
-                                });
-                                let sub_set = Callback::new(move |v: serde_json::Value| {
-                                    update(&|list| {
-                                        if let Some(obj) = list.get_mut(i).and_then(|it| it.as_object_mut()) {
-                                            obj.insert(key.to_string(), v.clone());
-                                        }
-                                    });
-                                });
-                                view! { <FieldInput products field=sub value=sub_value set=sub_set/> }
-                            })
-                            .collect_view();
-                        view! {
-                            <div class="flex flex-col gap-2 rounded-box border border-base-300 p-3">
-                                <div class="flex items-center gap-1">
-                                    <span class="flex-1 text-xs font-semibold opacity-60">{format!("#{}", i + 1)}</span>
-                                    <button
-                                        type="button"
-                                        class="btn btn-ghost btn-xs"
-                                        aria-label="Subir"
-                                        disabled={i == 0}
-                                        on:click=move |_| update(&|list| list.swap(i, i - 1))
-                                    >"↑"</button>
-                                    <button
-                                        type="button"
-                                        class="btn btn-ghost btn-xs"
-                                        aria-label="Bajar"
-                                        disabled={i + 1 >= n}
-                                        on:click=move |_| update(&|list| list.swap(i, i + 1))
-                                    >"↓"</button>
-                                    <button
-                                        type="button"
-                                        class="btn btn-ghost btn-xs text-error"
-                                        aria-label="Quitar"
-                                        disabled={n <= min}
-                                        on:click=move |_| update(&|list| { list.remove(i); })
-                                    >"✕"</button>
-                                </div>
-                                {fields}
-                            </div>
-                        }
-                    })
-                    .collect_view()
-            }}
-            <button
-                type="button"
-                class="btn btn-sm btn-outline"
-                disabled=move || { len.get() >= max }
-                on:click=move |_| {
-                    let next = new_list_item(&items(), item);
-                    update(&|list| list.push(next.clone()));
-                }
-            >
-                {format!("Agregar ({max} como máximo)")}
-            </button>
-        </fieldset>
+        <div class="pointer-events-none fixed bottom-4 left-4 z-50 flex max-w-lg flex-col gap-2 [&>*]:pointer-events-auto">
+            <div role="alert">{alert}</div>
+            <div role="status" aria-live="polite">
+                {move || ui.toast.get().map(|t| view! {
+                    <div class="alert bg-neutral text-neutral-content shadow-lg">
+                        <span>{t.text}</span>
+                        {t.undo.then(|| view! {
+                            <button type="button" class="btn btn-sm" on:click=move |_| {
+                                state.undo();
+                                ui.toast.set(None);
+                            }>"Deshacer"</button>
+                        })}
+                        <button type="button" class="btn btn-ghost btn-sm btn-square text-neutral-content hover:bg-white/10" aria-label="Cerrar aviso" on:click=move |_| ui.toast.set(None)>
+                            <Icon name="close"/>
+                        </button>
+                    </div>
+                })}
+            </div>
+        </div>
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use domain::Widget;
 
     #[test]
-    fn set_field_changes_one_prop() {
+    fn problems_name_block_and_field() {
         let mut doc = PageDoc::default();
-        doc.nodes
-            .push(Node::new("n1", Widget::defaults("Banner").unwrap()));
-        set_field(&mut doc, "n1", "title", serde_json::json!("Hola"));
-        assert_eq!(field_value(&doc, "n1", "title"), serde_json::json!("Hola"));
-        assert!(matches!(&doc.nodes[0].widget, Widget::Banner(b) if b.title == "Hola"));
+        let mut node = Node::new("n1", Widget::defaults("Banner").unwrap());
+        if let Widget::Banner(b) = &mut node.widget {
+            b.image_url = "www.ejemplo.com".into();
+        }
+        doc.nodes.push(node);
+        let found = problems(&doc);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].node_id, "n1");
+        assert!(found[0]
+            .text
+            .starts_with("Banner › Imagen: Escribí una dirección"));
         assert_eq!(new_node_id(&doc), "n2");
     }
 
     #[test]
-    fn set_field_replaces_a_whole_list() {
+    fn list_item_problems_say_which_item() {
         let mut doc = PageDoc::default();
-        doc.nodes
-            .push(Node::new("n1", Widget::defaults("Faq").unwrap()));
-        let mut items = field_value(&doc, "n1", "items");
-        let list = items.as_array_mut().unwrap();
-        list.push(new_list_item(list, &[]));
-        list[3]["question"] = serde_json::json!("¿Nueva?");
-        set_field(&mut doc, "n1", "items", items);
-        assert!(
-            matches!(&doc.nodes[0].widget, Widget::Faq(f) if f.items.len() == 4 && f.items[3].question == "¿Nueva?")
-        );
-        assert_eq!(domain::validate(&doc), Ok(()));
-    }
-
-    #[test]
-    fn new_list_item_has_every_field() {
-        let fields = Widget::defaults("Testimonials").unwrap().fields();
-        let FieldKind::List { item, .. } = &fields[1].kind else {
-            panic!("se esperaba una lista");
-        };
-        let v = new_list_item(&[], item);
+        let mut node = Node::new("n1", Widget::defaults("Carousel").unwrap());
+        if let Widget::Carousel(c) = &mut node.widget {
+            c.slides[1].button_href = "javascript:alert(1)".into();
+        }
+        doc.nodes.push(node);
         assert_eq!(
-            v,
-            serde_json::json!({ "name": "", "text": "", "rating": 1 })
+            problems(&doc)[0].text,
+            "Carrusel › Diapositivas 2 › Enlace del botón: Escribí una dirección que empiece con https://, http:// o /."
         );
-    }
-
-    #[test]
-    fn resize_snaps_to_cells() {
-        // Columnas de 80 px de paso y filas de 96 px.
-        assert_eq!(resized(Edge::Right, 4, 2, 130.0, 500.0, 80.0), (6, 2));
-        assert_eq!(resized(Edge::Bottom, 4, 2, 500.0, -100.0, 80.0), (4, 1));
-        assert_eq!(resized(Edge::Corner, 4, 2, -50.0, 150.0, 80.0), (3, 4));
     }
 }

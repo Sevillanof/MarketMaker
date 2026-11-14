@@ -559,11 +559,15 @@ pub fn HoverGalleryWidget(props: HoverGalleryProps, editing: bool) -> impl IntoV
         <MaybeLink href=props.href.clone() editing class="card card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm">
             <div class="skeleton relative min-h-0 flex-1 rounded-none">
                 <figure class="hover-gallery absolute inset-0 h-full">
+                    // Las fotos que aparecen al pasar el mouse son variantes de
+                    // la primera: solo la primera se anuncia.
                     {props
                         .images
                         .into_iter()
-                        .map(|img| view! {
-                            <Picture src=img.image_url alt=title.clone() class="block h-full w-full object-cover"/>
+                        .enumerate()
+                        .map(|(i, img)| {
+                            let alt = if i == 0 { title.clone() } else { String::new() };
+                            view! { <Picture src=img.image_url alt class="block h-full w-full object-cover"/> }
                         })
                         .collect_view()}
                 </figure>
