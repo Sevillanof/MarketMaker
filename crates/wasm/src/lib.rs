@@ -1,3 +1,6 @@
+// El árbol de tipos de las vistas del editor supera el límite por defecto al compilar `wasm` en nativo (cargo test).
+#![recursion_limit = "256"]
+
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {
     use web::*;

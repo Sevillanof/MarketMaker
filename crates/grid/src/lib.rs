@@ -84,6 +84,8 @@ pub fn remove_node(nodes: &mut Vec<Node>, id: &str) {
 }
 
 /// Sube cada nodo, en orden `(y, x)`, mientras no choque con los ya ubicados.
+// La firma con `&mut Vec` es la del plan, igual que las demás operaciones.
+#[allow(clippy::ptr_arg)]
 pub fn compact(nodes: &mut Vec<Node>) {
     sort_by_position(nodes);
     let mut placed: Vec<Rect> = Vec::with_capacity(nodes.len());

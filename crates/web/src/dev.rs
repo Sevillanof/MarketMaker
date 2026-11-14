@@ -1,4 +1,6 @@
 //! Ruta de desarrollo `/dev/widgets`: cada widget en cada uno de sus tamaños.
+//! Solo responde en compilaciones de desarrollo (`cargo leptos watch`); en
+//! `--release` muestra "Página no encontrada".
 
 use domain::{Node, Pos, Product, Widget, WIDGET_TYPES};
 use leptos::prelude::*;
@@ -29,6 +31,9 @@ fn sample_products() -> Vec<Product> {
 
 #[component]
 pub fn DevWidgetsPage() -> impl IntoView {
+    if !cfg!(debug_assertions) {
+        return view! { "Página no encontrada." }.into_any();
+    }
     let products = sample_products();
     let first_id = products[0].id.clone();
     let ctx = RenderCtx {
@@ -81,4 +86,5 @@ pub fn DevWidgetsPage() -> impl IntoView {
                 .collect_view()}
         </div>
     }
+    .into_any()
 }

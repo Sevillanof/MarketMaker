@@ -55,7 +55,7 @@ pub fn format_price(cents: i64) -> String {
     let units = (cents / 100).to_string();
     let mut grouped = String::new();
     for (i, ch) in units.chars().enumerate() {
-        if i > 0 && (units.len() - i) % 3 == 0 {
+        if i > 0 && (units.len() - i).is_multiple_of(3) {
             grouped.push('.');
         }
         grouped.push(ch);
