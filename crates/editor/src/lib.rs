@@ -163,6 +163,30 @@ pub(crate) struct Ui {
     /// Texto para lectores de pantalla (región `role=status` invisible).
     announce: RwSignal<String>,
     pub preview: RwSignal<bool>,
+    /// Bloque nuevo que se está arrastrando desde la paleta.
+    pub new_drag: RwSignal<Option<NewDrag>>,
+    /// El último apretar y soltar fue un arrastre: el clic que lo sigue no
+    /// tiene que agregar el bloque al final.
+    pub swallow_click: StoredValue<bool>,
+}
+
+/// Arrastre de un bloque nuevo desde la paleta hacia el lienzo.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct NewDrag {
+    pub type_name: &'static str,
+    /// Dónde se apretó el botón, para distinguir un clic de un arrastre.
+    pub start_x: f64,
+    pub start_y: f64,
+    /// Posición actual del puntero.
+    pub x: f64,
+    pub y: f64,
+    /// Ya se movió lo suficiente para ser un arrastre y no un clic.
+    pub active: bool,
+}
+
+impl NewDrag {
+    /// Píxeles que hay que mover el puntero para que deje de ser un clic.
+    pub const THRESHOLD_PX: f64 = 5.0;
 }
 
 impl Ui {
@@ -216,14 +240,25 @@ impl Actions {
             .map(|i| {
                 let n = &nodes[i];
                 format!(
-                    "{}: bloque {} de {total}, ancho {} de 12, alto {}",
+                    "{}: bloque {} de {total}, {}",
                     n.widget.label(),
                     i + 1,
-                    n.size.w,
-                    n.size.h
+                    size_text(n.size)
                 )
             })
             .unwrap_or_default()
+    }
+
+    /// Agrega un bloque nuevo con su esquina superior izquierda en la celda
+    /// `(x, y)`: es lo que pasa al soltarlo desde la paleta.
+    pub fn add_at(&self, node: Node, x: i32, y: i32) {
+        let (id, label) = (node.id.clone(), node.widget.label());
+        self.state
+            .apply(|d| grid::insert_at(&mut d.nodes, node, x, y));
+        self.state.selected.set(Some(id.clone()));
+        self.ui
+            .announce(format!("Agregaste {label}. {}", self.position_text(&id)));
+        reveal_node(&id, true);
     }
 
     pub fn add(&self, type_name: &str) {
@@ -303,6 +338,26 @@ impl Actions {
         self.state.selected.set(Some(id.to_string()));
         request_animation_frame(|| focus_selector("#mk-inspector-title"));
     }
+}
+
+/// Tamaño de un bloque dicho en palabras: ancho en columnas y alto en píxeles.
+pub(crate) fn size_text(size: domain::Size) -> String {
+    format!(
+        "ancho {} de {} columnas, alto {} píxeles",
+        size.w,
+        domain::GRID_COLS,
+        u32::from(size.h) * u32::from(domain::ROW_PX)
+    )
+}
+
+/// Tamaño de un bloque en corto, para la etiqueta sobre el lienzo.
+pub(crate) fn size_badge(size: domain::Size) -> String {
+    format!(
+        "{}/{} · {} px",
+        size.w,
+        domain::GRID_COLS,
+        u32::from(size.h) * u32::from(domain::ROW_PX)
+    )
 }
 
 pub(crate) fn new_node_id(doc: &PageDoc) -> String {
@@ -431,6 +486,8 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         toast_seq: StoredValue::new(0),
         announce: RwSignal::new(String::new()),
         preview: RwSignal::new(false),
+        new_drag: RwSignal::new(None),
+        swallow_click: StoredValue::new(false),
     };
     let actions = Actions { state, ui };
     provide_context(state);
@@ -568,6 +625,8 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 return;
             }
             match key.as_str() {
+                // Cancelar el arrastre lo resuelve el lienzo.
+                "Escape" if ui.new_drag.with_untracked(Option::is_some) => {}
                 "Escape" if ui.preview.get_untracked() => ui.preview.set(false),
                 "Escape" => state.selected.set(None),
                 "Delete" | "Backspace" => {

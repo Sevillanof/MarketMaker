@@ -53,7 +53,7 @@ pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
     }
 }
 
-/// Variables CSS de posición de un nodo para `.mk-node`: `--x:1; --y:5; --w:12; --h:5`.
+/// Variables CSS de posición de un nodo para `.mk-node`: `--x:1; --y:49; --w:48; --h:60`.
 /// `--x` y `--y` suman 1 a `pos` porque las líneas de la grilla CSS empiezan en 1.
 pub fn node_style(node: &Node) -> String {
     format!(

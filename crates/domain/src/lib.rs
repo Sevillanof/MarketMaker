@@ -7,9 +7,15 @@ mod widgets;
 pub use widgets::*;
 
 /// Versión del formato del documento. La 1 guardaba el tamaño como el id de
-/// una opción fija (`"size": "full"`); la 2 guarda ancho y alto libres.
-pub const SCHEMA_VERSION: u32 = 2;
-pub const GRID_COLS: u8 = 12;
+/// una opción fija (`"size": "full"`); la 2 guarda ancho y alto libres en una
+/// grilla de 12 columnas y filas de 96 px; la 3, en una grilla fina de
+/// [`GRID_COLS`] columnas y filas de [`ROW_PX`] px.
+pub const SCHEMA_VERSION: u32 = 3;
+pub const GRID_COLS: u8 = 48;
+/// Alto de una fila de la grilla, en píxeles (el hueco entre bloques incluido).
+pub const ROW_PX: u16 = 8;
+/// Cuántas columnas y filas de la grilla fina equivalen a una celda del schema 2.
+pub const SCHEMA_2_SCALE: (u16, u16) = (4, 12);
 pub const MAX_NODES: usize = 100;
 pub const THEMES: &[&str] = &["light", "dark", "cupcake", "emerald", "corporate", "retro"];
 
@@ -78,7 +84,7 @@ pub struct Pos {
     pub y: u16,
 }
 
-/// Tamaño en celdas: `w` columnas (de 12) por `h` filas.
+/// Tamaño en celdas: `w` columnas (de [`GRID_COLS`]) por `h` filas de [`ROW_PX`] px.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Size {
     pub w: u8,
@@ -163,9 +169,11 @@ const LEGACY_SIZES: &[(&str, &str, u8, u8)] = &[
 /// Lee un documento guardado, de cualquier versión, y lo lleva a la actual.
 ///
 /// Los documentos del schema 1 traen `"size": "<opción>"`; se convierten a
-/// `{ "w", "h" }` con la tabla de las opciones de entonces.
+/// `{ "w", "h" }` con la tabla de las opciones de entonces. Los del schema 2
+/// usan celdas grandes (12 columnas, filas de 96 px) y se pasan a la grilla
+/// fina multiplicando por [`SCHEMA_2_SCALE`], así se ven igual que antes.
 pub fn parse_doc(mut value: serde_json::Value) -> Result<PageDoc, String> {
-    let schema = value.get("schema").and_then(|s| s.as_u64()).unwrap_or(0);
+    let mut schema = value.get("schema").and_then(|s| s.as_u64()).unwrap_or(0);
     if schema == 1 {
         if let Some(nodes) = value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
             for node in nodes {
@@ -182,13 +190,36 @@ pub fn parse_doc(mut value: serde_json::Value) -> Result<PageDoc, String> {
                     .find(|(lt, lp, _, _)| *lt == t && *lp == preset)
                     .map(|(_, _, w, h)| (*w, *h))
                     .or_else(|| {
+                        // El tamaño por defecto actual, en celdas del schema 2.
                         Widget::defaults(t).map(|w| {
                             let d = w.limits().default;
-                            (d.w, d.h)
+                            let (sx, sy) = SCHEMA_2_SCALE;
+                            ((u16::from(d.w) / sx) as u8, (u16::from(d.h) / sy) as u8)
                         })
                     })
                     .unwrap_or((12, 2));
                 node["size"] = serde_json::json!({ "w": w, "h": h });
+            }
+        }
+        schema = 2;
+    }
+    if schema == 2 {
+        let (sx, sy) = SCHEMA_2_SCALE;
+        let scale = |v: &mut serde_json::Value, key: &str, k: u16| {
+            if let Some(n) = v.get(key).and_then(|n| n.as_u64()) {
+                v[key] = serde_json::json!(n * u64::from(k));
+            }
+        };
+        if let Some(nodes) = value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+            for node in nodes {
+                if let Some(pos) = node.get_mut("pos") {
+                    scale(pos, "x", sx);
+                    scale(pos, "y", sy);
+                }
+                if let Some(size) = node.get_mut("size") {
+                    scale(size, "w", sx);
+                    scale(size, "h", sy);
+                }
             }
         }
         value["schema"] = serde_json::json!(SCHEMA_VERSION);
@@ -414,16 +445,16 @@ mod tests {
     use super::*;
 
     const EXAMPLE: &str = r#"{
-      "schema": 2,
+      "schema": 3,
       "theme": "light",
       "nodes": [
         { "id": "n1", "type": "Banner",
           "props": { "title": "Ofertas de la semana", "subtitle": "", "image_url": "https://example.com/hero.jpg",
                      "button_label": "", "button_href": "" },
-          "pos": { "x": 0, "y": 0 }, "size": { "w": 12, "h": 4 } },
+          "pos": { "x": 0, "y": 0 }, "size": { "w": 48, "h": 48 } },
         { "id": "n2", "type": "ProductGrid",
           "props": { "title": "Destacados", "limit": 8 },
-          "pos": { "x": 0, "y": 4 }, "size": { "w": 12, "h": 5 } }
+          "pos": { "x": 0, "y": 48 }, "size": { "w": 48, "h": 60 } }
       ]
     }"#;
 
@@ -479,8 +510,10 @@ mod tests {
         });
         let doc = parse_doc(v1).unwrap();
         assert_eq!(doc.schema, SCHEMA_VERSION);
-        assert_eq!(doc.nodes[0].size, Size { w: 6, h: 4 });
-        assert_eq!(doc.nodes[1].size, Size { w: 6, h: 5 });
+        assert_eq!(doc.nodes[0].size, Size { w: 24, h: 48 });
+        assert_eq!(doc.nodes[1].size, Size { w: 24, h: 60 });
+        assert_eq!(doc.nodes[1].pos, Pos { x: 24, y: 0 });
+        assert_eq!(doc.nodes[2].pos, Pos { x: 0, y: 60 });
         assert_eq!(
             doc.nodes[2].size,
             Widget::defaults("Text").unwrap().limits().default
@@ -488,6 +521,32 @@ mod tests {
         assert_eq!(validate(&doc), Ok(()));
         // Un documento actual pasa sin cambios.
         assert_eq!(parse_doc(serde_json::to_value(&doc).unwrap()), Ok(doc));
+    }
+
+    #[test]
+    fn schema_2_docs_are_scaled_to_the_fine_grid() {
+        let v2 = serde_json::json!({
+            "schema": 2,
+            "theme": "light",
+            "nodes": [
+                { "id": "n1", "type": "Text",
+                  "props": { "heading": "", "body": "", "align": "left" },
+                  "pos": { "x": 0, "y": 0 }, "size": { "w": 6, "h": 2 } },
+                { "id": "n2", "type": "Text",
+                  "props": { "heading": "", "body": "", "align": "left" },
+                  "pos": { "x": 6, "y": 0 }, "size": { "w": 4, "h": 3 } },
+                { "id": "n3", "type": "Text",
+                  "props": { "heading": "", "body": "", "align": "left" },
+                  "pos": { "x": 0, "y": 3 }, "size": { "w": 12, "h": 1 } }
+            ]
+        });
+        let doc = parse_doc(v2).unwrap();
+        assert_eq!(doc.schema, SCHEMA_VERSION);
+        assert_eq!(doc.nodes[0].size, Size { w: 24, h: 24 });
+        assert_eq!(doc.nodes[1].pos, Pos { x: 24, y: 0 });
+        assert_eq!(doc.nodes[1].size, Size { w: 16, h: 36 });
+        assert_eq!(doc.nodes[2].pos, Pos { x: 0, y: 36 });
+        assert_eq!(doc.nodes[2].size, Size { w: 48, h: 12 });
     }
 
     #[test]
@@ -513,8 +572,8 @@ mod tests {
     #[test]
     fn clamp_respects_limits() {
         let l = Widget::defaults("Navbar").unwrap().limits();
-        assert_eq!(l.clamp(1, 9), Size { w: 6, h: 2 });
-        assert_eq!(l.clamp(20, 0), Size { w: 12, h: 1 });
+        assert_eq!(l.clamp(1, 90), Size { w: 24, h: 24 });
+        assert_eq!(l.clamp(80, 0), Size { w: 48, h: 12 });
     }
 
     #[test]
@@ -535,7 +594,7 @@ mod tests {
     fn rejects_too_many_nodes() {
         let doc = PageDoc {
             nodes: (0..=MAX_NODES as u16)
-                .map(|i| node(&format!("n{i}"), "Text", 0, i * 2))
+                .map(|i| node(&format!("n{i}"), "Text", 0, i * 24))
                 .collect(),
             ..PageDoc::default()
         };
@@ -559,9 +618,9 @@ mod tests {
     #[test]
     fn rejects_size_outside_limits() {
         let mut doc = example();
-        doc.nodes[0].size = Size { w: 2, h: 4 };
+        doc.nodes[0].size = Size { w: 8, h: 48 };
         assert_invalid(&doc, "límites");
-        doc.nodes[0].size = Size { w: 12, h: 9 };
+        doc.nodes[0].size = Size { w: 48, h: 97 };
         assert_invalid(&doc, "límites");
     }
 
@@ -575,7 +634,7 @@ mod tests {
     #[test]
     fn rejects_overlapping_nodes() {
         let mut doc = example();
-        doc.nodes[1].pos.y = 3;
+        doc.nodes[1].pos.y = 47;
         assert_invalid(&doc, "superponen");
     }
 

@@ -1,12 +1,17 @@
-//! Matemática de la grilla de 12 columnas. Funciones puras, sin Leptos.
+//! Matemática de la grilla fina ([`GRID_COLS`] columnas, filas de
+//! [`domain::ROW_PX`] px). Funciones puras, sin Leptos.
 //!
 //! Después de cualquier operación se cumple siempre: ningún nodo se
-//! superpone, todos caben en las 12 columnas y, con [`COMPACT`] activo,
+//! superpone, todos caben en las columnas y, con [`COMPACT`] activo,
 //! ninguno puede subir más.
 
 use domain::{Node, GRID_COLS};
 
-pub const ROW_HEIGHT_PX: f64 = 80.0;
+/// Alto de una fila en píxeles.
+pub const ROW_PX: f64 = domain::ROW_PX as f64;
+/// Separación visible entre bloques. No es un hueco de la grilla: cada bloque
+/// deja la mitad como margen alrededor (ver `.mk-node` en el CSS), así la
+/// grilla no tiene huecos y el paso de columnas y filas es parejo.
 pub const GAP_PX: f64 = 16.0;
 /// Con `false` se desactiva la compactación y se permiten huecos verticales.
 pub const COMPACT: bool = true;
@@ -105,6 +110,49 @@ pub fn move_down(nodes: &mut Vec<Node>, id: &str) {
     move_node(nodes, &next_id, x, y);
 }
 
+/// Inserta `node` con su esquina superior izquierda en la celda `(x, y)`,
+/// limitada a la grilla, y empuja a los que pise. Es lo que pasa al soltar un
+/// bloque de la paleta sobre el lienzo.
+pub fn insert_at(nodes: &mut Vec<Node>, node: Node, x: i32, y: i32) {
+    let id = node.id.clone();
+    nodes.push(node);
+    move_node(nodes, &id, x, y);
+}
+
+/// Dónde soltar un bloque nuevo de `w` × `h` que se arrastra con la esquina
+/// superior izquierda en `(x, y)`. Si cae sobre otro bloque, se decide por
+/// la mitad: en la de arriba el nuevo toma su lugar (y el otro baja); en la
+/// de abajo, el nuevo va debajo de él. Así no salta arriba de todo un bloque
+/// soltado sobre la parte de abajo de uno ancho.
+pub fn drop_target(nodes: &[Node], w: u8, h: u8, x: i32, y: i32) -> (i32, i32) {
+    let w = w.clamp(1, GRID_COLS);
+    let x = x.clamp(0, i32::from(GRID_COLS - w));
+    let mut y = y.clamp(0, i32::from(u16::MAX));
+    for _ in 0..=nodes.len() {
+        let r = Rect {
+            x: x as u8,
+            y: y as u16,
+            w,
+            h: h.max(1),
+        };
+        let Some(hit) = nodes
+            .iter()
+            .map(rect_of)
+            .filter(|n| collides(&r, n))
+            .min_by_key(|n| n.y)
+        else {
+            break;
+        };
+        if y >= i32::from(hit.y) + i32::from(hit.h) / 2 {
+            y = i32::from(hit.bottom());
+        } else {
+            y = i32::from(hit.y);
+            break;
+        }
+    }
+    (x, y)
+}
+
 /// Inserta `node` justo debajo del nodo `after_id` y empuja a los demás.
 pub fn insert_below(nodes: &mut Vec<Node>, after_id: &str, mut node: Node) {
     let Some(r) = nodes.iter().find(|n| n.id == after_id).map(rect_of) else {
@@ -133,25 +181,32 @@ pub fn compact(nodes: &mut Vec<Node>) {
     let mut placed: Vec<Rect> = Vec::with_capacity(nodes.len());
     for node in nodes.iter_mut() {
         let mut r = rect_of(node);
-        while r.y > 0 {
-            let up = Rect { y: r.y - 1, ..r };
-            if placed.iter().any(|p| collides(&up, p)) {
-                break;
-            }
-            r = up;
+        // Sube hasta apoyarse en el más bajo de los que tiene encima. Si ya
+        // pisa a alguno (no debería), se queda donde está.
+        if !placed.iter().any(|p| collides(&r, p)) {
+            r.y = placed
+                .iter()
+                .filter(|p| p.x < r.x + r.w && r.x < p.x + p.w && p.bottom() <= r.y)
+                .map(Rect::bottom)
+                .max()
+                .unwrap_or(0);
         }
         node.pos.y = r.y;
         placed.push(r);
     }
 }
 
-/// Celda que corresponde a un punto en píxeles relativo a la esquina
-/// superior izquierda de la grilla.
+/// Ancho de una columna en píxeles para una grilla de `container_width` px.
+pub fn col_pitch(container_width: f64) -> f64 {
+    (container_width / f64::from(GRID_COLS)).max(1.0)
+}
+
+/// Celda más cercana a un punto en píxeles relativo a la esquina superior
+/// izquierda de la grilla: el imán redondea a la línea de la grilla más
+/// próxima en vez de truncar.
 pub fn cell_from_point(px: f64, py: f64, container_width: f64) -> (i32, i32) {
-    let cols = f64::from(GRID_COLS);
-    let col_width = ((container_width - GAP_PX * (cols - 1.0)) / cols).max(1.0);
-    let x = (px / (col_width + GAP_PX)).floor() as i32;
-    let y = (py / (ROW_HEIGHT_PX + GAP_PX)).floor() as i32;
+    let x = (px / col_pitch(container_width)).round() as i32;
+    let y = (py / ROW_PX).round() as i32;
     (x, y)
 }
 
@@ -199,7 +254,13 @@ mod tests {
     use super::*;
     use domain::{Pos, Size, Widget, WIDGET_TYPES};
 
-    /// Nodo con el tamaño de una de las opciones fijas de antes.
+    /// Columnas y filas de la grilla fina por cada celda de las de antes. Los
+    /// casos se escriben en celdas de antes, que se leen mejor.
+    const SX: u8 = 4;
+    const SY: u16 = 12;
+
+    /// Nodo con el tamaño de una de las opciones fijas de antes, en `(x, y)`
+    /// celdas de antes.
     fn node(id: &str, type_name: &str, size: &str, x: u8, y: u16) -> Node {
         let (w, h) = match (type_name, size) {
             ("Text", "small") => (4, 2),
@@ -210,14 +271,26 @@ mod tests {
             _ => panic!("tamaño de prueba desconocido"),
         };
         let mut n = Node::new(id, Widget::defaults(type_name).unwrap());
-        n.pos = Pos { x, y };
-        n.size = Size { w, h };
+        n.pos = Pos {
+            x: x * SX,
+            y: y * SY,
+        };
+        n.size = Size {
+            w: w * SX,
+            h: h * SY as u8,
+        };
         n
     }
 
+    /// Posición en celdas de antes.
     fn pos(nodes: &[Node], id: &str) -> (u8, u16) {
         let n = nodes.iter().find(|n| n.id == id).unwrap();
-        (n.pos.x, n.pos.y)
+        (n.pos.x / SX, n.pos.y / SY)
+    }
+
+    /// `(x, y)` en celdas de antes, para llamar a las operaciones.
+    fn at(x: i32, y: i32) -> (i32, i32) {
+        (x * i32::from(SX), y * i32::from(SY))
     }
 
     fn assert_invariants(nodes: &[Node]) {
@@ -249,7 +322,8 @@ mod tests {
             node("a", "Text", "small", 0, 0),
             node("b", "Text", "small", 4, 0),
         ];
-        move_node(&mut nodes, "a", 4, 0);
+        let (x, y) = at(4, 0);
+        move_node(&mut nodes, "a", x, y);
         assert_eq!(pos(&nodes, "a"), (4, 0));
         assert_eq!(pos(&nodes, "b"), (4, 2));
         assert_invariants(&nodes);
@@ -276,10 +350,10 @@ mod tests {
         let mut nodes = vec![node("a", "Text", "small", 4, 0)];
         move_node(&mut nodes, "a", -3, 0);
         assert_eq!(pos(&nodes, "a"), (0, 0));
-        move_node(&mut nodes, "a", 11, 0);
-        assert_eq!(pos(&nodes, "a"), (12 - 4, 0));
-        move_node(&mut nodes, "a", 3, -5);
-        assert_eq!(pos(&nodes, "a"), (3, 0));
+        move_node(&mut nodes, "a", 47, 0);
+        assert_eq!(nodes[0].pos.x, GRID_COLS - 16);
+        move_node(&mut nodes, "a", 13, -5);
+        assert_eq!(nodes[0].pos, Pos { x: 13, y: 0 });
     }
 
     #[test]
@@ -298,21 +372,26 @@ mod tests {
     #[test]
     fn wider_size_on_the_right_edge_fixes_x() {
         let mut nodes = vec![node("a", "Text", "small", 8, 0)];
-        resize_node(&mut nodes, "a", 6, 3);
+        let (w, h) = at(6, 3);
+        resize_node(&mut nodes, "a", w, h);
         assert_eq!(pos(&nodes, "a"), (6, 0));
-        resize_node(&mut nodes, "a", 12, 2);
+        let (w, h) = at(12, 2);
+        resize_node(&mut nodes, "a", w, h);
         assert_eq!(pos(&nodes, "a"), (0, 0));
-        assert_eq!(nodes[0].size, Size { w: 12, h: 2 });
+        assert_eq!(nodes[0].size, Size { w: 48, h: 24 });
         assert_invariants(&nodes);
     }
 
     #[test]
     fn resize_is_clamped_to_widget_limits() {
         let mut nodes = vec![node("a", "FeaturedProduct", "small", 0, 0)];
-        resize_node(&mut nodes, "a", 1, 20);
-        assert_eq!(nodes[0].size, Size { w: 2, h: 8 });
-        resize_node(&mut nodes, "a", 12, 0);
-        assert_eq!(nodes[0].size, Size { w: 6, h: 3 });
+        resize_node(&mut nodes, "a", 1, 200);
+        assert_eq!(nodes[0].size, Size { w: 8, h: 96 });
+        resize_node(&mut nodes, "a", 48, 0);
+        assert_eq!(nodes[0].size, Size { w: 24, h: 36 });
+        // La grilla fina deja tamaños intermedios.
+        resize_node(&mut nodes, "a", 13, 41);
+        assert_eq!(nodes[0].size, Size { w: 13, h: 41 });
     }
 
     #[test]
@@ -321,7 +400,8 @@ mod tests {
             node("a", "Text", "full", 0, 0),
             node("b", "Text", "full", 0, 2),
         ];
-        resize_node(&mut nodes, "a", 12, 5);
+        let (w, h) = at(12, 5);
+        resize_node(&mut nodes, "a", w, h);
         assert_eq!(pos(&nodes, "b"), (0, 5));
         assert_invariants(&nodes);
     }
@@ -365,15 +445,15 @@ mod tests {
                 }
                 1 => {
                     let id = nodes[next(nodes.len() as u64) as usize].id.clone();
-                    let x = next(16) as i32 - 2;
-                    let y = next(30) as i32 - 2;
+                    let x = next(56) as i32 - 4;
+                    let y = next(300) as i32 - 4;
                     move_node(&mut nodes, &id, x, y);
                 }
                 2 => {
                     let i = next(nodes.len() as u64) as usize;
                     let id = nodes[i].id.clone();
-                    let w = next(16) as i32 - 2;
-                    let h = next(14) as i32 - 2;
+                    let w = next(56) as i32 - 4;
+                    let h = next(160) as i32 - 4;
                     resize_node(&mut nodes, &id, w, h);
                     let l = nodes.iter().find(|n| n.id == id).unwrap();
                     assert!(l.widget.limits().contains(l.size));
@@ -388,11 +468,51 @@ mod tests {
     }
 
     #[test]
-    fn cell_from_point_maps_pixels_to_cells() {
-        // 12 columnas de 64 px + 11 huecos de 16 px = 944 px.
-        assert_eq!(cell_from_point(0.0, 0.0, 944.0), (0, 0));
-        assert_eq!(cell_from_point(80.0, 96.0, 944.0), (1, 1));
-        assert_eq!(cell_from_point(-10.0, -10.0, 944.0), (-1, -1));
+    fn cell_from_point_snaps_to_the_nearest_line() {
+        // 48 columnas de 20 px = 960 px; filas de 8 px.
+        assert_eq!(cell_from_point(0.0, 0.0, 960.0), (0, 0));
+        assert_eq!(cell_from_point(29.0, 11.0, 960.0), (1, 1));
+        assert_eq!(cell_from_point(31.0, 13.0, 960.0), (2, 2));
+        assert_eq!(cell_from_point(-12.0, -6.0, 960.0), (-1, -1));
+    }
+
+    #[test]
+    fn drop_target_decides_by_the_half_of_the_block_below() {
+        let nodes = vec![
+            node("a", "Banner", "full", 0, 0),
+            node("b", "Text", "full", 0, 4),
+        ];
+        let (w, h) = (16, 24);
+        // Mitad de arriba del banner (filas 0 a 47): toma su lugar.
+        assert_eq!(drop_target(&nodes, w, h, 8, 10), (8, 0));
+        // Mitad de abajo del banner: queda debajo; y como ahí cae en la mitad
+        // de arriba de "b", toma el lugar de "b".
+        assert_eq!(drop_target(&nodes, w, h, 8, 30), (8, 48));
+        // Mitad de abajo de "b": después de todo.
+        assert_eq!(drop_target(&nodes, w, h, 8, 65), (8, 72));
+        // Contra el borde derecho y por encima de la grilla.
+        assert_eq!(drop_target(&nodes, w, h, 60, -9), (32, 0));
+    }
+
+    #[test]
+    fn insert_at_drops_the_node_where_it_is_released() {
+        let mut nodes = vec![
+            node("a", "Text", "full", 0, 0),
+            node("b", "Text", "full", 0, 2),
+        ];
+        // Sobre la mitad derecha de "b": "b" baja y el nuevo toma su lugar.
+        let (x, y) = at(6, 2);
+        insert_at(&mut nodes, node("c", "Text", "small", 0, 0), x, y);
+        assert_eq!(pos(&nodes, "c"), (6, 2));
+        assert_eq!(pos(&nodes, "b"), (0, 4));
+        assert_eq!(order(&nodes), ["a", "c", "b"]);
+        // Muy abajo, sin nada en medio: sube hasta apoyarse en el último.
+        insert_at(&mut nodes, node("d", "Text", "small", 0, 0), 0, 5000);
+        assert_eq!(pos(&nodes, "d"), (0, 6));
+        // Contra el borde derecho: se corre para que entre.
+        insert_at(&mut nodes, node("e", "Text", "small", 0, 0), 47, 0);
+        assert_eq!(nodes.iter().find(|n| n.id == "e").unwrap().pos.x, 32);
+        assert_invariants(&nodes);
     }
 
     #[test]

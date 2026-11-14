@@ -1,6 +1,6 @@
 //! Inspector: tamaño, orden y campos del bloque elegido.
 
-use domain::{Field, Product, Widget};
+use domain::{Field, Product, Widget, GRID_COLS, ROW_PX};
 use leptos::prelude::*;
 
 use crate::fields::PropField;
@@ -8,14 +8,24 @@ use crate::icons::Icon;
 use crate::palette::block_info;
 use crate::{Actions, EditorState};
 
-/// Anchos con nombre, en columnas de 12.
+/// Anchos con nombre, en columnas de 48.
 const WIDTHS: &[(u8, &str)] = &[
-    (12, "Completo"),
-    (8, "2/3"),
-    (6, "Mitad"),
-    (4, "1/3"),
-    (3, "1/4"),
+    (48, "Completo"),
+    (32, "2/3"),
+    (24, "Mitad"),
+    (16, "1/3"),
+    (12, "1/4"),
 ];
+
+/// Alto en píxeles de `h` filas.
+fn rows_to_px(h: u8) -> u32 {
+    u32::from(h) * u32::from(ROW_PX)
+}
+
+/// Filas más cercanas a `px` píxeles.
+fn px_to_rows(px: f64) -> i32 {
+    (px / f64::from(ROW_PX)).round() as i32
+}
 
 #[component]
 pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
@@ -154,24 +164,25 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                             }
                         }
                     />
-                    <span id="mk-size-w-help" class="text-xs text-base-content/75">{format!("De {} a {} columnas (12 = todo el ancho)", limits.min_w, limits.max_w)}</span>
+                    <span id="mk-size-w-help" class="text-xs text-base-content/75">{format!("De {} a {} columnas ({GRID_COLS} = todo el ancho)", limits.min_w, limits.max_w)}</span>
                 </label>
                 <label class="flex flex-col gap-1">
-                    <span class="text-sm font-medium">"Alto"</span>
+                    <span class="text-sm font-medium">"Alto (px)"</span>
                     <input
                         type="number"
                         class="input input-sm w-full"
-                        min=limits.min_h
-                        max=limits.max_h
+                        min=rows_to_px(limits.min_h)
+                        max=rows_to_px(limits.max_h)
+                        step=ROW_PX
                         aria-describedby="mk-size-h-help"
-                        prop:value=move || size().h.to_string()
+                        prop:value=move || rows_to_px(size().h).to_string()
                         on:change=move |ev| {
-                            if let Ok(h) = event_target_value(&ev).parse::<i32>() {
-                                resize(i32::from(size().w), h);
+                            if let Ok(px) = event_target_value(&ev).parse::<f64>() {
+                                resize(i32::from(size().w), px_to_rows(px));
                             }
                         }
                     />
-                    <span id="mk-size-h-help" class="text-xs text-base-content/75">{format!("De {} a {} filas de 80 px", limits.min_h, limits.max_h)}</span>
+                    <span id="mk-size-h-help" class="text-xs text-base-content/75">{format!("De {} a {} píxeles, de {ROW_PX} en {ROW_PX}", rows_to_px(limits.min_h), rows_to_px(limits.max_h))}</span>
                 </label>
             </div>
             {basic
