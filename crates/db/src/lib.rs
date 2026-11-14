@@ -1,1 +1,100 @@
-//! Crate `db`: se completa en los pasos siguientes del plan.
+//! Consultas SQLx. Solo servidor: se usa desde `web` (feature `ssr`) y `server`.
+//!
+//! Se usa `sqlx::query_as` sin las macros verificadas en compilación, para
+//! que compilar no dependa de tener la base levantada.
+
+use domain::Product;
+use sqlx::{FromRow, PgExecutor, PgPool};
+use uuid::Uuid;
+
+pub use sqlx::PgPool as Pool;
+
+#[derive(Debug, Clone, FromRow)]
+pub struct Tenant {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+}
+
+/// La versión vigente de una página. `version` es 0 si la página todavía no
+/// tiene ninguna versión guardada.
+#[derive(Debug, Clone, FromRow)]
+pub struct CurrentPage {
+    pub page_id: Uuid,
+    pub version: i32,
+    pub doc: Option<serde_json::Value>,
+}
+
+pub async fn get_tenant_by_slug(pool: &PgPool, slug: &str) -> sqlx::Result<Option<Tenant>> {
+    sqlx::query_as::<_, Tenant>("SELECT id, slug, name FROM tenants WHERE slug = $1")
+        .bind(slug)
+        .fetch_optional(pool)
+        .await
+}
+
+pub async fn get_current_page(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    slug: &str,
+) -> sqlx::Result<Option<CurrentPage>> {
+    sqlx::query_as::<_, CurrentPage>(
+        "SELECT p.id AS page_id, COALESCE(v.number, 0) AS version, v.doc
+         FROM pages p
+         LEFT JOIN page_versions v ON v.id = p.current_version_id
+         WHERE p.tenant_id = $1 AND p.slug = $2",
+    )
+    .bind(tenant_id)
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Productos del tenant por orden de creación.
+pub async fn list_products(pool: &PgPool, tenant_id: Uuid) -> sqlx::Result<Vec<Product>> {
+    let rows = sqlx::query_as::<_, (Uuid, String, i64, String)>(
+        "SELECT id, name, price_cents, image_url
+         FROM products
+         WHERE tenant_id = $1
+         ORDER BY created_at, id",
+    )
+    .bind(tenant_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, name, price_cents, image_url)| Product {
+            id: id.to_string(),
+            name,
+            price_cents,
+            image_url,
+        })
+        .collect())
+}
+
+/// Inserta la versión `number` de la página y la marca como vigente.
+pub async fn save_page_version<'e, E>(
+    exec: E,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    number: i32,
+    doc: &serde_json::Value,
+) -> sqlx::Result<()>
+where
+    E: PgExecutor<'e>,
+{
+    sqlx::query(
+        "WITH v AS (
+           INSERT INTO page_versions (page_id, tenant_id, number, doc)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id
+         )
+         UPDATE pages SET current_version_id = (SELECT id FROM v) WHERE id = $1",
+    )
+    .bind(page_id)
+    .bind(tenant_id)
+    .bind(number)
+    .bind(doc)
+    .execute(exec)
+    .await?;
+    Ok(())
+}
