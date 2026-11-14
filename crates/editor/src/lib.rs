@@ -5,6 +5,8 @@
 //! o con teclado, los errores se explican junto al campo y cada cambio se
 //! puede deshacer.
 
+#![recursion_limit = "512"]
+
 mod canvas;
 mod fields;
 mod icons;
@@ -453,6 +455,12 @@ pub(crate) fn reveal_node(id: &str, flash: bool) {
             });
         }
         if flash {
+            // El resalte va sobre la caja del bloque, no sobre su celda.
+            let el = el
+                .query_selector(".mk-anode-box")
+                .ok()
+                .flatten()
+                .unwrap_or(el);
             _ = el.class_list().add_1("mk-flash");
             set_timeout(
                 move || _ = el.class_list().remove_1("mk-flash"),

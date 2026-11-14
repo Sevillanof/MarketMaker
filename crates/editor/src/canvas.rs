@@ -2,15 +2,26 @@
 //! mouse (arrastrando) o con el teclado, y cada uno tiene una barra de
 //! acciones para hacer lo mismo sin arrastrar.
 
-use domain::{Node, Product, Widget};
+use domain::{Node, Product, Widget, GRID_COLS, ROW_PX};
 use leptos::ev::{KeyboardEvent, PointerEvent};
 use leptos::html::{Div, Section};
 use leptos::prelude::*;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use widgets::{node_style, render_widget, RenderCtx};
 
 use crate::icons::Icon;
 use crate::{new_node_id, size_badge, size_text, Actions, EditorState, NewDrag, Ui, WELCOME_KEY};
+
+/// Ancho, en píxeles, con el que la tienda dibuja el contenido de la página
+/// (el `max-w-6xl` de la tienda menos su relleno). El lienzo dibuja siempre a
+/// este ancho y lo achica con `transform: scale` si no entra, así cada bloque
+/// se ve en el editor igual que en la tienda publicada.
+const DESIGN_W: f64 = 1120.0;
+/// Margen de cada bloque dentro de su celda: la mitad de la separación.
+const MARGIN_PX: f64 = grid::GAP_PX / 2.0;
+/// Alto mínimo del lienzo, en filas.
+const MIN_ROWS: u32 = 48;
 
 /// Distancia al borde del lienzo, en px, en la que arrastrar hace scroll.
 const AUTOSCROLL_EDGE_PX: f64 = 48.0;
@@ -31,6 +42,17 @@ fn autoscroll(section: &web_sys::Element, client_y: f64) {
     section.set_scroll_top(section.scroll_top() + step);
 }
 
+/// Escala con la que se dibuja la grilla: píxeles de pantalla por píxel de
+/// diseño. Sale del tamaño real de la grilla, así sirve con cualquier zoom.
+fn scale_of(grid: &web_sys::HtmlElement, rect: &web_sys::DomRect) -> f64 {
+    let layout = f64::from(grid.offset_width());
+    if layout > 0.0 {
+        (rect.width() / layout).max(0.01)
+    } else {
+        1.0
+    }
+}
+
 /// Celda donde queda la esquina superior izquierda de un bloque nuevo de
 /// `w` columnas soltado con el puntero en `(client_x, client_y)`: centrado
 /// a lo ancho bajo el puntero y con el borde de arriba apenas por encima.
@@ -38,12 +60,14 @@ pub(crate) fn drop_cell(
     client_x: f64,
     client_y: f64,
     grid: &web_sys::DomRect,
+    scale: f64,
     w: u8,
 ) -> (i32, i32) {
-    let pitch = grid::col_pitch(grid.width());
-    let px = client_x - grid.left() - f64::from(w) * pitch / 2.0;
-    let py = client_y - grid.top() - grid::GAP_PX;
-    grid::cell_from_point(px, py, grid.width())
+    let width = grid.width() / scale;
+    let pitch = grid::col_pitch(width);
+    let px = (client_x - grid.left()) / scale - f64::from(w) * pitch / 2.0;
+    let py = (client_y - grid.top()) / scale - grid::GAP_PX;
+    grid::cell_from_point(px, py, width)
 }
 
 /// Qué borde se arrastra al redimensionar.
@@ -60,7 +84,12 @@ pub(crate) enum Edge {
 #[derive(Clone, Debug, PartialEq)]
 enum DragKind {
     /// Mover. Distancia del puntero a la esquina superior izquierda del nodo.
-    Move { offset_x: f64, offset_y: f64 },
+    Move {
+        offset_x: f64,
+        offset_y: f64,
+        start_x: f64,
+        start_y: f64,
+    },
     /// Redimensionar desde `edge`. Puntero y tamaño al empezar.
     Resize {
         edge: Edge,
@@ -79,17 +108,18 @@ struct Drag {
     moved: bool,
 }
 
-/// Nuevo `(w, h)` al arrastrar `edge` `dx`, `dy` píxeles, con imán a la grilla.
+/// Nuevo `(w, h)` al arrastrar `edge` `dx`, `dy` píxeles de pantalla, con
+/// imán a la grilla. `col_pitch` y `row_pitch` son lo que miden una columna y
+/// una fila en pantalla.
 pub(crate) fn resized(
     edge: Edge,
     start_w: u8,
     start_h: u8,
-    dx: f64,
-    dy: f64,
-    col_pitch: f64,
+    (dx, dy): (f64, f64),
+    (col_pitch, row_pitch): (f64, f64),
 ) -> (i32, i32) {
     let dw = (dx / col_pitch.max(1.0)).round() as i32;
-    let dh = (dy / grid::ROW_PX).round() as i32;
+    let dh = (dy / row_pitch.max(1.0)).round() as i32;
     let (w, h) = (i32::from(start_w), i32::from(start_h));
     match edge {
         Edge::Right => (w + dw, h),
@@ -131,12 +161,39 @@ pub(crate) fn Canvas(
     let ui = expect_context::<Ui>();
     let actions = expect_context::<Actions>();
     let grid_ref = NodeRef::<Div>::new();
+    let stage_ref = NodeRef::<Div>::new();
     let section_ref = NodeRef::<Section>::new();
     let drag = RwSignal::new(None::<Drag>);
     // Vista previa del arrastre: los nodos como quedarían al soltar.
     let preview = RwSignal::new(None::<Vec<Node>>);
     // Bloque nuevo que se arrastra desde la paleta, con el id que va a tener.
     let incoming = RwSignal::new(None::<Node>);
+    // Esquina del bloque que se arrastra con el mouse, en píxeles de diseño:
+    // sigue al puntero sin imán, y el lugar donde va a quedar se ve aparte.
+    let drag_pos = RwSignal::new(None::<(f64, f64)>);
+    // Píxeles de pantalla por píxel de diseño (ver `DESIGN_W`).
+    let scale = RwSignal::new(1.0_f64);
+
+    // Mide el lienzo y lo achica si no entra al ancho de diseño.
+    Effect::new(move |_| {
+        let Some(stage) = stage_ref.get() else {
+            return;
+        };
+        let measure = move || {
+            if let Some(stage) = stage_ref.get_untracked() {
+                let s = (f64::from(stage.client_width()) / DESIGN_W).clamp(0.3, 1.0);
+                if (scale.get_untracked() - s).abs() > 0.001 {
+                    scale.set(s);
+                }
+            }
+        };
+        measure();
+        let cb = Closure::<dyn FnMut()>::new(measure);
+        if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
+            observer.observe(&stage);
+        }
+        cb.forget();
+    });
 
     // Arrastre desde la paleta: el puntero no está capturado por nadie, así
     // que se sigue desde la ventana.
@@ -186,7 +243,8 @@ pub(crate) fn Canvas(
                 return;
             }
             let g = grid_el.get_bounding_client_rect();
-            let (cx, cy) = drop_cell(x, y, &g, node.size.w);
+            let k = scale_of(&grid_el, &g);
+            let (cx, cy) = drop_cell(x, y, &g, k, node.size.w);
             let mut nodes = state.doc.with_untracked(|d| d.nodes.clone());
             let (cx, cy) = grid::drop_target(&nodes, node.size.w, node.size.h, cx, cy);
             grid::insert_at(&mut nodes, node, cx, cy);
@@ -252,11 +310,14 @@ pub(crate) fn Canvas(
         if let Some(grid_el) = grid_ref.get_untracked() {
             _ = grid_el.set_pointer_capture(ev.pointer_id());
         }
+        let (x, y) = (f64::from(ev.client_x()), f64::from(ev.client_y()));
         drag.set(Some(Drag {
             id,
             kind: DragKind::Move {
-                offset_x: f64::from(ev.client_x()) - rect.left(),
-                offset_y: f64::from(ev.client_y()) - rect.top(),
+                offset_x: x - rect.left(),
+                offset_y: y - rect.top(),
+                start_x: x,
+                start_y: y,
             },
             moved: false,
         }));
@@ -298,16 +359,26 @@ pub(crate) fn Canvas(
             autoscroll(&section, f64::from(ev.client_y()));
         }
         let g = grid_el.get_bounding_client_rect();
-        let col_pitch = grid::col_pitch(g.width());
+        let k = scale_of(&grid_el, &g);
+        let layout_w = g.width() / k;
         let mut nodes = state.doc.with_untracked(|doc| doc.nodes.clone());
         match d.kind {
-            DragKind::Move { offset_x, offset_y } => {
-                // El área del nodo en la grilla empieza un margen antes que su borde.
-                let margin = grid::GAP_PX / 2.0;
-                let px = f64::from(ev.client_x()) - g.left() - offset_x - margin;
-                let py = f64::from(ev.client_y()) - g.top() - offset_y - margin;
-                let (cx, cy) = grid::cell_from_point(px, py, g.width());
-                grid::move_node(&mut nodes, &d.id, cx, cy);
+            DragKind::Move {
+                offset_x,
+                offset_y,
+                start_x,
+                start_y,
+            } => {
+                let (cx, cy) = (f64::from(ev.client_x()), f64::from(ev.client_y()));
+                // Hasta moverse unos píxeles es un clic, no un arrastre.
+                if !d.moved && (cx - start_x).hypot(cy - start_y) < NewDrag::THRESHOLD_PX {
+                    return;
+                }
+                let px = (cx - g.left() - offset_x) / k;
+                let py = (cy - g.top() - offset_y) / k;
+                drag_pos.set(Some((px, py)));
+                let (x, y) = grid::cell_from_point(px, py, layout_w);
+                grid::move_node(&mut nodes, &d.id, x, y);
             }
             DragKind::Resize {
                 edge,
@@ -318,32 +389,25 @@ pub(crate) fn Canvas(
             } => {
                 let dx = f64::from(ev.client_x()) - start_x;
                 let dy = f64::from(ev.client_y()) - start_y;
-                let (w, h) = resized(edge, start_w, start_h, dx, dy, col_pitch);
+                let pitch = (grid::col_pitch(layout_w) * k, grid::ROW_PX * k);
+                let (w, h) = resized(edge, start_w, start_h, (dx, dy), pitch);
                 // Al tirar del borde derecho el nodo no se corre: el ancho topa en la última columna.
                 let x = nodes
                     .iter()
                     .find(|n| n.id == d.id)
                     .map_or(0, |n| i32::from(n.pos.x));
-                grid::resize_node(
-                    &mut nodes,
-                    &d.id,
-                    w.min(i32::from(domain::GRID_COLS) - x),
-                    h,
-                );
+                grid::resize_node(&mut nodes, &d.id, w.min(i32::from(GRID_COLS) - x), h);
             }
         }
-        let changed = state.doc.with_untracked(|doc| doc.nodes != nodes);
-        if changed || d.moved {
-            if !d.moved {
-                drag.update(|d| {
-                    if let Some(d) = d {
-                        d.moved = true;
-                    }
-                });
-            }
-            if preview.with_untracked(|p| p.as_ref() != Some(&nodes)) {
-                preview.set(Some(nodes));
-            }
+        if !d.moved {
+            drag.update(|d| {
+                if let Some(d) = d {
+                    d.moved = true;
+                }
+            });
+        }
+        if preview.with_untracked(|p| p.as_ref() != Some(&nodes)) {
+            preview.set(Some(nodes));
         }
     };
 
@@ -359,22 +423,229 @@ pub(crate) fn Canvas(
             ui.announce(actions.position_text(&d.id));
         }
         preview.set(None);
+        drag_pos.set(None);
         drag.set(None);
-        crate::reveal_node(&d.id, false);
+        crate::reveal_node(&d.id, d.moved && matches!(d.kind, DragKind::Move { .. }));
     };
 
-    let shown_nodes = move || {
-        let mut nodes = preview
+    // Lo que se dibuja: la vista previa del arrastre o el documento.
+    let shown = Memo::new(move |_| {
+        preview
             .get()
-            .unwrap_or_else(|| state.doc.with(|d| d.nodes.clone()));
+            .unwrap_or_else(|| state.doc.with(|d| d.nodes.clone()))
+    });
+    let shown_nodes = move || {
+        let mut nodes = shown.get();
         grid::sort_by_position(&mut nodes);
         nodes
     };
+    // Los ids, en orden de lectura del documento. Durante un arrastre no
+    // cambian de lugar en el HTML, así no se reinician las animaciones.
+    let order_ids = Memo::new(move |_| {
+        let mut ids: Vec<String> = state.doc.with(|d| {
+            let mut nodes = d.nodes.clone();
+            grid::sort_by_position(&mut nodes);
+            nodes.into_iter().map(|n| n.id).collect()
+        });
+        if let Some(new) = incoming.with(|n| n.as_ref().map(|n| n.id.clone())) {
+            if shown.with(|nodes| nodes.iter().any(|n| n.id == new)) && !ids.contains(&new) {
+                ids.push(new);
+            }
+        }
+        ids
+    });
+    let rows = Memo::new(move |_| {
+        shown.with(|nodes| {
+            nodes
+                .iter()
+                .map(|n| u32::from(n.pos.y) + u32::from(n.size.h))
+                .max()
+                .unwrap_or(0)
+                .max(MIN_ROWS)
+        })
+    });
+    // Lugar donde va a quedar el bloque que se mueve con el mouse.
+    let slot = Memo::new(move |_| {
+        let d = drag.get()?;
+        if !(d.moved && matches!(d.kind, DragKind::Move { .. })) {
+            return None;
+        }
+        shown.with(|nodes| nodes.iter().find(|n| n.id == d.id).cloned())
+    });
 
     let close_welcome = move |_| {
         welcome.set(false);
         if let Some(st) = crate::storage() {
             _ = st.set_item(WELCOME_KEY, "1");
+        }
+    };
+
+    // Un bloque del lienzo. El elemento se conserva mientras exista el bloque:
+    // al cambiar de lugar o de tamaño solo cambia su estilo, y el CSS lo anima.
+    let node_view = move |id: String| {
+        let node = Memo::new({
+            let id = id.clone();
+            move |_| shown.with(|nodes| nodes.iter().find(|n| n.id == id).cloned())
+        });
+        let widget = Memo::new(move |_| node.get().map(|n| n.widget));
+        let is_selected = Memo::new({
+            let id = id.clone();
+            move |_| state.selected.get().as_deref() == Some(id.as_str())
+        });
+        let is_incoming = Memo::new({
+            let id = id.clone();
+            move |_| incoming.with(|n| n.as_ref().is_some_and(|n| n.id == id))
+        });
+        let is_moving = Memo::new({
+            let id = id.clone();
+            move |_| {
+                drag.with(|d| {
+                    d.as_ref().is_some_and(|d| {
+                        d.id == id && d.moved && matches!(d.kind, DragKind::Move { .. })
+                    })
+                })
+            }
+        });
+        let is_resizing = Memo::new({
+            let id = id.clone();
+            move |_| {
+                drag.with(|d| {
+                    d.as_ref()
+                        .is_some_and(|d| d.id == id && matches!(d.kind, DragKind::Resize { .. }))
+                })
+            }
+        });
+
+        let style = move || {
+            let Some(n) = node.get() else {
+                return String::new();
+            };
+            let cols = f64::from(GRID_COLS);
+            let w = f64::from(n.size.w) * 100.0 / cols;
+            let h = u32::from(n.size.h) * u32::from(ROW_PX);
+            match drag_pos.get().filter(|_| is_moving.get()) {
+                Some((x, y)) => format!("left:{x:.1}px; top:{y:.1}px; width:{w:.4}%; height:{h}px"),
+                None => format!(
+                    "left:{:.4}%; top:{}px; width:{w:.4}%; height:{h}px",
+                    f64::from(n.pos.x) * 100.0 / cols,
+                    u32::from(n.pos.y) * u32::from(ROW_PX)
+                ),
+            }
+        };
+        let aria_label = move || {
+            node.get()
+                .map(|n| format!("{}, {}", n.widget.label(), size_text(n.size)))
+                .unwrap_or_default()
+        };
+        let content = {
+            let id = id.clone();
+            move || {
+                widget.get().map(|w| {
+                    let ctx = RenderCtx {
+                        products: products.get_value(),
+                        editing: true,
+                    };
+                    render_widget(&Node::new(id.clone(), w), &ctx)
+                })
+            }
+        };
+        let label = move || node.get().map_or("Bloque", |n| n.widget.label());
+        let toolbar = {
+            let id = id.clone();
+            move || {
+                (is_selected.get() && !is_moving.get() && !is_resizing.get()).then(|| {
+                    let (up, down, dup, del) = (id.clone(), id.clone(), id.clone(), id.clone());
+                    view! {
+                        <div
+                            data-theme="light"
+                            class="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-field border border-base-300 bg-base-100 p-1 text-base-content shadow-md"
+                            role="toolbar"
+                            aria-label=move || format!("Acciones de {}", label())
+                            on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
+                        >
+                            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Subir" title="Subir (flecha arriba)" on:click=move |_| actions.move_up(&up)>
+                                <Icon name="up"/>
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Bajar" title="Bajar (flecha abajo)" on:click=move |_| actions.move_down(&down)>
+                                <Icon name="down"/>
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Duplicar" title="Duplicar" on:click=move |_| actions.duplicate(&dup)>
+                                <Icon name="copy"/>
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-sm btn-square text-red-700" aria-label="Borrar" title="Borrar (Suprimir)" on:click=move |_| actions.delete(&del)>
+                                <Icon name="trash"/>
+                            </button>
+                            <span class="badge badge-primary badge-sm ml-1" aria-hidden="true">
+                                {move || node.get().map(|n| size_badge(n.size))}
+                            </span>
+                        </div>
+                    }
+                })
+            }
+        };
+        let badge = move || {
+            (is_moving.get() || is_resizing.get() || is_incoming.get()).then(|| view! {
+                <span class="mk-size-badge badge badge-primary badge-sm pointer-events-none absolute right-2 top-2 z-10" aria-hidden="true">
+                    {move || node.get().map(|n| size_badge(n.size))}
+                </span>
+            })
+        };
+        let handles = {
+            let id = id.clone();
+            move || {
+                is_selected.get().then(|| {
+                    let (r, b, c) = (id.clone(), id.clone(), id.clone());
+                    view! {
+                        <div
+                            class="mk-handle mk-handle-e"
+                            title="Arrastrá para cambiar el ancho"
+                            on:pointerdown=move |ev| on_resize_down(ev, r.clone(), Edge::Right)
+                        ></div>
+                        <div
+                            class="mk-handle mk-handle-s"
+                            title="Arrastrá para cambiar el alto"
+                            on:pointerdown=move |ev| on_resize_down(ev, b.clone(), Edge::Bottom)
+                        ></div>
+                        <div
+                            class="mk-handle mk-handle-se"
+                            title="Arrastrá para cambiar ancho y alto"
+                            on:pointerdown=move |ev| on_resize_down(ev, c.clone(), Edge::Corner)
+                        ></div>
+                    }
+                })
+            }
+        };
+        let (key_id, down_id, attr_id) = (id.clone(), id.clone(), id.clone());
+        view! {
+            <div
+                class="mk-anode"
+                class:mk-moving=move || is_moving.get()
+                class:mk-resizing=move || is_resizing.get()
+                class:mk-incoming=move || is_incoming.get()
+                class:mk-selected=move || is_selected.get()
+                style=style
+                data-node-id=attr_id
+                tabindex=move || if is_incoming.get() { "-1" } else { "0" }
+                role="group"
+                aria-roledescription="bloque"
+                aria-label=aria_label
+                aria-describedby="mk-node-help"
+                aria-current=move || is_selected.get().then_some("true")
+                aria-hidden=move || is_incoming.get().then_some("true")
+                on:pointerdown=move |ev| {
+                    if !is_incoming.get_untracked() {
+                        on_pointer_down(ev, down_id.clone());
+                    }
+                }
+                on:keydown=move |ev| on_node_key(ev, &key_id, actions)
+            >
+                <div class="mk-anode-box">
+                    <div class="pointer-events-none h-full" inert=true>{content}</div>
+                    {toolbar}
+                    {badge}
+                    {handles}
+                </div>
+            </div>
         }
     };
 
@@ -407,138 +678,69 @@ pub(crate) fn Canvas(
                             </div>
                         </div>
                     })}
-                    <div
-                        node_ref=grid_ref
-                        class="mk-grid min-h-96 select-none"
-                        class:mk-grid-guides=move || drag.with(Option::is_some) || incoming.with(Option::is_some)
-                        on:pointermove=on_pointer_move
-                        on:pointerup=on_pointer_up
-                        on:pointercancel=on_pointer_up
-                    >
-                        {move || {
-                            let previewing = ui.preview.get();
+                    {move || {
+                        if ui.preview.get() {
+                            // La vista previa usa la misma grilla que la tienda, al ancho real.
                             let ctx = RenderCtx {
                                 products: products.get_value(),
                                 editing: true,
                             };
-                            if previewing {
-                                return shown_nodes()
-                                    .into_iter()
-                                    .map(|node| view! {
-                                        <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
-                                    })
-                                    .collect_view()
-                                    .into_any();
+                            return view! {
+                                <div class="mk-grid min-h-96">
+                                    {shown_nodes()
+                                        .into_iter()
+                                        .map(|node| view! {
+                                            <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
+                                        })
+                                        .collect_view()}
+                                </div>
                             }
-                            let selected = state.selected.get();
-                            let dragging = drag.with(|d| d.as_ref().map(|d| d.id.clone()));
-                            let resizing = drag.with(|d| {
-                                d.as_ref().is_some_and(|d| matches!(d.kind, DragKind::Resize { .. }))
-                            });
-                            let incoming_id = incoming.with(|n| n.as_ref().map(|n| n.id.clone()));
-                            shown_nodes()
-                                .into_iter()
-                                .map(|node| {
-                                    let id = node.id.clone();
-                                    if incoming_id.as_deref() == Some(id.as_str()) {
-                                        // Dónde va a quedar el bloque que llega de la paleta.
-                                        return view! {
-                                            <div class="mk-node mk-drop-preview pointer-events-none relative" style=node_style(&node) aria-hidden="true">
-                                                <div class="h-full opacity-60" inert=true>{render_widget(&node, &ctx)}</div>
-                                                <span class="badge badge-primary badge-sm absolute right-2 top-2 z-10">{size_badge(node.size)}</span>
-                                            </div>
-                                        }
-                                        .into_any();
+                            .into_any();
+                        }
+                        view! {
+                            <div
+                                node_ref=stage_ref
+                                class="mk-stage"
+                                class:mk-dropzone=move || incoming.with(Option::is_some)
+                                style=move || format!("height:{:.1}px", (f64::from(rows.get() * u32::from(ROW_PX)) - 2.0 * MARGIN_PX) * scale.get())
+                            >
+                                <div
+                                    node_ref=grid_ref
+                                    class="mk-agrid select-none"
+                                    class:mk-grid-guides=move || drag.with(Option::is_some) || incoming.with(Option::is_some)
+                                    style=move || {
+                                        let k = scale.get();
+                                        format!(
+                                            "width:{}px; height:{}px; transform:translate({:.2}px,{:.2}px) scale({k:.4})",
+                                            DESIGN_W + 2.0 * MARGIN_PX,
+                                            rows.get() * u32::from(ROW_PX),
+                                            -MARGIN_PX * k,
+                                            -MARGIN_PX * k,
+                                        )
                                     }
-                                    let is_selected = selected.as_deref() == Some(id.as_str());
-                                    let is_dragged = dragging.as_deref() == Some(id.as_str());
-                                    let class = if is_dragged && !resizing {
-                                        "mk-node relative cursor-grabbing touch-none rounded-box outline outline-2 outline-offset-2 outline-primary opacity-80"
-                                    } else if is_selected || is_dragged {
-                                        "mk-node relative cursor-grab touch-none rounded-box outline outline-2 outline-offset-2 outline-primary"
-                                    } else {
-                                        "mk-node relative cursor-grab touch-none rounded-box outline outline-1 outline-dashed outline-base-content/50 hover:outline-primary"
-                                    };
-                                    let content = render_widget(&node, &ctx);
-                                    let label = node.widget.label();
-                                    let aria_label = format!("{label}, {}", size_text(node.size));
-                                    let size_label = size_badge(node.size);
-                                    let toolbar = (is_selected && !is_dragged).then(|| {
-                                        let (up, down, dup, del) = (id.clone(), id.clone(), id.clone(), id.clone());
-                                        view! {
-                                            <div
-                                                data-theme="light"
-                                                class="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-field border border-base-300 bg-base-100 p-1 text-base-content shadow-md"
-                                                role="toolbar"
-                                                aria-label=format!("Acciones de {label}")
-                                                on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
-                                            >
-                                                <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Subir" title="Subir (flecha arriba)" on:click=move |_| actions.move_up(&up)>
-                                                    <Icon name="up"/>
-                                                </button>
-                                                <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Bajar" title="Bajar (flecha abajo)" on:click=move |_| actions.move_down(&down)>
-                                                    <Icon name="down"/>
-                                                </button>
-                                                <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Duplicar" title="Duplicar" on:click=move |_| actions.duplicate(&dup)>
-                                                    <Icon name="copy"/>
-                                                </button>
-                                                <button type="button" class="btn btn-ghost btn-sm btn-square text-red-700" aria-label="Borrar" title="Borrar (Suprimir)" on:click=move |_| actions.delete(&del)>
-                                                    <Icon name="trash"/>
-                                                </button>
-                                                <span class="badge badge-primary badge-sm ml-1" aria-hidden="true">{size_label.clone()}</span>
-                                            </div>
-                                        }
-                                    });
-                                    let drag_badge = (is_dragged).then(|| view! {
-                                        <span class="badge badge-primary badge-sm pointer-events-none absolute right-2 top-2 z-10" aria-hidden="true">{size_label.clone()}</span>
-                                    });
-                                    let handles = (is_selected || is_dragged).then(|| {
-                                        let (r, b, c) = (id.clone(), id.clone(), id.clone());
-                                        view! {
-                                            <div
-                                                class="mk-handle mk-handle-e"
-                                                title="Arrastrá para cambiar el ancho"
-                                                on:pointerdown=move |ev| on_resize_down(ev, r.clone(), Edge::Right)
-                                            ></div>
-                                            <div
-                                                class="mk-handle mk-handle-s"
-                                                title="Arrastrá para cambiar el alto"
-                                                on:pointerdown=move |ev| on_resize_down(ev, b.clone(), Edge::Bottom)
-                                            ></div>
-                                            <div
-                                                class="mk-handle mk-handle-se"
-                                                title="Arrastrá para cambiar ancho y alto"
-                                                on:pointerdown=move |ev| on_resize_down(ev, c.clone(), Edge::Corner)
-                                            ></div>
-                                        }
-                                    });
-                                    let (key_id, down_id) = (id.clone(), id.clone());
-                                    view! {
-                                        <div
-                                            class=class
-                                            style=node_style(&node)
-                                            data-node-id=id.clone()
-                                            tabindex="0"
-                                            role="group"
-                                            aria-roledescription="bloque"
-                                            aria-label=aria_label
-                                            aria-describedby="mk-node-help"
-                                            aria-current=is_selected.then_some("true")
-                                            on:pointerdown=move |ev| on_pointer_down(ev, down_id.clone())
-                                            on:keydown=move |ev| on_node_key(ev, &key_id, actions)
-                                        >
-                                            <div class="pointer-events-none h-full" inert=true>{content}</div>
-                                            {toolbar}
-                                            {drag_badge}
-                                            {handles}
-                                        </div>
-                                    }
-                                    .into_any()
-                                })
-                                .collect_view()
-                                .into_any()
-                        }}
-                    </div>
+                                    on:pointermove=on_pointer_move
+                                    on:pointerup=on_pointer_up
+                                    on:pointercancel=on_pointer_up
+                                >
+                                    {move || slot.get().map(|_| view! {
+                                        <div class="mk-slot" style=move || {
+                                            slot.get()
+                                                .map(|n| format!(
+                                                    "left:{:.4}%; top:{}px; width:{:.4}%; height:{}px",
+                                                    f64::from(n.pos.x) * 100.0 / f64::from(GRID_COLS),
+                                                    u32::from(n.pos.y) * u32::from(ROW_PX),
+                                                    f64::from(n.size.w) * 100.0 / f64::from(GRID_COLS),
+                                                    u32::from(n.size.h) * u32::from(ROW_PX),
+                                                ))
+                                                .unwrap_or_default()
+                                        } aria-hidden="true"><div class="mk-slot-box"></div></div>
+                                    })}
+                                    <For each=move || order_ids.get() key=|id| id.clone() children=node_view/>
+                                </div>
+                            </div>
+                        }
+                        .into_any()
+                    }}
                     {move || state.doc.with(|d| d.nodes.is_empty()).then(|| view! {
                         <div data-theme="light" class="mx-auto mt-2 flex max-w-md flex-col items-center gap-2 rounded-box border-2 border-dashed border-base-content/40 bg-base-100 p-8 text-center text-base-content">
                             <Icon name="plus" class="h-8 w-8 text-primary"/>
@@ -553,12 +755,17 @@ pub(crate) fn Canvas(
                 view! {
                     <div
                         data-theme="light"
-                        class="pointer-events-none fixed z-50 flex items-center gap-2 rounded-field border border-primary bg-base-100 px-3 py-1.5 text-sm font-medium text-base-content shadow-lg"
+                        class="mk-ghost pointer-events-none fixed z-50 flex flex-col gap-0.5 rounded-field border border-primary bg-base-100 px-3 py-1.5 text-sm font-medium text-base-content shadow-xl"
                         style=format!("left:{}px; top:{}px", d.x + 14.0, d.y + 14.0)
                         aria-hidden="true"
                     >
-                        <Icon name=icon class="h-4 w-4 text-primary"/>
-                        {crate::palette::label_of(d.type_name)}
+                        <span class="flex items-center gap-2">
+                            <Icon name=icon class="h-4 w-4 text-primary"/>
+                            {crate::palette::label_of(d.type_name)}
+                        </span>
+                        <span class="text-xs font-normal text-base-content/70">
+                            {move || if preview.with(Option::is_some) { "Soltá para agregarlo acá" } else { "Llevalo a la página" }}
+                        </span>
                     </div>
                 }
             })}
@@ -573,8 +780,23 @@ mod tests {
     #[test]
     fn resize_snaps_to_cells() {
         // Columnas de 20 px de paso y filas de 8 px.
-        assert_eq!(resized(Edge::Right, 16, 24, 130.0, 500.0, 20.0), (23, 24));
-        assert_eq!(resized(Edge::Bottom, 16, 24, 500.0, -37.0, 20.0), (16, 19));
-        assert_eq!(resized(Edge::Corner, 16, 24, -45.0, 150.0, 20.0), (14, 43));
+        let pitch = (20.0, 8.0);
+        assert_eq!(
+            resized(Edge::Right, 16, 24, (130.0, 500.0), pitch),
+            (23, 24)
+        );
+        assert_eq!(
+            resized(Edge::Bottom, 16, 24, (500.0, -37.0), pitch),
+            (16, 19)
+        );
+        assert_eq!(
+            resized(Edge::Corner, 16, 24, (-45.0, 150.0), pitch),
+            (14, 43)
+        );
+        // Con la grilla achicada a la mitad, el mismo gesto vale el doble de celdas.
+        assert_eq!(
+            resized(Edge::Corner, 16, 24, (20.0, 8.0), (10.0, 4.0)),
+            (18, 26)
+        );
     }
 }
