@@ -1,8 +1,10 @@
+use axum::http::{header, HeaderValue};
 use axum::Router;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use tower_http::set_header::SetResponseHeaderLayer;
 use web::*;
 
 #[tokio::main]
@@ -51,6 +53,13 @@ async fn main() {
             },
         )
         .fallback(leptos_axum::file_and_error_handler(shell))
+        // El JS, WASM y CSS de `/pkg` tienen siempre el mismo nombre: con
+        // `no-cache` el navegador pregunta antes de reusarlos y nunca mezcla
+        // una versión vieja con el HTML nuevo (pasaba después de un `git pull`).
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        ))
         .with_state(leptos_options);
 
     log!("listening on http://{}", &addr);
