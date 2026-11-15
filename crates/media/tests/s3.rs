@@ -18,6 +18,14 @@ async fn saves_reads_and_deletes_in_the_bucket() {
     let got = store.get(id, "960.webp").await.unwrap().unwrap();
     assert_eq!(got, p.variants[3].bytes);
     assert_eq!(store.get(id, "nada.webp").await.unwrap(), None);
-    store.delete_all(id).await.unwrap();
+    // Pasar la foto a la carpeta del usuario.
+    let folder = media::photo_folder("7c0e2b9a-1111-4222-8333-444455556666", id);
+    store.move_photo(id, &folder).await.unwrap();
     assert_eq!(store.get(id, "960.webp").await.unwrap(), None);
+    assert_eq!(
+        store.get(&folder, "960.webp").await.unwrap().unwrap(),
+        p.variants[3].bytes
+    );
+    store.delete_all(&folder).await.unwrap();
+    assert_eq!(store.get(&folder, "960.webp").await.unwrap(), None);
 }

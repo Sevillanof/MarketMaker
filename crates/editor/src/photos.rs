@@ -91,11 +91,26 @@ impl MyPhotos {
                 let name = file.name();
                 match upload_one(&file).await {
                     Ok(item) => {
-                        if let Some(text) = domain::savings_text(&item) {
+                        let text = if item.duplicate {
+                            Some(format!(
+                                "{name}: ya estaba en Mis fotos como «{}», usamos esa.",
+                                item.name
+                            ))
+                        } else {
+                            domain::savings_text(&item)
+                        };
+                        if let Some(text) = text {
                             self.saved.update(|s| s.push(text));
                         }
-                        self.items
-                            .update(|l| l.get_or_insert_with(Vec::new).insert(0, item.clone()));
+                        let item = MediaItem {
+                            duplicate: false,
+                            ..item
+                        };
+                        self.items.update(|l| {
+                            let l = l.get_or_insert_with(Vec::new);
+                            l.retain(|p| p.id != item.id);
+                            l.insert(0, item.clone());
+                        });
                         if let Some(each) = each {
                             each.run(item.clone());
                         }

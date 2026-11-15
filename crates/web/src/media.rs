@@ -9,6 +9,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get};
 use axum::{Json, Router};
+use domain::MediaItem;
 use uuid::Uuid;
 
 use crate::auth::COOKIE;
@@ -100,15 +101,17 @@ async fn upload(
         Ok(u) => u,
         Err(r) => return r,
     };
-    match db::media::count(&state.pool, user.id).await {
-        Ok(n) if n >= db::media::MAX_PER_OWNER => {
+    let quota = match db::media::quota(&state.pool, user.id).await {
+        Ok(q) => q,
+        Err(_) => {
             return fail(
-                StatusCode::CONFLICT,
-                format!("Ya tenés {n} fotos, que es el máximo por ahora. Borrá alguna que no uses para subir otra."),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "No pudimos guardar la foto. Probá de nuevo.",
             )
         }
-        Ok(_) => {}
-        Err(_) => return fail(StatusCode::INTERNAL_SERVER_ERROR, "No pudimos guardar la foto. Probá de nuevo."),
+    };
+    if let Err(msg) = quota.room_for(0) {
+        return fail(StatusCode::CONFLICT, msg);
     }
 
     let too_big = || {
@@ -140,6 +143,24 @@ async fn upload(
     };
 
     let size = bytes.len();
+    // La misma foto que ya subió: se usa esa, sin convertir ni guardar otra.
+    let sha256 = db::media::fingerprint(&bytes);
+    match db::media::find_by_hash(&state.pool, user.id, &sha256).await {
+        Ok(Some(existing)) => {
+            return Json(MediaItem {
+                duplicate: true,
+                ..existing
+            })
+            .into_response();
+        }
+        Ok(None) => {}
+        Err(_) => {
+            return fail(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "No pudimos guardar la foto. Probá de nuevo.",
+            )
+        }
+    }
     let processed = match tokio::task::spawn_blocking(move || media::process(&bytes)).await {
         Ok(Ok(p)) => p,
         Ok(Err(e)) => return fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
@@ -150,29 +171,30 @@ async fn upload(
             )
         }
     };
+    let stored_bytes: usize = processed.variants.iter().map(|v| v.bytes.len()).sum();
+    if let Err(msg) = quota.room_for(stored_bytes as u64) {
+        return fail(StatusCode::CONFLICT, msg);
+    }
     let id = Uuid::new_v4();
-    if let Err(e) = state
-        .store
-        .put_all(&id.to_string(), &processed.variants)
-        .await
-    {
+    let folder = db::media::media_folder(user.id, id);
+    if let Err(e) = state.store.put_all(&folder, &processed.variants).await {
         return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
     }
-    match db::media::insert(
-        &state.pool,
+    let new = db::media::NewMedia {
         id,
-        user.id,
-        &name,
-        processed.width,
-        processed.height,
-        size,
-        processed.web_bytes(),
-    )
-    .await
-    {
+        owner_id: user.id,
+        name: &name,
+        width: processed.width,
+        height: processed.height,
+        bytes: size,
+        web_bytes: processed.web_bytes(),
+        stored_bytes,
+        sha256: &sha256,
+    };
+    match db::media::insert(&state.pool, &new).await {
         Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
         Err(_) => {
-            _ = state.store.delete_all(&id.to_string()).await;
+            _ = state.store.delete_all(&folder).await;
             fail(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "No pudimos guardar la foto. Probá de nuevo.",
@@ -191,11 +213,11 @@ async fn remove(
         Err(r) => return r,
     };
     match db::media::delete(&state.pool, user.id, id).await {
-        Ok(true) => {
-            _ = state.store.delete_all(&id.to_string()).await;
+        Ok(Some(folder)) => {
+            _ = state.store.delete_all(&folder).await;
             StatusCode::NO_CONTENT.into_response()
         }
-        Ok(false) => fail(StatusCode::NOT_FOUND, "Esa foto ya no está en Mis fotos."),
+        Ok(None) => fail(StatusCode::NOT_FOUND, "Esa foto ya no está en Mis fotos."),
         Err(_) => fail(
             StatusCode::INTERNAL_SERVER_ERROR,
             "No pudimos borrar la foto. Probá de nuevo.",
@@ -212,7 +234,18 @@ async fn serve(
     let Some(content_type) = media::content_type(&file) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match state.store.get(&id.to_string(), &file).await {
+    let (folder, other) = match db::media::locate(&state.pool, id).await {
+        Ok(Some(f)) => f,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    // Si la foto se está pasando a la carpeta del usuario justo ahora, puede
+    // estar en la otra.
+    let found = match state.store.get(&folder, &file).await {
+        Ok(None) => state.store.get(&other, &file).await,
+        r => r,
+    };
+    match found {
         Ok(Some(bytes)) => (
             [
                 (header::CONTENT_TYPE, content_type),
