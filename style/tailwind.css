@@ -24,6 +24,19 @@
   margin: 8px;
   overflow: hidden;
 }
+/* Contenedor de la tienda publicada: margen y ancho máximo del contenido
+   (ver `domain::StoreLayout`). En el celular el margen no pasa de 16 px. */
+.mk-wrap {
+  --mk-pad-now: var(--mk-pad, 16px);
+  margin-inline: auto;
+  padding: var(--mk-pad-now);
+  max-width: calc(var(--mk-maxw, 1120px) + 2 * var(--mk-pad-now));
+}
+@media (max-width: 767px) {
+  .mk-wrap {
+    --mk-pad-now: min(var(--mk-pad, 16px), 16px);
+  }
+}
 /* Guías de la grilla en el editor, mientras se arrastra un bloque. */
 .mk-grid-guides {
   background-image:
@@ -771,6 +784,105 @@ dialog.mk-dialog::backdrop {
 .mk-d3 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-soft); --btn-fg: var(--mk-ct); --btn-shadow: none; }
 .mk-d4 .mk-pbtn { align-items: stretch; }
 .mk-d4 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-c); --btn-fg: var(--mk-cc); width: 100%; box-shadow: 0 8px 20px -8px var(--mk-c); }
+
+/* Bordes de la página en el lienzo del editor: se arrastran para cambiar
+   el ancho de toda la tienda (ver `canvas.rs`, `width_handle`). La manija
+   queda a media altura de lo que se ve (sticky) y el contorno punteado
+   muestra hasta dónde llega el contenido. */
+.mk-frame-outline {
+  position: absolute;
+  pointer-events: none;
+  border: 2px dashed transparent;
+  border-radius: var(--radius-box);
+  transition: border-color 0.15s ease;
+  z-index: 4;
+}
+.mk-page-frame:has(.mk-width-handle:hover, .mk-width-handle:focus-visible, .mk-width-handle.is-dragging) > .mk-frame-outline {
+  border-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
+}
+.mk-width-handle {
+  position: absolute;
+  z-index: 6;
+  width: 24px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.mk-width-grip {
+  position: sticky;
+  top: calc(50% - 28px);
+  display: block;
+  width: 10px;
+  height: 56px;
+  margin-inline: auto;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
+  background: var(--color-base-100);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.mk-width-handle:hover .mk-width-grip,
+.mk-width-handle:focus-visible .mk-width-grip,
+.mk-width-handle.is-dragging .mk-width-grip {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.mk-width-handle:focus-visible .mk-width-grip {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+/* Cuánto mide el contenido: aparece al pasar por el borde o al arrastrarlo. */
+.mk-width-label {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 10px);
+  translate: 0 -50%;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: var(--radius-field);
+  background: var(--color-neutral);
+  color: var(--color-neutral-content);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.mk-width-handle:not(.is-left) .mk-width-label {
+  left: auto;
+  right: calc(100% + 10px);
+}
+.mk-width-handle:hover .mk-width-label,
+.mk-width-handle:focus-visible .mk-width-label,
+.mk-width-handle.is-dragging .mk-width-label {
+  opacity: 1;
+}
+/* Mientras se arrastra, el lienzo no anima: la página sigue al puntero. */
+.mk-page-frame.is-dragging .mk-anode {
+  transition: none;
+}
+
+/* Miniaturas de "Márgenes" en el menú Mi tienda: una página dibujada con
+   el margen de cada opción. */
+.mk-margin-thumb {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  height: 4.25rem;
+  border-radius: var(--radius-field);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: var(--color-base-200);
+}
+.mk-margin-thumb .mk-mt-bar {
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--color-primary) 55%, var(--color-base-100));
+}
+.mk-margin-thumb .mk-mt-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+}
 
 /* Panel "Mi tienda" del editor: debajo de la barra, contra el borde
    izquierdo, donde está su botón. */
