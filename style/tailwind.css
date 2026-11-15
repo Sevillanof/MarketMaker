@@ -61,6 +61,22 @@
     height 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
   animation: mk-enter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+/* El contenido del bloque recibe el puntero (hover, rueda, controles) pero
+   el cursor sigue siendo el de mover, salvo sobre lo que se puede tocar. */
+.mk-content * {
+  cursor: inherit;
+}
+.mk-content :is(button:not(:disabled), summary, input:not(:disabled), label, select, [data-href], [data-product-id]) {
+  cursor: pointer;
+}
+/* Los botones desactivados no reciben el puntero en todos los navegadores:
+   así el bloque se puede arrastrar también desde ellos. */
+.mk-content :is(button, input):disabled {
+  pointer-events: none;
+}
+.mk-content img {
+  -webkit-user-drag: none;
+}
 .mk-anode:focus-visible {
   outline: none;
 }

@@ -638,7 +638,7 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
                                     view! {
                                         <div class="mk-unit flex flex-col items-center rounded-box px-3 py-2">
                                             <span class="countdown font-mono text-3xl">
-                                                <span style=style aria-live="polite" aria-label=v.to_string()>{v.to_string()}</span>
+                                                <span style=style aria-live=(!editing).then_some("polite") aria-label=v.to_string()>{v.to_string()}</span>
                                             </span>
                                             <span class="text-xs">{unit}</span>
                                         </div>

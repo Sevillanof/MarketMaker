@@ -201,6 +201,9 @@ fn Thumb(node: Node, design: u8, products: StoredValue<Vec<Product>>) -> impl In
     };
     let mut node = node;
     node.look.design = design;
+    // Otro id que el del lienzo: así las pestañas de la miniatura no forman
+    // un grupo con las del bloque y no le cambian la pestaña abierta.
+    node.id = format!("{}-thumb{design}", node.id);
     // Centrado a lo alto si entra; si no, se ve la parte de arriba.
     let top = ((THUMB_MAX_H - h * scale) / 2.0).max(0.0);
     let style = format!(

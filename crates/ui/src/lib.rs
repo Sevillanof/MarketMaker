@@ -4,25 +4,27 @@
 
 use leptos::prelude::*;
 
-/// Botón primario. Con `href` se dibuja como enlace; con `disabled` nunca navega.
+/// Botón primario. Con `href` se dibuja como enlace. Con `disabled` (en el
+/// editor) se ve igual pero no navega ni recibe el foco: el enlace queda en
+/// `data-href` y el editor lleva a esa página al tocarlo (ver `MaybeLink`).
 #[component]
 pub fn Button(
     #[prop(into)] label: String,
     #[prop(optional, into)] href: Option<String>,
     #[prop(optional)] disabled: bool,
 ) -> impl IntoView {
-    match href {
-        Some(href) if !disabled && !href.is_empty() => view! {
+    let href = href.filter(|h| !h.is_empty());
+    match (href, disabled) {
+        (Some(href), false) => view! {
             <a class="btn btn-primary mk-btn" href=href>{label}</a>
         }
         .into_any(),
-        // Mientras se edita, el enlace queda en `data-href` (ver `MaybeLink`).
-        Some(href) if !href.is_empty() => view! {
-            <button type="button" class="btn btn-primary mk-btn" disabled=disabled data-href=href>{label}</button>
+        (href, true) => view! {
+            <span class="btn btn-primary mk-btn" data-href=href>{label}</span>
         }
         .into_any(),
-        _ => view! {
-            <button type="button" class="btn btn-primary mk-btn" disabled=disabled>{label}</button>
+        (None, false) => view! {
+            <button type="button" class="btn btn-primary mk-btn">{label}</button>
         }
         .into_any(),
     }
