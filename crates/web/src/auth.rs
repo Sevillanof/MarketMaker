@@ -2,7 +2,7 @@
 //! salir y saber quién está mirando.
 //!
 //! Por ahora solo pueden entrar los emails de `ALLOWED_EMAILS` (una lista
-//! separada por comas en `.env`, que se relee en cada pedido). El código se escribe en la terminal del
+//! separada por comas en `.env.local`, que se relee en cada pedido). El código se escribe en la terminal del
 //! servidor: todavía no hay servicio de envío de emails.
 
 use domain::{CodeCheck, CodeRequest, Me};
@@ -35,15 +35,19 @@ mod ssr {
     }
 
     /// Emails habilitados para entrar, normalizados: los de `ALLOWED_EMAILS`
-    /// del entorno más los que tenga hoy el archivo `.env`. El archivo se lee
-    /// en cada pedido, así que agregar un email no obliga a reiniciar el
-    /// servidor (y una variable vieja en la terminal no lo tapa).
+    /// en `.env.local` (no va a git, es el lugar recomendado), en `.env` y en
+    /// la terminal. Los archivos se leen en cada pedido, así que agregar o
+    /// quitar un email no obliga a reiniciar el servidor.
     pub fn allowed_emails() -> HashSet<String> {
         let from_env = std::env::var("ALLOWED_EMAILS").unwrap_or_default();
-        let from_file = dotenvy::from_filename_iter(".env")
+        let from_file = [".env.local", ".env"]
             .into_iter()
-            .flatten()
-            .flatten()
+            .flat_map(|f| {
+                dotenvy::from_filename_iter(f)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+            })
             .filter(|(k, _)| k == "ALLOWED_EMAILS")
             .map(|(_, v)| v)
             .collect::<Vec<_>>()
@@ -175,7 +179,7 @@ pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {
     };
     if !is_allowed(&email) {
         leptos::logging::log!(
-            "\n  {email} pidió un código pero no está en ALLOWED_EMAILS (hay {} habilitados). Agregalo en .env.\n",
+            "\n  {email} pidió un código pero no está en ALLOWED_EMAILS (hay {} habilitados). Agregalo en .env.local.\n",
             allowed_emails().len()
         );
         return Ok(CodeRequest::NotAllowed);
