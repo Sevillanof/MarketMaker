@@ -980,14 +980,6 @@ pub(crate) fn Canvas(
             ),
         }
     };
-    let pages = move || {
-        state.doc.with(|d| {
-            (0..d.page_count())
-                .map(|i| (i, d.page_name(i).to_string(), d.page_path(i).to_string()))
-                .collect::<Vec<_>>()
-        })
-    };
-
     view! {
         <section id="mk-canvas" node_ref=section_ref class="min-w-0 flex-1 overflow-auto" aria-label="Lienzo de la página">
             <p id="mk-node-help" class="sr-only">
@@ -996,7 +988,7 @@ pub(crate) fn Canvas(
             {move || ui.preview.get().then(|| view! {
                 <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm">
                     <Icon name="eye" class="h-4 w-4"/>
-                    <span class="flex-1">"Vista previa: así se va a ver tu tienda cuando guardes. Tocá un producto para ver su ficha."</span>
+                    <span class="flex-1">"Vista previa: así se va a ver tu tienda cuando publiques. Tocá un producto para ver su ficha."</span>
                     <button type="button" class="btn btn-sm btn-primary" on:click=move |_| ui.preview.set(false)>"Volver a editar"</button>
                 </div>
             })}
@@ -1023,49 +1015,6 @@ pub(crate) fn Canvas(
                         </label>
                     })}
                     <button type="button" class="btn btn-sm btn-primary" title="Volver a la página (Esc)" aria-keyshortcuts="Escape" on:click=move |_| actions.close_modal()>"Volver a la página"</button>
-                </div>
-            })}
-            {move || (!state.in_modal() && !ui.preview.get()).then(|| view! {
-                <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm" role="region" aria-label="Páginas de la tienda">
-                    <span class="rounded-field bg-base-200 p-1.5" aria-hidden="true"><Icon name="page" class="h-4 w-4"/></span>
-                    <label class="flex items-center gap-2">
-                        <span class="whitespace-nowrap font-semibold">"Página"</span>
-                        <select
-                            id="mk-page-select"
-                            class="select select-sm w-48"
-                            prop:value=move || state.page.get().to_string()
-                            on:change=move |ev| {
-                                if let Ok(i) = event_target_value(&ev).parse::<usize>() {
-                                    actions.open_page(i, true);
-                                }
-                            }
-                        >
-                            {move || pages()
-                                .into_iter()
-                                .map(|(i, name, _)| view! { <option value=i.to_string() selected=move || state.page.get() == i>{name}</option> })
-                                .collect_view()}
-                        </select>
-                    </label>
-                    <code class="rounded-field bg-base-200 px-2 py-0.5 text-xs text-base-content/80" title="Dirección de la página en tu tienda">
-                        {move || state.doc.with(|d| d.page_path(state.page.get()).to_string())}
-                    </code>
-                    <span class="min-w-0 flex-1 truncate text-xs text-base-content/75">
-                        {move || if state.doc.with(|d| d.pages.is_empty()) {
-                            "Tocá un enlace del menú superior (Ofertas, Categorías…) para crear y editar esa página."
-                        } else {
-                            "Tocá un enlace del menú para ir a esa página, o elegila acá."
-                        }}
-                    </span>
-                    {move || (state.page.get() > 0).then(|| view! {
-                        <button
-                            type="button"
-                            class="btn btn-ghost btn-sm text-red-700"
-                            on:click=move |_| actions.delete_page(state.page.get_untracked())
-                        >
-                            <Icon name="trash" class="h-4 w-4"/>
-                            "Borrar esta página"
-                        </button>
-                    })}
                 </div>
             })}
             <div
@@ -1095,7 +1044,7 @@ pub(crate) fn Canvas(
                                     <ol class="mt-2 list-decimal space-y-1 pl-5 text-sm">
                                         <li>"Elegí un bloque de la izquierda: con un clic se agrega al final, o arrastralo hasta donde lo quieras."</li>
                                         <li>"Hacé clic en un bloque para cambiar sus textos e imágenes a la derecha. Arrastralo para moverlo, o usá los botones Subir y Bajar."</li>
-                                        <li>"Tocá Guardar para que tu tienda muestre los cambios. Si te equivocás, Deshacer vuelve atrás."</li>
+                                        <li>"Tocá Publicar para que tu tienda muestre los cambios. Si te equivocás, Deshacer vuelve atrás."</li>
                                     </ol>
                                 </div>
                                 <button type="button" class="btn btn-sm btn-primary" on:click=close_welcome>"Entendido"</button>

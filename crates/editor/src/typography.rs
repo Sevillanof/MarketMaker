@@ -1,4 +1,4 @@
-//! Letras: el panel de toda la tienda (botón "Letras" de la barra) y la
+//! Letras: las de toda la tienda (dentro del menú "Mi tienda") y la
 //! sección "Letras de este bloque" del inspector.
 //!
 //! Pocas opciones y con muestra: se elige una combinación de fuentes de un
@@ -13,91 +13,66 @@ use leptos::prelude::*;
 use crate::icons::Icon;
 use crate::{choice_class, EditorState};
 
-/// Id del panel emergente de las letras de la tienda.
-const PANEL_ID: &str = "mk-type-panel";
-
 fn font_label(id: &str) -> &'static str {
     font(id).map_or("Simple", |f| f.label)
 }
 
-/// Botón de la barra y panel emergente con las letras de toda la tienda.
-///
-/// Usa la API `popover` del navegador: se cierra con Esc o con un clic
-/// afuera, y devuelve el foco al botón.
+/// Letras de toda la tienda: combinaciones de fuentes con muestra, cada
+/// fuente por separado y el tamaño general. Va dentro del menú "Mi tienda".
 #[component]
-pub(crate) fn StoreTypography() -> impl IntoView {
+pub(crate) fn StoreTypographyFields() -> impl IntoView {
     let state = expect_context::<EditorState>();
     let typo = Memo::new(move |_| state.doc.with(|d| d.typography.clone()));
     let set = move |f: Box<dyn FnOnce(&mut Typography)>| state.apply(|d| f(&mut d.typography));
 
     view! {
-        <button
-            type="button"
-            class="btn btn-sm"
-            popovertarget=PANEL_ID
-            aria-haspopup="dialog"
-            title="Fuentes y tamaño del texto de toda la tienda"
-        >
-            <Icon name="type"/>
-            "Letras"
-        </button>
-        <div
-            id=PANEL_ID
-            popover="auto"
-            role="dialog"
-            aria-labelledby="mk-type-title"
-            class="mk-popover w-[26rem] rounded-box border border-base-300 bg-base-100 p-4 text-base-content shadow-xl"
-        >
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <h2 id="mk-type-title" class="text-lg font-bold">"Letras de toda la tienda"</h2>
-                    <p class="text-sm text-base-content/75">"Se aplican a todos los bloques. Podés cambiar un bloque solo desde el panel de la derecha."</p>
-                </div>
-                <button
-                    type="button"
-                    class="btn btn-ghost btn-sm btn-square"
-                    popovertarget=PANEL_ID
-                    popovertargetaction="hide"
-                    aria-label="Cerrar"
-                >
-                    <Icon name="close"/>
-                </button>
-            </div>
-
-            <fieldset class="mt-4">
-                <legend class="mb-2 text-sm font-medium">"Estilo de las letras"</legend>
-                <div class="grid grid-cols-2 gap-2">
-                    {FONT_PAIRS.iter().map(|p| {
-                        let active = move || typo.with(|t| t.heading == p.heading && t.body == p.body);
+        <section aria-labelledby="mk-letters-title">
+            <div class="mb-2 flex items-center justify-between gap-3">
+                <h3 id="mk-letters-title" class="text-xs font-semibold uppercase tracking-wide text-base-content/75">"Letras"</h3>
+                <div class="join" role="group" aria-label="Tamaño del texto" title="Grande ayuda a leer mejor, sobre todo en el celular.">
+                    {STORE_SIZES.iter().map(|(id, name, _)| {
+                        let active = move || typo.with(|t| t.size == *id);
                         view! {
                             <button
                                 type="button"
-                                class=move || if active() {
-                                    "flex flex-col items-start gap-0.5 rounded-field border-2 border-primary bg-primary/10 p-2 text-left"
-                                } else {
-                                    "flex flex-col items-start gap-0.5 rounded-field border-2 border-base-300 p-2 text-left transition-colors hover:border-primary"
-                                }
+                                class=move || format!("{} btn-xs join-item", choice_class(active()))
                                 aria-pressed=move || active().to_string()
-                                on:click=move |_| set(Box::new(move |t| {
-                                    t.heading = p.heading.into();
-                                    t.body = p.body.into();
-                                }))
-                            >
-                                <span class="text-lg font-bold leading-tight" style=format!("font-family:{}", font_css(p.heading))>"Ofertas"</span>
-                                <span class="text-sm" style=format!("font-family:{}", font_css(p.body))>"Envíos a todo el país"</span>
-                                <span class="mt-1 flex items-center gap-1 text-xs font-medium text-base-content/75">
-                                    {move || active().then(|| view! { <Icon name="check" class="h-3.5 w-3.5 text-primary"/> })}
-                                    {p.label}
-                                </span>
-                            </button>
+                                on:click=move |_| set(Box::new(move |t| t.size = (*id).into()))
+                            >{*name}</button>
                         }
                     }).collect_view()}
                 </div>
-            </fieldset>
-
-            <details class="collapse collapse-arrow mt-3 border border-base-300">
-                <summary class="collapse-title text-sm font-medium">"Elegir cada fuente por separado"</summary>
-                <div class="collapse-content flex flex-col gap-3">
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+                {FONT_PAIRS.iter().map(|p| {
+                    let active = move || typo.with(|t| t.heading == p.heading && t.body == p.body);
+                    view! {
+                        <button
+                            type="button"
+                            class=move || if active() {
+                                "flex flex-col items-start gap-0.5 rounded-field border-2 border-primary bg-primary/10 px-2.5 py-2 text-left"
+                            } else {
+                                "flex flex-col items-start gap-0.5 rounded-field border-2 border-base-300 px-2.5 py-2 text-left transition-colors hover:border-primary"
+                            }
+                            aria-pressed=move || active().to_string()
+                            on:click=move |_| set(Box::new(move |t| {
+                                t.heading = p.heading.into();
+                                t.body = p.body.into();
+                            }))
+                        >
+                            <span class="text-lg font-bold leading-tight" style=format!("font-family:{}", font_css(p.heading))>"Ofertas"</span>
+                            <span class="text-xs" style=format!("font-family:{}", font_css(p.body))>"Envíos a todo el país"</span>
+                            <span class="mt-1 flex items-center gap-1 text-xs font-medium text-base-content/75">
+                                {move || active().then(|| view! { <Icon name="check" class="h-3.5 w-3.5 text-primary"/> })}
+                                {p.label}
+                            </span>
+                        </button>
+                    }
+                }).collect_view()}
+            </div>
+            <details class="collapse collapse-arrow mt-2 border border-base-300">
+                <summary class="collapse-title min-h-0 py-2.5 text-sm font-medium">"Elegir cada fuente por separado"</summary>
+                <div class="collapse-content grid grid-cols-2 gap-3">
                     <FontSelect
                         label="Títulos"
                         value=Signal::derive(move || typo.with(|t| t.heading.clone()))
@@ -112,25 +87,7 @@ pub(crate) fn StoreTypography() -> impl IntoView {
                     />
                 </div>
             </details>
-
-            <fieldset class="mt-4">
-                <legend class="mb-2 text-sm font-medium">"Tamaño del texto"</legend>
-                <div class="join w-full">
-                    {STORE_SIZES.iter().map(|(id, name, _)| {
-                        let active = move || typo.with(|t| t.size == *id);
-                        view! {
-                            <button
-                                type="button"
-                                class=move || format!("{} join-item flex-1", choice_class(active()))
-                                aria-pressed=move || active().to_string()
-                                on:click=move |_| set(Box::new(move |t| t.size = (*id).into()))
-                            >{*name}</button>
-                        }
-                    }).collect_view()}
-                </div>
-                <p class="mt-1 text-xs text-base-content/75">"Grande ayuda a leer mejor, sobre todo en el celular."</p>
-            </fieldset>
-        </div>
+        </section>
     }
 }
 

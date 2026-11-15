@@ -8,6 +8,8 @@ fn path(name: &str) -> &'static str {
         // Acciones
         "undo" => "M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
         "redo" => "M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3",
+        "chevron-down" => "M6 9l6 6 6-6",
+        "pencil" => "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
         "up" => "M12 19V5M5 12l7-7 7 7",
         "down" => "M12 5v14M19 12l-7 7-7-7",
         "copy" => "M8 8h12v12H8zM4 16V4h12",

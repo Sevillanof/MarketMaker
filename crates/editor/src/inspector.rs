@@ -86,7 +86,7 @@ fn EmptyInspector() -> impl IntoView {
     let shortcuts: &[(&str, &str)] = &[
         ("Ctrl/⌘ + Z", "Deshacer"),
         ("Ctrl/⌘ + Mayús + Z", "Rehacer"),
-        ("Ctrl/⌘ + S", "Guardar"),
+        ("Ctrl/⌘ + S", "Publicar"),
         ("Tab", "Ir de un bloque a otro"),
         ("Enter", "Editar el bloque enfocado"),
         ("Flechas", "Mover el bloque"),
