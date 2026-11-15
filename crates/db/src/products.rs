@@ -185,3 +185,20 @@ pub async fn tags(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<String>> {
     .fetch_all(pool)
     .await
 }
+
+/// Las etiquetas de la tienda con en cuántos productos está cada una, de la
+/// más usada a la menos usada.
+pub async fn tag_counts(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<domain::TagCount>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT t, count(*) FROM products, unnest(tags) AS t
+         WHERE tenant_id = $1
+         GROUP BY t ORDER BY count(*) DESC, t",
+    )
+    .bind(tenant)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(tag, products)| domain::TagCount { tag, products })
+        .collect())
+}

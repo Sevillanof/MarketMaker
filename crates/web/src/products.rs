@@ -87,7 +87,7 @@ pub async fn product_to_edit(
     Ok(Some(ProductEdit {
         store_name: tenant.name,
         product,
-        store_tags: db::products::tags(&pool, tenant.id)
+        store_tags: db::products::tag_counts(&pool, tenant.id)
             .await
             .map_err(internal)?,
     }))
@@ -880,12 +880,30 @@ fn PhotosField(photos: RwSignal<Vec<String>>) -> impl IntoView {
     }
 }
 
-/// Las etiquetas: escribir y Enter (o coma) para sumar, tocar para sacar, y
-/// las que ya usa la tienda a mano para no escribirlas distinto.
+/// Las etiquetas: un campo con las elegidas y, al tocarlo o escribir, un
+/// menú con las que ya usa la tienda (y en cuántos productos) para no
+/// escribirlas distinto, más la opción de crear una nueva.
 #[component]
-fn TagsField(form: Form, store_tags: Vec<String>) -> impl IntoView {
+fn TagsField(form: Form, store_tags: Vec<domain::TagCount>) -> impl IntoView {
+    use domain::TagOption;
     let text = RwSignal::new(String::new());
+    let open = RwSignal::new(false);
+    let active = RwSignal::new(0usize);
     let store_tags = StoredValue::new(store_tags);
+    let options = Memo::new(move |_| {
+        let typed = text.get();
+        form.tags
+            .with(|mine| store_tags.with_value(|all| domain::tag_options(all, mine, &typed)))
+    });
+    let pick = move |opt: &TagOption| {
+        let tag = match opt {
+            TagOption::Existing(t) => t.tag.clone(),
+            TagOption::Create(t) => t.clone(),
+        };
+        form.add_tags(&tag);
+        text.set(String::new());
+        active.set(0);
+    };
     let commit = move || {
         let t = text.get_untracked();
         if !t.trim().is_empty() {
@@ -893,71 +911,104 @@ fn TagsField(form: Form, store_tags: Vec<String>) -> impl IntoView {
             text.set(String::new());
         }
     };
-    let suggestions = Memo::new(move |_| {
-        let typed = domain::fold(text.get().trim());
-        let mine = form.tags.get();
-        store_tags.with_value(|all| {
-            all.iter()
-                .filter(|t| !mine.contains(t))
-                .filter(|t| typed.is_empty() || domain::fold(t).contains(&typed))
-                .take(12)
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-    });
+    let input_ref = NodeRef::<leptos::html::Input>::new();
     view! {
         <fieldset class="fieldset">
             <legend class="fieldset-legend">"Etiquetas " <span class="font-normal text-base-content/60">"· para encontrar y agrupar productos (ej.: regalo, cocina, verano)"</span></legend>
-            <div class="flex min-h-10 w-full flex-wrap items-center gap-1 rounded-field border border-base-content/20 bg-base-100 px-3 py-1.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-base-content/30">
-                {move || form.tags.get().into_iter().map(|t| {
-                    let t2 = t.clone();
-                    view! {
-                        <span class="badge badge-primary gap-1">
-                            {t.clone()}
-                            <button type="button" class="cursor-pointer" aria-label=format!("Sacar la etiqueta {t}")
-                                on:click=move |_| form.tags.update(|l| l.retain(|x| x != &t2))>"✕"</button>
-                        </span>
-                    }
-                }).collect_view()}
-                <input class="min-w-32 grow bg-transparent py-0.5 outline-none" placeholder=move || if form.tags.with(Vec::is_empty) { "Escribí una etiqueta y tocá Enter" } else { "Otra etiqueta…" }
-                    aria-label="Nueva etiqueta" maxlength=domain::TAG_MAX
-                    prop:value=move || text.get()
-                    on:input=move |ev| {
-                        let v = event_target_value(&ev);
-                        if v.contains(',') {
-                            form.add_tags(&v);
-                            text.set(String::new());
-                        } else {
-                            text.set(v);
+            <div class="relative">
+                <div class="flex min-h-10 w-full cursor-text flex-wrap items-center gap-1.5 rounded-field border border-base-content/20 bg-base-100 px-3 py-1.5 focus-within:border-primary focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-primary"
+                    on:click=move |_| { if let Some(i) = input_ref.get() { _ = i.focus(); } }>
+                    {move || form.tags.get().into_iter().map(|t| {
+                        let t2 = t.clone();
+                        view! {
+                            <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2.5 pr-1 text-sm text-primary">
+                                {t.clone()}
+                                <button type="button" class="cursor-pointer rounded-full px-1 opacity-60 hover:opacity-100" aria-label=format!("Sacar la etiqueta {t}")
+                                    on:click=move |ev| { ev.stop_propagation(); form.tags.update(|l| l.retain(|x| x != &t2)); }>"✕"</button>
+                            </span>
                         }
-                    }
-                    on:keydown=move |ev| {
-                        if ev.key() == "Enter" {
-                            ev.prevent_default();
-                            commit();
-                        } else if ev.key() == "Backspace" && text.with_untracked(String::is_empty) {
-                            form.tags.update(|l| { l.pop(); });
+                    }).collect_view()}
+                    <input node_ref=input_ref class="min-w-32 grow bg-transparent py-0.5 outline-none"
+                        placeholder=move || if form.tags.with(Vec::is_empty) { "Tocá para elegir o escribí una nueva" } else { "" }
+                        role="combobox" aria-label="Agregar etiqueta" aria-autocomplete="list"
+                        aria-controls="etiquetas-menu"
+                        aria-expanded=move || (open.get() && !options.with(Vec::is_empty)).to_string()
+                        aria-activedescendant=move || (open.get() && !options.with(Vec::is_empty)).then(|| format!("etiqueta-op-{}", active.get()))
+                        maxlength=domain::TAG_MAX
+                        prop:value=move || text.get()
+                        on:focus=move |_| open.set(true)
+                        on:input=move |ev| {
+                            let v = event_target_value(&ev);
+                            open.set(true);
+                            active.set(0);
+                            if v.contains(',') {
+                                form.add_tags(&v);
+                                text.set(String::new());
+                            } else {
+                                text.set(v);
+                            }
                         }
-                    }
-                    on:blur=move |_| commit()/>
-            </div>
-            {move || {
-                let s = suggestions.get();
-                (!s.is_empty()).then(|| view! {
-                    <div class="mt-1 flex flex-wrap items-center gap-1">
-                        <span class="text-xs text-base-content/60">"Ya usás:"</span>
-                        {s.into_iter().map(|t| {
-                            let t2 = t.clone();
+                        on:keydown=move |ev| {
+                            let n = options.with_untracked(Vec::len);
+                            match ev.key().as_str() {
+                                "ArrowDown" if n > 0 => {
+                                    ev.prevent_default();
+                                    open.set(true);
+                                    active.update(|a| *a = (*a + 1) % n);
+                                }
+                                "ArrowUp" if n > 0 => {
+                                    ev.prevent_default();
+                                    active.update(|a| *a = (*a + n - 1) % n);
+                                }
+                                "Enter" => {
+                                    ev.prevent_default();
+                                    let chosen = open.get_untracked().then(|| options.with_untracked(|o| o.get(active.get_untracked()).cloned())).flatten();
+                                    match chosen {
+                                        Some(opt) => pick(&opt),
+                                        None => commit(),
+                                    }
+                                }
+                                "Escape" => open.set(false),
+                                "Backspace" if text.with_untracked(String::is_empty) => {
+                                    form.tags.update(|l| { l.pop(); });
+                                }
+                                _ => {}
+                            }
+                        }
+                        on:blur=move |_| { open.set(false); commit(); }/>
+                </div>
+                {move || (open.get() && !options.with(Vec::is_empty)).then(|| view! {
+                    <ul id="etiquetas-menu" role="listbox" aria-label="Etiquetas"
+                        class="absolute left-0 top-full z-20 mt-1.5 max-h-72 w-full max-w-sm overflow-y-auto rounded-box border border-base-300 bg-base-100 py-1 shadow-xl">
+                        {options.get().into_iter().enumerate().map(|(i, opt)| {
+                            let opt2 = opt.clone();
+                            let row = match &opt {
+                                TagOption::Existing(t) => view! {
+                                    <span class="grow">{t.tag.clone()}</span>
+                                    <span class="text-xs text-base-content/50">{if t.products == 1 { "1 producto".to_string() } else { format!("{} productos", t.products) }}</span>
+                                }.into_any(),
+                                TagOption::Create(t) => view! {
+                                    <span class="grow font-medium text-primary">{format!("+ Crear la etiqueta «{t}»")}</span>
+                                }.into_any(),
+                            };
+                            let is_create = matches!(opt, TagOption::Create(_));
                             view! {
-                                <button type="button" class="badge badge-ghost cursor-pointer hover:badge-primary"
-                                    on:click=move |_| { form.add_tags(&t2); text.set(String::new()); }>
-                                    "+ " {t}
-                                </button>
+                                <li id=format!("etiqueta-op-{i}") role="option"
+                                    aria-selected=move || (active.get() == i).to_string()
+                                    class="mx-1 flex cursor-pointer items-center gap-3 rounded-field px-3 py-2 text-sm"
+                                    class:bg-base-200=move || active.get() == i
+                                    class:border-t=is_create
+                                    class:border-base-200=is_create
+                                    on:mouseenter=move |_| active.set(i)
+                                    // mousedown, antes de que el campo pierda el foco.
+                                    on:mousedown=move |ev| { ev.prevent_default(); pick(&opt2); }>
+                                    {row}
+                                </li>
                             }
                         }).collect_view()}
-                    </div>
-                })
-            }}
+                    </ul>
+                })}
+            </div>
         </fieldset>
     }
 }

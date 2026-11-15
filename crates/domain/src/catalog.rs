@@ -35,7 +35,45 @@ pub struct ProductEdit {
     /// Vacío (id `""`) para uno nuevo.
     pub product: Product,
     /// Las etiquetas que ya usa la tienda, para sugerir.
-    pub store_tags: Vec<String>,
+    pub store_tags: Vec<TagCount>,
+}
+
+/// Una etiqueta de la tienda y en cuántos productos está.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TagCount {
+    pub tag: String,
+    pub products: i64,
+}
+
+/// Una fila del menú de etiquetas.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TagOption {
+    /// Una que ya usa la tienda, con en cuántos productos está.
+    Existing(TagCount),
+    /// Crear la etiqueta (ya limpia) que se está escribiendo.
+    Create(String),
+}
+
+/// Lo que muestra el menú de etiquetas: las de la tienda que todavía no
+/// tiene el producto y coinciden con lo escrito, y al final crear lo escrito
+/// si no existe.
+pub fn tag_options(store: &[TagCount], chosen: &[String], typed: &str) -> Vec<TagOption> {
+    let q = fold(typed.trim());
+    let mut out: Vec<TagOption> = store
+        .iter()
+        .filter(|t| !chosen.contains(&t.tag))
+        .filter(|t| q.is_empty() || fold(&t.tag).contains(&q))
+        .take(8)
+        .cloned()
+        .map(TagOption::Existing)
+        .collect();
+    if let Some(new) = clean_tag(typed) {
+        let exists = store.iter().any(|t| t.tag == new) || chosen.contains(&new);
+        if !exists {
+            out.push(TagOption::Create(new));
+        }
+    }
+    out
 }
 
 /// Resultado de guardar: el id (nuevo o el mismo) o los problemas.
@@ -231,6 +269,31 @@ mod tests {
         assert!(tidy_product(&mut p).is_empty());
         p.name = " ".into();
         assert_eq!(tidy_product(&mut p).len(), 1);
+    }
+
+    #[test]
+    fn tag_menu_filters_and_offers_to_create() {
+        let store = vec![
+            TagCount {
+                tag: "regalo".into(),
+                products: 4,
+            },
+            TagCount {
+                tag: "recuerdos".into(),
+                products: 1,
+            },
+            TagCount {
+                tag: "cocina".into(),
+                products: 2,
+            },
+        ];
+        let chosen = vec!["cocina".to_string()];
+        assert_eq!(tag_options(&store, &chosen, "").len(), 2);
+        let opts = tag_options(&store, &chosen, "Re");
+        assert_eq!(opts.len(), 3);
+        assert_eq!(opts[2], TagOption::Create("re".into()));
+        assert_eq!(tag_options(&store, &chosen, "regalo").len(), 1);
+        assert!(tag_options(&store, &chosen, "cocina").is_empty());
     }
 
     #[test]
