@@ -32,8 +32,14 @@ use topbar::{PageSwitcher, StoreMenu};
 /// Cuántos pasos de deshacer se guardan.
 pub const MAX_UNDO: usize = 50;
 
-/// Acción de guardado: recibe el documento y la versión base.
+/// Acción de guardado del borrador: recibe el documento y la versión base.
 pub type SaveAction = Action<(PageDoc, u32), Result<SaveOutcome, ServerFnError>>;
+/// Acción de publicar: recibe la versión guardada a publicar y devuelve la
+/// versión que quedó publicada.
+pub type PublishAction = Action<u32, Result<u32, ServerFnError>>;
+
+/// Cuánto espera el editor sin cambios nuevos antes de guardar solo.
+const AUTOSAVE_DELAY: Duration = Duration::from_millis(1500);
 
 /// Clave del borrador guardado en el navegador.
 const DRAFT_KEY: &str = "mk-editor-borrador:home";
@@ -45,8 +51,12 @@ pub(crate) const WELCOME_KEY: &str = "mk-editor-bienvenida";
 #[derive(Clone, Copy)]
 pub(crate) struct EditorState {
     pub doc: RwSignal<PageDoc>,
+    /// Lo último guardado en el servidor (el borrador).
     pub saved: RwSignal<PageDoc>,
+    /// Versión de `saved`.
     pub base_version: RwSignal<u32>,
+    /// Versión que ven los visitantes.
+    pub published: RwSignal<u32>,
     pub selected: RwSignal<Option<String>>,
     /// Qué se está editando: una página o la ficha del producto.
     pub layer: RwSignal<Layer>,
@@ -66,6 +76,7 @@ impl EditorState {
             doc: RwSignal::new(view.doc.clone()),
             saved: RwSignal::new(view.doc.clone()),
             base_version: RwSignal::new(view.version),
+            published: RwSignal::new(view.published),
             selected: RwSignal::new(None),
             layer: RwSignal::new(HOME),
             page: RwSignal::new(0),
@@ -127,8 +138,15 @@ impl EditorState {
         }
     }
 
+    /// Hay cambios que todavía no se guardaron en el servidor.
     pub fn dirty(&self) -> bool {
         self.doc.with(|d| self.saved.with(|s| d != s))
+    }
+
+    /// Hay algo que los visitantes todavía no ven: cambios sin guardar o un
+    /// borrador guardado sin publicar.
+    pub fn unpublished(&self) -> bool {
+        self.dirty() || self.base_version.get() != self.published.get()
     }
 
     /// Bloque con ese id, en la página o en la ficha.
@@ -844,7 +862,7 @@ fn typing_in_field(ev: &web_sys::KeyboardEvent) -> bool {
 }
 
 #[component]
-pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
+pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> impl IntoView {
     let state = EditorState::new(&initial);
     let products = StoredValue::new(initial.products.clone());
     let status = RwSignal::new(Status::Idle);
@@ -872,6 +890,58 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
     // Borrador de una sesión anterior que se puede recuperar.
     let recover = RwSignal::new(None::<PageDoc>);
     let welcome = RwSignal::new(false);
+    // Se tocó Publicar: en cuanto termine de guardarse, se publica.
+    let publish_after = RwSignal::new(false);
+    // Turno del guardado automático: solo guarda el último cambio.
+    let autosave_seq = StoredValue::new(0u64);
+
+    // Guarda el borrador en el servidor. Con `loud`, si hay errores los
+    // muestra; sin `loud` (guardado automático) espera a que se corrijan.
+    // Devuelve si se mandó a guardar.
+    let save_draft = move |loud: bool| -> bool {
+        if save.pending().get_untracked() || !state.dirty() {
+            return false;
+        }
+        let doc = state.doc.get_untracked();
+        let found = problems(&doc);
+        if !found.is_empty() {
+            if loud {
+                // Los campos con error lo muestran aunque no se hayan tocado, y
+                // el foco va a la lista de errores: el lector de pantalla la lee
+                // y desde ahí se llega a cada bloque.
+                ui.show_errors.set(true);
+                status.set(Status::Problems(found));
+                focus_problems();
+            }
+            return false;
+        }
+        if loud {
+            state.end_group();
+        }
+        sent.set(Some(doc.clone()));
+        if loud {
+            status.set(Status::Idle);
+        }
+        save.dispatch((doc, state.base_version.get_untracked()));
+        true
+    };
+    let save_now = move || {
+        save_draft(true);
+    };
+
+    // Publicar: guarda lo que falte y después publica esa versión.
+    let publish_now = move || {
+        if publish.pending().get_untracked() || publish_after.get_untracked() {
+            return;
+        }
+        if save.pending().get_untracked() {
+            publish_after.set(true);
+        } else if state.dirty() {
+            publish_after.set(save_draft(true));
+        } else if state.base_version.get_untracked() != state.published.get_untracked() {
+            publish.dispatch(state.base_version.get_untracked());
+        }
+    };
 
     // Resultado del guardado.
     Effect::new(move |_| {
@@ -886,15 +956,65 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 state.base_version.set(version);
                 status.set(Status::Idle);
                 ui.show_errors.set(false);
-                ui.toast("Publicado. Tu tienda ya muestra estos cambios.", false);
+                if publish_after.get_untracked() {
+                    // Si se siguió editando mientras se guardaba, primero se
+                    // guarda eso también.
+                    if !state.dirty() || !save_draft(true) {
+                        publish_after.set(false);
+                        if !state.dirty() {
+                            publish.dispatch(version);
+                        }
+                    }
+                }
             }
-            Ok(SaveOutcome::Conflict { .. }) => status.set(Status::Conflict),
+            Ok(SaveOutcome::Conflict { .. }) => {
+                publish_after.set(false);
+                status.set(Status::Conflict);
+            }
             Ok(SaveOutcome::Invalid { errors }) => {
+                publish_after.set(false);
                 status.set(Status::Invalid(errors));
                 focus_problems();
             }
+            Err(e) => {
+                publish_after.set(false);
+                status.set(Status::Error(e.to_string()));
+            }
+        }
+    });
+
+    // Resultado de publicar.
+    Effect::new(move |_| {
+        let Some(result) = publish.value().get() else {
+            return;
+        };
+        match result {
+            Ok(version) => {
+                state.published.set(version);
+                ui.toast("Publicado. Tu tienda ya muestra estos cambios.", false);
+            }
             Err(e) => status.set(Status::Error(e.to_string())),
         }
+    });
+
+    // Guardado automático: un rato después del último cambio, el borrador se
+    // guarda solo. Los visitantes no lo ven hasta que se toca Publicar.
+    Effect::new(move |prev: Option<()>| {
+        let dirty = state.dirty();
+        state.doc.track();
+        if prev.is_none() || !dirty {
+            return;
+        }
+        let seq = autosave_seq.get_value() + 1;
+        autosave_seq.set_value(seq);
+        set_timeout(
+            move || {
+                if autosave_seq.get_value() == seq {
+                    save_draft(false);
+                }
+            },
+            AUTOSAVE_DELAY,
+        );
     });
 
     // Si se deshace la creación de una página (o se borra), la que se
@@ -959,27 +1079,6 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
             _ = st.remove_item(DRAFT_KEY);
         }
     });
-
-    let save_now = move || {
-        if save.pending().get_untracked() || !state.dirty() {
-            return;
-        }
-        state.end_group();
-        let doc = state.doc.get_untracked();
-        let found = problems(&doc);
-        if !found.is_empty() {
-            // Los campos con error lo muestran aunque no se hayan tocado, y
-            // el foco va a la lista de errores: el lector de pantalla la lee
-            // y desde ahí se llega a cada bloque.
-            ui.show_errors.set(true);
-            status.set(Status::Problems(found));
-            focus_problems();
-            return;
-        }
-        sent.set(Some(doc.clone()));
-        status.set(Status::Idle);
-        save.dispatch((doc, state.base_version.get_untracked()));
-    };
 
     // Atajos de teclado de todo el editor.
     Effect::new(move |_| {
@@ -1094,17 +1193,32 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                     </button>
                 </div>
                 <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
-                <span class="flex items-center gap-1.5 whitespace-nowrap text-sm" title="Tu tienda muestra lo último que publicaste">
-                    {move || if state.dirty() {
-                        view! {
-                            <span class="h-2 w-2 rounded-full bg-warning" aria-hidden="true"></span>
-                            <span>"Sin publicar"</span>
-                        }.into_any()
+                <span
+                    class="flex items-center gap-1.5 whitespace-nowrap text-sm"
+                    role="status"
+                    title=move || if state.unpublished() {
+                        "Tus cambios se guardan solos. Tus clientes ven la última versión que publicaste."
                     } else {
-                        view! {
+                        "Tu tienda muestra exactamente esto."
+                    }
+                >
+                    {move || match (state.dirty(), save.pending().get(), state.unpublished()) {
+                        (true, true, _) => view! {
+                            <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                            <span>"Guardando…"</span>
+                        }.into_any(),
+                        (true, false, _) => view! {
+                            <span class="h-2 w-2 rounded-full bg-base-content/40" aria-hidden="true"></span>
+                            <span>"Sin guardar"</span>
+                        }.into_any(),
+                        (false, _, true) => view! {
+                            <span class="h-2 w-2 rounded-full bg-warning" aria-hidden="true"></span>
+                            <span>"Guardado, sin publicar"</span>
+                        }.into_any(),
+                        (false, _, false) => view! {
                             <Icon name="check" class="h-4 w-4 text-success"/>
                             <span>"Publicado"</span>
-                        }.into_any()
+                        }.into_any(),
                     }}
                 </span>
                 <a
@@ -1120,13 +1234,12 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 <button
                     type="button"
                     class="btn btn-sm btn-primary"
-                    title="Publicar (Ctrl+S o ⌘S)"
-                    aria-keyshortcuts="Control+S Meta+S"
-                    disabled=move || !state.dirty() || save.pending().get()
-                    on:click=move |_| save_now()
+                    title="Publicar: tus clientes ven estos cambios"
+                    disabled=move || !state.unpublished() || publish.pending().get() || publish_after.get()
+                    on:click=move |_| publish_now()
                 >
                     <Icon name="up"/>
-                    {move || if save.pending().get() { "Publicando…" } else { "Publicar" }}
+                    {move || if publish.pending().get() || publish_after.get() { "Publicando…" } else { "Publicar" }}
                 </button>
             </header>
             {move || recover.get().map(|doc| {
@@ -1139,7 +1252,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                             let draft = doc.get_value();
                             state.apply(|d| *d = draft);
                             recover.set(None);
-                            ui.toast("Recuperaste tus cambios. Publicalos para que se vean en tu tienda.", false);
+                            ui.toast("Recuperaste tus cambios. Se guardan solos; tocá Publicar cuando quieras que se vean en tu tienda.", false);
                         }>"Recuperar cambios"</button>
                         <button type="button" class="btn btn-sm" on:click=move |_| {
                             recover.set(None);
@@ -1208,7 +1321,7 @@ fn Notices(
             Status::Conflict => view! {
                 <div class="alert alert-warning shadow-lg">
                     <Icon name="alert" class="h-5 w-5"/>
-                    <span>"Alguien publicó otra versión mientras editabas. Tus cambios quedaron guardados en este navegador: recargá y vas a poder recuperarlos."</span>
+                    <span>"Alguien guardó otra versión mientras editabas. Tus cambios quedaron guardados en este navegador: recargá y vas a poder recuperarlos."</span>
                     <button type="button" class="btn btn-sm" on:click=move |_| {
                         if let Some(w) = web_sys::window() {
                             _ = w.location().reload();
