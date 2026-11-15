@@ -14,7 +14,7 @@ mod inspector;
 mod palette;
 mod typography;
 
-use domain::{Layer, Node, PageDoc, PageView, SaveOutcome, THEMES, THEME_LABELS};
+use domain::{Layer, Node, PageDoc, PageView, SaveOutcome, HOME, THEMES, THEME_LABELS};
 use leptos::prelude::*;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -44,8 +44,11 @@ pub(crate) struct EditorState {
     pub saved: RwSignal<PageDoc>,
     pub base_version: RwSignal<u32>,
     pub selected: RwSignal<Option<String>>,
-    /// Qué se está editando: la página o la ficha del producto.
+    /// Qué se está editando: una página o la ficha del producto.
     pub layer: RwSignal<Layer>,
+    /// Página que se está editando (o la que queda detrás de la ficha):
+    /// `0` es Inicio.
+    pub page: RwSignal<usize>,
     pub undo: RwSignal<Vec<PageDoc>>,
     pub redo: RwSignal<Vec<PageDoc>>,
     /// Grupo de la última edición. Las ediciones seguidas del mismo grupo
@@ -60,7 +63,8 @@ impl EditorState {
             saved: RwSignal::new(view.doc.clone()),
             base_version: RwSignal::new(view.version),
             selected: RwSignal::new(None),
-            layer: RwSignal::new(Layer::Page),
+            layer: RwSignal::new(HOME),
+            page: RwSignal::new(0),
             undo: RwSignal::new(Vec::new()),
             redo: RwSignal::new(Vec::new()),
             group: RwSignal::new(None),
@@ -145,6 +149,15 @@ impl EditorState {
 
     pub fn in_modal(&self) -> bool {
         self.layer.get() == Layer::ProductModal
+    }
+
+    pub fn in_modal_untracked(&self) -> bool {
+        self.layer.get_untracked() == Layer::ProductModal
+    }
+
+    /// La página que se está editando (o la que queda detrás de la ficha).
+    pub fn page_layer(&self) -> Layer {
+        Layer::Page(self.page.get())
     }
 }
 
@@ -449,13 +462,14 @@ impl Actions {
             return;
         }
         self.state.end_group();
-        self.state.layer.set(Layer::Page);
+        let page = Layer::Page(self.state.page.get_untracked());
+        self.state.layer.set(page);
         let back = self
             .ui
             .return_to
             .try_update_value(Option::take)
             .flatten()
-            .filter(|id| self.state.doc.with_untracked(|d| d.layer_of(id)) == Some(Layer::Page));
+            .filter(|id| self.state.doc.with_untracked(|d| d.layer_of(id)) == Some(page));
         self.state.selected.set(back.clone());
         self.ui.announce("Volviste a la página.");
         match back {
@@ -464,12 +478,15 @@ impl Actions {
         }
     }
 
-    /// Lleva a un bloque, esté en la página o en la ficha, y lo elige.
+    /// Lleva a un bloque, esté en la página que esté o en la ficha, y lo elige.
     pub fn go_to(&self, id: &str) {
         let target = self.state.doc.with_untracked(|d| d.layer_of(id));
         match target {
             Some(Layer::ProductModal) => self.open_modal(None),
-            Some(Layer::Page) => {
+            Some(Layer::Page(i)) if i != self.state.page.get_untracked() => {
+                self.open_page(i, false);
+            }
+            Some(Layer::Page(_)) => {
                 self.ui.return_to.set_value(None);
                 self.close_modal();
             }
@@ -477,6 +494,120 @@ impl Actions {
         }
         self.state.selected.set(Some(id.to_string()));
         reveal_node(id, true);
+    }
+
+    /// Pasa a editar la página `i` (0 es Inicio). Si estaba abierta la
+    /// ficha, la cierra. Con `announce`, avisa a qué página se fue.
+    pub fn open_page(&self, i: usize, announce: bool) {
+        let count = self.state.doc.with_untracked(PageDoc::page_count);
+        let i = if i < count { i } else { 0 };
+        self.state.end_group();
+        self.ui.return_to.set_value(None);
+        self.state.selected.set(None);
+        self.state.page.set(i);
+        self.state.layer.set(Layer::Page(i));
+        if announce {
+            let name = self
+                .state
+                .doc
+                .with_untracked(|d| d.page_name(i).to_string());
+            self.ui
+                .announce(format!("Estás editando la página {name}."));
+        }
+        request_animation_frame(|| {
+            if let Some(el) = document().get_element_by_id("mk-canvas") {
+                el.set_scroll_top(0);
+            }
+        });
+    }
+
+    /// Lo que pasa al tocar un enlace en el lienzo: va a la página a la que
+    /// lleva. Si esa página todavía no existe, la crea (con el menú y el pie
+    /// de la página actual) y avisa. `label` es el texto del enlace, para
+    /// nombrar la página nueva.
+    pub fn follow_link(&self, href: &str, label: &str) {
+        let Some(path) = domain::normalize_path(href) else {
+            self.ui.toast(
+                "Este enlace lleva a otro sitio. En tu tienda se abre al tocarlo.",
+                false,
+            );
+            return;
+        };
+        if let Some(i) = self.state.doc.with_untracked(|d| d.page_index(&path)) {
+            if i == self.state.page.get_untracked() && !self.state.in_modal_untracked() {
+                let name = self
+                    .state
+                    .doc
+                    .with_untracked(|d| d.page_name(i).to_string());
+                self.ui
+                    .toast(format!("Ya estás en la página {name}."), false);
+                return;
+            }
+            self.open_page(i, true);
+            return;
+        }
+        if domain::is_reserved_path(&path) {
+            self.ui.toast(
+                format!("La dirección {path} la usa la aplicación: elegí otra para este enlace."),
+                false,
+            );
+            return;
+        }
+        if self.state.doc.with_untracked(|d| d.pages.len()) >= domain::MAX_PAGES {
+            self.ui.toast(
+                format!(
+                    "Tu tienda ya tiene {} páginas, el máximo. Borrá una para crear otra.",
+                    domain::MAX_PAGES + 1
+                ),
+                false,
+            );
+            return;
+        }
+        let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+        let name: String = if label.is_empty() {
+            domain::name_from_path(&path)
+        } else {
+            label.chars().take(domain::MAX_PAGE_NAME).collect()
+        };
+        let from = self.state.page.get_untracked();
+        let mut created = 0;
+        self.state
+            .apply(|d| created = d.add_page(path, name.clone(), from));
+        self.open_page(created, false);
+        let has = |t: &str| {
+            self.state.doc.with_untracked(|d| {
+                d.layer(Layer::Page(created))
+                    .iter()
+                    .any(|n| n.widget.type_name() == t)
+            })
+        };
+        let start = match (has("Navbar"), has("Footer")) {
+            (true, true) => " Arranca con tu menú superior y tu pie de página.",
+            (true, false) => " Arranca con tu menú superior.",
+            (false, true) => " Arranca con tu pie de página.",
+            (false, false) => "",
+        };
+        self.ui.toast(
+            format!("Creaste la página {name}.{start} Sumale bloques desde la izquierda."),
+            true,
+        );
+    }
+
+    /// Borra la página `i` (nunca Inicio) y vuelve a Inicio.
+    pub fn delete_page(&self, i: usize) {
+        if i == 0 || i >= self.state.doc.with_untracked(PageDoc::page_count) {
+            return;
+        }
+        let name = self
+            .state
+            .doc
+            .with_untracked(|d| d.page_name(i).to_string());
+        self.open_page(0, false);
+        self.state.apply(|d| {
+            d.pages.remove(i - 1);
+        });
+        self.ui
+            .toast(format!("Página {name} borrada. Volviste a Inicio."), true);
     }
 
     /// Elige un bloque y lleva el foco al inspector.
@@ -535,17 +666,18 @@ pub(crate) fn choice_class(active: bool) -> &'static str {
 }
 
 pub(crate) fn new_node_id(doc: &PageDoc) -> String {
-    (1..)
-        .map(|k| format!("n{k}"))
-        .find(|id| doc.all_nodes().all(|n| &n.id != id))
-        .expect("siempre hay un id libre")
+    doc.fresh_id(&[])
 }
 
 /// Problemas de los campos de todos los bloques, en el orden de la página.
-/// Primero la página y después la ficha del producto.
+/// Primero las páginas (Inicio, después las demás) y al final la ficha del
+/// producto.
 pub(crate) fn problems(doc: &PageDoc) -> Vec<Problem> {
     let mut out = Vec::new();
-    for layer in [Layer::Page, Layer::ProductModal] {
+    let layers = (0..doc.page_count())
+        .map(Layer::Page)
+        .chain([Layer::ProductModal]);
+    for layer in layers {
         let mut nodes = doc.layer(layer).clone();
         grid::sort_by_position(&mut nodes);
         for node in &nodes {
@@ -553,7 +685,8 @@ pub(crate) fn problems(doc: &PageDoc) -> Vec<Problem> {
                 continue;
             };
             let path = match layer {
-                Layer::Page => node.widget.label().to_string(),
+                Layer::Page(0) => node.widget.label().to_string(),
+                Layer::Page(i) => format!("Página {} › {}", doc.page_name(i), node.widget.label()),
                 Layer::ProductModal => format!("Ficha del producto › {}", node.widget.label()),
             };
             let mut texts = Vec::new();
@@ -727,6 +860,15 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         }
     });
 
+    // Si se deshace la creación de una página (o se borra), la que se
+    // estaba editando puede dejar de existir: se vuelve a Inicio.
+    Effect::new(move |_| {
+        let count = state.doc.with(PageDoc::page_count);
+        if state.page.get() >= count {
+            actions.open_page(0, true);
+        }
+    });
+
     // Con cambios sin guardar, cerrar o recargar la pestaña pide confirmación.
     Effect::new(move |_| {
         let handle = window_event_listener(leptos::ev::beforeunload, move |ev| {
@@ -864,7 +1006,12 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
             <header class="navbar min-h-14 gap-3 border-b border-base-300 bg-base-100 px-4">
                 <div class="flex flex-1 items-center gap-4">
                     <h1 class="text-lg font-bold">"Editor de tu tienda"</h1>
-                    <a class="link link-hover inline-flex items-center gap-1 text-sm" href="/" target="_blank" rel="noopener">
+                    <a
+                        class="link link-hover inline-flex items-center gap-1 text-sm"
+                        href=move || state.doc.with(|d| d.page_path(state.page.get()).to_string())
+                        target="_blank"
+                        rel="noopener"
+                    >
                         "Ver tienda publicada"
                         <Icon name="external" class="h-3.5 w-3.5"/>
                         <span class="sr-only">"(se abre en otra pestaña)"</span>

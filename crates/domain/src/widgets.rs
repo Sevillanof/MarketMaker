@@ -284,7 +284,7 @@ pub const PRODUCT_MODAL_SHARED: &[&str] =
 pub fn allowed_in(type_name: &str, layer: Layer) -> bool {
     let only_modal = PRODUCT_MODAL_ONLY.contains(&type_name);
     match layer {
-        Layer::Page => !only_modal,
+        Layer::Page(_) => !only_modal,
         Layer::ProductModal => only_modal || PRODUCT_MODAL_SHARED.contains(&type_name),
     }
 }

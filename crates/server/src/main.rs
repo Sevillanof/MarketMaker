@@ -4,6 +4,7 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_header::SetResponseHeaderLayer;
 use web::*;
 
@@ -38,8 +39,22 @@ async fn main() {
     let leptos_options = conf.leptos_options;
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
+    let site_root = leptos_options.site_root.to_string();
 
-    let app = Router::new()
+    // Los archivos van antes que las páginas de la tienda: la ruta `/*any`
+    // de la tienda también atraparía `/pkg/…` o `/favicon.ico`.
+    let mut app = Router::new();
+    for dir in ["pkg", "fonts", "img"] {
+        app = app.nest_service(
+            &format!("/{dir}"),
+            ServeDir::new(format!("{site_root}/{dir}")),
+        );
+    }
+    let app = app
+        .route_service(
+            "/favicon.ico",
+            ServeFile::new(format!("{site_root}/favicon.ico")),
+        )
         .leptos_routes_with_context(
             &leptos_options,
             routes,

@@ -31,6 +31,7 @@ fn path(name: &str) -> &'static str {
         "tag" => "M3 12V4h8l10 10-8 8zM7.5 8v.01",
         "button" => "M3 8h18v8H3zM8 12h8",
         "modal" => "M3 4h18v16H3zM7 8h10v8H7z",
+        "page" => "M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6",
         "navbar" => "M3 5h18v4H3zM6 7h3M14 7h2M18 7h1M3 13h18M3 17h12",
         "banner" => "M3 5h18v11H3zM7 9h8M7 12h5M3 20h18",
         "carousel" => "M6 6h12v10H6zM2 9v4M22 9v4M10 20h.01M12 20h.01M14 20h.01",

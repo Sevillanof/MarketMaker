@@ -21,6 +21,17 @@ pub const SCHEMA_2_SCALE: (u16, u16) = (4, 12);
 pub const MAX_NODES: usize = 100;
 /// Máximo de bloques en la ficha del producto.
 pub const MAX_MODAL_NODES: usize = 30;
+/// Máximo de páginas además de Inicio.
+pub const MAX_PAGES: usize = 30;
+/// Largo máximo de la dirección de una página (`/ofertas`).
+pub const MAX_PATH_LEN: usize = 60;
+/// Largo máximo del nombre de una página.
+pub const MAX_PAGE_NAME: usize = 40;
+/// Direcciones que usa la aplicación: ninguna página puede empezar así.
+pub const RESERVED_PATHS: &[&str] = &["/editor", "/dev", "/pkg", "/api", "/fonts", "/img"];
+/// Bloques que se copian a una página nueva para que se vea como parte de
+/// la misma tienda: el menú y el pie.
+pub const SHARED_ON_NEW_PAGE: &[&str] = &["Navbar", "Footer"];
 /// Ancho, en píxeles, con el que se dibuja el contenido de la ficha del
 /// producto (el `max-w` del cuadro menos su relleno).
 pub const MODAL_W_PX: u16 = 800;
@@ -59,6 +70,70 @@ pub struct PageDoc {
     /// anteriores no la traen: se usa la de [`ProductModal::default`].
     #[serde(default, skip_serializing_if = "ProductModal::is_default")]
     pub product_modal: ProductModal,
+    /// Las demás páginas de la tienda (Ofertas, Categorías…). Inicio son
+    /// los `nodes` de arriba. Los documentos anteriores no las traen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pages: Vec<StorePage>,
+}
+
+/// Una página de la tienda que no es Inicio: su dirección, su nombre y sus
+/// bloques, sobre la misma grilla que Inicio.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StorePage {
+    /// Dirección dentro de la tienda, como `/ofertas` (ver [`normalize_path`]).
+    pub path: String,
+    pub name: String,
+    pub nodes: Vec<Node>,
+}
+
+/// Lleva el enlace `href` a la dirección de una página de la tienda:
+/// `"/Ofertas/?x=1#y"` → `"/ofertas"`, `""` o `"/"` → `"/"`.
+///
+/// `None` si no es una dirección de la tienda (`https://…`, `mailto:…`,
+/// `//otro.sitio`) o si tiene caracteres que no van en una dirección.
+pub fn normalize_path(href: &str) -> Option<String> {
+    let href = href.trim();
+    if href.is_empty() {
+        return Some("/".to_string());
+    }
+    if !href.starts_with('/') || href.starts_with("//") {
+        return None;
+    }
+    let end = href.find(['?', '#']).unwrap_or(href.len());
+    let path = href[..end].trim_end_matches('/').to_lowercase();
+    if path.is_empty() {
+        return Some("/".to_string());
+    }
+    let ok = path.len() <= MAX_PATH_LEN
+        && path[1..].split('/').all(|seg| {
+            !seg.is_empty()
+                && seg
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        });
+    ok.then_some(path)
+}
+
+/// ¿La dirección la usa la aplicación (el editor, los archivos)?
+pub fn is_reserved_path(path: &str) -> bool {
+    RESERVED_PATHS.iter().any(|r| {
+        path == *r
+            || path
+                .strip_prefix(r)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+/// Nombre para una página nueva a partir de su dirección: `/sobre-nosotros`
+/// → `Sobre nosotros`.
+pub fn name_from_path(path: &str) -> String {
+    let last = path.rsplit('/').find(|s| !s.is_empty()).unwrap_or("Página");
+    let words = last.replace(['-', '_'], " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().chain(chars).collect(),
+        None => "Página".to_string(),
+    }
 }
 
 impl Default for PageDoc {
@@ -69,6 +144,7 @@ impl Default for PageDoc {
             typography: Typography::default(),
             nodes: Vec::new(),
             product_modal: ProductModal::default(),
+            pages: Vec::new(),
         }
     }
 }
@@ -77,42 +153,122 @@ impl Default for PageDoc {
 /// producto.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Layer {
-    Page,
+    /// Una página de la tienda: `0` es Inicio y `i` es `pages[i - 1]`.
+    Page(usize),
     ProductModal,
 }
+
+/// Inicio.
+pub const HOME: Layer = Layer::Page(0);
+
+static NO_NODES: Vec<Node> = Vec::new();
 
 impl Layer {
     /// Ancho, en píxeles, al que se dibuja el contenido de la capa.
     pub fn design_width(self) -> u16 {
         match self {
-            Layer::Page => 1120,
+            Layer::Page(_) => 1120,
             Layer::ProductModal => MODAL_W_PX,
         }
     }
 }
 
 impl PageDoc {
+    /// Bloques de una capa. Una página que no existe no tiene bloques.
     pub fn layer(&self, layer: Layer) -> &Vec<Node> {
         match layer {
-            Layer::Page => &self.nodes,
+            Layer::Page(0) => &self.nodes,
+            Layer::Page(i) => self.pages.get(i - 1).map_or(&NO_NODES, |p| &p.nodes),
             Layer::ProductModal => &self.product_modal.nodes,
         }
     }
 
+    /// Bloques de una capa, para cambiarlos. Una página que no existe se
+    /// toma como Inicio.
     pub fn layer_mut(&mut self, layer: Layer) -> &mut Vec<Node> {
         match layer {
-            Layer::Page => &mut self.nodes,
+            Layer::Page(i) if i > 0 && i <= self.pages.len() => &mut self.pages[i - 1].nodes,
+            Layer::Page(_) => &mut self.nodes,
             Layer::ProductModal => &mut self.product_modal.nodes,
         }
     }
 
-    /// Todos los bloques, de la página y de la ficha. Los ids no se repiten
-    /// entre las dos.
-    pub fn all_nodes(&self) -> impl Iterator<Item = &Node> {
-        self.nodes.iter().chain(self.product_modal.nodes.iter())
+    /// Cuántas páginas hay, Inicio incluida.
+    pub fn page_count(&self) -> usize {
+        self.pages.len() + 1
     }
 
-    /// Bloque con ese id, esté en la página o en la ficha.
+    /// Dirección de la página `i` (`/` para Inicio).
+    pub fn page_path(&self, i: usize) -> &str {
+        match i {
+            0 => "/",
+            i => self.pages.get(i - 1).map_or("/", |p| p.path.as_str()),
+        }
+    }
+
+    /// Nombre de la página `i`.
+    pub fn page_name(&self, i: usize) -> &str {
+        match i {
+            0 => "Inicio",
+            i => self.pages.get(i - 1).map_or("Inicio", |p| p.name.as_str()),
+        }
+    }
+
+    /// Página a la que lleva el enlace `href`, si existe.
+    pub fn page_index(&self, href: &str) -> Option<usize> {
+        let path = normalize_path(href)?;
+        if path == "/" {
+            return Some(0);
+        }
+        self.pages
+            .iter()
+            .position(|p| p.path == path)
+            .map(|i| i + 1)
+    }
+
+    /// Agrega la página `path` con ese nombre y la devuelve. Arranca con una
+    /// copia del menú y del pie de la página `from` (ver
+    /// [`SHARED_ON_NEW_PAGE`]), uno debajo del otro en el orden de `from`:
+    /// el menú arriba y el pie justo debajo.
+    pub fn add_page(&mut self, path: String, name: String, from: usize) -> usize {
+        let mut nodes: Vec<Node> = Vec::new();
+        let mut shared: Vec<Node> = self
+            .layer(Layer::Page(from))
+            .iter()
+            .filter(|n| SHARED_ON_NEW_PAGE.contains(&n.widget.type_name()))
+            .cloned()
+            .collect();
+        shared.sort_by_key(|n| (n.pos.y, n.pos.x));
+        let mut y = 0_u16;
+        for mut n in shared {
+            n.pos.y = y;
+            y += u16::from(n.size.h);
+            n.id = self.fresh_id(&nodes);
+            nodes.push(n);
+        }
+        self.pages.push(StorePage { path, name, nodes });
+        self.pages.len()
+    }
+
+    /// Un id de bloque que no usa nadie (ni `extra`, que todavía no está en
+    /// el documento).
+    pub fn fresh_id(&self, extra: &[Node]) -> String {
+        (1..)
+            .map(|k| format!("n{k}"))
+            .find(|id| self.all_nodes().chain(extra).all(|n| &n.id != id))
+            .expect("siempre hay un id libre")
+    }
+
+    /// Todos los bloques, de todas las páginas y de la ficha. Los ids no se
+    /// repiten.
+    pub fn all_nodes(&self) -> impl Iterator<Item = &Node> {
+        self.nodes
+            .iter()
+            .chain(self.pages.iter().flat_map(|p| p.nodes.iter()))
+            .chain(self.product_modal.nodes.iter())
+    }
+
+    /// Bloque con ese id, esté donde esté.
     pub fn node(&self, id: &str) -> Option<&Node> {
         self.all_nodes().find(|n| n.id == id)
     }
@@ -120,6 +276,7 @@ impl PageDoc {
     pub fn node_mut(&mut self, id: &str) -> Option<&mut Node> {
         self.nodes
             .iter_mut()
+            .chain(self.pages.iter_mut().flat_map(|p| p.nodes.iter_mut()))
             .chain(self.product_modal.nodes.iter_mut())
             .find(|n| n.id == id)
     }
@@ -127,12 +284,20 @@ impl PageDoc {
     /// Capa donde está el bloque `id`.
     pub fn layer_of(&self, id: &str) -> Option<Layer> {
         if self.nodes.iter().any(|n| n.id == id) {
-            Some(Layer::Page)
-        } else if self.product_modal.nodes.iter().any(|n| n.id == id) {
-            Some(Layer::ProductModal)
-        } else {
-            None
+            return Some(HOME);
         }
+        if let Some(i) = self
+            .pages
+            .iter()
+            .position(|p| p.nodes.iter().any(|n| n.id == id))
+        {
+            return Some(Layer::Page(i + 1));
+        }
+        self.product_modal
+            .nodes
+            .iter()
+            .any(|n| n.id == id)
+            .then_some(Layer::ProductModal)
     }
 }
 
@@ -502,7 +667,7 @@ fn validate_nodes<'a>(
         }
         if !allowed_in(node.widget.type_name(), layer) {
             errors.push(match layer {
-                Layer::Page => format!(
+                Layer::Page(_) => format!(
                     "{} solo puede ir en la ficha del producto",
                     node.widget.label()
                 ),
@@ -581,8 +746,50 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
         ));
     }
 
+    if doc.pages.len() > MAX_PAGES {
+        errors.push(format!(
+            "hay {} páginas; el máximo es {}",
+            doc.page_count(),
+            MAX_PAGES + 1
+        ));
+    }
+    let mut paths = std::collections::HashSet::new();
+    for page in &doc.pages {
+        let name = &page.name;
+        if name.trim().is_empty() {
+            errors.push(format!("la página {} no tiene nombre", page.path));
+        } else if name.chars().count() > MAX_PAGE_NAME {
+            errors.push(format!(
+                "Página {name}: usá {MAX_PAGE_NAME} caracteres como máximo en el nombre."
+            ));
+        }
+        if normalize_path(&page.path).as_deref() != Some(page.path.as_str()) || page.path == "/" {
+            errors.push(format!(
+                "Página {name}: la dirección {} no es válida (usá minúsculas, números y guiones, como /ofertas)",
+                page.path
+            ));
+        } else if is_reserved_path(&page.path) {
+            errors.push(format!(
+                "Página {name}: la dirección {} la usa la aplicación",
+                page.path
+            ));
+        }
+        if !paths.insert(page.path.as_str()) {
+            errors.push(format!("hay dos páginas con la dirección {}", page.path));
+        }
+        if page.nodes.len() > MAX_NODES {
+            errors.push(format!(
+                "la página {name} tiene {} bloques; el máximo es {MAX_NODES}",
+                page.nodes.len()
+            ));
+        }
+    }
+
     let mut ids = std::collections::HashSet::new();
-    validate_nodes(&doc.nodes, Layer::Page, &mut ids, &mut errors);
+    validate_nodes(&doc.nodes, HOME, &mut ids, &mut errors);
+    for (i, page) in doc.pages.iter().enumerate() {
+        validate_nodes(&page.nodes, Layer::Page(i + 1), &mut ids, &mut errors);
+    }
     validate_nodes(
         &doc.product_modal.nodes,
         Layer::ProductModal,
@@ -711,7 +918,7 @@ mod tests {
         for (i, (t, _)) in WIDGET_TYPES.iter().enumerate() {
             let mut doc = PageDoc::default();
             let n = node(&format!("n{i}"), t, 0, 0);
-            if allowed_in(t, Layer::Page) {
+            if allowed_in(t, HOME) {
                 doc.nodes.push(n);
             } else {
                 doc.product_modal.nodes = vec![n];
@@ -747,7 +954,7 @@ mod tests {
         assert_eq!(json["product_modal"]["nodes"].as_array().unwrap().len(), 4);
         assert_eq!(parse_doc(json), Ok(doc.clone()));
         assert_eq!(doc.layer_of("m1"), Some(Layer::ProductModal));
-        assert_eq!(doc.layer_of("n1"), Some(Layer::Page));
+        assert_eq!(doc.layer_of("n1"), Some(HOME));
         assert!(doc.node("m2").is_some());
     }
 
@@ -771,6 +978,80 @@ mod tests {
         doc.product_modal.nodes[5].id = "x1".into();
         doc.product_modal.nodes[5].pos.y = 40;
         assert_invalid(&doc, "superponen");
+    }
+
+    #[test]
+    fn normalizes_store_paths() {
+        assert_eq!(
+            normalize_path("/Ofertas/?x=1#y").as_deref(),
+            Some("/ofertas")
+        );
+        assert_eq!(normalize_path("").as_deref(), Some("/"));
+        assert_eq!(normalize_path("/").as_deref(), Some("/"));
+        assert_eq!(
+            normalize_path("/categorias/ropa").as_deref(),
+            Some("/categorias/ropa")
+        );
+        assert_eq!(normalize_path("https://ejemplo.com"), None);
+        assert_eq!(normalize_path("//ejemplo.com"), None);
+        assert_eq!(normalize_path("/con espacio"), None);
+        assert_eq!(normalize_path("/a//b"), None);
+        assert!(is_reserved_path("/editor"));
+        assert!(is_reserved_path("/pkg/x.js"));
+        assert!(!is_reserved_path("/editores"));
+        assert_eq!(name_from_path("/sobre-nosotros"), "Sobre nosotros");
+    }
+
+    #[test]
+    fn new_pages_copy_the_menu_and_footer_and_validate() {
+        let mut doc = example();
+        doc.nodes.insert(0, node("nav", "Navbar", 0, 0));
+        for n in doc.nodes.iter_mut().skip(1) {
+            n.pos.y += 12;
+        }
+        let bottom = doc
+            .nodes
+            .iter()
+            .map(|n| n.pos.y + u16::from(n.size.h))
+            .max()
+            .unwrap();
+        doc.nodes.push(node("foot", "Footer", 0, bottom));
+        assert_eq!(validate(&doc), Ok(()));
+
+        let i = doc.add_page("/ofertas".into(), "Ofertas".into(), 0);
+        assert_eq!(i, 1);
+        assert_eq!(doc.page_index("/Ofertas/"), Some(1));
+        assert_eq!(doc.page_index("/"), Some(0));
+        assert_eq!(doc.page_index("/nada"), None);
+        assert_eq!(doc.page_name(1), "Ofertas");
+        let page = doc.layer(Layer::Page(1));
+        let types: Vec<_> = page.iter().map(|n| n.widget.type_name()).collect();
+        assert_eq!(types, ["Navbar", "Footer"]);
+        // El pie sube hasta debajo del menú.
+        assert_eq!(page[1].pos.y, 12);
+        assert_eq!(validate(&doc), Ok(()));
+        assert_eq!(doc.layer_of(&page[0].id.clone()), Some(Layer::Page(1)));
+
+        // Ida y vuelta por JSON.
+        let json = serde_json::to_value(&doc).unwrap();
+        assert_eq!(json["pages"][0]["path"], "/ofertas");
+        assert_eq!(parse_doc(json), Ok(doc.clone()));
+
+        // Una página que no existe no tiene bloques.
+        assert!(doc.layer(Layer::Page(9)).is_empty());
+
+        let mut bad = doc.clone();
+        bad.pages[0].path = "/editor".into();
+        assert_invalid(&bad, "la usa la aplicación");
+        let mut bad = doc.clone();
+        bad.pages[0].path = "/Mal Escrito".into();
+        assert_invalid(&bad, "no es válida");
+        let mut bad = doc.clone();
+        bad.add_page("/ofertas".into(), "Otra".into(), 0);
+        assert_invalid(&bad, "dos páginas");
+        let mut bad = doc.clone();
+        bad.pages[0].nodes[0].id = "nav".into();
+        assert_invalid(&bad, "repetido");
     }
 
     #[test]

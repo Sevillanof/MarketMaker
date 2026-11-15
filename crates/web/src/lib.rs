@@ -4,7 +4,8 @@ use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
-    path, SsrMode, StaticSegment,
+    hooks::use_location,
+    path, SsrMode, StaticSegment, WildcardSegment,
 };
 use storefront::StorefrontPage;
 
@@ -46,21 +47,30 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("") view=HomePage ssr=SsrMode::Async/>
                     <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
+                    // Las demás páginas de la tienda (/ofertas, /categorias…).
+                    <Route path=WildcardSegment("any") view=HomePage ssr=SsrMode::Async/>
                 </Routes>
             </main>
         </Router>
     }
 }
 
-/// Marketplace en `/`: la última versión guardada de la página `home`.
+/// Marketplace: la última versión guardada de la tienda, en la página de la
+/// dirección actual (`/` es Inicio, `/ofertas` es Ofertas…). Toda la tienda
+/// se guarda en un solo documento, el de `home`.
 #[component]
 fn HomePage() -> impl IntoView {
     let page = Resource::new(|| (), |_| load_page("home".to_string()));
+    let location = use_location();
     view! {
         <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
             {move || Suspend::new(async move {
                 match page.await {
-                    Ok(view) => view! { <StorefrontPage view/> }.into_any(),
+                    Ok(view) => (move || {
+                        let path = location.pathname.get();
+                        view! { <StorefrontPage view=view.clone() path/> }
+                    })
+                    .into_any(),
                     Err(e) => view! {
                         <div class="p-8">
                             <div class="alert alert-error">{format!("No se pudo cargar la página: {e}")}</div>
