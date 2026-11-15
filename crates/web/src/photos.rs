@@ -120,6 +120,7 @@ pub fn MyPhotosPage() -> impl IntoView {
                     <input id="mis-fotos-subir" type="file" class="sr-only" multiple
                         accept="image/jpeg,image/png,image/webp,image/gif"
                         on:change=move |ev| uploads.upload(editor::take_files(&ev), Callback::new(|_| ()))/>
+                    <editor::LinkImport photos=uploads done=Callback::new(|_| ()) uid="mis-fotos"/>
                 </div>
                 <p class="text-base-content/80">
                     "Tus fotos sirven en todas tus tiendas. Las optimizamos al subirlas: tus clientes bajan una versión liviana, sin que se note la diferencia."

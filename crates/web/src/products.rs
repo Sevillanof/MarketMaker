@@ -842,6 +842,10 @@ fn PhotosField(photos: RwSignal<Vec<String>>) -> impl IntoView {
                         <span class="grow text-sm font-medium">"Tocá una foto para sumarla"</span>
                         <button type="button" class="btn btn-ghost btn-xs" on:click=move |_| picking.set(false)>"Listo"</button>
                     </div>
+                    <div class="mb-3 flex flex-wrap items-center gap-2">
+                        <span class="text-xs text-base-content/70">"¿Está en otro sitio?"</span>
+                        <editor::LinkImport photos=library done=Callback::new(|_| ()) each=Callback::new(move |item: domain::MediaItem| add(item.url)) uid="producto" small=true/>
+                    </div>
                     {move || library.load_error.get().map(|e| view! { <p role="alert" class="text-sm text-error">{e}</p> })}
                     {move || match library.items.get() {
                         None => view! { <ui::Skeleton class="h-24 w-full"/> }.into_any(),
