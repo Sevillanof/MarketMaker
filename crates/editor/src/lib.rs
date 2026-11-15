@@ -181,8 +181,6 @@ pub(crate) struct Ui {
     /// Se intentó guardar con datos para corregir: los campos muestran su
     /// error aunque todavía no se hayan tocado.
     pub show_errors: RwSignal<bool>,
-    /// "Letras de este bloque" quedó abierta: sigue abierta al elegir otro bloque.
-    pub block_type_open: RwSignal<bool>,
 }
 
 /// Arrastre de un bloque nuevo desde la paleta hacia el lienzo.
@@ -396,14 +394,42 @@ pub(crate) fn size_text(size: domain::Size) -> String {
     )
 }
 
+/// Anchos con nombre, en columnas de 48.
+pub(crate) const WIDTHS: &[(u8, &str)] = &[
+    (48, "Completo"),
+    (32, "2/3"),
+    (24, "Mitad"),
+    (16, "1/3"),
+    (12, "1/4"),
+];
+
+/// Nombre del ancho si es uno de [`WIDTHS`]; si no, "36/48".
+pub(crate) fn width_name(w: u8) -> String {
+    WIDTHS.iter().find(|(cols, _)| *cols == w).map_or_else(
+        || format!("{w}/{}", domain::GRID_COLS),
+        |(_, name)| (*name).to_string(),
+    )
+}
+
 /// Tamaño de un bloque en corto, para la etiqueta sobre el lienzo.
 pub(crate) fn size_badge(size: domain::Size) -> String {
     format!(
-        "{}/{} · {} px",
-        size.w,
-        domain::GRID_COLS,
+        "{} · {} px",
+        width_name(size.w),
         u32::from(size.h) * u32::from(domain::ROW_PX)
     )
+}
+
+/// Clases de un botón de una elección (ancho, tamaño de letra, alineación…).
+/// Lo elegido va en un tono suave con borde, para no competir con Guardar.
+/// (No usa `btn-soft`: daisyUI pinta lleno todo botón con
+/// `aria-pressed="true"`, y las utilidades de Tailwind le ganan.)
+pub(crate) fn choice_class(active: bool) -> &'static str {
+    if active {
+        "btn btn-sm border-primary bg-primary/10 text-primary hover:bg-primary/15"
+    } else {
+        "btn btn-sm"
+    }
 }
 
 pub(crate) fn new_node_id(doc: &PageDoc) -> String {
@@ -550,7 +576,6 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         swallow_click: StoredValue::new(false),
         block_drag: StoredValue::new(false),
         show_errors: RwSignal::new(false),
-        block_type_open: RwSignal::new(false),
     };
     let actions = Actions { state, ui };
     provide_context(state);

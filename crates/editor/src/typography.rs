@@ -11,7 +11,7 @@ use domain::{
 use leptos::prelude::*;
 
 use crate::icons::Icon;
-use crate::{EditorState, Ui};
+use crate::{choice_class, EditorState};
 
 /// Id del panel emergente de las letras de la tienda.
 const PANEL_ID: &str = "mk-type-panel";
@@ -121,8 +121,7 @@ pub(crate) fn StoreTypography() -> impl IntoView {
                         view! {
                             <button
                                 type="button"
-                                class="btn btn-sm join-item flex-1"
-                                class:btn-primary=active
+                                class=move || format!("{} join-item flex-1", choice_class(active()))
                                 aria-pressed=move || active().to_string()
                                 on:click=move |_| set(Box::new(move |t| t.size = (*id).into()))
                             >{*name}</button>
@@ -178,11 +177,17 @@ fn FontSelect(
     }
 }
 
+/// Tamaños de un bloque de menor a mayor ("Más chico" antes de "Igual").
+fn sizes_small_to_large() -> Vec<&'static (&'static str, &'static str, f32)> {
+    let mut sizes: Vec<_> = BLOCK_SIZES.iter().collect();
+    sizes.sort_by(|a, b| a.2.total_cmp(&b.2));
+    sizes
+}
+
 /// Sección "Letras de este bloque" del inspector.
 #[component]
 pub(crate) fn BlockTypography(id: String) -> impl IntoView {
     let state = expect_context::<EditorState>();
-    let ui = expect_context::<Ui>();
     let sid = StoredValue::new(id);
     let style = Memo::new(move |_| {
         state.doc.with(|d| {
@@ -208,68 +213,59 @@ pub(crate) fn BlockTypography(id: String) -> impl IntoView {
     let changed = move || style.with(|s| !s.is_default());
 
     view! {
-        <details
-            class="collapse collapse-arrow border border-base-300"
-            prop:open=ui.block_type_open.get_untracked()
-            on:toggle=move |ev| {
-                use wasm_bindgen::JsCast;
-                if let Some(el) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlDetailsElement>().ok()) {
-                    ui.block_type_open.set(el.open());
-                }
-            }
-        >
-            <summary class="collapse-title flex items-center gap-2 text-sm font-medium">
-                <Icon name="type"/>
-                "Letras de este bloque"
-                {move || changed().then(|| view! { <span class="badge badge-sm badge-primary">"Cambiadas"</span> })}
-            </summary>
-            <div class="collapse-content flex flex-col gap-4">
-                <FontSelect
-                    label="Fuente"
-                    value=Signal::derive(move || style.with(|s| s.font.clone()))
-                    sample="Así se ven las letras"
-                    inherit=store_body
-                    on_pick=Callback::new(move |v: String| set(Box::new(move |s| s.font = v)))
-                />
-                <fieldset>
-                    <legend class="mb-1 text-sm font-medium">"Tamaño"</legend>
-                    <div class="grid grid-cols-2 gap-1">
-                        {BLOCK_SIZES.iter().map(|(id, name, _)| {
-                            let active = move || style.with(|s| s.size == *id);
-                            view! {
-                                <button
-                                    type="button"
-                                    class="btn btn-sm"
-                                    class:btn-primary=active
-                                    aria-pressed=move || active().to_string()
-                                    on:click=move |_| set(Box::new(move |s| s.size = (*id).into()))
-                                >{*name}</button>
-                            }
-                        }).collect_view()}
-                    </div>
-                </fieldset>
+        <section class="flex flex-col gap-4" aria-labelledby="mk-block-type-title">
+            <div>
+                <h3 id="mk-block-type-title" class="text-sm font-semibold">"Letras de este bloque"</h3>
+                <p class="text-xs text-base-content/75">"Lo que no cambies sigue a las letras de toda la tienda."</p>
+            </div>
+            <FontSelect
+                label="Fuente"
+                value=Signal::derive(move || style.with(|s| s.font.clone()))
+                sample="Así se ven las letras"
+                inherit=store_body
+                on_pick=Callback::new(move |v: String| set(Box::new(move |s| s.font = v)))
+            />
+            <fieldset>
+                <legend class="mb-1 text-sm font-medium">"Tamaño"</legend>
+                <div class="join w-full">
+                    {sizes_small_to_large().into_iter().map(|(id, name, _)| {
+                        let active = move || style.with(|s| s.size == *id);
+                        view! {
+                            <button
+                                type="button"
+                                class=move || format!("{} join-item flex-1 px-1", choice_class(active()))
+                                aria-pressed=move || active().to_string()
+                                on:click=move |_| set(Box::new(move |s| s.size = (*id).into()))
+                            >{*name}</button>
+                        }
+                    }).collect_view()}
+                </div>
+            </fieldset>
+            <div class="flex gap-4">
                 <fieldset>
                     <legend class="mb-1 text-sm font-medium">"Estilo"</legend>
-                    <div class="grid grid-cols-2 gap-1">
+                    <div class="join">
                         <button
                             type="button"
-                            class="btn btn-sm"
-                            class:btn-primary=move || style.with(|s| s.bold)
+                            class=move || format!("{} join-item btn-square", choice_class(style.with(|s| s.bold)))
                             aria-pressed=move || style.with(|s| s.bold).to_string()
+                            aria-label="Negrita"
+                            title="Negrita"
                             on:click=move |_| set(Box::new(|s| s.bold = !s.bold))
-                        ><span class="font-bold" aria-hidden="true">"N"</span>"Negrita"</button>
+                        ><span class="text-base font-bold" aria-hidden="true">"N"</span></button>
                         <button
                             type="button"
-                            class="btn btn-sm"
-                            class:btn-primary=move || style.with(|s| s.italic)
+                            class=move || format!("{} join-item btn-square", choice_class(style.with(|s| s.italic)))
                             aria-pressed=move || style.with(|s| s.italic).to_string()
+                            aria-label="Cursiva"
+                            title="Cursiva"
                             on:click=move |_| set(Box::new(|s| s.italic = !s.italic))
-                        ><span class="font-serif italic" aria-hidden="true">"C"</span>"Cursiva"</button>
+                        ><span class="font-serif text-base italic" aria-hidden="true">"C"</span></button>
                     </div>
                 </fieldset>
                 <fieldset>
                     <legend class="mb-1 text-sm font-medium">"Alineación"</legend>
-                    <div class="grid grid-cols-2 gap-1">
+                    <div class="join">
                         {ALIGN_OPTIONS.iter().map(|(id, name)| {
                             let active = move || style.with(|s| s.align == *id);
                             let icon = match *id {
@@ -281,26 +277,27 @@ pub(crate) fn BlockTypography(id: String) -> impl IntoView {
                             view! {
                                 <button
                                     type="button"
-                                    class="btn btn-sm"
-                                    class:btn-primary=active
+                                    class=move || format!("{} join-item btn-square", choice_class(active()))
                                     aria-pressed=move || active().to_string()
+                                    aria-label=*name
+                                    title=*name
                                     on:click=move |_| set(Box::new(move |s| s.align = (*id).into()))
-                                ><Icon name=icon/>{*name}</button>
+                                ><Icon name=icon/></button>
                             }
                         }).collect_view()}
                     </div>
                 </fieldset>
-                {move || changed().then(|| view! {
-                    <button
-                        type="button"
-                        class="btn btn-sm btn-ghost self-start"
-                        on:click=move |_| set(Box::new(|s| *s = TextStyle::default()))
-                    >
-                        <Icon name="undo"/>
-                        "Volver a las letras de la tienda"
-                    </button>
-                })}
             </div>
-        </details>
+            {move || changed().then(|| view! {
+                <button
+                    type="button"
+                    class="btn btn-sm btn-ghost self-start"
+                    on:click=move |_| set(Box::new(|s| *s = TextStyle::default()))
+                >
+                    <Icon name="undo"/>
+                    "Volver a las letras de la tienda"
+                </button>
+            })}
+        </section>
     }
 }

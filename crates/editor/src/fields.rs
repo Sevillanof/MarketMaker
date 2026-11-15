@@ -334,10 +334,14 @@ fn FieldInput(
         <div class="flex flex-col gap-1">
             <div class="flex items-baseline justify-between gap-2">
                 <label for=uid.clone() class="text-sm font-medium">{field.label}</label>
-                {counter.map(|max| view! {
-                    <span class="text-xs tabular-nums text-base-content/75" aria-hidden="true">
-                        {move || format!("{}/{max}", value.with(|v| v.as_str().map_or(0, |s| s.chars().count())))}
-                    </span>
+                {counter.map(|max| {
+                    let count = move || value.with(|v| v.as_str().map_or(0, |s| s.chars().count()));
+                    // Solo cuando se acerca al límite: antes es ruido.
+                    move || near_limit(count(), max).then(|| view! {
+                        <span class="text-xs tabular-nums text-base-content/75" aria-hidden="true">
+                            {move || format!("{}/{max}", count())}
+                        </span>
+                    })
                 })}
             </div>
             {input}
@@ -346,6 +350,98 @@ fn FieldInput(
         </div>
     }
     .into_any()
+}
+
+/// ¿Ya se usó el 80 % de los caracteres?
+fn near_limit(count: usize, max: usize) -> bool {
+    count * 5 >= max * 4
+}
+
+/// Texto por defecto al prender el botón de un bloque.
+const DEFAULT_BUTTON_LABEL: &str = "Ver más";
+
+/// Qué le falta a un botón prendido, en palabras simples.
+fn button_hint(label: &str, href: &str) -> Option<&'static str> {
+    match (label.trim().is_empty(), href.trim().is_empty()) {
+        (true, _) => Some("Escribí qué dice el botón. Si queda vacío, no se muestra."),
+        (false, true) => Some("Falta adónde lleva. Sin eso, el botón no hace nada al tocarlo."),
+        _ => None,
+    }
+}
+
+/// Grupo "Botón" de Contenido: un interruptor para mostrarlo y, prendido,
+/// su texto y adónde lleva, con un aviso si falta alguno de los dos.
+#[component]
+pub(crate) fn ButtonGroup(
+    products: StoredValue<Vec<Product>>,
+    id: String,
+    label_field: &'static Field,
+    href_field: &'static Field,
+) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let sid = StoredValue::new(id.clone());
+    let read = move |key: &'static str| {
+        move || {
+            state.doc.with(|d| {
+                sid.with_value(|id| field_value(d, id, key))
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+        }
+    };
+    let (label, href) = (read(label_field.key), read(href_field.key));
+    // Arranca prendido si el bloque ya tiene botón (o un enlace a medias).
+    let on = RwSignal::new(!label().is_empty() || !href().is_empty());
+    let toggle = move |show: bool| {
+        on.set(show);
+        let text = if show && label().trim().is_empty() {
+            DEFAULT_BUTTON_LABEL.to_string()
+        } else if show {
+            label()
+        } else {
+            String::new()
+        };
+        state.end_group();
+        sid.with_value(|id| {
+            state.apply(|d| set_field(d, id, label_field.key, serde_json::Value::String(text)));
+        });
+        state.end_group();
+    };
+    let switch_id = format!("f-{id}-button-on");
+    let switch_for = switch_id.clone();
+    let hint_id = format!("f-{id}-button-hint");
+    let (label_id, href_id) = (id.clone(), id);
+
+    view! {
+        <fieldset class="fieldset gap-3 rounded-box border border-base-300 p-3">
+            <legend class="fieldset-legend px-1 text-sm font-semibold">"Botón"</legend>
+            <label for=switch_for class="flex items-center justify-between gap-3">
+                <span class="text-sm">"Mostrar un botón"</span>
+                <input
+                    id=switch_id
+                    type="checkbox"
+                    class="toggle toggle-sm toggle-primary"
+                    prop:checked=move || on.get()
+                    on:change=move |ev| toggle(event_target_checked(&ev))
+                />
+            </label>
+            {move || on.get().then(|| {
+                let hint = move || button_hint(&label(), &href());
+                let hint_id = hint_id.clone();
+                view! {
+                    <PropField products id=label_id.clone() field=label_field/>
+                    <PropField products id=href_id.clone() field=href_field/>
+                    {move || hint().map(|h| view! {
+                        <p id=hint_id.clone() class="flex items-start gap-1 text-xs font-medium text-amber-800" role="status">
+                            <Icon name="alert" class="mt-px h-3.5 w-3.5 shrink-0"/>
+                            {h}
+                        </p>
+                    })}
+                }
+            })}
+        </fieldset>
+    }
 }
 
 #[component]
@@ -661,6 +757,23 @@ mod tests {
             v,
             serde_json::json!({ "name": "", "text": "", "rating": 1 })
         );
+    }
+
+    #[test]
+    fn counter_shows_near_the_limit() {
+        assert!(!near_limit(0, 160));
+        assert!(!near_limit(127, 160));
+        assert!(near_limit(128, 160));
+        assert!(near_limit(30, 30));
+    }
+
+    #[test]
+    fn button_hint_says_what_is_missing() {
+        assert!(button_hint("", "/ofertas").unwrap().starts_with("Escribí"));
+        assert!(button_hint("Ver ofertas", " ")
+            .unwrap()
+            .starts_with("Falta adónde"));
+        assert_eq!(button_hint("Ver ofertas", "/ofertas"), None);
     }
 
     #[test]
