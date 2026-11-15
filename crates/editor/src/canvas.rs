@@ -672,6 +672,9 @@ pub(crate) fn Canvas(
             }
         };
         let label = move || node.get().map_or("Bloque", |n| n.widget.label());
+        // Menú del bloque: un botón ⋯ en su esquina superior derecha que
+        // despliega las acciones. El menú es un `popover` (capa superior), así
+        // no lo recorta el bloque ni lo achica la escala del lienzo.
         let toolbar = {
             let id = id.clone();
             move || {
@@ -680,39 +683,76 @@ pub(crate) fn Canvas(
                     let has_modal = node.get_untracked().is_some_and(|n| {
                         matches!(n.widget, Widget::ProductGrid(_) | Widget::FeaturedProduct(_))
                     });
-                    // Una sola parada de Tab: el botón activo tiene tabindex 0
-                    // y las flechas pasan de uno a otro.
+                    let menu_id = format!("mk-menu-{id}");
+                    let menu_ref = NodeRef::<Div>::new();
+                    // Cierra el menú y después hace la acción.
+                    let run = move |f: Box<dyn FnOnce()>| {
+                        if let Some(menu) = menu_ref.get_untracked() {
+                            _ = menu.hide_popover();
+                        }
+                        f();
+                    };
+                    // Flechas, Inicio y Fin pasan de una opción a otra.
                     let active = RwSignal::new(0_usize);
                     let tab = move |i: usize| move || if active.get() == i { "0" } else { "-1" };
+                    let item = "flex w-full items-center gap-3 rounded-field px-3 py-2 text-left text-sm hover:bg-base-200 focus-visible:bg-base-200 focus-visible:outline-none";
                     view! {
-                        <div
+                        <button
+                            type="button"
                             data-theme="light"
-                            class="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-field border border-base-300 bg-base-100 p-1 text-base-content shadow-md"
-                            role="toolbar"
-                            aria-label=move || format!("Acciones de {}", label())
+                            class="mk-menu-trigger btn btn-sm btn-square absolute right-2 top-2 z-20 border-base-300 bg-base-100 text-base-content shadow-md"
+                            popovertarget=menu_id.clone()
+                            // Mismo tamaño en pantalla con cualquier escala del lienzo.
+                            style=move || format!("transform-origin:top right; transform:scale({:.4})", 1.0 / scale.get().max(0.01))
+                            aria-label=move || format!("Opciones de {}", label())
+                            title="Opciones del bloque"
+                            on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
+                            on:click=move |ev: leptos::ev::MouseEvent| {
+                                // Lugar del menú para los navegadores sin anchor positioning (ver CSS).
+                                if let (Some(btn), Some(menu)) = (
+                                    ev.current_target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()),
+                                    menu_ref.get_untracked(),
+                                ) {
+                                    let r = btn.get_bounding_client_rect();
+                                    let style = web_sys::HtmlElement::style(&menu);
+                                    _ = style.set_property("--mk-menu-top", &format!("{:.0}px", r.bottom() + 4.0));
+                                    _ = style.set_property("--mk-menu-right", &format!("{:.0}px", f64::from(window().inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(0.0)) - r.right()));
+                                }
+                            }
+                        >
+                            <Icon name="more"/>
+                        </button>
+                        <div
+                            node_ref=menu_ref
+                            id=menu_id
+                            popover="auto"
+                            data-theme="light"
+                            class="mk-menu w-56 rounded-box border border-base-300 bg-base-100 p-1 text-base-content shadow-lg"
+                            aria-label=move || format!("Opciones de {}", label())
                             on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
                             on:keydown=move |ev: KeyboardEvent| on_toolbar_key(ev, active)
                         >
-                            <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(0) on:focus=move |_| active.set(0) aria-label="Subir" title="Subir (flecha arriba)" on:click=move |_| actions.move_up(&up)>
-                                <Icon name="up"/>
+                            <p class="px-3 pb-1 pt-2 text-xs text-base-content/70">
+                                {move || node.get().map(|n| size_badge(n.size))}
+                            </p>
+                            <button type="button" class=item autofocus=true tabindex=tab(0) on:focus=move |_| active.set(0) aria-keyshortcuts="ArrowUp" on:click=move |_| { let id = up.clone(); run(Box::new(move || actions.move_up(&id))) }>
+                                <Icon name="up"/>"Subir"
                             </button>
-                            <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(1) on:focus=move |_| active.set(1) aria-label="Bajar" title="Bajar (flecha abajo)" on:click=move |_| actions.move_down(&down)>
-                                <Icon name="down"/>
+                            <button type="button" class=item tabindex=tab(1) on:focus=move |_| active.set(1) aria-keyshortcuts="ArrowDown" on:click=move |_| { let id = down.clone(); run(Box::new(move || actions.move_down(&id))) }>
+                                <Icon name="down"/>"Bajar"
                             </button>
-                            <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(2) on:focus=move |_| active.set(2) aria-label="Duplicar" title="Duplicar" on:click=move |_| actions.duplicate(&dup)>
-                                <Icon name="copy"/>
-                            </button>
-                            <button type="button" class="btn btn-ghost btn-sm btn-square text-red-700" tabindex=tab(3) on:focus=move |_| active.set(3) aria-label="Borrar" title="Borrar (Suprimir)" on:click=move |_| actions.delete(&del)>
-                                <Icon name="trash"/>
+                            <button type="button" class=item tabindex=tab(2) on:focus=move |_| active.set(2) on:click=move |_| { let id = dup.clone(); run(Box::new(move || actions.duplicate(&id))) }>
+                                <Icon name="copy"/>"Duplicar"
                             </button>
                             {has_modal.then(|| view! {
-                                <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(4) on:focus=move |_| active.set(4) aria-label="Diseñar la ficha del producto" title="Diseñar la ficha que se abre al tocar un producto" on:click=move |_| actions.open_modal(None)>
-                                    <Icon name="modal"/>
+                                <button type="button" class=item tabindex=tab(3) on:focus=move |_| active.set(3) on:click=move |_| run(Box::new(move || actions.open_modal(None)))>
+                                    <Icon name="modal"/>"Diseñar la ficha del producto"
                                 </button>
                             })}
-                            <span class="badge badge-primary badge-sm ml-1" aria-hidden="true">
-                                {move || node.get().map(|n| size_badge(n.size))}
-                            </span>
+                            <div class="my-1 border-t border-base-300" role="separator"></div>
+                            <button type="button" class=format!("{item} text-red-700") tabindex=tab(if has_modal { 4 } else { 3 }) on:focus=move |_| active.set(if has_modal { 4 } else { 3 }) aria-keyshortcuts="Delete" on:click=move |_| { let id = del.clone(); run(Box::new(move || actions.delete(&id))) }>
+                                <Icon name="trash"/>"Borrar"
+                            </button>
                         </div>
                     }
                 })

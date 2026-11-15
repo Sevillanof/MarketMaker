@@ -509,3 +509,22 @@ dialog.mk-dialog::backdrop {
   overflow: hidden;
   overscroll-behavior: contain;
 }
+
+/* Menú de un bloque del editor (ver `canvas.rs`): se abre debajo del botón
+   ⋯, alineado a su borde derecho, y se da vuelta si no entra. Sin anchor
+   positioning, el script deja la posición del botón en variables. */
+.mk-menu {
+  margin: 0;
+  inset: auto;
+  top: var(--mk-menu-top, 0);
+  right: var(--mk-menu-right, 0);
+}
+@supports (position-area: block-end) {
+  .mk-menu {
+    top: auto;
+    right: auto;
+    position-area: block-end span-inline-start;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    margin-block: 4px;
+  }
+}
