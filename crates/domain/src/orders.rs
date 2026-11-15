@@ -231,6 +231,9 @@ pub fn shipping_label(d: &DeliverySettings, format_price: impl Fn(i64) -> String
 pub struct CheckoutInfo {
     pub store_name: String,
     pub delivery: DeliverySettings,
+    /// La tienda vinculó Mercado Pago: se paga al confirmar.
+    #[serde(default)]
+    pub online_payments: bool,
 }
 
 /// Un producto dentro de un pedido, como estaba al comprarlo.
@@ -324,6 +327,9 @@ pub struct OrderReceipt {
     pub store_name: String,
     pub order: Order,
     pub delivery: DeliverySettings,
+    /// Se puede pagar con Mercado Pago (la tienda lo vinculó y falta pagar).
+    #[serde(default)]
+    pub can_pay: bool,
 }
 
 /// Qué pasó al tocar "Confirmar pedido".
@@ -331,10 +337,31 @@ pub struct OrderReceipt {
 pub enum PlaceOrder {
     /// Listo: el pedido quedó guardado.
     Placed { id: String, number: i32 },
+    /// Guardado: falta pagar en Mercado Pago, en `url`.
+    Pay { id: String, url: String },
     /// Hay campos para corregir.
     Invalid { errors: Vec<FieldError> },
     /// Algo del carrito cambió (un producto se agotó o ya no está).
     CartChanged { message: String },
+}
+
+/// La pantalla Cobros de una tienda, en el panel.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PaymentsInfo {
+    pub store_name: String,
+    /// MarketMaker tiene su aplicación de Mercado Pago configurada.
+    pub configured: bool,
+    pub link: Option<MpLink>,
+}
+
+/// La cuenta de Mercado Pago vinculada a una tienda.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MpLink {
+    pub user_id: i64,
+    /// Cuándo se vinculó, RFC 3339.
+    pub linked_at: String,
+    /// `false`: cuenta de prueba (los pagos no son de verdad).
+    pub live: bool,
 }
 
 /// Las columnas del tablero de Pedidos. Los cancelados van aparte.
