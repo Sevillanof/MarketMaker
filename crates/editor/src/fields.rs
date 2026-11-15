@@ -133,10 +133,14 @@ fn FieldInput(
     // recibe el foco.
     let end = move || {
         state.end_group();
-        let was_shown = error.with_untracked(Option::is_some);
+        // Si el campo ya se quitó (se cambió de página o de bloque con el
+        // foco adentro), el `blur` llega tarde: no hay nada que marcar.
+        let Some(was_shown) = error.try_with_untracked(Option::is_some) else {
+            return;
+        };
         touched.set(true);
         if !was_shown {
-            if let Some(msg) = found.get_untracked() {
+            if let Some(msg) = found.try_get_untracked().flatten() {
                 let text = format!("{}: {msg}", field.label);
                 set_timeout(
                     move || ui.announce(text),

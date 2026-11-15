@@ -243,6 +243,25 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                 {no_fields.then(|| view! {
                     <p class="text-sm text-base-content/75">"Este bloque muestra el dato del producto que se abre, así que no hay nada para escribir. Su tamaño y sus letras se cambian en Diseño."</p>
                 })}
+                {move || {
+                    let state = expect_context::<EditorState>();
+                    let pages = state.doc.with(|d| {
+                        d.node(&sid.get_value())
+                            .map_or(0, |n| d.shared_pages(&n.shared))
+                    });
+                    (pages > 1).then(|| view! {
+                        <section class="flex flex-col gap-2 rounded-box border border-primary/30 bg-primary/5 p-3" aria-labelledby="mk-shared-title">
+                            <h3 id="mk-shared-title" class="flex items-center gap-2 text-sm font-semibold">
+                                <Icon name="page" class="h-4 w-4 text-primary"/>
+                                {format!("Compartido en {pages} páginas")}
+                            </h3>
+                            <p class="text-sm text-base-content/75">"Lo que cambies acá (textos, enlaces, letras) se ve igual en todas tus páginas. El lugar y el tamaño son de cada página."</p>
+                            <button type="button" class="btn btn-ghost btn-sm self-start" on:click=move |_| sid.with_value(|id| actions.unshare(id))>
+                                "Cambiarlo solo en esta página"
+                            </button>
+                        </section>
+                    })
+                }}
                 {opens_modal.then(|| view! {
                     <section class="flex flex-col gap-2 rounded-box border border-base-300 p-3" aria-labelledby="mk-modal-help-title">
                         <h3 id="mk-modal-help-title" class="text-sm font-semibold">"Ficha del producto"</h3>
