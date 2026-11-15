@@ -655,6 +655,15 @@ pub(crate) fn storage() -> Option<web_sys::Storage> {
     window().local_storage().ok().flatten()
 }
 
+/// ¿Hay un menú de bloque abierto?
+fn menu_open() -> bool {
+    document()
+        .query_selector(".mk-menu:popover-open")
+        .ok()
+        .flatten()
+        .is_some()
+}
+
 /// ¿El foco está en un campo donde se escribe?
 fn typing_in_field(ev: &web_sys::KeyboardEvent) -> bool {
     ev.target()
@@ -828,6 +837,8 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 "Escape"
                     if ui.new_drag.with_untracked(Option::is_some) || ui.block_drag.get_value() => {
                 }
+                // Un menú abierto se cierra solo con Esc; no suelta el bloque.
+                "Escape" if menu_open() => {}
                 "Escape" if ui.preview.get_untracked() => ui.preview.set(false),
                 // Primero se suelta el bloque elegido; después se cierra la ficha.
                 "Escape" if state.selected.with_untracked(Option::is_some) => {
