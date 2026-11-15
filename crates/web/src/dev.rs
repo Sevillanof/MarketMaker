@@ -103,3 +103,81 @@ pub fn DevWidgetsPage() -> impl IntoView {
     }
     .into_any()
 }
+
+/// Ruta de desarrollo `/dev/designs`: cada widget en sus cinco diseños, cada
+/// uno con otro color. `?theme=dark` (o cualquier tema) lo dibuja en ese tema.
+#[component]
+pub fn DevDesignsPage() -> impl IntoView {
+    if !cfg!(debug_assertions) {
+        return view! { "Página no encontrada." }.into_any();
+    }
+    let theme = leptos_router::hooks::use_query_map()
+        .with_untracked(|q| q.get("theme"))
+        .filter(|t| domain::THEMES.contains(&t.as_str()))
+        .unwrap_or_else(|| "light".to_string());
+    let only = leptos_router::hooks::use_query_map().with_untracked(|q| q.get("only"));
+    let products = sample_products();
+    let first_id = products[0].id.clone();
+    let ctx = RenderCtx {
+        products: products.clone(),
+        editing: false,
+        product: Some(products[0].clone()),
+    };
+    let colors = ["", "secondary", "accent", "neutral", "#e85d04"];
+    let rows: Vec<(String, Vec<(String, Node)>)> = WIDGET_TYPES
+        .iter()
+        .filter(|(t, _)| {
+            only.as_deref()
+                .is_none_or(|o| o.split(',').any(|o| o == *t))
+        })
+        .map(|(type_name, label)| {
+            let mut widget = Widget::defaults(type_name).expect("tipo conocido");
+            if let Widget::FeaturedProduct(p) = &mut widget {
+                p.product_id = first_id.clone();
+            }
+            let cells = domain::DESIGNS
+                .iter()
+                .zip(colors)
+                .map(|((n, name, _), color)| {
+                    let mut node = Node::new(format!("{type_name}-{n}"), widget.clone());
+                    node.size.w = node.size.w.min(48);
+                    node.look = domain::Look {
+                        design: *n,
+                        color: color.to_string(),
+                    };
+                    let shown = if color.is_empty() { "principal" } else { color };
+                    (format!("{n} · {name} · {shown}"), node)
+                })
+                .collect();
+            ((*label).to_string(), cells)
+        })
+        .collect();
+
+    view! {
+        <div data-theme=theme class="mk-store min-h-screen bg-base-200 p-6 text-base-content">
+            {rows
+                .into_iter()
+                .map(|(label, cells)| view! {
+                    <section class="mb-10">
+                        <h2 class="mb-3 text-xl font-bold">{label}</h2>
+                        {cells
+                            .into_iter()
+                            .map(|(title, mut node)| {
+                                node.pos = domain::Pos { x: 0, y: 0 };
+                                let style = node_style(&node);
+                                let content = render_widget(&node, &ctx);
+                                view! {
+                                    <h3 class="mt-3 mb-1 text-sm font-semibold opacity-75">{title}</h3>
+                                    <div class="mk-grid" style="width:1136px">
+                                        <div class="mk-node" style=style>{content}</div>
+                                    </div>
+                                }
+                            })
+                            .collect_view()}
+                    </section>
+                })
+                .collect_view()}
+        </div>
+    }
+    .into_any()
+}

@@ -632,7 +632,7 @@ pub(crate) fn Canvas(
             move |_| shown.with(|nodes| nodes.iter().find(|n| n.id == id).cloned())
         });
         // Solo lo que cambia el dibujo del bloque: moverlo no lo redibuja.
-        let widget = Memo::new(move |_| node.get().map(|n| (n.widget, n.style)));
+        let widget = Memo::new(move |_| node.get().map(|n| (n.widget, n.style, n.look)));
         let is_selected = Memo::new({
             let id = id.clone();
             move |_| state.selected.get().as_deref() == Some(id.as_str())
@@ -685,7 +685,7 @@ pub(crate) fn Canvas(
         let content = {
             let id = id.clone();
             move || {
-                widget.get().map(|(w, style)| {
+                widget.get().map(|(w, style, look)| {
                     let ctx = RenderCtx {
                         products: products.get_value(),
                         editing: true,
@@ -694,6 +694,7 @@ pub(crate) fn Canvas(
                     };
                     let mut node = Node::new(id.clone(), w);
                     node.style = style;
+                    node.look = look;
                     render_widget(&node, &ctx)
                 })
             }

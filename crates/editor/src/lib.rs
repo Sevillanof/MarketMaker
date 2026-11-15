@@ -11,6 +11,7 @@ mod canvas;
 mod fields;
 mod icons;
 mod inspector;
+mod look;
 mod palette;
 mod typography;
 

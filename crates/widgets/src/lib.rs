@@ -44,8 +44,8 @@ pub struct OpenProduct(pub RwSignal<Option<String>>);
 /// Dibuja un nodo dentro de su envoltorio de letras (`.mk-type`, ver
 /// [`domain::TextStyle`] y `style/tailwind.css`).
 pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
-    let class = format!("{} h-full", node.style.classes());
-    let style = node.style.css_vars();
+    let class = format!("{} {} h-full", node.style.classes(), node.look.classes());
+    let style = format!("{}; {}", node.style.css_vars(), node.look.css_vars());
     let content = render_content(node, ctx);
     view! { <div class=class style=style>{content}</div> }.into_any()
 }
@@ -96,8 +96,8 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
                 .map(|p| p.name.clone())
                 .unwrap_or_default();
             view! {
-                <div class="flex h-full items-start overflow-hidden">
-                    <h2 class="text-2xl font-bold leading-tight line-clamp-2">{name}</h2>
+                <div class="mk-box mk-pad mk-pname flex h-full items-start overflow-hidden rounded-box">
+                    <h2 class="mk-title text-2xl font-bold leading-tight line-clamp-2">{name}</h2>
                 </div>
             }
             .into_any()
@@ -105,8 +105,8 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::ProductPrice(_) => {
             let cents = ctx.product.as_ref().map_or(0, |p| p.price_cents);
             view! {
-                <div class="flex h-full items-start overflow-hidden text-xl text-primary">
-                    <Price cents/>
+                <div class="mk-pprice flex h-full items-start overflow-hidden text-xl">
+                    <span class="mk-pricetag"><Price cents/></span>
                 </div>
             }
             .into_any()
@@ -119,11 +119,11 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
                 .unwrap_or_default();
             let empty = text.is_empty();
             view! {
-                <div class="h-full overflow-y-auto">
+                <div class="mk-box mk-pad mk-pdesc h-full overflow-y-auto rounded-box">
                     {if empty && editing {
                         view! { <p class="text-base-content/60 italic">"Este producto todavía no tiene descripción."</p> }.into_any()
                     } else {
-                        view! { <p class="whitespace-pre-line text-base-content/80">{text}</p> }.into_any()
+                        view! { <p class="whitespace-pre-line opacity-85">{text}</p> }.into_any()
                     }}
                 </div>
             }
@@ -139,7 +139,7 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
 pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
     let (src, alt) = product.map_or_else(Default::default, |p| (p.image_url, p.name));
     view! {
-        <div class="h-full overflow-hidden rounded-box bg-base-200">
+        <div class="mk-box mk-image h-full overflow-hidden rounded-box bg-base-200">
             <Image src alt contain=props.fit == "contain"/>
         </div>
     }
@@ -148,7 +148,7 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
 #[component]
 pub fn ProductButtonWidget(props: ProductButtonProps, editing: bool) -> impl IntoView {
     view! {
-        <div class="flex h-full items-start">
+        <div class="mk-pbtn flex h-full items-start">
             <Button label=props.label href=props.href disabled=editing/>
         </div>
     }
@@ -264,22 +264,22 @@ fn MaybeLink(
 pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
     let has_image = !props.image_url.is_empty();
     let has_button = !props.button_label.is_empty();
-    let content_class = if has_image {
-        "hero-content relative text-center text-neutral-content"
+    let root_class = if has_image {
+        "mk-box mk-banner mk-has-img @container hero relative h-full overflow-hidden rounded-box bg-base-200"
     } else {
-        "hero-content relative text-center text-base-content"
+        "mk-box mk-banner @container hero relative h-full overflow-hidden rounded-box bg-base-200"
     };
     view! {
-        <div class="@container hero relative h-full overflow-hidden rounded-box bg-base-200">
+        <div class=root_class>
             {has_image.then(|| view! {
-                <div class="absolute inset-0">
+                <div class="mk-banner-img absolute inset-0">
                     <Image src=props.image_url.clone() alt=props.title.clone()/>
                 </div>
-                <div class="hero-overlay absolute inset-0"></div>
+                <div class="mk-banner-ov hero-overlay absolute inset-0"></div>
             })}
-            <div class=content_class>
-                <div class="max-w-xl">
-                    <h1 class="text-xl font-bold line-clamp-2 @xl:text-3xl">{props.title.clone()}</h1>
+            <div class="mk-banner-body hero-content relative text-center">
+                <div class="mk-banner-panel max-w-xl">
+                    <h1 class="mk-title text-xl font-bold line-clamp-2 @xl:text-3xl">{props.title.clone()}</h1>
                     {(!props.subtitle.is_empty()).then(|| view! {
                         <p class="py-3 line-clamp-2 text-sm @xl:text-base">{props.subtitle.clone()}</p>
                     })}
@@ -295,14 +295,14 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
 #[component]
 pub fn TextWidget(props: TextProps) -> impl IntoView {
     let class = match props.align.as_str() {
-        "center" => "h-full overflow-hidden rounded-box bg-base-100 p-4 text-center",
-        "right" => "h-full overflow-hidden rounded-box bg-base-100 p-4 text-right",
-        _ => "h-full overflow-hidden rounded-box bg-base-100 p-4 text-left",
+        "center" => "mk-box mk-text h-full overflow-hidden rounded-box bg-base-100 p-4 text-center",
+        "right" => "mk-box mk-text h-full overflow-hidden rounded-box bg-base-100 p-4 text-right",
+        _ => "mk-box mk-text h-full overflow-hidden rounded-box bg-base-100 p-4 text-left",
     };
     view! {
         <div class=class>
             {(!props.heading.is_empty()).then(|| view! {
-                <h2 class="text-xl font-bold mb-2 truncate">{props.heading.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold mb-2 truncate">{props.heading.clone()}</h2>
             })}
             <p class="whitespace-pre-line">{props.body}</p>
         </div>
@@ -315,9 +315,9 @@ pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> imp
     let shown: Vec<Product> = products.into_iter().take(limit).collect();
     let empty = shown.is_empty();
     view! {
-        <div class="@container flex h-full flex-col gap-3 overflow-hidden">
+        <div class="mk-box mk-pad @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
             {empty.then(|| view! {
                 <div class="alert">"Todavía no hay productos."</div>
@@ -333,7 +333,12 @@ pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> imp
 pub fn FeaturedProductWidget(props: FeaturedProductProps, products: Vec<Product>) -> impl IntoView {
     let product = products.into_iter().find(|p| p.id == props.product_id);
     match product {
-        Some(p) => view! { <ProductCard product=p show_price=props.show_price/> }.into_any(),
+        Some(p) => view! {
+            <div class="mk-box mk-pad h-full rounded-box">
+                <ProductCard product=p show_price=props.show_price/>
+            </div>
+        }
+        .into_any(),
         None => view! {
             <div class="flex h-full items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200 p-4 text-center">
                 "Elegí un producto"
@@ -359,7 +364,7 @@ fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
                 </div>
             </div>
             <div class="card-body grow-0 shrink-0 gap-0">
-                <h3 class="card-title text-sm truncate block">{product.name.clone()}</h3>
+                <h3 class="mk-sub card-title text-sm truncate block">{product.name.clone()}</h3>
                 {show_price.then(|| view! { <Price cents=product.price_cents/> })}
             </div>
         </Card>
@@ -380,12 +385,12 @@ fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
 pub fn NavbarWidget(props: NavbarProps, editing: bool) -> impl IntoView {
     let has_button = !props.button_label.is_empty();
     view! {
-        <nav class="navbar h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm">
+        <nav class="mk-box mk-nav navbar h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm">
             <MaybeLink href="/" editing class="flex shrink-0 items-center gap-2">
                 {(!props.logo_url.is_empty()).then(|| view! {
                     <img class="h-8 w-8 object-contain" src=props.logo_url.clone() alt="" draggable="false"/>
                 })}
-                <span class="mk-h text-lg font-bold whitespace-nowrap">{props.brand.clone()}</span>
+                <span class="mk-brand mk-h text-lg font-bold whitespace-nowrap">{props.brand.clone()}</span>
             </MaybeLink>
             <ul class="menu menu-horizontal min-w-0 flex-1 flex-nowrap justify-end overflow-x-auto px-0">
                 {props
@@ -393,7 +398,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool) -> impl IntoView {
                     .into_iter()
                     .map(|l| view! {
                         <li>
-                            <MaybeLink href=l.href editing class="whitespace-nowrap">{l.label}</MaybeLink>
+                            <MaybeLink href=l.href editing class="mk-link whitespace-nowrap">{l.label}</MaybeLink>
                         </li>
                     })
                     .collect_view()}
@@ -435,7 +440,7 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
     }
 
     view! {
-        <div class="@container relative h-full overflow-hidden rounded-box bg-base-200">
+        <div class="mk-box mk-carousel @container relative h-full overflow-hidden rounded-box bg-base-200">
             <div
                 node_ref=track
                 class="carousel h-full w-full"
@@ -457,9 +462,9 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
                         view! {
                             <div class="carousel-item relative h-full w-full">
                                 <Image src=s.image_url.clone() alt=s.title.clone()/>
-                                <div class="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent"></div>
-                                <div class="absolute inset-y-0 left-0 flex max-w-lg flex-col justify-center gap-2 px-14 py-6 text-white @2xl:gap-3">
-                                    <h2 class="text-xl font-bold line-clamp-2 @2xl:text-3xl">{s.title.clone()}</h2>
+                                <div class="mk-car-ov absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent"></div>
+                                <div class="mk-car-body absolute inset-y-0 left-0 flex max-w-lg flex-col justify-center gap-2 px-14 py-6 text-white @2xl:gap-3">
+                                    <h2 class="mk-title text-xl font-bold line-clamp-2 @2xl:text-3xl">{s.title.clone()}</h2>
                                     {(!s.subtitle.is_empty()).then(|| view! {
                                         <p class="text-sm line-clamp-2 @2xl:text-base">{s.subtitle.clone()}</p>
                                     })}
@@ -477,7 +482,7 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
             {(count > 1).then(|| view! {
                 <button
                     type="button"
-                    class="btn btn-circle btn-sm absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-base-100/80"
+                    class="mk-car-arrow btn btn-circle btn-sm absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-base-100/80"
                     aria-label="Anterior"
                     on:click=move |_| go((current.get_untracked() + count - 1) % count)
                 >
@@ -485,7 +490,7 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
                 </button>
                 <button
                     type="button"
-                    class="btn btn-circle btn-sm absolute right-3 top-1/2 -translate-y-1/2 border-0 bg-base-100/80"
+                    class="mk-car-arrow btn btn-circle btn-sm absolute right-3 top-1/2 -translate-y-1/2 border-0 bg-base-100/80"
                     aria-label="Siguiente"
                     on:click=move |_| go((current.get_untracked() + 1) % count)
                 >
@@ -496,7 +501,7 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
                         .map(|i| view! {
                             <button
                                 type="button"
-                                class="h-2 rounded-full bg-white transition-all"
+                                class="mk-car-dot h-2 rounded-full bg-white transition-all"
                                 class=("w-6", move || current.get() == i)
                                 class=("w-2", move || current.get() != i)
                                 class=("opacity-50", move || current.get() != i)
@@ -514,21 +519,21 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
 #[component]
 pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView {
     view! {
-        <div class="@container flex h-full flex-col gap-3 overflow-hidden">
+        <div class="mk-box mk-pad mk-cats @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
             <div class="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 @xl:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">
                 {props
                     .items
                     .into_iter()
                     .map(|c| view! {
-                        <MaybeLink href=c.href editing class="group relative block min-h-0 overflow-hidden rounded-box">
+                        <MaybeLink href=c.href editing class="mk-cat group relative block min-h-0 overflow-hidden rounded-box">
                             <div class="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
                                 <Image src=c.image_url.clone() alt=c.label.clone()/>
                             </div>
-                            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
-                                <span class="mk-h font-semibold text-white">{c.label.clone()}</span>
+                            <div class="mk-cat-label absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-white">
+                                <span class="mk-h font-semibold">{c.label.clone()}</span>
                             </div>
                         </MaybeLink>
                     })
@@ -541,18 +546,18 @@ pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView 
 #[component]
 pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
     view! {
-        <div class="h-full overflow-hidden rounded-box bg-base-100 px-4 py-2">
+        <div class="mk-box mk-benefits h-full overflow-hidden rounded-box bg-base-100 px-4 py-2">
             <div class="grid h-full auto-cols-[minmax(13rem,1fr)] grid-flow-col items-center gap-4 overflow-x-auto">
                 {props
                     .items
                     .into_iter()
                     .map(|b| view! {
-                        <div class="flex min-w-0 items-center gap-3">
-                            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <div class="mk-benefit flex min-w-0 items-center gap-3">
+                            <div class="mk-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-full">
                                 <Icon name=b.icon class="h-6 w-6"/>
                             </div>
                             <div class="min-w-0">
-                                <p class="mk-h font-semibold truncate">{b.title}</p>
+                                <p class="mk-sub mk-h font-semibold truncate">{b.title}</p>
                                 <p class="text-sm opacity-70 line-clamp-2">{b.text}</p>
                             </div>
                         </div>
@@ -608,15 +613,15 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
     let units = ["días", "horas", "min", "seg"];
 
     view! {
-        <div class="@container flex h-full flex-col items-center justify-center gap-3 overflow-hidden rounded-box bg-primary p-4 text-center text-primary-content">
-            <h2 class="text-2xl font-bold line-clamp-1 @xl:text-3xl">{props.title.clone()}</h2>
+        <div class="mk-box mk-countdown @container flex h-full flex-col items-center justify-center gap-3 overflow-hidden rounded-box p-4 text-center">
+            <h2 class="mk-title text-2xl font-bold line-clamp-1 @xl:text-3xl">{props.title.clone()}</h2>
             {(!props.subtitle.is_empty()).then(|| view! {
                 <p class="hidden line-clamp-2 opacity-90 @xl:block">{props.subtitle.clone()}</p>
             })}
             {move || match left.get() {
                 None => view! {
                     <div class="flex gap-3">
-                        {(0..4).map(|_| view! { <Skeleton class="h-16 w-16 bg-primary-content/20"/> }).collect_view()}
+                        {(0..4).map(|_| view! { <Skeleton class="h-16 w-16 bg-current/20"/> }).collect_view()}
                     </div>
                 }
                 .into_any(),
@@ -631,7 +636,7 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
                                 .map(|(v, unit)| {
                                     let style = format!("--value:{v}; --digits:2;");
                                     view! {
-                                        <div class="flex flex-col items-center rounded-box bg-primary-content/15 px-3 py-2">
+                                        <div class="mk-unit flex flex-col items-center rounded-box px-3 py-2">
                                             <span class="countdown font-mono text-3xl">
                                                 <span style=style aria-live="polite" aria-label=v.to_string()>{v.to_string()}</span>
                                             </span>
@@ -647,7 +652,7 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
             }}
             {has_button.then(|| view! {
                 <a
-                    class="btn btn-sm bg-primary-content text-primary border-0"
+                    class="mk-btn btn btn-sm"
                     href=(!editing).then(|| props.button_href.clone())
                     data-href=(editing && !props.button_href.is_empty()).then(|| props.button_href.clone())
                 >
@@ -662,15 +667,15 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
 pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
     let (card_class, figure_class) = match props.layout.as_str() {
         "side" => (
-            "card card-side card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm",
+            "mk-box mk-card card card-side card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm",
             "relative w-2/5 shrink-0",
         ),
         "overlay" => (
-            "card image-full card-sm h-full overflow-hidden shadow-sm",
+            "mk-box mk-card mk-card-overlay card image-full card-sm h-full overflow-hidden shadow-sm",
             "relative",
         ),
         _ => (
-            "card card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm",
+            "mk-box mk-card card card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm",
             "relative min-h-0 flex-1",
         ),
     };
@@ -691,7 +696,7 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
                 </figure>
             })}
             <div class=body_class>
-                <h2 class="card-title line-clamp-2">{props.title.clone()}</h2>
+                <h2 class="mk-title card-title line-clamp-2">{props.title.clone()}</h2>
                 {(!props.body.is_empty()).then(|| view! {
                     <p class="line-clamp-3 grow-0">{props.body.clone()}</p>
                 })}
@@ -708,14 +713,14 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
 #[component]
 pub fn TabsWidget(props: TabsProps, group: String) -> impl IntoView {
     view! {
-        <div class="tabs tabs-box h-full content-start overflow-hidden bg-base-200">
+        <div class="mk-box mk-tabs tabs tabs-box h-full content-start overflow-hidden bg-base-200">
             {props
                 .tabs
                 .into_iter()
                 .enumerate()
                 .map(|(i, t)| view! {
                     <input type="radio" name=group.clone() class="tab" aria-label=t.label checked=i == 0/>
-                    <div class="tab-content h-[calc(100%-3rem)] overflow-auto rounded-box border-base-300 bg-base-100 p-4">
+                    <div class="mk-item tab-content h-[calc(100%-3rem)] overflow-auto rounded-box border-base-300 bg-base-100 p-4">
                         <p class="whitespace-pre-line">{t.body}</p>
                     </div>
                 })
@@ -727,16 +732,16 @@ pub fn TabsWidget(props: TabsProps, group: String) -> impl IntoView {
 #[component]
 pub fn FaqWidget(props: FaqProps) -> impl IntoView {
     view! {
-        <div class="flex h-full flex-col gap-3 overflow-hidden">
+        <div class="mk-box mk-pad mk-faq flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
             <div class="join join-vertical min-h-0 w-full flex-1 overflow-y-auto">
                 {props
                     .items
                     .into_iter()
                     .map(|q| view! {
-                        <details class="collapse collapse-arrow join-item border border-base-300 bg-base-100">
+                        <details class="mk-item collapse collapse-arrow join-item border border-base-300 bg-base-100">
                             <summary class="collapse-title font-semibold">{q.question}</summary>
                             <div class="collapse-content text-sm">
                                 <p class="whitespace-pre-line">{q.answer}</p>
@@ -753,7 +758,7 @@ pub fn FaqWidget(props: FaqProps) -> impl IntoView {
 pub fn HoverGalleryWidget(props: HoverGalleryProps, editing: bool) -> impl IntoView {
     let title = props.title.clone();
     view! {
-        <MaybeLink href=props.href.clone() editing class="card card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm">
+        <MaybeLink href=props.href.clone() editing class="mk-box mk-hgal card card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm">
             <div class="skeleton relative min-h-0 flex-1 rounded-none">
                 <figure class="hover-gallery absolute inset-0 h-full">
                     // Las fotos que aparecen al pasar el mouse son variantes de
@@ -770,7 +775,7 @@ pub fn HoverGalleryWidget(props: HoverGalleryProps, editing: bool) -> impl IntoV
                 </figure>
             </div>
             <div class="card-body grow-0 shrink-0 gap-0">
-                <h3 class="card-title text-sm truncate block">{props.title.clone()}</h3>
+                <h3 class="mk-sub card-title text-sm truncate block">{props.title.clone()}</h3>
                 {(!props.subtitle.is_empty()).then(|| view! {
                     <p class="text-xs opacity-70 truncate">{props.subtitle.clone()}</p>
                 })}
@@ -796,9 +801,9 @@ fn Stars(rating: i64) -> impl IntoView {
 #[component]
 pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
     view! {
-        <div class="@container flex h-full flex-col gap-3 overflow-hidden">
+        <div class="mk-box mk-pad mk-testi @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
             <div class="grid min-h-0 flex-1 auto-cols-[minmax(16rem,1fr)] grid-flow-col gap-3 overflow-x-auto">
                 {props
@@ -807,13 +812,13 @@ pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
                     .map(|t| {
                         let initial = t.name.chars().next().map(String::from).unwrap_or_default();
                         view! {
-                            <div class="card card-sm min-h-0 overflow-hidden border border-base-300 bg-base-100">
+                            <div class="mk-item card card-sm min-h-0 overflow-hidden border border-base-300 bg-base-100">
                                 <div class="card-body">
                                     <Stars rating=t.rating/>
                                     <p class="line-clamp-4 italic">{format!("“{}”", t.text)}</p>
                                     <div class="flex items-center gap-2">
                                         <div class="avatar avatar-placeholder">
-                                            <div class="w-8 rounded-full bg-neutral text-neutral-content">
+                                            <div class="mk-avatar w-8 rounded-full">
                                                 <span class="text-xs">{initial}</span>
                                             </div>
                                         </div>
@@ -832,16 +837,16 @@ pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
 #[component]
 pub fn LogosWidget(props: LogosProps, editing: bool) -> impl IntoView {
     view! {
-        <div class="flex h-full flex-col justify-center gap-2 overflow-hidden rounded-box bg-base-100 px-4 py-3">
+        <div class="mk-box mk-logos flex h-full flex-col justify-center gap-2 overflow-hidden rounded-box bg-base-100 px-4 py-3">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="text-center text-xs font-semibold uppercase tracking-wide opacity-60 truncate">{props.title.clone()}</h2>
+                <h2 class="mk-sub text-center text-xs font-semibold uppercase tracking-wide opacity-75 truncate">{props.title.clone()}</h2>
             })}
             <div class="flex items-center justify-center-safe gap-8 overflow-x-auto">
                 {props
                     .items
                     .into_iter()
                     .map(|l| view! {
-                        <MaybeLink href=l.href editing class="block shrink-0">
+                        <MaybeLink href=l.href editing class="mk-logo block shrink-0">
                             <img
                                 class="h-8 w-auto max-w-40 shrink-0 object-contain opacity-70 grayscale transition hover:opacity-100 hover:grayscale-0"
                                 src=l.image_url
@@ -861,7 +866,7 @@ pub fn LogosWidget(props: LogosProps, editing: bool) -> impl IntoView {
 #[component]
 pub fn ImageWidget(props: ImageProps, editing: bool) -> impl IntoView {
     view! {
-        <MaybeLink href=props.href.clone() editing class="block h-full overflow-hidden rounded-box">
+        <MaybeLink href=props.href.clone() editing class="mk-box mk-image block h-full overflow-hidden rounded-box">
             <Image src=props.image_url.clone() alt=props.alt.clone() contain=props.fit == "contain"/>
         </MaybeLink>
     }
@@ -870,10 +875,10 @@ pub fn ImageWidget(props: ImageProps, editing: bool) -> impl IntoView {
 #[component]
 pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     view! {
-        <footer class="@container flex h-full flex-col justify-between gap-3 overflow-hidden rounded-box bg-neutral px-6 py-4 text-neutral-content">
+        <footer class="mk-box mk-footer @container flex h-full flex-col justify-between gap-3 overflow-hidden rounded-box px-6 py-4">
             <div class="flex flex-col gap-4 @2xl:flex-row @2xl:justify-between">
                 <aside class="max-w-sm">
-                    <p class="mk-h text-lg font-bold">{props.brand.clone()}</p>
+                    <p class="mk-brand mk-h text-lg font-bold">{props.brand.clone()}</p>
                     <p class="text-sm opacity-80 line-clamp-2">{props.description.clone()}</p>
                 </aside>
                 <nav class="flex flex-wrap content-start gap-x-6 gap-y-1 text-sm @2xl:max-w-md @2xl:justify-end">
@@ -881,13 +886,13 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
                         .links
                         .into_iter()
                         .map(|l| view! {
-                            <MaybeLink href=l.href editing class="link link-hover truncate">{l.label}</MaybeLink>
+                            <MaybeLink href=l.href editing class="mk-link link link-hover truncate">{l.label}</MaybeLink>
                         })
                         .collect_view()}
                 </nav>
             </div>
             {(!props.legal.is_empty()).then(|| view! {
-                <p class="border-t border-neutral-content/20 pt-3 text-xs opacity-70 truncate">{props.legal.clone()}</p>
+                <p class="border-t border-current/20 pt-3 text-xs opacity-70 truncate">{props.legal.clone()}</p>
             })}
         </footer>
     }

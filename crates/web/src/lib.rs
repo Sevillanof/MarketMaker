@@ -47,6 +47,7 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("") view=HomePage ssr=SsrMode::Async/>
                     <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
+                    <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
                     // Las demás páginas de la tienda (/ofertas, /categorias…).
                     <Route path=WildcardSegment("any") view=HomePage ssr=SsrMode::Async/>
                 </Routes>

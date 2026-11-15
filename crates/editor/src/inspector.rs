@@ -1,7 +1,7 @@
 //! Inspector: el panel de la derecha con los campos del bloque elegido.
 //!
 //! Dos pestañas: "Contenido" (textos, imágenes, listas y el botón) y
-//! "Diseño" (tamaño y letras). Al elegir un bloque se abre en Contenido,
+//! "Diseño" (diseño y color, tamaño y letras). Al elegir un bloque se abre en Contenido,
 //! que es lo que la persona viene a cambiar casi siempre.
 
 use domain::{Field, Product, Widget, GRID_COLS, ROW_PX};
@@ -9,6 +9,7 @@ use leptos::prelude::*;
 
 use crate::fields::{ButtonGroup, PropField};
 use crate::icons::Icon;
+use crate::look::BlockLook;
 use crate::palette::block_info;
 use crate::typography::BlockTypography;
 use crate::{choice_class, focus_selector, Actions, EditorState, Ui, WIDTHS};
@@ -241,7 +242,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                     <ButtonGroup products id=button_id.clone() label_field href_field/>
                 })}
                 {no_fields.then(|| view! {
-                    <p class="text-sm text-base-content/75">"Este bloque muestra el dato del producto que se abre, así que no hay nada para escribir. Su tamaño y sus letras se cambian en Diseño."</p>
+                    <p class="text-sm text-base-content/75">"Este bloque muestra el dato del producto que se abre, así que no hay nada para escribir. Su diseño, color, tamaño y letras se cambian en Diseño."</p>
                 })}
                 {move || {
                     let state = expect_context::<EditorState>();
@@ -292,6 +293,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                 class="flex flex-col gap-5"
                 class:hidden=move || tab.get() != Tab::Design
             >
+                <BlockLook id=id.clone() visible=Signal::derive(move || tab.get() == Tab::Design) products/>
                 <BlockSize id=id.clone() widget=widget.clone()/>
                 <BlockTypography id=id.clone()/>
             </div>
