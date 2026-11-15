@@ -3,15 +3,18 @@ use editor::{Editor, SaveAction};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
-    components::{Route, Router, Routes},
+    components::{Redirect, Route, Router, Routes},
     hooks::use_location,
     path, SsrMode, StaticSegment, WildcardSegment,
 };
 use storefront::StorefrontPage;
 
+mod account;
+pub mod auth;
 mod dev;
 pub mod server;
 
+pub use auth::*;
 pub use server::*;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -46,6 +49,7 @@ pub fn App() -> impl IntoView {
                 <Routes fallback=|| "Página no encontrada.".into_view()>
                     <Route path=StaticSegment("") view=HomePage ssr=SsrMode::Async/>
                     <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
+                    <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
                     // Las demás páginas de la tienda (/ofertas, /categorias…).
@@ -62,15 +66,20 @@ pub fn App() -> impl IntoView {
 #[component]
 fn HomePage() -> impl IntoView {
     let page = Resource::new(|| (), |_| load_page("home".to_string()));
+    let me = Resource::new(|| (), |_| who_am_i());
     let location = use_location();
     view! {
         <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
             {move || Suspend::new(async move {
+                let me = me.await.ok().flatten();
                 match page.await {
-                    Ok(view) => (move || {
-                        let path = location.pathname.get();
-                        view! { <StorefrontPage view=view.clone() path/> }
-                    })
+                    Ok(view) => view! {
+                        <account::OwnerBar me/>
+                        {move || {
+                            let path = location.pathname.get();
+                            view! { <StorefrontPage view=view.clone() path/> }
+                        }}
+                    }
                     .into_any(),
                     Err(e) => view! {
                         <div class="p-8">
@@ -91,10 +100,18 @@ fn EditorPage() -> impl IntoView {
     let save: SaveAction = Action::new(|(doc, base_version): &(PageDoc, u32)| {
         save_page("home".to_string(), doc.clone(), *base_version)
     });
+    let me = Resource::new(|| (), |_| who_am_i());
     view! {
         <Title text="Editor · Marketplace"/>
         <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
             {move || Suspend::new(async move {
+                // Sin cuenta, a Entrar; con una cuenta que no es dueña, un aviso.
+                // Esto es para orientar: el permiso real lo revisa `save_page`.
+                match me.await {
+                    Ok(Some(me)) if me.can_edit => {}
+                    Ok(Some(me)) => return view! { <NotYourStore me/> }.into_any(),
+                    _ => return view! { <Redirect path="/entrar?volver=/editor"/> }.into_any(),
+                }
                 match page.await {
                     Ok(initial) => view! { <Editor initial save/> }.into_any(),
                     Err(e) => view! {
@@ -106,5 +123,24 @@ fn EditorPage() -> impl IntoView {
                 }
             })}
         </Suspense>
+    }
+}
+
+/// `/editor` con una cuenta que no es dueña de esta tienda.
+#[component]
+fn NotYourStore(me: domain::Me) -> impl IntoView {
+    view! {
+        <div data-theme="light" class="min-h-screen bg-base-200 flex items-start justify-center px-4 py-16">
+            <div role="alert" class="card bg-base-100 shadow-sm w-full max-w-md">
+                <div class="card-body gap-3">
+                    <h1 class="card-title text-2xl">"Esta tienda no es tuya"</h1>
+                    <p>"Entraste como " <strong>{me.email}</strong> ", y esa cuenta no puede editar esta tienda."</p>
+                    <div class="flex gap-2">
+                        <a class="btn btn-primary" href="/">"Ver la tienda"</a>
+                        <a class="btn btn-ghost" href="/entrar">"Cambiar de cuenta"</a>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
 }

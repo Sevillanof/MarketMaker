@@ -2,11 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
+mod account;
 mod layout;
 mod look;
 mod typography;
 mod widgets;
 
+pub use account::*;
 pub use layout::*;
 pub use look::*;
 pub use typography::*;
@@ -32,7 +34,9 @@ pub const MAX_PATH_LEN: usize = 60;
 /// Largo máximo del nombre de una página.
 pub const MAX_PAGE_NAME: usize = 40;
 /// Direcciones que usa la aplicación: ninguna página puede empezar así.
-pub const RESERVED_PATHS: &[&str] = &["/editor", "/dev", "/pkg", "/api", "/fonts", "/img"];
+pub const RESERVED_PATHS: &[&str] = &[
+    "/editor", "/entrar", "/dev", "/pkg", "/api", "/fonts", "/img",
+];
 /// Bloques que se copian a una página nueva para que se vea como parte de
 /// la misma tienda: el menú y el pie.
 pub const SHARED_ON_NEW_PAGE: &[&str] = &["Navbar", "Footer"];

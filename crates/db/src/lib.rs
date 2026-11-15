@@ -3,6 +3,8 @@
 //! Se usa `sqlx::query_as` sin las macros verificadas en compilación, para
 //! que compilar no dependa de tener la base levantada.
 
+pub mod auth;
+
 use domain::{PageDoc, Product, SaveOutcome};
 use sqlx::{FromRow, PgExecutor, PgPool};
 use uuid::Uuid;
@@ -79,14 +81,15 @@ pub async fn save_page_version<'e, E>(
     page_id: Uuid,
     number: i32,
     doc: &serde_json::Value,
+    created_by: Option<Uuid>,
 ) -> sqlx::Result<()>
 where
     E: PgExecutor<'e>,
 {
     sqlx::query(
         "WITH v AS (
-           INSERT INTO page_versions (page_id, tenant_id, number, doc)
-           VALUES ($1, $2, $3, $4)
+           INSERT INTO page_versions (page_id, tenant_id, number, doc, created_by)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING id
          )
          UPDATE pages SET current_version_id = (SELECT id FROM v) WHERE id = $1",
@@ -95,6 +98,7 @@ where
     .bind(tenant_id)
     .bind(number)
     .bind(doc)
+    .bind(created_by)
     .execute(exec)
     .await?;
     Ok(())
@@ -115,6 +119,18 @@ pub async fn save_page(
     slug: &str,
     doc: &PageDoc,
     base_version: u32,
+) -> sqlx::Result<SaveOutcome> {
+    save_page_by(pool, tenant_id, slug, doc, base_version, None).await
+}
+
+/// Como [`save_page`], anotando quién guardó la versión.
+pub async fn save_page_by(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    slug: &str,
+    doc: &PageDoc,
+    base_version: u32,
+    created_by: Option<Uuid>,
 ) -> sqlx::Result<SaveOutcome> {
     let mut tx = pool.begin().await?;
 
@@ -143,7 +159,7 @@ pub async fn save_page(
 
     let number = current + 1;
     let value = serde_json::to_value(doc).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
-    save_page_version(&mut *tx, tenant_id, page_id, number, &value).await?;
+    save_page_version(&mut *tx, tenant_id, page_id, number, &value, created_by).await?;
 
     sqlx::query("DELETE FROM page_versions WHERE page_id = $1 AND number <= $2")
         .bind(page_id)
