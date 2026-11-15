@@ -18,6 +18,8 @@ pub struct MyPhotos {
     pub progress: RwSignal<Option<String>>,
     /// Problemas de la última subida, uno por foto.
     pub upload_errors: RwSignal<Vec<String>>,
+    /// Cuánto se achicó cada foto de la última subida.
+    pub saved: RwSignal<Vec<String>>,
     loading: StoredValue<bool>,
 }
 
@@ -28,6 +30,7 @@ impl MyPhotos {
             load_error: RwSignal::new(None),
             progress: RwSignal::new(None),
             upload_errors: RwSignal::new(Vec::new()),
+            saved: RwSignal::new(Vec::new()),
             loading: StoredValue::new(false),
         }
     }
@@ -60,18 +63,22 @@ impl MyPhotos {
             return;
         }
         self.upload_errors.set(Vec::new());
+        self.saved.set(Vec::new());
         let total = files.len();
         leptos::task::spawn_local(async move {
             let mut uploaded = Vec::new();
             for (i, file) in files.into_iter().enumerate() {
                 self.progress.set(Some(if total == 1 {
-                    "Subiendo la foto…".to_string()
+                    "Subiendo y optimizando la foto…".to_string()
                 } else {
-                    format!("Subiendo {} de {total}…", i + 1)
+                    format!("Subiendo y optimizando {} de {total}…", i + 1)
                 }));
                 let name = file.name();
                 match upload_one(&file).await {
                     Ok(item) => {
+                        if let Some(text) = domain::savings_text(&item) {
+                            self.saved.update(|s| s.push(text));
+                        }
                         self.items
                             .update(|l| l.get_or_insert_with(Vec::new).insert(0, item.clone()));
                         uploaded.push(item);

@@ -12,6 +12,40 @@ pub struct MediaItem {
     pub name: String,
     pub width: u32,
     pub height: u32,
+    /// Lo que pesaba el archivo que subió el dueño.
+    #[serde(default)]
+    pub original_bytes: u64,
+    /// Lo que baja un visitante: la foto de 960 px en AVIF.
+    #[serde(default)]
+    pub web_bytes: u64,
+}
+
+/// Peso legible: `3,4 MB`, `21 KB`.
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        let tenths = (bytes * 10 + 512 * 1024) / (1024 * 1024);
+        format!("{},{} MB", tenths / 10, tenths % 10)
+    } else {
+        format!("{} KB", bytes.div_ceil(1024).max(1))
+    }
+}
+
+/// "Se achicó de 3,4 MB a 21 KB (99 % menos)", o `None` si no hay datos.
+pub fn savings_text(item: &MediaItem) -> Option<String> {
+    if item.original_bytes == 0 || item.web_bytes == 0 {
+        return None;
+    }
+    let pct = item.original_bytes.saturating_sub(item.web_bytes) * 100 / item.original_bytes;
+    let mut text = format!(
+        "{}: de {} a {}",
+        item.name,
+        format_bytes(item.original_bytes),
+        format_bytes(item.web_bytes)
+    );
+    if item.web_bytes < item.original_bytes {
+        text.push_str(&format!(" ({pct} % menos)"));
+    }
+    Some(text)
 }
 
 /// Anchos en los que se guarda cada foto (ver el crate `media`).
@@ -57,6 +91,33 @@ mod tests {
         assert_eq!(media_base("/img/hero.webp"), None);
         assert_eq!(media_base("/media/../etc/960.webp"), None);
         assert_eq!(media_base("https://x.com/media/a/960.webp"), None);
+    }
+
+    #[test]
+    fn readable_sizes_and_savings() {
+        assert_eq!(format_bytes(3_565_158), "3,4 MB");
+        assert_eq!(format_bytes(21_000), "21 KB");
+        assert_eq!(format_bytes(10), "1 KB");
+        let item = MediaItem {
+            id: "a".into(),
+            url: "/media/a/960.webp".into(),
+            name: "Remera".into(),
+            width: 1,
+            height: 1,
+            original_bytes: 3_565_158,
+            web_bytes: 21_000,
+        };
+        assert_eq!(
+            savings_text(&item).unwrap(),
+            "Remera: de 3,4 MB a 21 KB (99 % menos)"
+        );
+        assert_eq!(
+            savings_text(&MediaItem {
+                web_bytes: 0,
+                ..item
+            }),
+            None
+        );
     }
 
     #[test]

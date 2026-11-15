@@ -20,9 +20,9 @@ pub const MAX_BYTES: usize = 10 * 1024 * 1024;
 /// Lado máximo aceptado (evita fotos gigantes que llenen la memoria).
 pub const MAX_SIDE: u32 = 12_000;
 
-const AVIF_QUALITY: f32 = 62.0;
-const AVIF_SPEED: u8 = 8;
-const WEBP_QUALITY: f32 = 80.0;
+const AVIF_QUALITY: f32 = 85.0;
+const AVIF_SPEED: u8 = 6;
+const WEBP_QUALITY: f32 = 85.0;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MediaError {
@@ -54,6 +54,17 @@ pub struct Processed {
     pub width: u32,
     pub height: u32,
     pub variants: Vec<Variant>,
+}
+
+impl Processed {
+    /// Lo que baja un visitante: la foto de [`MAIN_WIDTH`] en AVIF.
+    pub fn web_bytes(&self) -> usize {
+        let main = format!("{MAIN_WIDTH}.avif");
+        self.variants
+            .iter()
+            .find(|v| v.name == main)
+            .map_or(0, |v| v.bytes.len())
+    }
 }
 
 /// Lee la foto, la gira, y genera AVIF + WebP en cada ancho de [`WIDTHS`].
@@ -134,15 +145,25 @@ fn encode_width(rgba: &DynamicImage, target: u32) -> Result<[Variant; 2], MediaE
 }
 
 fn encode_avif(img: &image::RgbaImage) -> Result<Vec<u8>, MediaError> {
+    encode_avif_with(img, AVIF_QUALITY, AVIF_SPEED)
+}
+
+/// Para medir calidades (ver `examples/calibrar.rs`).
+#[doc(hidden)]
+pub fn encode_avif_with(
+    img: &image::RgbaImage,
+    quality: f32,
+    speed: u8,
+) -> Result<Vec<u8>, MediaError> {
     let pixels: Vec<rgb::RGBA8> = img
         .pixels()
         .map(|p| rgb::RGBA8::new(p[0], p[1], p[2], p[3]))
         .collect();
     let opaque = pixels.iter().all(|p| p.a == 255);
     let enc = ravif::Encoder::new()
-        .with_quality(AVIF_QUALITY)
-        .with_alpha_quality(AVIF_QUALITY)
-        .with_speed(AVIF_SPEED);
+        .with_quality(quality)
+        .with_alpha_quality(quality)
+        .with_speed(speed);
     let frame = ravif::Img::new(
         pixels.as_slice(),
         img.width() as usize,
@@ -166,8 +187,13 @@ fn encode_avif(img: &image::RgbaImage) -> Result<Vec<u8>, MediaError> {
 }
 
 fn encode_webp(img: &image::RgbaImage) -> Vec<u8> {
+    encode_webp_with(img, WEBP_QUALITY)
+}
+
+#[doc(hidden)]
+pub fn encode_webp_with(img: &image::RgbaImage, quality: f32) -> Vec<u8> {
     webp::Encoder::from_rgba(img.as_raw(), img.width(), img.height())
-        .encode(WEBP_QUALITY)
+        .encode(quality)
         .to_vec()
 }
 
