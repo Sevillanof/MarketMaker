@@ -13,9 +13,10 @@ mod icons;
 mod inspector;
 mod look;
 mod palette;
+mod topbar;
 mod typography;
 
-use domain::{Layer, Node, PageDoc, PageView, SaveOutcome, HOME, THEMES, THEME_LABELS};
+use domain::{Layer, Node, PageDoc, PageView, SaveOutcome, HOME};
 use leptos::prelude::*;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -24,7 +25,7 @@ use canvas::Canvas;
 use icons::Icon;
 use inspector::Inspector;
 use palette::Palette;
-use typography::StoreTypography;
+use topbar::{PageSwitcher, StoreMenu};
 
 /// Cuántos pasos de deshacer se guardan.
 pub const MAX_UNDO: usize = 50;
@@ -676,9 +677,18 @@ pub(crate) fn size_badge(size: domain::Size) -> String {
 }
 
 /// Clases de un botón de una elección (ancho, tamaño de letra, alineación…).
-/// Lo elegido va en un tono suave con borde, para no competir con Guardar.
+/// Lo elegido va en un tono suave con borde, para no competir con Publicar.
 /// (No usa `btn-soft`: daisyUI pinta lleno todo botón con
 /// `aria-pressed="true"`, y las utilidades de Tailwind le ganan.)
+/// Clase de un botón del interruptor Editar / Vista previa.
+fn mode_class(active: bool) -> &'static str {
+    if active {
+        "btn btn-sm border-0 bg-base-100 shadow-sm"
+    } else {
+        "btn btn-sm btn-ghost border-0 font-normal text-base-content/80"
+    }
+}
+
 pub(crate) fn choice_class(active: bool) -> &'static str {
     if active {
         "btn btn-sm border-primary bg-primary/10 text-primary hover:bg-primary/15"
@@ -871,7 +881,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 state.base_version.set(version);
                 status.set(Status::Idle);
                 ui.show_errors.set(false);
-                ui.toast("Guardado. Tu tienda ya muestra estos cambios.", false);
+                ui.toast("Publicado. Tu tienda ya muestra estos cambios.", false);
             }
             Ok(SaveOutcome::Conflict { .. }) => status.set(Status::Conflict),
             Ok(SaveOutcome::Invalid { errors }) => {
@@ -1021,104 +1031,97 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         on_cleanup(move || handle.remove());
     });
 
-    let theme = move || state.doc.with(|d| d.theme.clone());
-
     view! {
         <div data-theme="light" class="flex h-screen flex-col bg-base-200 text-base-content">
-            <header class="navbar min-h-14 gap-3 border-b border-base-300 bg-base-100 px-4">
-                <div class="flex flex-1 items-center gap-4">
-                    <h1 class="text-lg font-bold">"Editor de tu tienda"</h1>
-                    <a
-                        class="link link-hover inline-flex items-center gap-1 text-sm"
-                        href=move || state.doc.with(|d| d.page_path(state.page.get()).to_string())
-                        target="_blank"
-                        rel="noopener"
-                    >
-                        "Ver tienda publicada"
-                        <Icon name="external" class="h-3.5 w-3.5"/>
-                        <span class="sr-only">"(se abre en otra pestaña)"</span>
-                    </a>
+            <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4">
+                <h1 class="sr-only">"Editor de tu tienda"</h1>
+                <StoreMenu/>
+                <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
+                <PageSwitcher/>
+                <div class="flex flex-1 justify-center">
+                    <div class="flex gap-0.5 rounded-field bg-base-200 p-0.5" role="group" aria-label="Modo">
+                        <button
+                            type="button"
+                            class=move || mode_class(!ui.preview.get())
+                            aria-pressed=move || (!ui.preview.get()).to_string()
+                            on:click=move |_| ui.preview.set(false)
+                        >
+                            <Icon name="pencil"/>
+                            "Editar"
+                        </button>
+                        <button
+                            type="button"
+                            class=move || mode_class(ui.preview.get())
+                            aria-pressed=move || ui.preview.get().to_string()
+                            on:click=move |_| {
+                                // La vista previa muestra la tienda: la ficha se abre tocando un producto.
+                                actions.close_modal();
+                                ui.preview.set(true);
+                            }
+                        >
+                            <Icon name="eye"/>
+                            "Vista previa"
+                        </button>
+                    </div>
                 </div>
-                <label class="flex items-center gap-2 text-sm">
-                    "Tema"
-                    <span data-theme=theme class="flex gap-0.5 rounded-field border border-base-content/20 bg-base-100 p-1" aria-hidden="true">
-                        <span class="h-3 w-3 rounded-full bg-primary"></span>
-                        <span class="h-3 w-3 rounded-full bg-secondary"></span>
-                        <span class="h-3 w-3 rounded-full bg-accent"></span>
-                    </span>
-                    <select
-                        class="select select-sm w-36"
-                        prop:value=theme
-                        on:change=move |ev| {
-                            let theme = event_target_value(&ev);
-                            state.apply(|d| d.theme = theme);
-                        }
+                <div class="flex gap-0.5" role="group" aria-label="Historial">
+                    <button
+                        type="button"
+                        class="btn btn-ghost btn-sm btn-square"
+                        aria-label="Deshacer"
+                        title="Deshacer (Ctrl+Z o ⌘Z)"
+                        aria-keyshortcuts="Control+Z Meta+Z"
+                        disabled=move || state.undo.with(Vec::is_empty)
+                        on:click=move |_| state.undo()
                     >
-                        {THEMES
-                            .iter()
-                            .zip(THEME_LABELS)
-                            .map(|(t, l)| view! { <option value=*t>{*l}</option> })
-                            .collect_view()}
-                    </select>
-                </label>
-                <StoreTypography/>
-                <button
-                    type="button"
-                    class="btn btn-sm"
-                    aria-pressed=move || ui.preview.get().to_string()
-                    on:click=move |_| {
-                        // La vista previa muestra la tienda: la ficha se abre tocando un producto.
-                        actions.close_modal();
-                        ui.preview.update(|p| *p = !*p);
-                    }
-                >
-                    <Icon name="eye"/>
-                    "Vista previa"
-                </button>
-                <button
-                    type="button"
-                    class="btn btn-sm"
-                    title="Deshacer (Ctrl+Z o ⌘Z)"
-                    aria-keyshortcuts="Control+Z Meta+Z"
-                    disabled=move || state.undo.with(Vec::is_empty)
-                    on:click=move |_| state.undo()
-                >
-                    <Icon name="undo"/>
-                    "Deshacer"
-                </button>
-                <button
-                    type="button"
-                    class="btn btn-sm"
-                    title="Rehacer (Ctrl+Mayús+Z o ⇧⌘Z)"
-                    aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
-                    disabled=move || state.redo.with(Vec::is_empty)
-                    on:click=move |_| state.redo()
-                >
-                    <Icon name="redo"/>
-                    "Rehacer"
-                </button>
-                <span class="flex items-center gap-1.5 text-sm" title="La tienda publicada muestra lo último que guardaste">
+                        <Icon name="undo" class="h-5 w-5"/>
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-ghost btn-sm btn-square"
+                        aria-label="Rehacer"
+                        title="Rehacer (Ctrl+Mayús+Z o ⇧⌘Z)"
+                        aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
+                        disabled=move || state.redo.with(Vec::is_empty)
+                        on:click=move |_| state.redo()
+                    >
+                        <Icon name="redo" class="h-5 w-5"/>
+                    </button>
+                </div>
+                <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
+                <span class="flex items-center gap-1.5 whitespace-nowrap text-sm" title="Tu tienda muestra lo último que publicaste">
                     {move || if state.dirty() {
                         view! {
                             <span class="h-2 w-2 rounded-full bg-warning" aria-hidden="true"></span>
-                            <span>"Cambios sin guardar"</span>
+                            <span>"Sin publicar"</span>
                         }.into_any()
                     } else {
                         view! {
                             <Icon name="check" class="h-4 w-4 text-success"/>
-                            <span>"Todo guardado"</span>
+                            <span>"Publicado"</span>
                         }.into_any()
                     }}
                 </span>
+                <a
+                    class="btn btn-ghost btn-sm btn-square"
+                    href=move || state.doc.with(|d| d.page_path(state.page.get()).to_string())
+                    target="_blank"
+                    rel="noopener"
+                    aria-label="Ver tienda publicada (se abre en otra pestaña)"
+                    title="Ver tienda publicada"
+                >
+                    <Icon name="external" class="h-5 w-5"/>
+                </a>
                 <button
                     type="button"
                     class="btn btn-sm btn-primary"
-                    title="Guardar (Ctrl+S o ⌘S)"
+                    title="Publicar (Ctrl+S o ⌘S)"
                     aria-keyshortcuts="Control+S Meta+S"
                     disabled=move || !state.dirty() || save.pending().get()
                     on:click=move |_| save_now()
                 >
-                    {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
+                    <Icon name="up"/>
+                    {move || if save.pending().get() { "Publicando…" } else { "Publicar" }}
                 </button>
             </header>
             {move || recover.get().map(|doc| {
@@ -1131,7 +1134,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                             let draft = doc.get_value();
                             state.apply(|d| *d = draft);
                             recover.set(None);
-                            ui.toast("Recuperaste tus cambios. Guardalos para publicarlos.", false);
+                            ui.toast("Recuperaste tus cambios. Publicalos para que se vean en tu tienda.", false);
                         }>"Recuperar cambios"</button>
                         <button type="button" class="btn btn-sm" on:click=move |_| {
                             recover.set(None);
@@ -1196,7 +1199,7 @@ fn Notices(
             Status::Conflict => view! {
                 <div class="alert alert-warning shadow-lg">
                     <Icon name="alert" class="h-5 w-5"/>
-                    <span>"Alguien guardó otra versión mientras editabas. Tus cambios quedaron guardados en este navegador: recargá y vas a poder recuperarlos."</span>
+                    <span>"Alguien publicó otra versión mientras editabas. Tus cambios quedaron guardados en este navegador: recargá y vas a poder recuperarlos."</span>
                     <button type="button" class="btn btn-sm" on:click=move |_| {
                         if let Some(w) = web_sys::window() {
                             _ = w.location().reload();
@@ -1211,9 +1214,9 @@ fn Notices(
                         <Icon name="alert" class="h-5 w-5 text-error"/>
                         <div class="flex flex-col gap-1">
                             <p id="mk-problems-title" tabindex="-1" class="font-semibold focus:outline-none">{if n == 1 {
-                                "No se guardó: hay un dato para corregir.".to_string()
+                                "No se publicó: hay un dato para corregir.".to_string()
                             } else {
-                                format!("No se guardó: hay {n} datos para corregir.")
+                                format!("No se publicó: hay {n} datos para corregir.")
                             }}</p>
                             <ul class="flex flex-col gap-1">
                                 {list.into_iter().map(|p| {
@@ -1235,7 +1238,7 @@ fn Notices(
                 <div class="alert items-start border-error bg-base-100 text-base-content shadow-lg">
                     <Icon name="alert" class="h-5 w-5 text-error"/>
                     <div>
-                        <p id="mk-problems-title" tabindex="-1" class="font-semibold focus:outline-none">"No se pudo guardar:"</p>
+                        <p id="mk-problems-title" tabindex="-1" class="font-semibold focus:outline-none">"No se pudo publicar:"</p>
                         <ul class="list-disc pl-5">
                             {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
                         </ul>
@@ -1247,7 +1250,7 @@ fn Notices(
                 <div class="alert items-start border-error bg-base-100 text-base-content shadow-lg">
                     <Icon name="alert" class="h-5 w-5 text-error"/>
                     <div>
-                        <p class="font-semibold">"No se pudo guardar. Revisá tu conexión y probá de nuevo."</p>
+                        <p class="font-semibold">"No se pudo publicar. Revisá tu conexión y probá de nuevo."</p>
                         <p class="text-sm text-base-content/75">{format!("Detalle: {e}")}</p>
                     </div>
                     {close_btn()}

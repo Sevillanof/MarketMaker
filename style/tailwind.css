@@ -771,3 +771,11 @@ dialog.mk-dialog::backdrop {
 .mk-d3 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-soft); --btn-fg: var(--mk-ct); --btn-shadow: none; }
 .mk-d4 .mk-pbtn { align-items: stretch; }
 .mk-d4 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-c); --btn-fg: var(--mk-cc); width: 100%; box-shadow: 0 8px 20px -8px var(--mk-c); }
+
+/* Panel "Mi tienda" del editor: debajo de la barra, contra el borde
+   izquierdo, donde está su botón. */
+.mk-store-panel {
+  top: 4.25rem;
+  right: auto;
+  left: 1rem;
+}
