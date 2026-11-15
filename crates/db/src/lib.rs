@@ -51,8 +51,8 @@ pub async fn get_current_page(
 
 /// Productos del tenant por orden de creación.
 pub async fn list_products(pool: &PgPool, tenant_id: Uuid) -> sqlx::Result<Vec<Product>> {
-    let rows = sqlx::query_as::<_, (Uuid, String, i64, String)>(
-        "SELECT id, name, price_cents, image_url
+    let rows = sqlx::query_as::<_, (Uuid, String, i64, String, String)>(
+        "SELECT id, name, price_cents, image_url, description
          FROM products
          WHERE tenant_id = $1
          ORDER BY created_at, id",
@@ -62,11 +62,12 @@ pub async fn list_products(pool: &PgPool, tenant_id: Uuid) -> sqlx::Result<Vec<P
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, price_cents, image_url)| Product {
+        .map(|(id, name, price_cents, image_url, description)| Product {
             id: id.to_string(),
             name,
             price_cents,
             image_url,
+            description,
         })
         .collect())
 }

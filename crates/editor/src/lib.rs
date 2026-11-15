@@ -14,7 +14,7 @@ mod inspector;
 mod palette;
 mod typography;
 
-use domain::{Node, PageDoc, PageView, SaveOutcome, THEMES, THEME_LABELS};
+use domain::{Layer, Node, PageDoc, PageView, SaveOutcome, THEMES, THEME_LABELS};
 use leptos::prelude::*;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -44,6 +44,8 @@ pub(crate) struct EditorState {
     pub saved: RwSignal<PageDoc>,
     pub base_version: RwSignal<u32>,
     pub selected: RwSignal<Option<String>>,
+    /// Qué se está editando: la página o la ficha del producto.
+    pub layer: RwSignal<Layer>,
     pub undo: RwSignal<Vec<PageDoc>>,
     pub redo: RwSignal<Vec<PageDoc>>,
     /// Grupo de la última edición. Las ediciones seguidas del mismo grupo
@@ -58,6 +60,7 @@ impl EditorState {
             saved: RwSignal::new(view.doc.clone()),
             base_version: RwSignal::new(view.version),
             selected: RwSignal::new(None),
+            layer: RwSignal::new(Layer::Page),
             undo: RwSignal::new(Vec::new()),
             redo: RwSignal::new(Vec::new()),
             group: RwSignal::new(None),
@@ -118,9 +121,30 @@ impl EditorState {
         self.doc.with(|d| self.saved.with(|s| d != s))
     }
 
+    /// Bloque con ese id, en la página o en la ficha.
     pub fn node(&self, id: &str) -> Option<Node> {
-        self.doc
-            .with_untracked(|d| d.nodes.iter().find(|n| n.id == id).cloned())
+        self.doc.with_untracked(|d| d.node(id).cloned())
+    }
+
+    /// Bloques de la capa que se está editando (sigue los cambios).
+    pub fn nodes(&self) -> Vec<Node> {
+        let layer = self.layer.get();
+        self.doc.with(|d| d.layer(layer).clone())
+    }
+
+    pub fn nodes_untracked(&self) -> Vec<Node> {
+        let layer = self.layer.get_untracked();
+        self.doc.with_untracked(|d| d.layer(layer).clone())
+    }
+
+    /// Aplica un cambio a los bloques de la capa que se está editando.
+    pub fn apply_nodes(&self, f: impl FnOnce(&mut Vec<Node>)) {
+        let layer = self.layer.get_untracked();
+        self.apply(|d| f(d.layer_mut(layer)));
+    }
+
+    pub fn in_modal(&self) -> bool {
+        self.layer.get() == Layer::ProductModal
     }
 }
 
@@ -137,6 +161,7 @@ fn push_capped(stack: RwSignal<Vec<PageDoc>>, doc: PageDoc) {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Problem {
     pub node_id: String,
+    pub layer: Layer,
     pub text: String,
 }
 
@@ -181,6 +206,12 @@ pub(crate) struct Ui {
     /// Se intentó guardar con datos para corregir: los campos muestran su
     /// error aunque todavía no se hayan tocado.
     pub show_errors: RwSignal<bool>,
+    /// Producto con el que se muestra la ficha mientras se edita. Sin
+    /// elegir, el primero de la tienda.
+    pub modal_product: RwSignal<Option<String>>,
+    /// Bloque de la página desde el que se abrió la ficha: se vuelve a él
+    /// al cerrarla.
+    pub return_to: StoredValue<Option<String>>,
 }
 
 /// Arrastre de un bloque nuevo desde la paleta hacia el lienzo.
@@ -275,7 +306,7 @@ impl Actions {
 
     /// Texto que describe dónde quedó un bloque.
     pub fn position_text(&self, id: &str) -> String {
-        let mut nodes = self.state.doc.with_untracked(|d| d.nodes.clone());
+        let mut nodes = self.state.nodes_untracked();
         grid::sort_by_position(&mut nodes);
         let total = nodes.len();
         nodes
@@ -298,7 +329,7 @@ impl Actions {
     pub fn add_at(&self, node: Node, x: i32, y: i32) {
         let (id, label) = (node.id.clone(), node.widget.label());
         self.state
-            .apply(|d| grid::insert_at(&mut d.nodes, node, x, y));
+            .apply_nodes(|nodes| grid::insert_at(nodes, node, x, y));
         self.state.selected.set(Some(id.clone()));
         self.ui
             .announce(format!("Agregaste {label}. {}", self.position_text(&id)));
@@ -309,42 +340,50 @@ impl Actions {
         let Some(widget) = domain::Widget::defaults(type_name) else {
             return;
         };
+        if !domain::allowed_in(type_name, self.state.layer.get_untracked()) {
+            return;
+        }
         let label = widget.label();
         let id = new_node_id(&self.state.doc.get_untracked());
         let node = Node::new(id.clone(), widget);
-        self.state.apply(|d| grid::add_node(&mut d.nodes, node));
+        self.state.apply_nodes(|nodes| grid::add_node(nodes, node));
         self.state.selected.set(Some(id.clone()));
+        let place = if self.state.layer.get_untracked() == Layer::ProductModal {
+            "de la ficha"
+        } else {
+            "de la página"
+        };
         self.ui
-            .announce(format!("Agregaste {label} al final de la página."));
+            .announce(format!("Agregaste {label} al final {place}."));
         reveal_node(&id, true);
     }
 
     pub fn move_up(&self, id: &str) {
-        self.state.apply(|d| grid::move_up(&mut d.nodes, id));
+        self.state.apply_nodes(|nodes| grid::move_up(nodes, id));
         self.after_move(id);
     }
 
     pub fn move_down(&self, id: &str) {
-        self.state.apply(|d| grid::move_down(&mut d.nodes, id));
+        self.state.apply_nodes(|nodes| grid::move_down(nodes, id));
         self.after_move(id);
     }
 
     /// Mueve una columna a la izquierda (`-1`) o a la derecha (`1`).
     pub fn shift(&self, id: &str, dx: i32) {
-        self.state.apply(|d| {
-            if let Some(n) = d.nodes.iter().find(|n| n.id == id) {
+        self.state.apply_nodes(|nodes| {
+            if let Some(n) = nodes.iter().find(|n| n.id == id) {
                 let (x, y) = (i32::from(n.pos.x) + dx, i32::from(n.pos.y));
-                grid::move_node(&mut d.nodes, id, x, y);
+                grid::move_node(nodes, id, x, y);
             }
         });
         self.after_move(id);
     }
 
     pub fn resize_by(&self, id: &str, dw: i32, dh: i32) {
-        self.state.apply(|d| {
-            if let Some(n) = d.nodes.iter().find(|n| n.id == id) {
+        self.state.apply_nodes(|nodes| {
+            if let Some(n) = nodes.iter().find(|n| n.id == id) {
                 let (w, h) = (i32::from(n.size.w) + dw, i32::from(n.size.h) + dh);
-                grid::resize_node(&mut d.nodes, id, w, h);
+                grid::resize_node(nodes, id, w, h);
             }
         });
         self.after_move(id);
@@ -363,7 +402,7 @@ impl Actions {
         copy.id = new_id.clone();
         let label = copy.widget.label();
         self.state
-            .apply(|d| grid::insert_below(&mut d.nodes, id, copy));
+            .apply_nodes(|nodes| grid::insert_below(nodes, id, copy));
         self.state.selected.set(Some(new_id.clone()));
         self.ui
             .announce(format!("Duplicaste {label}. La copia quedó debajo."));
@@ -372,9 +411,72 @@ impl Actions {
 
     pub fn delete(&self, id: &str) {
         let label = self.label(id);
-        self.state.apply(|d| grid::remove_node(&mut d.nodes, id));
+        self.state.apply_nodes(|nodes| grid::remove_node(nodes, id));
         self.state.selected.set(None);
         self.ui.toast(format!("{label} borrado."), true);
+    }
+
+    /// Abre la ficha del producto para editarla, mostrando `product_id` (o
+    /// el producto elegido antes). El fondo se oscurece y la paleta pasa a
+    /// mostrar solo bloques para la ficha.
+    pub fn open_modal(&self, product_id: Option<String>) {
+        if product_id.is_some() {
+            self.ui.modal_product.set(product_id);
+        }
+        if self.state.layer.get_untracked() == Layer::ProductModal {
+            return;
+        }
+        self.state.end_group();
+        self.ui
+            .return_to
+            .set_value(self.state.selected.get_untracked());
+        self.state.selected.set(None);
+        self.state.layer.set(Layer::ProductModal);
+        self.ui.announce(
+            "Estás editando la ficha del producto. Es la misma para todos tus productos. Esc para volver a la página.",
+        );
+        request_animation_frame(|| {
+            if let Some(el) = document().get_element_by_id("mk-canvas") {
+                el.set_scroll_top(0);
+            }
+            focus_selector("#mk-modal-title");
+        });
+    }
+
+    /// Cierra la ficha y vuelve a la página, al bloque desde el que se abrió.
+    pub fn close_modal(&self) {
+        if self.state.layer.get_untracked() != Layer::ProductModal {
+            return;
+        }
+        self.state.end_group();
+        self.state.layer.set(Layer::Page);
+        let back = self
+            .ui
+            .return_to
+            .try_update_value(Option::take)
+            .flatten()
+            .filter(|id| self.state.doc.with_untracked(|d| d.layer_of(id)) == Some(Layer::Page));
+        self.state.selected.set(back.clone());
+        self.ui.announce("Volviste a la página.");
+        match back {
+            Some(id) => reveal_node(&id, false),
+            None => request_animation_frame(|| focus_selector("#mk-inspector-title")),
+        }
+    }
+
+    /// Lleva a un bloque, esté en la página o en la ficha, y lo elige.
+    pub fn go_to(&self, id: &str) {
+        let target = self.state.doc.with_untracked(|d| d.layer_of(id));
+        match target {
+            Some(Layer::ProductModal) => self.open_modal(None),
+            Some(Layer::Page) => {
+                self.ui.return_to.set_value(None);
+                self.close_modal();
+            }
+            None => return,
+        }
+        self.state.selected.set(Some(id.to_string()));
+        reveal_node(id, true);
     }
 
     /// Elige un bloque y lleva el foco al inspector.
@@ -435,30 +537,33 @@ pub(crate) fn choice_class(active: bool) -> &'static str {
 pub(crate) fn new_node_id(doc: &PageDoc) -> String {
     (1..)
         .map(|k| format!("n{k}"))
-        .find(|id| doc.nodes.iter().all(|n| &n.id != id))
+        .find(|id| doc.all_nodes().all(|n| &n.id != id))
         .expect("siempre hay un id libre")
 }
 
 /// Problemas de los campos de todos los bloques, en el orden de la página.
+/// Primero la página y después la ficha del producto.
 pub(crate) fn problems(doc: &PageDoc) -> Vec<Problem> {
-    let mut nodes = doc.nodes.clone();
-    grid::sort_by_position(&mut nodes);
     let mut out = Vec::new();
-    for node in &nodes {
-        let Ok(value) = serde_json::to_value(&node.widget) else {
-            continue;
-        };
-        let mut texts = Vec::new();
-        field_problems(
-            node.widget.fields(),
-            value.get("props"),
-            node.widget.label(),
-            &mut texts,
-        );
-        out.extend(texts.into_iter().map(|text| Problem {
-            node_id: node.id.clone(),
-            text,
-        }));
+    for layer in [Layer::Page, Layer::ProductModal] {
+        let mut nodes = doc.layer(layer).clone();
+        grid::sort_by_position(&mut nodes);
+        for node in &nodes {
+            let Ok(value) = serde_json::to_value(&node.widget) else {
+                continue;
+            };
+            let path = match layer {
+                Layer::Page => node.widget.label().to_string(),
+                Layer::ProductModal => format!("Ficha del producto › {}", node.widget.label()),
+            };
+            let mut texts = Vec::new();
+            field_problems(node.widget.fields(), value.get("props"), &path, &mut texts);
+            out.extend(texts.into_iter().map(|text| Problem {
+                node_id: node.id.clone(),
+                layer,
+                text,
+            }));
+        }
     }
     out
 }
@@ -576,6 +681,8 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         swallow_click: StoredValue::new(false),
         block_drag: StoredValue::new(false),
         show_errors: RwSignal::new(false),
+        modal_product: RwSignal::new(None),
+        return_to: StoredValue::new(None),
     };
     let actions = Actions { state, ui };
     provide_context(state);
@@ -722,7 +829,11 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                     if ui.new_drag.with_untracked(Option::is_some) || ui.block_drag.get_value() => {
                 }
                 "Escape" if ui.preview.get_untracked() => ui.preview.set(false),
-                "Escape" => state.selected.set(None),
+                // Primero se suelta el bloque elegido; después se cierra la ficha.
+                "Escape" if state.selected.with_untracked(Option::is_some) => {
+                    state.selected.set(None)
+                }
+                "Escape" => actions.close_modal(),
                 "Delete" | "Backspace" => {
                     if let Some(id) = state.selected.get_untracked() {
                         ev.prevent_default();
@@ -775,7 +886,11 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                     type="button"
                     class="btn btn-sm"
                     aria-pressed=move || ui.preview.get().to_string()
-                    on:click=move |_| ui.preview.update(|p| *p = !*p)
+                    on:click=move |_| {
+                        // La vista previa muestra la tienda: la ficha se abre tocando un producto.
+                        actions.close_modal();
+                        ui.preview.update(|p| *p = !*p);
+                    }
                 >
                     <Icon name="eye"/>
                     "Vista previa"
@@ -867,6 +982,7 @@ fn Notices(
 ) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let ui = expect_context::<Ui>();
+    let actions = expect_context::<Actions>();
     let close_alert = move |_| status.set(Status::Idle);
     // Cierra el aviso breve. Si el foco estaba en él, vuelve adonde estaba.
     let close = move || {
@@ -924,10 +1040,7 @@ fn Notices(
                                     let id = p.node_id.clone();
                                     view! {
                                         <li>
-                                            <button type="button" class="link text-left" on:click=move |_| {
-                                                state.selected.set(Some(id.clone()));
-                                                reveal_node(&id, true);
-                                            }>{p.text}</button>
+                                            <button type="button" class="link text-left" on:click=move |_| actions.go_to(&id)>{p.text}</button>
                                         </li>
                                     }
                                 }).collect_view()}
@@ -1035,6 +1148,26 @@ mod tests {
             .text
             .starts_with("Banner › Imagen: Escribí una dirección"));
         assert_eq!(new_node_id(&doc), "n2");
+    }
+
+    #[test]
+    fn product_modal_problems_say_they_are_in_the_modal() {
+        let mut doc = PageDoc::default();
+        if let Widget::ProductButton(b) = &mut doc.product_modal.nodes[4].widget {
+            b.href = "www.ejemplo.com".into();
+        }
+        let found = problems(&doc);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].layer, Layer::ProductModal);
+        assert_eq!(found[0].node_id, "m5");
+        assert!(found[0]
+            .text
+            .starts_with("Ficha del producto › Botón de la ficha › Enlace del botón"));
+        // Los ids nuevos no chocan con los de la ficha.
+        doc.nodes
+            .push(Node::new("n1", Widget::defaults("Text").unwrap()));
+        doc.product_modal.nodes[0].id = "n2".into();
+        assert_eq!(new_node_id(&doc), "n3");
     }
 
     #[test]

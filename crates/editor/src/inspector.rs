@@ -59,10 +59,10 @@ pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
     // Se redibuja solo cuando cambia el nodo seleccionado (o deja de existir),
     // no con cada tecla, para no perder el foco de los campos.
     let current = Memo::new(move |_| {
-        state
-            .selected
-            .get()
-            .filter(|id| state.doc.with(|d| d.nodes.iter().any(|n| &n.id == id)))
+        state.selected.get().filter(|id| {
+            let layer = state.layer.get();
+            state.doc.with(|d| d.layer_of(id)) == Some(layer)
+        })
     });
 
     view! {
@@ -80,6 +80,8 @@ pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
 
 #[component]
 fn EmptyInspector() -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let actions = expect_context::<Actions>();
     let shortcuts: &[(&str, &str)] = &[
         ("Ctrl/⌘ + Z", "Deshacer"),
         ("Ctrl/⌘ + Mayús + Z", "Rehacer"),
@@ -94,7 +96,16 @@ fn EmptyInspector() -> impl IntoView {
     view! {
         <div class="flex flex-col gap-4">
             <h2 id="mk-inspector-title" tabindex="-1" class="text-lg font-bold">"Ningún bloque elegido"</h2>
-            <p class="text-sm">"Hacé clic en un bloque del lienzo para cambiar sus textos, imágenes y tamaño aquí."</p>
+            {move || if state.in_modal() {
+                view! {
+                    <p class="text-sm">"Estás en la ficha del producto. Hacé clic en uno de sus bloques para cambiarlo aquí, o sumá bloques desde la izquierda."</p>
+                    <button type="button" class="btn btn-sm self-start" on:click=move |_| actions.close_modal()>"Volver a la página"</button>
+                }.into_any()
+            } else {
+                view! {
+                    <p class="text-sm">"Hacé clic en un bloque del lienzo para cambiar sus textos, imágenes y tamaño aquí."</p>
+                }.into_any()
+            }}
             <div>
                 <h3 class="mb-2 text-sm font-semibold">"Atajos de teclado"</h3>
                 <dl class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-sm">
@@ -150,6 +161,8 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
         advanced,
     } = group_fields(widget.fields());
     let has_advanced = !advanced.is_empty();
+    let no_fields = basic.is_empty() && button.is_none() && !has_advanced;
+    let opens_modal = matches!(widget, Widget::ProductGrid(_) | Widget::FeaturedProduct(_));
     let (basic_id, advanced_id, button_id) = (id.clone(), id.clone(), id.clone());
 
     // Pestañas con el patrón de ARIA: flechas, Inicio y Fin cambian de
@@ -227,6 +240,19 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                 {button.map(|(label_field, href_field)| view! {
                     <ButtonGroup products id=button_id.clone() label_field href_field/>
                 })}
+                {no_fields.then(|| view! {
+                    <p class="text-sm text-base-content/75">"Este bloque muestra el dato del producto que se abre, así que no hay nada para escribir. Su tamaño y sus letras se cambian en Diseño."</p>
+                })}
+                {opens_modal.then(|| view! {
+                    <section class="flex flex-col gap-2 rounded-box border border-base-300 p-3" aria-labelledby="mk-modal-help-title">
+                        <h3 id="mk-modal-help-title" class="text-sm font-semibold">"Ficha del producto"</h3>
+                        <p class="text-sm text-base-content/75">"En tu tienda, tocar un producto abre su ficha con el fondo oscurecido. Es la misma para todos tus productos. También podés abrirla haciendo clic en un producto del lienzo."</p>
+                        <button type="button" class="btn btn-sm self-start" on:click=move |_| actions.open_modal(None)>
+                            <Icon name="featured"/>
+                            "Diseñar la ficha"
+                        </button>
+                    </section>
+                })}
                 {has_advanced.then(|| view! {
                     <details class="collapse collapse-arrow border border-base-300">
                         <summary class="collapse-title text-sm font-medium">"Más opciones"</summary>
@@ -262,18 +288,12 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
     let limits = widget.limits();
     let sid = StoredValue::new(id);
     let size = move || {
-        state.doc.with(|d| {
-            sid.with_value(|id| {
-                d.nodes
-                    .iter()
-                    .find(|n| &n.id == id)
-                    .map(|n| n.size)
-                    .unwrap_or(limits.default)
-            })
-        })
+        state
+            .doc
+            .with(|d| sid.with_value(|id| d.node(id).map(|n| n.size).unwrap_or(limits.default)))
     };
     let resize = move |w: i32, h: i32| {
-        sid.with_value(|id| state.apply(|d| grid::resize_node(&mut d.nodes, id, w, h)));
+        sid.with_value(|id| state.apply_nodes(|nodes| grid::resize_node(nodes, id, w, h)));
     };
     let widths: Vec<(u8, &str)> = WIDTHS
         .iter()

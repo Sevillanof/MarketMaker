@@ -491,3 +491,21 @@
   max-height: calc(100vh - 5rem);
   overflow-y: auto;
 }
+
+/* Ficha del producto (ver `widgets::ProductDialog`): un `<dialog>` modal de
+   daisyUI. El contenido mide `domain::MODAL_W_PX` (800 px) de ancho, como el
+   lienzo de la ficha en el editor; arriba queda lugar para Cerrar. */
+.mk-dialog-box,
+.mk-modal-panel {
+  width: 100%;
+  max-width: min(832px, calc(100vw - 2rem));
+  padding: 3rem 1rem 1rem;
+}
+/* Que hacer scroll en la ficha o sobre el fondo no mueva la página de atrás. */
+dialog.mk-dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog.mk-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}

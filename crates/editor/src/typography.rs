@@ -190,21 +190,15 @@ pub(crate) fn BlockTypography(id: String) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let sid = StoredValue::new(id);
     let style = Memo::new(move |_| {
-        state.doc.with(|d| {
-            sid.with_value(|id| {
-                d.nodes
-                    .iter()
-                    .find(|n| &n.id == id)
-                    .map(|n| n.style.clone())
-                    .unwrap_or_default()
-            })
-        })
+        state
+            .doc
+            .with(|d| sid.with_value(|id| d.node(id).map(|n| n.style.clone()).unwrap_or_default()))
     });
     let store_body = Signal::derive(move || state.doc.with(|d| d.typography.body.clone()));
     let set = move |f: Box<dyn FnOnce(&mut TextStyle)>| {
         sid.with_value(|id| {
             state.apply(|d| {
-                if let Some(n) = d.nodes.iter_mut().find(|n| &n.id == id) {
+                if let Some(n) = d.node_mut(id) {
                     f(&mut n.style);
                 }
             })

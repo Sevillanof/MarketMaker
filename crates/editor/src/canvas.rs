@@ -2,26 +2,31 @@
 //! mouse (arrastrando) o con el teclado, y cada uno tiene una barra de
 //! acciones para hacer lo mismo sin arrastrar.
 
-use domain::{Node, Product, Widget, GRID_COLS, ROW_PX};
+use domain::{Layer, Node, Product, Widget, GRID_COLS, ROW_PX};
 use leptos::ev::{KeyboardEvent, PointerEvent};
 use leptos::html::{Div, Section};
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use widgets::{node_style, render_widget, RenderCtx};
+use widgets::{node_style, render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx};
 
 use crate::icons::Icon;
 use crate::{new_node_id, size_badge, size_text, Actions, EditorState, NewDrag, Ui, WELCOME_KEY};
 
-/// Ancho, en píxeles, con el que la tienda dibuja el contenido de la página
-/// (el `max-w-6xl` de la tienda menos su relleno). El lienzo dibuja siempre a
-/// este ancho y lo achica con `transform: scale` si no entra, así cada bloque
-/// se ve en el editor igual que en la tienda publicada.
-const DESIGN_W: f64 = 1120.0;
+/// Ancho, en píxeles, con el que la tienda dibuja el contenido de la capa
+/// (la página: el `max-w-6xl` de la tienda menos su relleno; la ficha del
+/// producto: el ancho de su cuadro). El lienzo dibuja siempre a este ancho y
+/// lo achica con `transform: scale` si no entra, así cada bloque se ve en el
+/// editor igual que en la tienda publicada.
+fn design_w(layer: Layer) -> f64 {
+    f64::from(layer.design_width())
+}
 /// Margen de cada bloque dentro de su celda: la mitad de la separación.
 const MARGIN_PX: f64 = grid::GAP_PX / 2.0;
 /// Alto mínimo del lienzo, en filas.
 const MIN_ROWS: u32 = 48;
+/// Alto mínimo de la ficha del producto, en filas.
+const MIN_MODAL_ROWS: u32 = 24;
 
 /// Distancia al borde del lienzo, en px, en la que arrastrar hace scroll.
 const AUTOSCROLL_EDGE_PX: f64 = 48.0;
@@ -68,6 +73,24 @@ pub(crate) fn drop_cell(
     let px = (client_x - grid.left()) / scale - f64::from(w) * pitch / 2.0;
     let py = (client_y - grid.top()) / scale - grid::GAP_PX;
     grid::cell_from_point(px, py, width)
+}
+
+/// Producto de la tarjeta que está bajo el puntero dentro del bloque
+/// `node_id`, si hay. El contenido del bloque no recibe el puntero
+/// (`pointer-events: none`), así que se mira la posición de cada tarjeta.
+fn product_under(node_id: &str, client_x: i32, client_y: i32) -> Option<String> {
+    let selector = format!("[data-node-id='{node_id}'] [data-product-id]");
+    let cards = document().query_selector_all(&selector).ok()?;
+    let (x, y) = (f64::from(client_x), f64::from(client_y));
+    (0..cards.length()).find_map(|i| {
+        let el = cards.get(i)?.dyn_into::<web_sys::Element>().ok()?;
+        let r = el.get_bounding_client_rect();
+        let inside = x >= r.left() && x <= r.right() && y >= r.top() && y <= r.bottom();
+        inside
+            .then(|| el.get_attribute("data-product-id"))
+            .flatten()
+            .filter(|id| !id.is_empty())
+    })
 }
 
 /// Qué borde se arrastra al redimensionar.
@@ -209,8 +232,18 @@ pub(crate) fn Canvas(
     // Esquina del bloque que se arrastra con el mouse, en píxeles de diseño:
     // sigue al puntero sin imán, y el lugar donde va a quedar se ve aparte.
     let drag_pos = RwSignal::new(None::<(f64, f64)>);
-    // Píxeles de pantalla por píxel de diseño (ver `DESIGN_W`).
+    // Píxeles de pantalla por píxel de diseño (ver `design_w`).
     let scale = RwSignal::new(1.0_f64);
+    // Producto con el que se muestra la ficha mientras se edita.
+    let modal_product = Memo::new(move |_| {
+        let chosen = ui.modal_product.get();
+        products.with_value(|ps| {
+            chosen
+                .and_then(|id| ps.iter().find(|p| p.id == id).cloned())
+                .or_else(|| ps.first().cloned())
+                .unwrap_or_else(sample_product)
+        })
+    });
 
     // Mide el lienzo y lo achica si no entra al ancho de diseño.
     Effect::new(move |_| {
@@ -219,7 +252,8 @@ pub(crate) fn Canvas(
         };
         let measure = move || {
             if let Some(stage) = stage_ref.get_untracked() {
-                let s = (f64::from(stage.client_width()) / DESIGN_W).clamp(0.3, 1.0);
+                let dw = design_w(state.layer.get_untracked());
+                let s = (f64::from(stage.client_width()) / dw).clamp(0.3, 1.0);
                 if (scale.get_untracked() - s).abs() > 0.001 {
                     scale.set(s);
                 }
@@ -307,7 +341,7 @@ pub(crate) fn Canvas(
             let g = grid_el.get_bounding_client_rect();
             let k = scale_of(&grid_el, &g);
             let (cx, cy) = drop_cell(x, y, &g, k, node.size.w);
-            let mut nodes = state.doc.with_untracked(|d| d.nodes.clone());
+            let mut nodes = state.nodes_untracked();
             let (cx, cy) = grid::drop_target(&nodes, node.size.w, node.size.h, cx, cy);
             grid::insert_at(&mut nodes, node, cx, cy);
             if preview.with_untracked(|p| p.as_ref() != Some(&nodes)) {
@@ -435,7 +469,7 @@ pub(crate) fn Canvas(
         let g = grid_el.get_bounding_client_rect();
         let k = scale_of(&grid_el, &g);
         let layout_w = g.width() / k;
-        let mut nodes = state.doc.with_untracked(|doc| doc.nodes.clone());
+        let mut nodes = state.nodes_untracked();
         match d.kind {
             DragKind::Move {
                 offset_x,
@@ -505,28 +539,26 @@ pub(crate) fn Canvas(
         }
         preview.set(None);
         drag_pos.set(None);
+        // Un clic (sin arrastrar) sobre un producto de la página abre su ficha.
+        if !d.moved && matches!(d.kind, DragKind::Move { .. }) {
+            if let Some(pid) = product_under(&d.id, ev.client_x(), ev.client_y()) {
+                actions.open_modal(Some(pid));
+                return;
+            }
+        }
         crate::reveal_node(&d.id, d.moved && matches!(d.kind, DragKind::Move { .. }));
     };
 
     // Lo que se dibuja: la vista previa del arrastre o el documento.
-    let shown = Memo::new(move |_| {
-        preview
-            .get()
-            .unwrap_or_else(|| state.doc.with(|d| d.nodes.clone()))
-    });
-    let shown_nodes = move || {
-        let mut nodes = shown.get();
-        grid::sort_by_position(&mut nodes);
-        nodes
-    };
+    let shown = Memo::new(move |_| preview.get().unwrap_or_else(|| state.nodes()));
     // Los ids, en orden de lectura del documento. Durante un arrastre no
     // cambian de lugar en el HTML, así no se reinician las animaciones.
     let order_ids = Memo::new(move |_| {
-        let mut ids: Vec<String> = state.doc.with(|d| {
-            let mut nodes = d.nodes.clone();
+        let mut ids: Vec<String> = {
+            let mut nodes = state.nodes();
             grid::sort_by_position(&mut nodes);
             nodes.into_iter().map(|n| n.id).collect()
-        });
+        };
         if let Some(new) = incoming.with(|n| n.as_ref().map(|n| n.id.clone())) {
             if shown.with(|nodes| nodes.iter().any(|n| n.id == new)) && !ids.contains(&new) {
                 ids.push(new);
@@ -541,7 +573,11 @@ pub(crate) fn Canvas(
                 .map(|n| u32::from(n.pos.y) + u32::from(n.size.h))
                 .max()
                 .unwrap_or(0)
-                .max(MIN_ROWS)
+                .max(if state.in_modal() {
+                    MIN_MODAL_ROWS
+                } else {
+                    MIN_ROWS
+                })
         })
     });
     // Lugar donde va a quedar el bloque que se mueve con el mouse.
@@ -625,6 +661,8 @@ pub(crate) fn Canvas(
                     let ctx = RenderCtx {
                         products: products.get_value(),
                         editing: true,
+                        product: (state.layer.get_untracked() == Layer::ProductModal)
+                            .then(|| modal_product.get()),
                     };
                     let mut node = Node::new(id.clone(), w);
                     node.style = style;
@@ -638,6 +676,9 @@ pub(crate) fn Canvas(
             move || {
                 (is_selected.get() && !is_moving.get() && !is_resizing.get()).then(|| {
                     let (up, down, dup, del) = (id.clone(), id.clone(), id.clone(), id.clone());
+                    let has_modal = node.get_untracked().is_some_and(|n| {
+                        matches!(n.widget, Widget::ProductGrid(_) | Widget::FeaturedProduct(_))
+                    });
                     // Una sola parada de Tab: el botón activo tiene tabindex 0
                     // y las flechas pasan de uno a otro.
                     let active = RwSignal::new(0_usize);
@@ -663,6 +704,11 @@ pub(crate) fn Canvas(
                             <button type="button" class="btn btn-ghost btn-sm btn-square text-red-700" tabindex=tab(3) on:focus=move |_| active.set(3) aria-label="Borrar" title="Borrar (Suprimir)" on:click=move |_| actions.delete(&del)>
                                 <Icon name="trash"/>
                             </button>
+                            {has_modal.then(|| view! {
+                                <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(4) on:focus=move |_| active.set(4) aria-label="Diseñar la ficha del producto" title="Diseñar la ficha que se abre al tocar un producto" on:click=move |_| actions.open_modal(None)>
+                                    <Icon name="modal"/>
+                                </button>
+                            })}
                             <span class="badge badge-primary badge-sm ml-1" aria-hidden="true">
                                 {move || node.get().map(|n| size_badge(n.size))}
                             </span>
@@ -737,25 +783,138 @@ pub(crate) fn Canvas(
         }
     };
 
+    // La grilla interactiva de la capa que se edita.
+    let stage = move || {
+        let dw = design_w(state.layer.get_untracked());
+        view! {
+            <div
+                node_ref=stage_ref
+                class="mk-stage"
+                class:mk-dropzone=move || incoming.with(Option::is_some)
+                style=move || format!("height:{:.1}px", (f64::from(rows.get() * u32::from(ROW_PX)) - 2.0 * MARGIN_PX) * scale.get())
+            >
+                <div
+                    node_ref=grid_ref
+                    class="mk-agrid select-none"
+                    class:mk-grid-guides=move || drag.with(Option::is_some) || incoming.with(Option::is_some)
+                    style=move || {
+                        let k = scale.get();
+                        format!(
+                            "width:{}px; height:{}px; transform:translate({:.2}px,{:.2}px) scale({k:.4})",
+                            dw + 2.0 * MARGIN_PX,
+                            rows.get() * u32::from(ROW_PX),
+                            -MARGIN_PX * k,
+                            -MARGIN_PX * k,
+                        )
+                    }
+                    on:pointermove=on_pointer_move
+                    on:pointerup=on_pointer_up
+                    on:pointercancel=move |ev: PointerEvent| {
+                        if drag.with_untracked(|d| d.as_ref().is_some_and(|d| d.pointer_id == ev.pointer_id())) {
+                            cancel_drag(false);
+                        }
+                    }
+                    on:lostpointercapture=move |ev: PointerEvent| {
+                        if drag.with_untracked(|d| d.as_ref().is_some_and(|d| d.pointer_id == ev.pointer_id())) {
+                            cancel_drag(false);
+                        }
+                    }
+                >
+                    {move || slot.get().map(|_| view! {
+                        <div class="mk-slot" style=move || {
+                            slot.get()
+                                .map(|n| format!(
+                                    "left:{:.4}%; top:{}px; width:{:.4}%; height:{}px",
+                                    f64::from(n.pos.x) * 100.0 / f64::from(GRID_COLS),
+                                    u32::from(n.pos.y) * u32::from(ROW_PX),
+                                    f64::from(n.size.w) * 100.0 / f64::from(GRID_COLS),
+                                    u32::from(n.size.h) * u32::from(ROW_PX),
+                                ))
+                                .unwrap_or_default()
+                        } aria-hidden="true"><div class="mk-slot-box"></div></div>
+                    })}
+                    <For each=move || order_ids.get() key=|id| id.clone() children=node_view/>
+                </div>
+            </div>
+        }
+    };
+    // La página como la ve la tienda, sin edición: para la vista previa y
+    // para el fondo oscurecido mientras se edita la ficha.
+    let static_page =
+        move || {
+            let ctx = RenderCtx {
+                products: products.get_value(),
+                editing: true,
+                product: None,
+            };
+            let mut nodes = state.doc.with(|d| d.nodes.clone());
+            grid::sort_by_position(&mut nodes);
+            nodes
+            .into_iter()
+            .map(|node| view! {
+                <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
+            })
+            .collect_view()
+        };
+    let product_choices = move || products.get_value();
+
     view! {
-        <section node_ref=section_ref class="min-w-0 flex-1 overflow-auto" aria-label="Lienzo de la página">
+        <section id="mk-canvas" node_ref=section_ref class="min-w-0 flex-1 overflow-auto" aria-label="Lienzo de la página">
             <p id="mk-node-help" class="sr-only">
                 "Enter para editar. Flechas arriba y abajo para cambiar el orden, izquierda y derecha para correrlo. Mayúscula más flechas para cambiar el tamaño. Suprimir para borrar."
             </p>
             {move || ui.preview.get().then(|| view! {
                 <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm">
                     <Icon name="eye" class="h-4 w-4"/>
-                    <span class="flex-1">"Vista previa: así se va a ver tu tienda cuando guardes."</span>
+                    <span class="flex-1">"Vista previa: así se va a ver tu tienda cuando guardes. Tocá un producto para ver su ficha."</span>
                     <button type="button" class="btn btn-sm btn-primary" on:click=move |_| ui.preview.set(false)>"Volver a editar"</button>
+                </div>
+            })}
+            {move || (state.in_modal() && !ui.preview.get()).then(|| view! {
+                <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-primary/30 bg-base-100 px-4 py-2 text-sm shadow-sm" role="region" aria-labelledby="mk-modal-title">
+                    <span class="rounded-field bg-primary/10 p-1.5 text-primary" aria-hidden="true"><Icon name="modal" class="h-4 w-4"/></span>
+                    <div class="min-w-0 flex-1">
+                        <h2 id="mk-modal-title" tabindex="-1" class="font-semibold focus:outline-none">"Ficha del producto"</h2>
+                        <p class="text-xs text-base-content/75">"Se abre al tocar un producto en tu tienda. Es la misma para todos tus productos."</p>
+                    </div>
+                    {(!product_choices().is_empty()).then(|| view! {
+                        <label class="flex items-center gap-2">
+                            <span class="whitespace-nowrap">"Ver con"</span>
+                            <select
+                                class="select select-sm w-48"
+                                prop:value=move || modal_product.with(|p| p.id.clone())
+                                on:change=move |ev| ui.modal_product.set(Some(event_target_value(&ev)))
+                            >
+                                {product_choices()
+                                    .into_iter()
+                                    .map(|p| view! { <option value=p.id.clone()>{p.name}</option> })
+                                    .collect_view()}
+                            </select>
+                        </label>
+                    })}
+                    <button type="button" class="btn btn-sm btn-primary" title="Volver a la página (Esc)" aria-keyshortcuts="Escape" on:click=move |_| actions.close_modal()>"Volver a la página"</button>
                 </div>
             })}
             <div
                 data-theme=move || state.doc.with(|d| d.theme.clone())
-                class="mk-store min-h-full bg-base-200 text-base-content"
+                class="mk-store relative min-h-full bg-base-200 text-base-content"
                 style=move || state.doc.with(|d| d.typography.css_vars())
             >
+                {move || (state.in_modal() && !ui.preview.get()).then(|| view! {
+                    // Tocar el fondo oscurecido vuelve a la página, como en la tienda.
+                    <div
+                        class="absolute inset-0 z-[5] cursor-pointer bg-black/50"
+                        title="Volver a la página"
+                        aria-hidden="true"
+                        on:pointerdown=move |ev: PointerEvent| {
+                            if ev.button() == 0 && ui.new_drag.with_untracked(Option::is_none) {
+                                actions.close_modal();
+                            }
+                        }
+                    ></div>
+                })}
                 <div class="mx-auto max-w-6xl p-4">
-                    {move || (welcome.get() && !ui.preview.get()).then(|| view! {
+                    {move || (welcome.get() && !ui.preview.get() && !state.in_modal()).then(|| view! {
                         <div data-theme="light" class="mb-4 rounded-box border border-primary/30 bg-base-100 p-4 text-base-content shadow-sm" role="region" aria-labelledby="mk-welcome-title">
                             <div class="flex items-start gap-3">
                                 <div class="flex-1">
@@ -772,77 +931,52 @@ pub(crate) fn Canvas(
                     })}
                     {move || {
                         if ui.preview.get() {
-                            // La vista previa usa la misma grilla que la tienda, al ancho real.
-                            let ctx = RenderCtx {
-                                products: products.get_value(),
-                                editing: true,
-                            };
+                            // La vista previa usa la misma grilla que la tienda, al ancho real,
+                            // y abre la ficha al tocar un producto, como la tienda.
+                            let open = RwSignal::new(None::<String>);
+                            provide_context(OpenProduct(open));
+                            let modal = state.doc.with(|d| d.product_modal.clone());
                             return view! {
-                                <div class="mk-grid min-h-96">
-                                    {shown_nodes()
-                                        .into_iter()
-                                        .map(|node| view! {
-                                            <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
-                                        })
-                                        .collect_view()}
+                                <div class="mk-grid min-h-96">{static_page()}</div>
+                                <ProductDialog modal products=products.get_value() open editing=true/>
+                            }
+                            .into_any();
+                        }
+                        if state.layer.get() == Layer::ProductModal {
+                            return view! {
+                                <div class="grid">
+                                    <div class="mk-grid [grid-area:1/1]" inert=true aria-hidden="true">{static_page()}</div>
+                                    // El cuadro usa el tema y las letras de la tienda, como en la tienda.
+                                    <div
+                                        class="mk-modal-panel relative z-10 mx-auto mb-10 mt-6 self-start rounded-box bg-base-100 shadow-2xl [grid-area:1/1]"
+                                        role="region"
+                                        aria-label="Ficha del producto"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+                                            aria-label="Cerrar la ficha y volver a la página"
+                                            title="Volver a la página (Esc)"
+                                            on:click=move |_| actions.close_modal()
+                                        >
+                                            <Icon name="close"/>
+                                        </button>
+                                        {stage()}
+                                        {move || state.nodes().is_empty().then(|| view! {
+                                            <div class="absolute inset-x-4 top-16 flex flex-col items-center gap-2 rounded-box border-2 border-dashed border-base-content/40 bg-base-100 p-8 text-center">
+                                                <Icon name="plus" class="h-8 w-8 text-primary"/>
+                                                <p class="font-semibold">"La ficha está vacía"</p>
+                                                <p class="text-sm text-base-content/75">"Sumá bloques desde la izquierda: la foto, el nombre y el precio del producto, por ejemplo."</p>
+                                            </div>
+                                        })}
+                                    </div>
                                 </div>
                             }
                             .into_any();
                         }
-                        view! {
-                            <div
-                                node_ref=stage_ref
-                                class="mk-stage"
-                                class:mk-dropzone=move || incoming.with(Option::is_some)
-                                style=move || format!("height:{:.1}px", (f64::from(rows.get() * u32::from(ROW_PX)) - 2.0 * MARGIN_PX) * scale.get())
-                            >
-                                <div
-                                    node_ref=grid_ref
-                                    class="mk-agrid select-none"
-                                    class:mk-grid-guides=move || drag.with(Option::is_some) || incoming.with(Option::is_some)
-                                    style=move || {
-                                        let k = scale.get();
-                                        format!(
-                                            "width:{}px; height:{}px; transform:translate({:.2}px,{:.2}px) scale({k:.4})",
-                                            DESIGN_W + 2.0 * MARGIN_PX,
-                                            rows.get() * u32::from(ROW_PX),
-                                            -MARGIN_PX * k,
-                                            -MARGIN_PX * k,
-                                        )
-                                    }
-                                    on:pointermove=on_pointer_move
-                                    on:pointerup=on_pointer_up
-                                    on:pointercancel=move |ev: PointerEvent| {
-                                        if drag.with_untracked(|d| d.as_ref().is_some_and(|d| d.pointer_id == ev.pointer_id())) {
-                                            cancel_drag(false);
-                                        }
-                                    }
-                                    on:lostpointercapture=move |ev: PointerEvent| {
-                                        if drag.with_untracked(|d| d.as_ref().is_some_and(|d| d.pointer_id == ev.pointer_id())) {
-                                            cancel_drag(false);
-                                        }
-                                    }
-                                >
-                                    {move || slot.get().map(|_| view! {
-                                        <div class="mk-slot" style=move || {
-                                            slot.get()
-                                                .map(|n| format!(
-                                                    "left:{:.4}%; top:{}px; width:{:.4}%; height:{}px",
-                                                    f64::from(n.pos.x) * 100.0 / f64::from(GRID_COLS),
-                                                    u32::from(n.pos.y) * u32::from(ROW_PX),
-                                                    f64::from(n.size.w) * 100.0 / f64::from(GRID_COLS),
-                                                    u32::from(n.size.h) * u32::from(ROW_PX),
-                                                ))
-                                                .unwrap_or_default()
-                                        } aria-hidden="true"><div class="mk-slot-box"></div></div>
-                                    })}
-                                    <For each=move || order_ids.get() key=|id| id.clone() children=node_view/>
-                                </div>
-                            </div>
-                        }
-                        .into_any()
+                        stage().into_any()
                     }}
-                    {move || state.doc.with(|d| d.nodes.is_empty()).then(|| view! {
+                    {move || (!state.in_modal() && state.doc.with(|d| d.nodes.is_empty())).then(|| view! {
                         <div data-theme="light" class="mx-auto mt-2 flex max-w-md flex-col items-center gap-2 rounded-box border-2 border-dashed border-base-content/40 bg-base-100 p-8 text-center text-base-content">
                             <Icon name="plus" class="h-8 w-8 text-primary"/>
                             <p class="font-semibold">"Tu página está vacía"</p>

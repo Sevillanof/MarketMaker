@@ -19,6 +19,11 @@ pub const ROW_PX: u16 = 8;
 /// Cuántas columnas y filas de la grilla fina equivalen a una celda del schema 2.
 pub const SCHEMA_2_SCALE: (u16, u16) = (4, 12);
 pub const MAX_NODES: usize = 100;
+/// Máximo de bloques en la ficha del producto.
+pub const MAX_MODAL_NODES: usize = 30;
+/// Ancho, en píxeles, con el que se dibuja el contenido de la ficha del
+/// producto (el `max-w` del cuadro menos su relleno).
+pub const MODAL_W_PX: u16 = 800;
 pub const THEMES: &[&str] = &["light", "dark", "cupcake", "emerald", "corporate", "retro"];
 
 /// Nombre para mostrar de cada tema, en el mismo orden que [`THEMES`].
@@ -49,6 +54,11 @@ pub struct PageDoc {
     #[serde(default, skip_serializing_if = "Typography::is_default")]
     pub typography: Typography,
     pub nodes: Vec<Node>,
+    /// Ficha que se abre al tocar un producto (en la cuadrícula o en el
+    /// producto destacado). Es una sola para toda la tienda. Los documentos
+    /// anteriores no la traen: se usa la de [`ProductModal::default`].
+    #[serde(default, skip_serializing_if = "ProductModal::is_default")]
+    pub product_modal: ProductModal,
 }
 
 impl Default for PageDoc {
@@ -58,10 +68,107 @@ impl Default for PageDoc {
             theme: THEMES[0].to_string(),
             typography: Typography::default(),
             nodes: Vec::new(),
+            product_modal: ProductModal::default(),
         }
     }
 }
 
+/// Dónde están los bloques que se editan: en la página o en la ficha del
+/// producto.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Layer {
+    Page,
+    ProductModal,
+}
+
+impl Layer {
+    /// Ancho, en píxeles, al que se dibuja el contenido de la capa.
+    pub fn design_width(self) -> u16 {
+        match self {
+            Layer::Page => 1120,
+            Layer::ProductModal => MODAL_W_PX,
+        }
+    }
+}
+
+impl PageDoc {
+    pub fn layer(&self, layer: Layer) -> &Vec<Node> {
+        match layer {
+            Layer::Page => &self.nodes,
+            Layer::ProductModal => &self.product_modal.nodes,
+        }
+    }
+
+    pub fn layer_mut(&mut self, layer: Layer) -> &mut Vec<Node> {
+        match layer {
+            Layer::Page => &mut self.nodes,
+            Layer::ProductModal => &mut self.product_modal.nodes,
+        }
+    }
+
+    /// Todos los bloques, de la página y de la ficha. Los ids no se repiten
+    /// entre las dos.
+    pub fn all_nodes(&self) -> impl Iterator<Item = &Node> {
+        self.nodes.iter().chain(self.product_modal.nodes.iter())
+    }
+
+    /// Bloque con ese id, esté en la página o en la ficha.
+    pub fn node(&self, id: &str) -> Option<&Node> {
+        self.all_nodes().find(|n| n.id == id)
+    }
+
+    pub fn node_mut(&mut self, id: &str) -> Option<&mut Node> {
+        self.nodes
+            .iter_mut()
+            .chain(self.product_modal.nodes.iter_mut())
+            .find(|n| n.id == id)
+    }
+
+    /// Capa donde está el bloque `id`.
+    pub fn layer_of(&self, id: &str) -> Option<Layer> {
+        if self.nodes.iter().any(|n| n.id == id) {
+            Some(Layer::Page)
+        } else if self.product_modal.nodes.iter().any(|n| n.id == id) {
+            Some(Layer::ProductModal)
+        } else {
+            None
+        }
+    }
+}
+
+/// Diseño de la ficha del producto: bloques sobre la misma grilla de
+/// [`GRID_COLS`] columnas, dibujada a [`MODAL_W_PX`] de ancho.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ProductModal {
+    pub nodes: Vec<Node>,
+}
+
+impl ProductModal {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+impl Default for ProductModal {
+    /// Foto a la izquierda; nombre, precio, descripción y botón a la derecha.
+    fn default() -> Self {
+        let at = |id: &str, t: &str, x: u8, y: u16, w: u8, h: u8| {
+            let mut n = Node::new(id, Widget::defaults(t).expect("tipo conocido"));
+            n.pos = Pos { x, y };
+            n.size = Size { w, h };
+            n
+        };
+        Self {
+            nodes: vec![
+                at("m1", "ProductImage", 0, 0, 24, 52),
+                at("m2", "ProductName", 24, 0, 24, 9),
+                at("m3", "ProductPrice", 24, 9, 24, 6),
+                at("m4", "ProductDescription", 24, 15, 24, 28),
+                at("m5", "ProductButton", 24, 43, 24, 7),
+            ],
+        }
+    }
+}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Node {
     pub id: String,
@@ -264,6 +371,8 @@ pub struct Product {
     pub name: String,
     pub price_cents: i64,
     pub image_url: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 fn url_ok(s: &str) -> bool {
@@ -375,35 +484,33 @@ fn validate_fields(node: &Node, errors: &mut Vec<String>) {
     node.style.errors(&path, errors);
 }
 
-/// Valida un documento completo. El servidor rechaza el guardado si hay algún error.
-pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
-    let mut errors = Vec::new();
-
-    if doc.schema != SCHEMA_VERSION {
-        errors.push(format!(
-            "schema {} no soportado (se espera {SCHEMA_VERSION})",
-            doc.schema
-        ));
-    }
-    if !THEMES.contains(&doc.theme.as_str()) {
-        errors.push(format!("tema desconocido: {}", doc.theme));
-    }
-    doc.typography.errors(&mut errors);
-    if doc.nodes.len() > MAX_NODES {
-        errors.push(format!(
-            "hay {} nodos; el máximo es {MAX_NODES}",
-            doc.nodes.len()
-        ));
-    }
-
-    let mut ids = std::collections::HashSet::new();
+/// Valida los bloques de una capa: ids (únicos en todo el documento),
+/// tipos permitidos, tamaños, columnas, campos y superposiciones.
+fn validate_nodes<'a>(
+    nodes: &'a [Node],
+    layer: Layer,
+    ids: &mut std::collections::HashSet<&'a str>,
+    errors: &mut Vec<String>,
+) {
     // (id, x, y, w, h) de cada nodo, para chequear superposiciones.
     let mut rects: Vec<(&str, u32, u32, u32, u32)> = Vec::new();
-    for node in &doc.nodes {
+    for node in nodes {
         if node.id.is_empty() {
             errors.push("hay un nodo sin id".to_string());
         } else if !ids.insert(node.id.as_str()) {
             errors.push(format!("id repetido: {}", node.id));
+        }
+        if !allowed_in(node.widget.type_name(), layer) {
+            errors.push(match layer {
+                Layer::Page => format!(
+                    "{} solo puede ir en la ficha del producto",
+                    node.widget.label()
+                ),
+                Layer::ProductModal => format!(
+                    "{} no puede ir en la ficha del producto",
+                    node.widget.label()
+                ),
+            });
         }
 
         let l = node.widget.limits();
@@ -434,7 +541,7 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
             u32::from(node.size.h),
         ));
 
-        validate_fields(node, &mut errors);
+        validate_fields(node, errors);
     }
 
     for (i, a) in rects.iter().enumerate() {
@@ -445,6 +552,43 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
             }
         }
     }
+}
+
+/// Valida un documento completo. El servidor rechaza el guardado si hay algún error.
+pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
+    let mut errors = Vec::new();
+
+    if doc.schema != SCHEMA_VERSION {
+        errors.push(format!(
+            "schema {} no soportado (se espera {SCHEMA_VERSION})",
+            doc.schema
+        ));
+    }
+    if !THEMES.contains(&doc.theme.as_str()) {
+        errors.push(format!("tema desconocido: {}", doc.theme));
+    }
+    doc.typography.errors(&mut errors);
+    if doc.nodes.len() > MAX_NODES {
+        errors.push(format!(
+            "hay {} nodos; el máximo es {MAX_NODES}",
+            doc.nodes.len()
+        ));
+    }
+    if doc.product_modal.nodes.len() > MAX_MODAL_NODES {
+        errors.push(format!(
+            "la ficha del producto tiene {} bloques; el máximo es {MAX_MODAL_NODES}",
+            doc.product_modal.nodes.len()
+        ));
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    validate_nodes(&doc.nodes, Layer::Page, &mut ids, &mut errors);
+    validate_nodes(
+        &doc.product_modal.nodes,
+        Layer::ProductModal,
+        &mut ids,
+        &mut errors,
+    );
 
     if errors.is_empty() {
         Ok(())
@@ -565,10 +709,13 @@ mod tests {
     #[test]
     fn defaults_are_valid_for_every_widget() {
         for (i, (t, _)) in WIDGET_TYPES.iter().enumerate() {
-            let doc = PageDoc {
-                nodes: vec![node(&format!("n{i}"), t, 0, 0)],
-                ..PageDoc::default()
-            };
+            let mut doc = PageDoc::default();
+            let n = node(&format!("n{i}"), t, 0, 0);
+            if allowed_in(t, Layer::Page) {
+                doc.nodes.push(n);
+            } else {
+                doc.product_modal.nodes = vec![n];
+            }
             assert_eq!(validate(&doc), Ok(()), "{t}");
             let w = Widget::defaults(t).unwrap();
             assert_eq!(w.type_name(), *t);
@@ -580,6 +727,50 @@ mod tests {
             assert!(l.min_h <= l.max_h && l.min_h >= 1, "{t}");
         }
         assert_eq!(Widget::defaults("Nada"), None);
+    }
+
+    #[test]
+    fn product_modal_has_a_valid_default_and_is_not_saved_until_changed() {
+        let doc = example();
+        assert_eq!(doc.product_modal, ProductModal::default());
+        assert_eq!(doc.product_modal.nodes.len(), 5);
+        assert_eq!(validate(&doc), Ok(()));
+        // Sin cambios no viaja en el JSON (ver `example_round_trips_through_json`).
+        assert!(serde_json::to_value(&doc)
+            .unwrap()
+            .get("product_modal")
+            .is_none());
+
+        let mut doc = doc;
+        doc.product_modal.nodes.remove(4);
+        let json = serde_json::to_value(&doc).unwrap();
+        assert_eq!(json["product_modal"]["nodes"].as_array().unwrap().len(), 4);
+        assert_eq!(parse_doc(json), Ok(doc.clone()));
+        assert_eq!(doc.layer_of("m1"), Some(Layer::ProductModal));
+        assert_eq!(doc.layer_of("n1"), Some(Layer::Page));
+        assert!(doc.node("m2").is_some());
+    }
+
+    #[test]
+    fn product_blocks_only_go_in_the_modal() {
+        let mut doc = example();
+        doc.nodes.push(node("p1", "ProductPrice", 0, 200));
+        assert_invalid(&doc, "solo puede ir en la ficha");
+
+        let mut doc = example();
+        doc.product_modal.nodes.push(node("x1", "Navbar", 0, 100));
+        assert_invalid(&doc, "no puede ir en la ficha");
+
+        let mut doc = example();
+        doc.product_modal.nodes.push(node("x1", "Faq", 0, 100));
+        assert_eq!(validate(&doc), Ok(()));
+        // Los ids no se pueden repetir entre la página y la ficha.
+        doc.product_modal.nodes[5].id = "n1".into();
+        assert_invalid(&doc, "repetido");
+        // Las superposiciones se miran dentro de cada capa.
+        doc.product_modal.nodes[5].id = "x1".into();
+        doc.product_modal.nodes[5].pos.y = 40;
+        assert_invalid(&doc, "superponen");
     }
 
     #[test]
