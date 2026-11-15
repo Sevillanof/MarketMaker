@@ -250,7 +250,7 @@ impl OrderItem {
 }
 
 /// En qué está un pedido.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OrderStatus {
     /// Recibido, el pago se coordina con la tienda.
     New,
@@ -337,6 +337,118 @@ pub enum PlaceOrder {
     CartChanged { message: String },
 }
 
+/// Las columnas del tablero de Pedidos. Los cancelados van aparte.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrderColumn {
+    AwaitingPayment,
+    ToPrepare,
+    Shipped,
+    Delivered,
+}
+
+impl OrderColumn {
+    pub const ALL: [OrderColumn; 4] = [
+        OrderColumn::AwaitingPayment,
+        OrderColumn::ToPrepare,
+        OrderColumn::Shipped,
+        OrderColumn::Delivered,
+    ];
+
+    /// En qué columna va un pedido. `None` si está cancelado.
+    pub fn of(status: OrderStatus) -> Option<Self> {
+        match status {
+            // Sin pago online, el pedido nuevo espera que la tienda cobre.
+            OrderStatus::New | OrderStatus::PendingPayment => Some(OrderColumn::AwaitingPayment),
+            OrderStatus::Paid => Some(OrderColumn::ToPrepare),
+            OrderStatus::Shipped => Some(OrderColumn::Shipped),
+            OrderStatus::Delivered => Some(OrderColumn::Delivered),
+            OrderStatus::Cancelled => None,
+        }
+    }
+
+    /// El estado que toma un pedido al llevarlo a esta columna.
+    pub fn status(self) -> OrderStatus {
+        match self {
+            OrderColumn::AwaitingPayment => OrderStatus::PendingPayment,
+            OrderColumn::ToPrepare => OrderStatus::Paid,
+            OrderColumn::Shipped => OrderStatus::Shipped,
+            OrderColumn::Delivered => OrderStatus::Delivered,
+        }
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            OrderColumn::AwaitingPayment => "Esperando pago",
+            OrderColumn::ToPrepare => "Para preparar",
+            OrderColumn::Shipped => "Enviados",
+            OrderColumn::Delivered => "Entregados",
+        }
+    }
+
+    /// La columna que sigue, para el botón principal del detalle.
+    pub fn next(self) -> Option<Self> {
+        match self {
+            OrderColumn::AwaitingPayment => Some(OrderColumn::ToPrepare),
+            OrderColumn::ToPrepare => Some(OrderColumn::Shipped),
+            OrderColumn::Shipped => Some(OrderColumn::Delivered),
+            OrderColumn::Delivered => None,
+        }
+    }
+
+    /// Texto del botón que lleva un pedido a esta columna.
+    pub fn action(self, delivery: Delivery) -> &'static str {
+        match (self, delivery) {
+            (OrderColumn::AwaitingPayment, _) => "Volver a esperando pago",
+            (OrderColumn::ToPrepare, _) => "Marcar como pagado",
+            (OrderColumn::Shipped, Delivery::Pickup) => "Marcar listo para retirar",
+            (OrderColumn::Shipped, Delivery::Shipping) => "Marcar como enviado",
+            (OrderColumn::Delivered, _) => "Marcar como entregado",
+        }
+    }
+}
+
+/// Fecha y hora de un pedido en hora de Argentina (UTC−3, sin horario de
+/// verano), por ejemplo "15/11 14:32". `created_at` viene como
+/// `2026-11-15T17:32:00Z`.
+pub fn order_time_ar(created_at: &str) -> String {
+    let num = |a: usize, b: usize| created_at.get(a..b).and_then(|t| t.parse::<i64>().ok());
+    let (Some(y), Some(mo), Some(d), Some(h), Some(mi)) =
+        (num(0, 4), num(5, 7), num(8, 10), num(11, 13), num(14, 16))
+    else {
+        return String::new();
+    };
+    // Minutos desde 1970, menos 3 horas, y de vuelta a fecha.
+    let days = days_from_civil(y, mo, d);
+    let total = days * 1440 + h * 60 + mi - 180;
+    let (days, mins) = (total.div_euclid(1440), total.rem_euclid(1440));
+    let (_, mo, d) = civil_from_days(days);
+    format!("{d:02}/{mo:02} {:02}:{:02}", mins / 60, mins % 60)
+}
+
+// Algoritmos de Howard Hinnant para pasar de fecha a días y al revés.
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y, m, d)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,5 +533,19 @@ mod tests {
         assert!(!looks_like_email("a b@c.com"));
         assert!(!looks_like_email("@c.com"));
         assert!(!looks_like_email("a@.com"));
+    }
+
+    #[test]
+    fn columns_and_times() {
+        assert_eq!(OrderColumn::of(OrderStatus::New), Some(OrderColumn::AwaitingPayment));
+        assert_eq!(OrderColumn::of(OrderStatus::Cancelled), None);
+        for c in OrderColumn::ALL {
+            assert_eq!(OrderColumn::of(c.status()), Some(c));
+        }
+        assert_eq!(order_time_ar("2026-11-15T17:32:05Z"), "15/11 14:32");
+        assert_eq!(order_time_ar("2026-03-01T01:10:00Z"), "28/02 22:10");
+        assert_eq!(order_time_ar("2028-03-01T02:00:00Z"), "29/02 23:00");
+        assert_eq!(order_time_ar("2027-01-01T00:00:00Z"), "31/12 21:00");
+        assert_eq!(order_time_ar("roto"), "");
     }
 }

@@ -185,3 +185,21 @@ pub async fn list(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Order>> {
     .await?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
+
+/// Cambia el estado de un pedido de la tienda. `false` si no existe.
+pub async fn set_status(
+    pool: &PgPool,
+    tenant: Uuid,
+    id: Uuid,
+    status: OrderStatus,
+) -> sqlx::Result<bool> {
+    let r = sqlx::query(
+        "UPDATE orders SET status = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant)
+    .bind(id)
+    .bind(status.as_str())
+    .execute(pool)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
