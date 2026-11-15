@@ -45,9 +45,12 @@ async fn main() {
 
     // Quién puede entrar (ALLOWED_EMAILS). La cookie de sesión es `Secure`
     // solo en producción, para que funcione en http://localhost.
-    let auth = AuthConfig::from_env(leptos_options.env == leptos::config::Env::PROD);
-    if auth.allowed.is_empty() {
-        log!("Aviso: ALLOWED_EMAILS está vacío, nadie puede entrar al editor (ver README).");
+    let auth = AuthConfig::new(leptos_options.env == leptos::config::Env::PROD);
+    match allowed_emails().len() {
+        0 => log!(
+            "Aviso: ALLOWED_EMAILS está vacío en .env, nadie puede entrar al editor (ver README)."
+        ),
+        n => log!("Emails habilitados para entrar: {n}"),
     }
 
     // Los archivos van antes que las páginas de la tienda: la ruta `/*any`

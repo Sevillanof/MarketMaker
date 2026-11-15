@@ -3278,6 +3278,7 @@ dependencies = [
  "cfg-if",
  "db",
  "domain",
+ "dotenvy",
  "editor",
  "http",
  "leptos",
