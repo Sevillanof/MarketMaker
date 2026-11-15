@@ -97,7 +97,8 @@ pub async fn rename(pool: &PgPool, owner_id: Uuid, id: Uuid, name: &str) -> sqlx
 }
 
 /// Dónde usa el dueño cada una de sus fotos: (foto, tienda, página), para
-/// las páginas de sus tiendas cuyo borrador o versión publicada la nombra.
+/// las páginas de sus tiendas cuyo borrador o versión publicada la nombra, y
+/// los productos que la tienen entre sus fotos (página `producto:<nombre>`).
 pub async fn usage(pool: &PgPool, owner_id: Uuid) -> sqlx::Result<Vec<(Uuid, String, String)>> {
     sqlx::query_as(
         "SELECT DISTINCT m.id, t.name, p.slug
@@ -107,7 +108,14 @@ pub async fn usage(pool: &PgPool, owner_id: Uuid) -> sqlx::Result<Vec<(Uuid, Str
          JOIN pages p ON p.tenant_id = t.id
          JOIN page_versions v ON v.id = p.current_version_id OR v.id = p.published_version_id
          WHERE m.owner_id = $1 AND strpos(v.doc::text, m.id::text) > 0
-         ORDER BY t.name, p.slug",
+         UNION
+         SELECT DISTINCT m.id, t.name, 'producto:' || pr.name
+         FROM media m
+         JOIN memberships ms ON ms.user_id = m.owner_id
+         JOIN tenants t ON t.id = ms.tenant_id
+         JOIN products pr ON pr.tenant_id = t.id
+         WHERE m.owner_id = $1 AND strpos(array_to_string(pr.photos, ' '), m.id::text) > 0
+         ORDER BY 2, 3",
     )
     .bind(owner_id)
     .fetch_all(pool)

@@ -12,7 +12,7 @@ use domain::{
 };
 use leptos::html::Div;
 use leptos::prelude::*;
-use ui::{Button, Card, Icon, Image, Picture, Price, Skeleton};
+use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
 /// Contexto que recibe todo widget al dibujarse.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -33,6 +33,7 @@ pub fn sample_product() -> Product {
         price_cents: 1_999_900,
         image_url: "/img/product-1.webp".to_string(),
         description: "Así se va a ver la descripción de cada producto.".to_string(),
+        ..Product::default()
     }
 }
 
@@ -103,10 +104,13 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             .into_any()
         }
         Widget::ProductPrice(_) => {
-            let cents = ctx.product.as_ref().map_or(0, |p| p.price_cents);
+            let (cents, was, off) = ctx.product.as_ref().map_or((0, 0, None), |p| {
+                (p.price_cents, p.compare_at_cents, p.discount_pct())
+            });
             view! {
-                <div class="mk-pprice flex h-full items-start overflow-hidden text-xl">
-                    <span class="mk-pricetag"><Price cents/></span>
+                <div class="mk-pprice flex h-full flex-wrap items-start gap-2 overflow-hidden text-xl">
+                    <span class="mk-pricetag"><PriceWas cents was/></span>
+                    {off.map(|n| view! { <span class="badge badge-error">{format!("-{n}%")}</span> })}
                 </div>
             }
             .into_any()
@@ -130,26 +134,73 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             .into_any()
         }
         Widget::ProductButton(p) => {
-            view! { <ProductButtonWidget props=p.clone() editing/> }.into_any()
+            let sold_out = ctx.product.as_ref().is_some_and(|p| !p.in_stock);
+            view! { <ProductButtonWidget props=p.clone() editing sold_out/> }.into_any()
         }
     }
 }
 
 #[component]
 pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
-    let (src, alt) = product.map_or_else(Default::default, |p| (p.image_url, p.name));
+    let (photos, alt) = product.map_or_else(Default::default, |p| (p.all_photos(), p.name));
+    let contain = props.fit == "contain";
+    if photos.len() < 2 {
+        let src = photos.into_iter().next().unwrap_or_default();
+        return view! {
+            <div class="mk-box mk-image h-full overflow-hidden rounded-box bg-base-200">
+                <Image src alt contain/>
+            </div>
+        }
+        .into_any();
+    }
+    // Varias fotos: la grande arriba y las miniaturas abajo para cambiarla.
+    let shown = RwSignal::new(0usize);
+    let photos = StoredValue::new(photos);
+    let total = photos.with_value(Vec::len);
     view! {
-        <div class="mk-box mk-image h-full overflow-hidden rounded-box bg-base-200">
-            <Image src alt contain=props.fit == "contain"/>
+        <div class="mk-image flex h-full flex-col gap-2">
+            <div class="mk-box relative min-h-0 flex-1 overflow-hidden rounded-box bg-base-200">
+                {move || {
+                    let i = shown.get();
+                    let src = photos.with_value(|p| p[i].clone());
+                    view! { <Image src alt=format!("{alt}, foto {} de {total}", i + 1) contain/> }
+                }}
+            </div>
+            <div class="flex shrink-0 gap-2 overflow-x-auto" role="group" aria-label="Fotos del producto">
+                {(0..total).map(|i| {
+                    let src = photos.with_value(|p| p[i].clone());
+                    view! {
+                        <button type="button"
+                            class="h-14 w-14 shrink-0 overflow-hidden rounded-field -outline-offset-2 outline-primary"
+                            class:outline-2=move || shown.get() == i
+                            aria-label=format!("Ver foto {}", i + 1)
+                            aria-pressed=move || (shown.get() == i).to_string()
+                            on:click=move |_| shown.set(i)>
+                            <Image src alt=""/>
+                        </button>
+                    }
+                }).collect_view()}
+            </div>
         </div>
     }
+    .into_any()
 }
 
 #[component]
-pub fn ProductButtonWidget(props: ProductButtonProps, editing: bool) -> impl IntoView {
+pub fn ProductButtonWidget(
+    props: ProductButtonProps,
+    editing: bool,
+    /// Sin stock: el botón dice "Agotado" y no se puede tocar.
+    #[prop(optional)]
+    sold_out: bool,
+) -> impl IntoView {
     view! {
         <div class="mk-pbtn flex h-full items-start">
-            <Button label=props.label href=props.href disabled=editing/>
+            {if sold_out {
+                view! { <button type="button" class="btn btn-primary mk-btn" disabled>"Agotado"</button> }.into_any()
+            } else {
+                view! { <Button label=props.label href=props.href disabled=editing/> }.into_any()
+            }}
         </div>
     }
 }
@@ -351,10 +402,12 @@ pub fn FeaturedProductWidget(props: FeaturedProductProps, products: Vec<Product>
 /// Tarjeta de producto: la imagen ocupa todo el alto que deja el texto.
 /// En la tienda (con [`OpenProduct`]) se puede tocar para abrir su ficha.
 #[component]
-fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
+pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     let open = use_context::<OpenProduct>();
     let id = product.id.clone();
     let name = product.name.clone();
+    let sold_out = !product.in_stock;
+    let off = show_price.then(|| product.discount_pct()).flatten();
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
         <Card>
@@ -362,10 +415,16 @@ fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
                 <div class="absolute inset-0">
                     <Image src=product.image_url.clone() alt=product.name.clone()/>
                 </div>
+                <div class="absolute left-2 top-2 flex flex-col items-start gap-1">
+                    {sold_out.then(|| view! { <span class="badge badge-neutral">"Agotado"</span> })}
+                    {off.map(|n| view! {
+                        <span class="badge badge-error">{format!("-{n}%")}</span>
+                    })}
+                </div>
             </div>
             <div class="card-body grow-0 shrink-0 gap-0">
                 <h3 class="mk-sub card-title text-sm truncate block">{product.name.clone()}</h3>
-                {show_price.then(|| view! { <Price cents=product.price_cents/> })}
+                {show_price.then(|| view! { <PriceWas cents=product.price_cents was=product.compare_at_cents/> })}
             </div>
         </Card>
         {open.map(|OpenProduct(open)| view! {

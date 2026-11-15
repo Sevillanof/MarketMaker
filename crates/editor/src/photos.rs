@@ -59,6 +59,21 @@ impl MyPhotos {
     /// Sube las fotos de a una. Si subió una sola sin problemas, la pasa a
     /// `done` para ponerla en el bloque.
     pub fn upload(self, files: Vec<web_sys::File>, done: Callback<MediaItem>) {
+        self.upload_with(files, done, None);
+    }
+
+    /// Como [`MyPhotos::upload`], pero pasa a `each` cada foto que subió bien
+    /// (para sumar varias a un producto).
+    pub fn upload_each(self, files: Vec<web_sys::File>, each: Callback<MediaItem>) {
+        self.upload_with(files, Callback::new(|_| ()), Some(each));
+    }
+
+    fn upload_with(
+        self,
+        files: Vec<web_sys::File>,
+        done: Callback<MediaItem>,
+        each: Option<Callback<MediaItem>>,
+    ) {
         if files.is_empty() || self.progress.get_untracked().is_some() {
             return;
         }
@@ -81,6 +96,9 @@ impl MyPhotos {
                         }
                         self.items
                             .update(|l| l.get_or_insert_with(Vec::new).insert(0, item.clone()));
+                        if let Some(each) = each {
+                            each.run(item.clone());
+                        }
                         uploaded.push(item);
                     }
                     Err(msg) => self

@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 mod account;
+mod catalog;
 mod layout;
 mod look;
 mod media;
@@ -11,6 +12,7 @@ mod typography;
 mod widgets;
 
 pub use account::*;
+pub use catalog::*;
 pub use layout::*;
 pub use look::*;
 pub use media::*;
@@ -656,15 +658,70 @@ pub enum SaveOutcome {
     Invalid { errors: Vec<String> },
 }
 
-/// Producto de ejemplo del tenant, tal como lo usan los widgets.
+/// Producto de la tienda, tal como lo usan los widgets y la pantalla
+/// Productos.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Product {
     pub id: String,
     pub name: String,
     pub price_cents: i64,
+    /// La foto principal (la primera de `photos`, o vacía).
     pub image_url: String,
     #[serde(default)]
     pub description: String,
+    /// Precio anterior, que se muestra tachado. 0 si no hay oferta.
+    #[serde(default)]
+    pub compare_at_cents: i64,
+    #[serde(default = "yes")]
+    pub in_stock: bool,
+    /// Si aparece en la tienda.
+    #[serde(default = "yes")]
+    pub visible: bool,
+    /// Todas las fotos, la principal primero.
+    #[serde(default)]
+    pub photos: Vec<String>,
+    /// Etiquetas para encontrar y agrupar productos.
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Default for Product {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            price_cents: 0,
+            image_url: String::new(),
+            description: String::new(),
+            compare_at_cents: 0,
+            in_stock: true,
+            visible: true,
+            photos: Vec::new(),
+            tags: Vec::new(),
+        }
+    }
+}
+
+impl Product {
+    /// Las fotos para mostrar: `photos`, o la principal si no hay lista.
+    pub fn all_photos(&self) -> Vec<String> {
+        if self.photos.is_empty() && !self.image_url.is_empty() {
+            vec![self.image_url.clone()]
+        } else {
+            self.photos.clone()
+        }
+    }
+
+    /// Descuento redondeado hacia abajo (`12` para -12 %), si hay oferta.
+    pub fn discount_pct(&self) -> Option<i64> {
+        (self.compare_at_cents > self.price_cents && self.price_cents >= 0)
+            .then(|| (self.compare_at_cents - self.price_cents) * 100 / self.compare_at_cents)
+            .filter(|p| *p > 0)
+    }
 }
 
 fn url_ok(s: &str) -> bool {

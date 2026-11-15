@@ -5,6 +5,7 @@
 
 pub mod auth;
 pub mod media;
+pub mod products;
 
 use domain::{PageDoc, Product, SaveOutcome};
 use sqlx::{FromRow, PgExecutor, PgPool};
@@ -98,27 +99,9 @@ pub async fn publish_page(
     Ok(done.rows_affected() == 1)
 }
 
-/// Productos del tenant por orden de creación.
+/// Productos que se ven en la tienda (los visibles), el más nuevo primero.
 pub async fn list_products(pool: &PgPool, tenant_id: Uuid) -> sqlx::Result<Vec<Product>> {
-    let rows = sqlx::query_as::<_, (Uuid, String, i64, String, String)>(
-        "SELECT id, name, price_cents, image_url, description
-         FROM products
-         WHERE tenant_id = $1
-         ORDER BY created_at, id",
-    )
-    .bind(tenant_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(id, name, price_cents, image_url, description)| Product {
-            id: id.to_string(),
-            name,
-            price_cents,
-            image_url,
-            description,
-        })
-        .collect())
+    products::list_visible(pool, tenant_id).await
 }
 
 /// Inserta la versión `number` de la página y la marca como vigente.
