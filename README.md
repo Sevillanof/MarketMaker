@@ -93,7 +93,7 @@ Para una imagen propia en `public/img`, alcanza con poner `/img/nombre.webp` en 
 
 Cada dueño sube sus fotos desde el selector de imagen del editor ("Subir fotos"). El servidor las gira según el celular, les borra los datos ocultos (incluida la ubicación GPS) y guarda AVIF + WebP en 480, 960 y 1600 px. Los bloques guardan `/media/<id>/960.webp` y la tienda arma el `srcset` con los tres anchos.
 
-Por ahora se guardan en la carpeta `media/` (cambiala con `MEDIA_DIR` en `.env`). Máximo 10 MB por foto y 500 fotos por dueño. JPG, PNG, WebP y GIF; las HEIC del iPhone hay que exportarlas como JPG.
+Se guardan en la carpeta `media/` (cambiala con `MEDIA_DIR` en `.env`) o, si ponés las cuatro claves `R2_*` en `.env.local` (no va a git; ver `.env`), en un bucket de Cloudflare R2. El bucket no necesita ser público: MarketMaker entrega las fotos en `/media/…`. Al arrancar, el servidor dice dónde las guarda. Para probar con otro servicio compatible con S3, `S3_ENDPOINT` reemplaza la dirección de R2 (ver `crates/media/tests/s3.rs`). Máximo 10 MB por foto y 500 fotos por dueño. JPG, PNG, WebP y GIF; las HEIC del iPhone hay que exportarlas como JPG.
 
 ## Comprobaciones
 

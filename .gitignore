@@ -17,3 +17,6 @@ playwright/.cache/
 
 # Fotos que suben los dueños (MEDIA_DIR)
 /media/
+
+# Claves secretas locales (Cloudflare R2)
+.env.local
