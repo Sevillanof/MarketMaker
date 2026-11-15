@@ -35,7 +35,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
 
     view! {
         <div data-theme=doc.theme class="mk-store min-h-screen bg-base-200 text-base-content" style=doc.typography.css_vars()>
-            <div class="mx-auto max-w-6xl p-4">
+            <div class="mk-wrap" style=doc.layout.css_vars()>
                 <div class="mk-grid">
                     {nodes
                         .into_iter()

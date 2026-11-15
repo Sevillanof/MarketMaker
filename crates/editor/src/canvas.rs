@@ -2,7 +2,7 @@
 //! mouse (arrastrando) o con el teclado, y cada uno tiene una barra de
 //! acciones para hacer lo mismo sin arrastrar.
 
-use domain::{Layer, Node, Product, Widget, GRID_COLS, ROW_PX};
+use domain::{Layer, Node, Product, StoreLayout, Widget, GRID_COLS, ROW_PX};
 use leptos::ev::{KeyboardEvent, PointerEvent};
 use leptos::html::{Div, Section};
 use leptos::prelude::*;
@@ -13,14 +13,50 @@ use widgets::{node_style, render_widget, sample_product, OpenProduct, ProductDia
 use crate::icons::Icon;
 use crate::{new_node_id, size_badge, size_text, Actions, EditorState, NewDrag, Ui, WELCOME_KEY};
 
-/// Ancho, en píxeles, con el que la tienda dibuja el contenido de la capa
-/// (la página: el `max-w-6xl` de la tienda menos su relleno; la ficha del
-/// producto: el ancho de su cuadro). El lienzo dibuja siempre a este ancho y
-/// lo achica con `transform: scale` si no entra, así cada bloque se ve en el
-/// editor igual que en la tienda publicada.
-fn design_w(layer: Layer) -> f64 {
-    f64::from(layer.design_width())
+/// Ancho del contenido de la página y su margen, en píxeles de diseño, como
+/// los dibuja la tienda publicada (ver `domain::StoreLayout`). Con "Ancho
+/// completo" se usa todo el lienzo, y como mínimo una pantalla grande.
+/// `dragging` es el ancho que se está probando al arrastrar los bordes.
+pub(crate) fn page_frame(layout: &StoreLayout, dragging: Option<u16>, canvas_w: f64) -> (f64, f64) {
+    let p = f64::from(layout.margin_px());
+    let w = match dragging {
+        Some(w) => f64::from(w),
+        None if layout.is_full() => (canvas_w - 2.0 * p).max(f64::from(domain::FULL_MIN_PX)),
+        None => f64::from(layout.max_width),
+    };
+    (w, p)
 }
+
+/// Escala para que una página de `total` px de diseño entre en el lienzo.
+/// El lienzo dibuja siempre al ancho de diseño y lo achica con
+/// `transform: scale` si no entra, así cada bloque se ve como en la tienda.
+fn fit_scale(canvas_w: f64, total: f64) -> f64 {
+    (canvas_w / total.max(1.0)).clamp(0.3, 1.0)
+}
+
+/// Arrastre de un borde de la página para cambiar su ancho.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WidthDrag {
+    /// `-1` el borde izquierdo, `1` el derecho.
+    side: f64,
+    start_x: f64,
+    /// Ancho del contenido al empezar, en px de diseño.
+    start_w: f64,
+    /// Escala del lienzo al empezar: con ella se pasa lo que se mueve el
+    /// puntero a píxeles de diseño (la escala del dibujo cambia al arrastrar).
+    scale: f64,
+    /// Ancho que quedaría al soltar (con imán); `None` hasta que se mueve.
+    width: Option<u16>,
+    pointer_id: i32,
+}
+
+/// Nuevo ancho del contenido al llevar un borde `dx` píxeles de pantalla
+/// hacia afuera (`side` = 1 a la derecha, -1 a la izquierda). La página está
+/// centrada, así que el ancho cambia el doble de lo que se mueve el borde.
+pub(crate) fn dragged_width(start_w: f64, side: f64, dx: f64, scale: f64) -> u16 {
+    domain::snap_width(start_w + side * 2.0 * dx / scale.max(0.01))
+}
+
 /// Margen de cada bloque dentro de su celda: la mitad de la separación.
 const MARGIN_PX: f64 = grid::GAP_PX / 2.0;
 /// Alto mínimo del lienzo, en filas.
@@ -273,8 +309,37 @@ pub(crate) fn Canvas(
     // Esquina del bloque que se arrastra con el mouse, en píxeles de diseño:
     // sigue al puntero sin imán, y el lugar donde va a quedar se ve aparte.
     let drag_pos = RwSignal::new(None::<(f64, f64)>);
-    // Píxeles de pantalla por píxel de diseño (ver `design_w`).
-    let scale = RwSignal::new(1.0_f64);
+    // Ancho del lienzo en pantalla.
+    let canvas_w = RwSignal::new(1200.0_f64);
+    // Escala de la ficha del producto (que tiene su propio ancho).
+    let modal_scale = RwSignal::new(1.0_f64);
+    let width_drag = RwSignal::new(None::<WidthDrag>);
+    // La página: ancho del contenido y margen (px de diseño) y escala.
+    let frame = Memo::new(move |_| {
+        let wd = width_drag.get();
+        let (w, p) = state
+            .doc
+            .with(|d| page_frame(&d.layout, wd.and_then(|d| d.width), canvas_w.get()));
+        // Siempre entra entera en el lienzo, también mientras se arrastra un
+        // borde: la página se achica o se agranda y la etiqueta dice el ancho.
+        (w, p, fit_scale(canvas_w.get(), w + 2.0 * p))
+    });
+    // Píxeles de pantalla por píxel de diseño de la capa que se edita.
+    let scale = Memo::new(move |_| {
+        if state.in_modal() {
+            modal_scale.get()
+        } else {
+            frame.get().2
+        }
+    });
+    // Ancho de diseño de la capa que se edita.
+    let design_w = Memo::new(move |_| {
+        if state.in_modal() {
+            f64::from(Layer::ProductModal.design_width())
+        } else {
+            frame.get().0
+        }
+    });
     // Producto con el que se muestra la ficha mientras se edita.
     let modal_product = Memo::new(move |_| {
         let chosen = ui.modal_product.get();
@@ -286,24 +351,41 @@ pub(crate) fn Canvas(
         })
     });
 
-    // Mide el lienzo y lo achica si no entra al ancho de diseño.
+    // Mide el lienzo (para la página) y el cuadro de la ficha (para la ficha).
+    let observer_slot = std::rc::Rc::new(std::cell::RefCell::new(None::<web_sys::ResizeObserver>));
     Effect::new(move |_| {
-        let Some(stage) = stage_ref.get() else {
-            return;
-        };
+        let section = section_ref.get();
+        let stage = stage_ref.get();
         let measure = move || {
-            if let Some(stage) = stage_ref.get_untracked() {
-                let dw = design_w(state.layer.get_untracked());
-                let s = (f64::from(stage.client_width()) / dw).clamp(0.3, 1.0);
-                if (scale.get_untracked() - s).abs() > 0.001 {
-                    scale.set(s);
+            if let Some(section) = section_ref.get_untracked() {
+                let w = f64::from(section.client_width());
+                if w > 0.0 && (canvas_w.get_untracked() - w).abs() > 0.5 {
+                    canvas_w.set(w);
+                }
+            }
+            if state.in_modal_untracked() {
+                if let Some(stage) = stage_ref.get_untracked() {
+                    let dw = f64::from(Layer::ProductModal.design_width());
+                    let s = (f64::from(stage.client_width()) / dw).clamp(0.3, 1.0);
+                    if (modal_scale.get_untracked() - s).abs() > 0.001 {
+                        modal_scale.set(s);
+                    }
                 }
             }
         };
         measure();
         let cb = Closure::<dyn FnMut()>::new(measure);
         if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
-            observer.observe(&stage);
+            if let Some(section) = section {
+                observer.observe(&section);
+            }
+            if let Some(stage) = stage {
+                observer.observe(&stage);
+            }
+            // Al volver a medir (cambió el cuadro), el observador anterior sobra.
+            if let Some(old) = observer_slot.borrow_mut().replace(observer) {
+                old.disconnect();
+            }
         }
         cb.forget();
     });
@@ -879,7 +961,6 @@ pub(crate) fn Canvas(
 
     // La grilla interactiva de la capa que se edita.
     let stage = move || {
-        let dw = design_w(state.layer.get_untracked());
         view! {
             <div
                 node_ref=stage_ref
@@ -895,7 +976,7 @@ pub(crate) fn Canvas(
                         let k = scale.get();
                         format!(
                             "width:{}px; height:{}px; transform:translate({:.2}px,{:.2}px) scale({k:.4})",
-                            dw + 2.0 * MARGIN_PX,
+                            design_w.get() + 2.0 * MARGIN_PX,
                             rows.get() * u32::from(ROW_PX),
                             -MARGIN_PX * k,
                             -MARGIN_PX * k,
@@ -950,6 +1031,133 @@ pub(crate) fn Canvas(
             })
             .collect_view()
         };
+    // Bordes de la página: se arrastran (o se mueven con las flechas) para
+    // cambiar el ancho del contenido de toda la tienda.
+    let finish_width_drag = move |apply: bool| {
+        let Some(d) = width_drag.get_untracked() else {
+            return;
+        };
+        width_drag.set(None);
+        let Some(w) = d.width.filter(|_| apply) else {
+            return;
+        };
+        if state.doc.with_untracked(|doc| doc.layout.max_width != w) {
+            state.apply(|doc| doc.layout.max_width = w);
+            ui.announce(format!("Ancho de la tienda: {w} px."));
+        }
+    };
+    let width_handle = move |side: f64| {
+        let place = move || {
+            let (_, p, k) = frame.get();
+            let edge = if side < 0.0 { "left" } else { "right" };
+            format!(
+                "{edge}:{:.1}px; top:{:.1}px; bottom:{:.1}px",
+                p * k - 12.0,
+                p * k,
+                p * k
+            )
+        };
+        let dragging = move || width_drag.with(|d| d.is_some_and(|d| d.side == side));
+        let now = move || {
+            let (w, ..) = frame.get();
+            let full = state.doc.with(|d| d.layout.is_full())
+                && width_drag.with(|d| d.and_then(|d| d.width).is_none());
+            if full {
+                "Ancho completo".to_string()
+            } else {
+                format!("{} px", w.round() as u32)
+            }
+        };
+        view! {
+            <div
+                class="mk-width-handle"
+                class:is-dragging=dragging
+                class:is-left=side < 0.0
+                style=place
+                role="separator"
+                aria-orientation="vertical"
+                tabindex="0"
+                aria-label=if side < 0.0 { "Borde izquierdo de la tienda" } else { "Borde derecho de la tienda" }
+                aria-valuemin=domain::MIN_WIDTH
+                aria-valuemax=domain::MAX_WIDTH
+                aria-valuenow=move || frame.get().0.round() as u32
+                aria-valuetext=now
+                title="Arrastrá para cambiar el ancho de toda la tienda"
+                on:pointerdown=move |ev: PointerEvent| {
+                    if ev.button() != 0 || width_drag.with_untracked(Option::is_some) {
+                        return;
+                    }
+                    ev.prevent_default();
+                    if let Some(el) = ev.current_target().and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok()) {
+                        _ = el.set_pointer_capture(ev.pointer_id());
+                        _ = el.focus();
+                    }
+                    let (w, _, k) = frame.get_untracked();
+                    width_drag.set(Some(WidthDrag {
+                        side,
+                        start_x: f64::from(ev.client_x()),
+                        start_w: w,
+                        scale: k,
+                        width: None,
+                        pointer_id: ev.pointer_id(),
+                    }));
+                }
+                on:pointermove=move |ev: PointerEvent| {
+                    let Some(d) = width_drag.get_untracked().filter(|d| d.pointer_id == ev.pointer_id()) else {
+                        return;
+                    };
+                    let dx = f64::from(ev.client_x()) - d.start_x;
+                    if d.width.is_none() && dx.abs() < NewDrag::THRESHOLD_PX {
+                        return;
+                    }
+                    let w = dragged_width(d.start_w, d.side, dx, d.scale);
+                    if d.width != Some(w) {
+                        width_drag.set(Some(WidthDrag { width: Some(w), ..d }));
+                    }
+                }
+                on:pointerup=move |ev: PointerEvent| {
+                    if width_drag.with_untracked(|d| d.is_some_and(|d| d.pointer_id == ev.pointer_id())) {
+                        finish_width_drag(true);
+                    }
+                }
+                on:lostpointercapture=move |_| finish_width_drag(false)
+                on:keydown=move |ev: KeyboardEvent| {
+                    let grow = match ev.key().as_str() {
+                        "Escape" if width_drag.with_untracked(Option::is_some) => {
+                            ev.prevent_default();
+                            finish_width_drag(false);
+                            ui.announce("Cambio de ancho cancelado.");
+                            return;
+                        }
+                        "ArrowRight" => side,
+                        "ArrowLeft" => -side,
+                        _ => return,
+                    };
+                    ev.prevent_default();
+                    let w = frame.get_untracked().0;
+                    let w = domain::snap_width(w + grow * f64::from(domain::WIDTH_STEP));
+                    state.apply_grouped(Some("layout-width"), |d| d.layout.max_width = w);
+                    ui.announce(format!("Ancho de la tienda: {w} px."));
+                }
+            >
+                <span class="mk-width-grip" aria-hidden="true">
+                    <span class="mk-width-label">{now}</span>
+                </span>
+            </div>
+        }
+    };
+    // Lo que mide la página en el lienzo: el ancho, el margen y la escala de
+    // la tienda. Centrada, también mientras se arrastra un borde.
+    let frame_style = move || {
+        let (w, p, k) = frame.get();
+        let total = (w + 2.0 * p) * k;
+        format!(
+            "width:{total:.1}px; padding:{:.2}px; margin-left:calc(50% - {:.1}px)",
+            p * k,
+            total / 2.0
+        )
+    };
+
     let product_choices = move || products.get_value();
     // En la vista previa, tocar un enlace muestra esa página, como en la tienda.
     let on_preview_click = move |ev: leptos::ev::MouseEvent| {
@@ -1035,7 +1243,19 @@ pub(crate) fn Canvas(
                         }
                     ></div>
                 })}
-                <div class="mx-auto max-w-6xl p-4">
+                <div
+                    class="mk-page-frame relative"
+                    class:is-dragging=move || width_drag.with(|d| d.is_some_and(|d| d.width.is_some()))
+                    style=frame_style
+                >
+                    {move || (!ui.preview.get() && !state.in_modal()).then(|| view! {
+                        <div class="mk-frame-outline" aria-hidden="true" style=move || {
+                            let (_, p, k) = frame.get();
+                            format!("inset:{:.1}px", p * k)
+                        }></div>
+                        {width_handle(-1.0)}
+                        {width_handle(1.0)}
+                    })}
                     {move || (welcome.get() && !ui.preview.get() && !state.in_modal()).then(|| view! {
                         <div data-theme="light" class="mb-4 rounded-box border border-primary/30 bg-base-100 p-4 text-base-content shadow-sm" role="region" aria-labelledby="mk-welcome-title">
                             <div class="flex items-start gap-3">
@@ -1155,5 +1375,34 @@ mod tests {
             resized(Edge::Corner, 16, 24, (20.0, 8.0), (10.0, 4.0)),
             (18, 26)
         );
+    }
+
+    #[test]
+    fn page_frame_follows_the_store_layout() {
+        let mut l = StoreLayout::default();
+        assert_eq!(page_frame(&l, None, 900.0), (1120.0, 16.0));
+        // Mientras se arrastra manda el ancho que se prueba.
+        assert_eq!(page_frame(&l, Some(960), 900.0), (960.0, 16.0));
+        l.margin = "wide".into();
+        l.max_width = 0;
+        // Ancho completo: todo el lienzo, y como mínimo una pantalla grande.
+        assert_eq!(
+            page_frame(&l, None, 900.0).0,
+            f64::from(domain::FULL_MIN_PX)
+        );
+        assert_eq!(page_frame(&l, None, 2000.0), (1904.0, 48.0));
+        assert!((fit_scale(576.0, 1152.0) - 0.5).abs() < 1e-9);
+        assert_eq!(fit_scale(2000.0, 1152.0), 1.0);
+    }
+
+    #[test]
+    fn dragging_an_edge_changes_the_width_twice_and_snaps() {
+        // El borde derecho 50 px afuera, sin escala: 100 px más, con imán de 40.
+        assert_eq!(dragged_width(1120.0, 1.0, 50.0, 1.0), 1240);
+        // El izquierdo hacia la derecha achica.
+        assert_eq!(dragged_width(1120.0, -1.0, 80.0, 1.0), 960);
+        // Con el lienzo a la mitad, cada px de pantalla vale dos de diseño.
+        assert_eq!(dragged_width(1120.0, 1.0, 40.0, 0.5), 1280);
+        assert_eq!(dragged_width(1120.0, 1.0, -5000.0, 1.0), domain::MIN_WIDTH);
     }
 }

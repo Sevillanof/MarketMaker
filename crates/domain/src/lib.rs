@@ -2,10 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
+mod layout;
 mod look;
 mod typography;
 mod widgets;
 
+pub use layout::*;
 pub use look::*;
 pub use typography::*;
 pub use widgets::*;
@@ -66,6 +68,10 @@ pub struct PageDoc {
     /// usa la de siempre.
     #[serde(default, skip_serializing_if = "Typography::is_default")]
     pub typography: Typography,
+    /// Márgenes y ancho de toda la tienda. Los documentos anteriores no lo
+    /// traen: se usa el de siempre.
+    #[serde(default, skip_serializing_if = "StoreLayout::is_default")]
+    pub layout: StoreLayout,
     pub nodes: Vec<Node>,
     /// Ficha que se abre al tocar un producto (en la cuadrícula o en el
     /// producto destacado). Es una sola para toda la tienda. Los documentos
@@ -144,6 +150,7 @@ impl Default for PageDoc {
             schema: SCHEMA_VERSION,
             theme: THEMES[0].to_string(),
             typography: Typography::default(),
+            layout: StoreLayout::default(),
             nodes: Vec::new(),
             product_modal: ProductModal::default(),
             pages: Vec::new(),
@@ -838,6 +845,7 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
         errors.push(format!("tema desconocido: {}", doc.theme));
     }
     doc.typography.errors(&mut errors);
+    doc.layout.errors(&mut errors);
     if doc.nodes.len() > MAX_NODES {
         errors.push(format!(
             "hay {} nodos; el máximo es {MAX_NODES}",
