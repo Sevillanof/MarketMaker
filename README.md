@@ -52,12 +52,12 @@ La primera compilación tarda unos minutos. Al arrancar, el servidor aplica las 
 En el editor (pensado para alguien sin experiencia):
 
 - Agregá bloques desde la paleta de la izquierda (miniaturas agrupadas, con buscador). El bloque nuevo se agrega al final, queda elegido y la vista lo lleva hasta él.
-- Elegí un bloque con un clic (o con Tab y Enter) y editá sus textos e imágenes en el inspector de la derecha. Las imágenes se eligen de una galería; también se puede pegar una dirección.
+- Elegí un bloque con un clic (o con Tab y Enter) y editalo en el panel de la derecha. La pestaña **Contenido** tiene sus textos, imágenes, listas y el grupo **Botón** (un interruptor para mostrarlo, su texto y adónde lleva, con un aviso si falta algo). La pestaña **Diseño** tiene el tamaño (ancho con nombres, Más bajo/Más alto y "Ajustar a mano" para los números exactos) y las letras del bloque. Las imágenes se eligen de una galería; también se puede pegar una dirección.
 - Movelo arrastrando, con los botones Subir y Bajar o con las flechas del teclado. Cambiá el tamaño tirando de los bordes, con los botones de ancho o con Mayús + flechas.
 - Los errores aparecen junto al campo y en un aviso al guardar, en palabras simples.
 - Atajos: Ctrl/⌘+Z deshacer, Ctrl/⌘+Mayús+Z rehacer, Ctrl/⌘+S guardar, Suprimir borrar, Esc soltar el bloque. Lo que escribís en un campo se deshace de una sola vez.
 - Los cambios sin guardar quedan también en el navegador: si cerrás la pestaña, al volver el editor ofrece recuperarlos.
-- **Letras** (en la barra de arriba) cambia las letras de toda la tienda: una combinación de fuentes para títulos y texto, o cada una por separado, y el tamaño general (Normal, Grande, Muy grande). Cada bloque tiene además **Letras de este bloque** en el panel derecho: fuente, tamaño, negrita, cursiva y alineación; lo que no se toca sigue a la tienda. Las fuentes se sirven desde `public/fonts` (licencia OFL, ver `public/fonts/LICENSE.txt`).
+- **Letras** (en la barra de arriba) cambia las letras de toda la tienda: una combinación de fuentes para títulos y texto, o cada una por separado, y el tamaño general (Normal, Grande, Muy grande). Cada bloque tiene además **Letras de este bloque** en la pestaña Diseño del panel derecho: fuente, tamaño, negrita, cursiva y alineación; lo que no se toca sigue a la tienda. Las fuentes se sirven desde `public/fonts` (licencia OFL, ver `public/fonts/LICENSE.txt`).
 - **Vista previa** muestra la página sin bordes ni controles. **Guardar** publica los cambios; recargá `/` para verlos.
 
 ## Widgets
