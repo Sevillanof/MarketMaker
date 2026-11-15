@@ -14,7 +14,7 @@ pub use ssr::*;
 #[cfg(feature = "ssr")]
 mod ssr {
     use super::*;
-    use crate::server::{internal, pool, TENANT_SLUG};
+    use crate::server::{internal, pool};
     use http::{header, HeaderValue};
     use std::collections::HashSet;
 
@@ -107,12 +107,17 @@ mod ssr {
         Ok(user.filter(|u| is_allowed(&u.email)))
     }
 
-    /// La tienda de este pedido. Por ahora siempre `demo`.
+    /// La tienda de la dirección de este pedido (`demo.localhost` → `demo`).
+    /// La tienda sale siempre de la dirección, nunca de lo que manda el
+    /// navegador.
     pub(crate) async fn current_tenant() -> Result<db::Tenant, ServerFnError> {
-        db::get_tenant_by_slug(&pool()?, TENANT_SLUG)
-            .await
-            .map_err(internal)?
-            .ok_or_else(|| ServerFnError::new("no existe el tenant demo"))
+        match crate::site::current_site() {
+            domain::Site::Platform => Err(ServerFnError::new("Esta dirección no es una tienda.")),
+            domain::Site::Store(slug) => db::get_tenant_by_slug(&pool()?, &slug)
+                .await
+                .map_err(internal)?
+                .ok_or_else(|| ServerFnError::new("No existe una tienda en esta dirección.")),
+        }
     }
 
     /// La persona que entró, si puede editar `tenant`; si no, un error en
@@ -148,13 +153,17 @@ pub async fn who_am_i() -> Result<Option<Me>, ServerFnError> {
     let Some(user) = current_user().await? else {
         return Ok(None);
     };
-    let tenant = current_tenant().await?;
-    let role = db::auth::role_in(&crate::server::pool()?, tenant.id, user.id)
-        .await
-        .map_err(crate::server::internal)?;
+    // En la plataforma no hay tienda que editar.
+    let can_edit = match current_tenant().await {
+        Ok(tenant) => db::auth::role_in(&crate::server::pool()?, tenant.id, user.id)
+            .await
+            .map_err(crate::server::internal)?
+            .is_some(),
+        Err(_) => false,
+    };
     Ok(Some(Me {
         email: user.email,
-        can_edit: role.is_some(),
+        can_edit,
     }))
 }
 
@@ -212,10 +221,12 @@ pub async fn check_code(
         db::auth::CodeResult::Wrong { left } => Ok(CodeCheck::Wrong { left }),
         db::auth::CodeResult::Expired => Ok(CodeCheck::Expired),
         db::auth::CodeResult::Ok { user_id } => {
-            let tenant = current_tenant().await?;
-            db::auth::claim_if_ownerless(&pool, tenant.id, user_id)
-                .await
-                .map_err(crate::server::internal)?;
+            // Una tienda sin dueño (la demo) queda de quien entra primero.
+            if let Ok(tenant) = current_tenant().await {
+                db::auth::claim_if_ownerless(&pool, tenant.id, user_id)
+                    .await
+                    .map_err(crate::server::internal)?;
+            }
             let token = db::auth::create_session(&pool, user_id)
                 .await
                 .map_err(crate::server::internal)?;

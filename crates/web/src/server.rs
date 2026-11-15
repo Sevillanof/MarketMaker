@@ -5,10 +5,6 @@ use domain::{PageDoc, PageView, SaveOutcome};
 use leptos::prelude::*;
 use leptos::server_fn::codec::Json;
 
-/// Tenant fijo de esta etapa (todavía no hay subdominios ni login).
-#[cfg(feature = "ssr")]
-pub(crate) const TENANT_SLUG: &str = "demo";
-
 #[cfg(feature = "ssr")]
 pub(crate) fn pool() -> Result<db::Pool, ServerFnError> {
     use_context::<db::Pool>().ok_or_else(|| ServerFnError::new("falta el pool de la base"))
