@@ -164,6 +164,9 @@ struct Toast {
 pub(crate) struct Ui {
     toast: RwSignal<Option<Toast>>,
     toast_seq: StoredValue<u64>,
+    /// El mouse o el foco están sobre el aviso: no se va solo mientras tanto.
+    toast_hover: StoredValue<bool>,
+    toast_focus: StoredValue<bool>,
     /// Texto para lectores de pantalla (región `role=status` invisible).
     announce: RwSignal<String>,
     pub preview: RwSignal<bool>,
@@ -172,6 +175,12 @@ pub(crate) struct Ui {
     /// El último apretar y soltar fue un arrastre: el clic que lo sigue no
     /// tiene que agregar el bloque al final.
     pub swallow_click: StoredValue<bool>,
+    /// Se está moviendo o cambiando de tamaño un bloque del lienzo con el
+    /// mouse: Esc cancela eso y no suelta el bloque elegido.
+    pub block_drag: StoredValue<bool>,
+    /// Se intentó guardar con datos para corregir: los campos muestran su
+    /// error aunque todavía no se hayan tocado.
+    pub show_errors: RwSignal<bool>,
     /// "Letras de este bloque" quedó abierta: sigue abierta al elegir otro bloque.
     pub block_type_open: RwSignal<bool>,
 }
@@ -203,15 +212,46 @@ impl Ui {
             text: text.into(),
             undo,
         }));
-        let (toast, toast_seq) = (self.toast, self.toast_seq);
+        self.hide_toast_later(Duration::from_secs(6));
+    }
+
+    /// Cierra el aviso actual dentro de `delay`, salvo que para entonces haya
+    /// otro aviso o el mouse o el foco estén sobre él. En ese caso se vuelve a
+    /// programar cuando salen (ver [`Ui::release_toast`]).
+    fn hide_toast_later(&self, delay: Duration) {
+        let seq = self.toast_seq.get_value();
+        let ui = *self;
         set_timeout(
             move || {
-                if toast_seq.get_value() == seq {
-                    toast.set(None);
+                if ui.toast_seq.get_value() == seq
+                    && !ui.toast_hover.get_value()
+                    && !ui.toast_focus.get_value()
+                {
+                    ui.toast.set(None);
                 }
             },
-            Duration::from_secs(6),
+            delay,
         );
+    }
+
+    /// El mouse (`hover`) o el foco dejaron el aviso: si ya nada lo retiene,
+    /// se va a los pocos segundos.
+    fn release_toast(&self, hover: bool) {
+        if hover {
+            self.toast_hover.set_value(false);
+        } else {
+            self.toast_focus.set_value(false);
+        }
+        if self.toast.with_untracked(Option::is_some) {
+            self.hide_toast_later(Duration::from_secs(3));
+        }
+    }
+
+    /// Cierra el aviso a mano.
+    fn close_toast(&self) {
+        self.toast_hover.set_value(false);
+        self.toast_focus.set_value(false);
+        self.toast.set(None);
     }
 
     pub fn announce(&self, text: impl Into<String>) {
@@ -434,6 +474,12 @@ pub(crate) fn focus_selector(selector: &str) {
     }
 }
 
+/// Después de redibujar, lleva el foco al título de la lista de errores del
+/// guardado.
+fn focus_problems() {
+    request_animation_frame(|| focus_selector("#mk-problems-title"));
+}
+
 /// Después de redibujar: lleva la vista al bloque, lo enfoca y, si `flash`,
 /// lo resalta un instante.
 pub(crate) fn reveal_node(id: &str, flash: bool) {
@@ -496,10 +542,14 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
     let ui = Ui {
         toast: RwSignal::new(None),
         toast_seq: StoredValue::new(0),
+        toast_hover: StoredValue::new(false),
+        toast_focus: StoredValue::new(false),
         announce: RwSignal::new(String::new()),
         preview: RwSignal::new(false),
         new_drag: RwSignal::new(None),
         swallow_click: StoredValue::new(false),
+        block_drag: StoredValue::new(false),
+        show_errors: RwSignal::new(false),
         block_type_open: RwSignal::new(false),
     };
     let actions = Actions { state, ui };
@@ -524,10 +574,14 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 }
                 state.base_version.set(version);
                 status.set(Status::Idle);
+                ui.show_errors.set(false);
                 ui.toast("Guardado. Tu tienda ya muestra estos cambios.", false);
             }
             Ok(SaveOutcome::Conflict { .. }) => status.set(Status::Conflict),
-            Ok(SaveOutcome::Invalid { errors }) => status.set(Status::Invalid(errors)),
+            Ok(SaveOutcome::Invalid { errors }) => {
+                status.set(Status::Invalid(errors));
+                focus_problems();
+            }
             Err(e) => status.set(Status::Error(e.to_string())),
         }
     });
@@ -594,12 +648,12 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         let doc = state.doc.get_untracked();
         let found = problems(&doc);
         if !found.is_empty() {
-            ui.announce(format!(
-                "No se guardó: hay {} {} para corregir.",
-                found.len(),
-                if found.len() == 1 { "dato" } else { "datos" }
-            ));
+            // Los campos con error lo muestran aunque no se hayan tocado, y
+            // el foco va a la lista de errores: el lector de pantalla la lee
+            // y desde ahí se llega a cada bloque.
+            ui.show_errors.set(true);
             status.set(Status::Problems(found));
+            focus_problems();
             return;
         }
         sent.set(Some(doc.clone()));
@@ -639,7 +693,9 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
             }
             match key.as_str() {
                 // Cancelar el arrastre lo resuelve el lienzo.
-                "Escape" if ui.new_drag.with_untracked(Option::is_some) => {}
+                "Escape"
+                    if ui.new_drag.with_untracked(Option::is_some) || ui.block_drag.get_value() => {
+                }
                 "Escape" if ui.preview.get_untracked() => ui.preview.set(false),
                 "Escape" => state.selected.set(None),
                 "Delete" | "Backspace" => {
@@ -786,11 +842,30 @@ fn Notices(
 ) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let ui = expect_context::<Ui>();
-    let close = move |_| status.set(Status::Idle);
+    let close_alert = move |_| status.set(Status::Idle);
+    // Cierra el aviso breve. Si el foco estaba en él, vuelve adonde estaba.
+    let close = move || {
+        let had_focus = ui.toast_focus.get_value();
+        ui.close_toast();
+        if had_focus {
+            // El elemento de donde vino el foco quedó marcado al entrar.
+            let back = document()
+                .query_selector("[data-mk-focus-return]")
+                .ok()
+                .flatten();
+            if let Some(el) = back.as_ref() {
+                _ = el.remove_attribute("data-mk-focus-return");
+            }
+            match back.and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok()) {
+                Some(el) => _ = el.focus(),
+                None => focus_selector("#mk-inspector-title"),
+            }
+        }
+    };
     let alert = move || {
         let close_btn = move || {
             view! {
-                <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar aviso" on:click=close>
+                <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar aviso" on:click=close_alert>
                     <Icon name="close"/>
                 </button>
             }
@@ -814,7 +889,7 @@ fn Notices(
                     <div class="alert items-start border-error bg-base-100 text-base-content shadow-lg">
                         <Icon name="alert" class="h-5 w-5 text-error"/>
                         <div class="flex flex-col gap-1">
-                            <p class="font-semibold">{if n == 1 {
+                            <p id="mk-problems-title" tabindex="-1" class="font-semibold focus:outline-none">{if n == 1 {
                                 "No se guardó: hay un dato para corregir.".to_string()
                             } else {
                                 format!("No se guardó: hay {n} datos para corregir.")
@@ -842,7 +917,7 @@ fn Notices(
                 <div class="alert items-start border-error bg-base-100 text-base-content shadow-lg">
                     <Icon name="alert" class="h-5 w-5 text-error"/>
                     <div>
-                        <p class="font-semibold">"No se pudo guardar:"</p>
+                        <p id="mk-problems-title" tabindex="-1" class="font-semibold focus:outline-none">"No se pudo guardar:"</p>
                         <ul class="list-disc pl-5">
                             {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
                         </ul>
@@ -863,19 +938,49 @@ fn Notices(
         }
     };
     view! {
-        <div class="pointer-events-none fixed bottom-4 left-4 z-50 flex max-w-lg flex-col gap-2 [&>*]:pointer-events-auto">
+        <div class="pointer-events-none fixed bottom-4 left-4 z-50 flex max-w-lg flex-col gap-2 [&>*]:pointer-events-auto" role="region" aria-label="Avisos">
             <div role="alert">{alert}</div>
             <div role="status" aria-live="polite">
                 {move || ui.toast.get().map(|t| view! {
-                    <div class="alert bg-neutral text-neutral-content shadow-lg">
+                    <div
+                        class="alert bg-neutral text-neutral-content shadow-lg"
+                        on:pointerenter=move |_| ui.toast_hover.set_value(true)
+                        on:pointerleave=move |_| ui.release_toast(true)
+                        on:focusin=move |ev: leptos::ev::FocusEvent| {
+                            // Recordar de dónde vino el foco para devolverlo al cerrar.
+                            if !ui.toast_focus.get_value() {
+                                if let Ok(list) = document().query_selector_all("[data-mk-focus-return]") {
+                                    for i in 0..list.length() {
+                                        if let Some(el) = list.get(i).and_then(|n| n.dyn_into::<web_sys::Element>().ok()) {
+                                            _ = el.remove_attribute("data-mk-focus-return");
+                                        }
+                                    }
+                                }
+                                if let Some(from) = ev.related_target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
+                                    _ = from.set_attribute("data-mk-focus-return", "");
+                                }
+                            }
+                            ui.toast_focus.set_value(true);
+                        }
+                        on:focusout=move |ev: leptos::ev::FocusEvent| {
+                            let inside = ev
+                                .related_target()
+                                .and_then(|t| t.dyn_into::<web_sys::Node>().ok())
+                                .zip(ev.current_target().and_then(|t| t.dyn_into::<web_sys::Node>().ok()))
+                                .is_some_and(|(to, toast)| toast.contains(Some(&to)));
+                            if !inside {
+                                ui.release_toast(false);
+                            }
+                        }
+                    >
                         <span>{t.text}</span>
                         {t.undo.then(|| view! {
                             <button type="button" class="btn btn-sm" on:click=move |_| {
                                 state.undo();
-                                ui.toast.set(None);
+                                close();
                             }>"Deshacer"</button>
                         })}
-                        <button type="button" class="btn btn-ghost btn-sm btn-square text-neutral-content hover:bg-white/10" aria-label="Cerrar aviso" on:click=move |_| ui.toast.set(None)>
+                        <button type="button" class="btn btn-ghost btn-sm btn-square text-neutral-content hover:bg-white/10" aria-label="Cerrar aviso" on:click=move |_| close()>
                             <Icon name="close"/>
                         </button>
                     </div>

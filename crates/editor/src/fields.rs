@@ -5,7 +5,7 @@ use domain::{Field, FieldKind, PageDoc, Product, Widget};
 use leptos::prelude::*;
 
 use crate::icons::Icon;
-use crate::EditorState;
+use crate::{EditorState, Ui};
 
 /// Cambia una prop de un nodo pasando por `serde_json::Value`.
 pub(crate) fn set_field(doc: &mut PageDoc, id: &str, key: &str, value: serde_json::Value) {
@@ -119,16 +119,43 @@ fn FieldInput(
     set: Callback<serde_json::Value>,
 ) -> impl IntoView {
     let state = expect_context::<EditorState>();
-    let end = move |_| state.end_group();
+    let ui = expect_context::<Ui>();
+    // El error se muestra recién cuando la persona terminó con el campo
+    // (salió de él o lo cambió de un clic) o intentó guardar, no mientras
+    // escribe. Si lo corrige, se va enseguida.
+    let touched = RwSignal::new(false);
+    let found = Signal::derive(move || value.with(|v| domain::field_error(&field.kind, Some(v))));
+    let error = Signal::derive(move || {
+        (touched.get() || ui.show_errors.get())
+            .then(|| found.get())
+            .flatten()
+    });
+    // Al salir del campo: cierra el paso de deshacer y, si quedó un error que
+    // no se veía, lo anuncia un momento después para no pisar el campo que
+    // recibe el foco.
+    let end = move || {
+        state.end_group();
+        let was_shown = error.with_untracked(Option::is_some);
+        touched.set(true);
+        if !was_shown {
+            if let Some(msg) = found.get_untracked() {
+                let text = format!("{}: {msg}", field.label);
+                set_timeout(
+                    move || ui.announce(text),
+                    std::time::Duration::from_millis(600),
+                );
+            }
+        }
+    };
     // Un clic, un paso de deshacer.
     let set_once = move |v: serde_json::Value| {
         state.end_group();
         set.run(v);
         state.end_group();
+        touched.set(true);
     };
     let text = move || value.get().as_str().unwrap_or_default().to_string();
     let set_str = move |s: String| set.run(serde_json::Value::String(s));
-    let error = Signal::derive(move || value.with(|v| domain::field_error(&field.kind, Some(v))));
     let (help_id, error_id) = (format!("{uid}-help"), format!("{uid}-error"));
     let help_text = help(field.key);
     let described = {
@@ -144,7 +171,13 @@ fn FieldInput(
             (!ids.is_empty()).then(|| ids.join(" "))
         }
     };
-    let invalid = move || error.with(Option::is_some).then_some("true");
+    let invalid = move || {
+        if error.with(Option::is_some) {
+            "true"
+        } else {
+            "false"
+        }
+    };
 
     if let FieldKind::List { item, min, max } = &field.kind {
         return view! { <ListInput products field item min=*min max=*max uid value set/> }
@@ -154,7 +187,7 @@ fn FieldInput(
         return view! {
             <div class="flex flex-col gap-1">
                 <span class="text-sm font-medium" id=format!("{uid}-label")>{field.label}</span>
-                <ImagePicker uid=uid.clone() value set pick=Callback::new(set_once)/>
+                <ImagePicker uid=uid.clone() value set pick=Callback::new(set_once) on_blur=Callback::new(move |()| end())/>
                 {move || error.get().map(|e| view! { <FieldError id=format!("{uid}-error") text=e/> })}
             </div>
         }
@@ -177,7 +210,7 @@ fn FieldInput(
                 aria-describedby=described.clone()
                 prop:value=text
                 on:input=move |ev| set_str(event_target_value(&ev))
-                on:blur=end
+                on:blur=move |_| end()
             />
         }
         .into_any(),
@@ -191,7 +224,7 @@ fn FieldInput(
                 aria-describedby=described.clone()
                 prop:value=text
                 on:input=move |ev| set_str(event_target_value(&ev))
-                on:blur=end
+                on:blur=move |_| end()
             ></textarea>
         }
         .into_any(),
@@ -207,7 +240,7 @@ fn FieldInput(
                 aria-describedby=described.clone()
                 prop:value=text
                 on:input=move |ev| set_str(event_target_value(&ev))
-                on:blur=end
+                on:blur=move |_| end()
             />
         }
         .into_any(),
@@ -242,7 +275,7 @@ fn FieldInput(
                             set.run(serde_json::Value::from(n.clamp(min, max)));
                         }
                     }
-                    on:blur=end
+                    on:blur=move |_| end()
                 />
             }
             .into_any()
@@ -366,8 +399,9 @@ fn ImagePicker(
     set: Callback<serde_json::Value>,
     /// Cambio de un solo clic.
     pick: Callback<serde_json::Value>,
+    /// Al salir del campo de la dirección.
+    on_blur: Callback<()>,
 ) -> impl IntoView {
-    let state = expect_context::<EditorState>();
     let open = RwSignal::new(false);
     let src = move || value.get().as_str().unwrap_or_default().to_string();
     let name = move || {
@@ -442,7 +476,7 @@ fn ImagePicker(
                 placeholder="https://…"
                 prop:value=src
                 on:input=move |ev| set.run(serde_json::Value::String(event_target_value(&ev)))
-                on:blur=move |_| state.end_group()
+                on:blur=move |_| on_blur.run(())
             />
         </div>
     }
