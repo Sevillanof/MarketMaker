@@ -166,6 +166,7 @@ async fn upload(
         processed.width,
         processed.height,
         size,
+        processed.web_bytes(),
     )
     .await
     {

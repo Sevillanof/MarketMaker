@@ -9,8 +9,8 @@ pub const MAX_PER_OWNER: i64 = 500;
 
 /// Las fotos del dueño, de la más nueva a la más vieja.
 pub async fn list(pool: &PgPool, owner_id: Uuid) -> sqlx::Result<Vec<MediaItem>> {
-    let rows = sqlx::query_as::<_, (Uuid, String, i32, i32)>(
-        "SELECT id, name, width, height FROM media
+    let rows = sqlx::query_as::<_, (Uuid, String, i32, i32, i64, i64)>(
+        "SELECT id, name, width, height, bytes, web_bytes FROM media
          WHERE owner_id = $1 ORDER BY created_at DESC, id",
     )
     .bind(owner_id)
@@ -18,7 +18,7 @@ pub async fn list(pool: &PgPool, owner_id: Uuid) -> sqlx::Result<Vec<MediaItem>>
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, w, h)| item(id, name, w, h))
+        .map(|(id, name, w, h, b, wb)| item(id, name, w, h, b, wb))
         .collect())
 }
 
@@ -38,10 +38,11 @@ pub async fn insert(
     width: u32,
     height: u32,
     bytes: usize,
+    web_bytes: usize,
 ) -> sqlx::Result<MediaItem> {
     let (w, h) = (width as i32, height as i32);
     sqlx::query(
-        "INSERT INTO media (id, owner_id, name, width, height, bytes) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO media (id, owner_id, name, width, height, bytes, web_bytes) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(id)
     .bind(owner_id)
@@ -49,9 +50,17 @@ pub async fn insert(
     .bind(w)
     .bind(h)
     .bind(bytes as i64)
+    .bind(web_bytes as i64)
     .execute(pool)
     .await?;
-    Ok(item(id, name.to_string(), w, h))
+    Ok(item(
+        id,
+        name.to_string(),
+        w,
+        h,
+        bytes as i64,
+        web_bytes as i64,
+    ))
 }
 
 /// Borra la foto si es del dueño. Devuelve si existía.
@@ -64,12 +73,14 @@ pub async fn delete(pool: &PgPool, owner_id: Uuid, id: Uuid) -> sqlx::Result<boo
     Ok(r.rows_affected() > 0)
 }
 
-fn item(id: Uuid, name: String, width: i32, height: i32) -> MediaItem {
+fn item(id: Uuid, name: String, width: i32, height: i32, bytes: i64, web_bytes: i64) -> MediaItem {
     MediaItem {
         id: id.to_string(),
         url: domain::media_url(&id.to_string()),
         name,
         width: width.max(0) as u32,
         height: height.max(0) as u32,
+        original_bytes: bytes.max(0) as u64,
+        web_bytes: web_bytes.max(0) as u64,
     }
 }
