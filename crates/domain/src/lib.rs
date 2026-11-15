@@ -2,8 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+mod typography;
 mod widgets;
 
+pub use typography::*;
 pub use widgets::*;
 
 /// Versión del formato del documento. La 1 guardaba el tamaño como el id de
@@ -42,6 +44,10 @@ pub fn theme_label(theme: &str) -> &str {
 pub struct PageDoc {
     pub schema: u32,
     pub theme: String,
+    /// Letras de toda la tienda. Los documentos anteriores no la traen: se
+    /// usa la de siempre.
+    #[serde(default, skip_serializing_if = "Typography::is_default")]
+    pub typography: Typography,
     pub nodes: Vec<Node>,
 }
 
@@ -50,6 +56,7 @@ impl Default for PageDoc {
         Self {
             schema: SCHEMA_VERSION,
             theme: THEMES[0].to_string(),
+            typography: Typography::default(),
             nodes: Vec::new(),
         }
     }
@@ -62,6 +69,9 @@ pub struct Node {
     pub widget: Widget,
     pub pos: Pos,
     pub size: Size,
+    /// Letras propias del bloque; lo vacío se toma de la tienda.
+    #[serde(default, skip_serializing_if = "TextStyle::is_default")]
+    pub style: TextStyle,
 }
 
 impl Node {
@@ -73,6 +83,7 @@ impl Node {
             widget,
             pos: Pos { x: 0, y: 0 },
             size,
+            style: TextStyle::default(),
         }
     }
 }
@@ -361,6 +372,7 @@ fn validate_fields(node: &Node, errors: &mut Vec<String>) {
     };
     let path = format!("{} › ", node.widget.label());
     validate_props(node.widget.fields(), value.get("props"), &path, errors);
+    node.style.errors(&path, errors);
 }
 
 /// Valida un documento completo. El servidor rechaza el guardado si hay algún error.
@@ -376,6 +388,7 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
     if !THEMES.contains(&doc.theme.as_str()) {
         errors.push(format!("tema desconocido: {}", doc.theme));
     }
+    doc.typography.errors(&mut errors);
     if doc.nodes.len() > MAX_NODES {
         errors.push(format!(
             "hay {} nodos; el máximo es {MAX_NODES}",
@@ -659,13 +672,63 @@ mod tests {
     #[test]
     fn rejects_unknown_select_option() {
         let mut doc = PageDoc {
-            nodes: vec![node("t", "Text", 0, 0)],
+            nodes: vec![node("c", "Card", 0, 0)],
             ..PageDoc::default()
         };
-        if let Widget::Text(t) = &mut doc.nodes[0].widget {
-            t.align = "right".into();
+        if let Widget::Card(c) = &mut doc.nodes[0].widget {
+            c.layout = "diagonal".into();
         }
-        assert_invalid(&doc, "Alineación: Elegí una de las opciones");
+        assert_invalid(&doc, "Tarjeta › Diseño: Elegí una de las opciones");
+    }
+
+    #[test]
+    fn typography_and_block_style_round_trip_and_validate() {
+        let mut doc = example();
+        // Sin letras propias, el JSON no cambia (ver `example_round_trips_through_json`).
+        assert!(serde_json::to_value(&doc)
+            .unwrap()
+            .get("typography")
+            .is_none());
+        doc.typography = Typography {
+            heading: "playfair".into(),
+            body: "inter".into(),
+            size: "large".into(),
+        };
+        doc.nodes[0].style = TextStyle {
+            font: "oswald".into(),
+            size: "larger".into(),
+            bold: true,
+            italic: true,
+            align: "right".into(),
+        };
+        assert_eq!(validate(&doc), Ok(()));
+        let json = serde_json::to_value(&doc).unwrap();
+        assert_eq!(json["typography"]["heading"], "playfair");
+        assert_eq!(json["nodes"][0]["style"]["font"], "oswald");
+        assert!(json["nodes"][1].get("style").is_none());
+        assert_eq!(parse_doc(json), Ok(doc.clone()));
+
+        // Un estilo a medias completa el resto con los valores por defecto.
+        let mut partial = serde_json::to_value(example()).unwrap();
+        partial["nodes"][0]["style"] = serde_json::json!({ "bold": true });
+        let parsed = parse_doc(partial).unwrap();
+        assert!(parsed.nodes[0].style.bold);
+        assert_eq!(parsed.nodes[0].style.font, "");
+
+        doc.typography.body = "comic-sans".into();
+        assert_invalid(&doc, "Fuente del texto");
+        doc.typography.body = "inter".into();
+        doc.typography.size = "enorme".into();
+        assert_invalid(&doc, "Letras › Tamaño");
+        doc.typography.size = "normal".into();
+        doc.nodes[0].style.align = "justify".into();
+        assert_invalid(&doc, "Banner › Alineación");
+        doc.nodes[0].style.align = String::new();
+        doc.nodes[0].style.size = "gigante".into();
+        assert_invalid(&doc, "Banner › Tamaño de letra");
+        doc.nodes[0].style.size = String::new();
+        doc.nodes[0].style.font = "papyrus".into();
+        assert_invalid(&doc, "Banner › Fuente");
     }
 
     #[test]

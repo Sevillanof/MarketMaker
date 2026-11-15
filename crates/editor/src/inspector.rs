@@ -6,6 +6,7 @@ use leptos::prelude::*;
 use crate::fields::PropField;
 use crate::icons::Icon;
 use crate::palette::block_info;
+use crate::typography::BlockTypography;
 use crate::{Actions, EditorState};
 
 /// Anchos con nombre, en columnas de 48.
@@ -189,6 +190,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                 .into_iter()
                 .map(|f| view! { <PropField products id=basic_id.clone() field=f/> })
                 .collect_view()}
+            <BlockTypography id=id.clone()/>
             {has_advanced.then(|| view! {
                 <details class="collapse collapse-arrow border border-base-300">
                     <summary class="collapse-title text-sm font-medium">"Más opciones"</summary>

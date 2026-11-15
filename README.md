@@ -57,6 +57,7 @@ En el editor (pensado para alguien sin experiencia):
 - Los errores aparecen junto al campo y en un aviso al guardar, en palabras simples.
 - Atajos: Ctrl/⌘+Z deshacer, Ctrl/⌘+Mayús+Z rehacer, Ctrl/⌘+S guardar, Suprimir borrar, Esc soltar el bloque. Lo que escribís en un campo se deshace de una sola vez.
 - Los cambios sin guardar quedan también en el navegador: si cerrás la pestaña, al volver el editor ofrece recuperarlos.
+- **Letras** (en la barra de arriba) cambia las letras de toda la tienda: una combinación de fuentes para títulos y texto, o cada una por separado, y el tamaño general (Normal, Grande, Muy grande). Cada bloque tiene además **Letras de este bloque** en el panel derecho: fuente, tamaño, negrita, cursiva y alineación; lo que no se toca sigue a la tienda. Las fuentes se sirven desde `public/fonts` (licencia OFL, ver `public/fonts/LICENSE.txt`).
 - **Vista previa** muestra la página sin bordes ni controles. **Guardar** publica los cambios; recargá `/` para verlos.
 
 ## Widgets

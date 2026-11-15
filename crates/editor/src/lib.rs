@@ -12,6 +12,7 @@ mod fields;
 mod icons;
 mod inspector;
 mod palette;
+mod typography;
 
 use domain::{Node, PageDoc, PageView, SaveOutcome, THEMES, THEME_LABELS};
 use leptos::prelude::*;
@@ -22,6 +23,7 @@ use canvas::Canvas;
 use icons::Icon;
 use inspector::Inspector;
 use palette::Palette;
+use typography::StoreTypography;
 
 /// Cuántos pasos de deshacer se guardan.
 pub const MAX_UNDO: usize = 50;
@@ -170,6 +172,8 @@ pub(crate) struct Ui {
     /// El último apretar y soltar fue un arrastre: el clic que lo sigue no
     /// tiene que agregar el bloque al final.
     pub swallow_click: StoredValue<bool>,
+    /// "Letras de este bloque" quedó abierta: sigue abierta al elegir otro bloque.
+    pub block_type_open: RwSignal<bool>,
 }
 
 /// Arrastre de un bloque nuevo desde la paleta hacia el lienzo.
@@ -496,6 +500,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         preview: RwSignal::new(false),
         new_drag: RwSignal::new(None),
         swallow_click: StoredValue::new(false),
+        block_type_open: RwSignal::new(false),
     };
     let actions = Actions { state, ui };
     provide_context(state);
@@ -684,6 +689,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                             .collect_view()}
                     </select>
                 </label>
+                <StoreTypography/>
                 <button
                     type="button"
                     class="btn btn-sm"
