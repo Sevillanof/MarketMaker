@@ -17,6 +17,7 @@ fn path(name: &str) -> &'static str {
         "external" => "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
         "eye" => "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6",
         "plus" => "M12 5v14M5 12h14",
+        "search" => "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-4-4",
         "close" => "M6 6l12 12M18 6L6 18",
         "check" => "M5 12l5 5 9-10",
         "alert" => "M12 4l9 16H3zM12 10v4M12 17v.01",
