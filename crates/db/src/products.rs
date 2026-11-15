@@ -17,6 +17,7 @@ struct Row {
     description: String,
     compare_at_cents: i64,
     in_stock: bool,
+    stock: Option<i32>,
     visible: bool,
     photos: Vec<String>,
     tags: Vec<String>,
@@ -31,7 +32,8 @@ impl From<Row> for Product {
             image_url: r.image_url,
             description: r.description,
             compare_at_cents: r.compare_at_cents,
-            in_stock: r.in_stock,
+            in_stock: r.in_stock && r.stock != Some(0),
+            stock: r.stock.map(|s| s.max(0) as u32),
             visible: r.visible,
             photos: r.photos,
             tags: r.tags,
@@ -44,7 +46,7 @@ macro_rules! select {
     ($rest:literal) => {
         concat!(
             "SELECT id, name, price_cents, image_url, description, compare_at_cents, ",
-            "in_stock, visible, photos, tags ",
+            "in_stock, stock, visible, photos, tags ",
             $rest
         )
     };
@@ -106,8 +108,8 @@ pub async fn count(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
 pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uuid> {
     sqlx::query_scalar(
         "INSERT INTO products (tenant_id, name, price_cents, image_url, description,
-                               compare_at_cents, in_stock, visible, photos, tags)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                               compare_at_cents, in_stock, visible, photos, tags, stock)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id",
     )
     .bind(tenant)
@@ -120,6 +122,7 @@ pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uu
     .bind(p.visible)
     .bind(&p.photos)
     .bind(&p.tags)
+    .bind(p.stock.map(|s| s as i32))
     .fetch_one(pool)
     .await
 }
@@ -129,7 +132,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     let done = sqlx::query(
         "UPDATE products SET name = $3, price_cents = $4, image_url = $5, description = $6,
                 compare_at_cents = $7, in_stock = $8, visible = $9, photos = $10, tags = $11,
-                updated_at = now()
+                stock = $12, updated_at = now()
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(tenant)
@@ -143,6 +146,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     .bind(p.visible)
     .bind(&p.photos)
     .bind(&p.tags)
+    .bind(p.stock.map(|s| s as i32))
     .execute(pool)
     .await?;
     Ok(done.rows_affected() == 1)

@@ -109,9 +109,21 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         items: &items,
         shipping_cents: domain::shipping_for(form.delivery, &delivery),
     };
-    let (id, number) = db::orders::create(&pool, tenant.id, &new)
+    let (id, number) = match db::orders::create(&pool, tenant.id, &new)
         .await
-        .map_err(internal)?;
+        .map_err(internal)?
+    {
+        db::orders::Created::Saved { id, number } => (id, number),
+        db::orders::Created::Short { name, left: 0 } => {
+            return changed(format!("\"{name}\" se agotó. Sacalo del carrito para seguir."))
+        }
+        db::orders::Created::Short { name, left } => {
+            return changed(format!(
+                "De \"{name}\" {} {left}. Bajá la cantidad en el carrito para seguir.",
+                if left == 1 { "queda" } else { "quedan" }
+            ))
+        }
+    };
     if pay_online {
         let order = db::orders::get(&pool, tenant.id, id)
             .await

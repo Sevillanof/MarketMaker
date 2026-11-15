@@ -72,7 +72,13 @@ impl Cart {
                 loaded.set_value(true);
                 if let Some(saved) = storage().and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
                 {
-                    lines.set(parse(&saved));
+                    // Si ahora quedan menos unidades, se deja lo que hay.
+                    let mut saved = parse(&saved);
+                    for (id, q) in &mut saved {
+                        let max = cart.limit(id).max(1);
+                        *q = (*q).min(max);
+                    }
+                    lines.set(saved);
                 }
                 ready.set(true);
                 return;
@@ -91,13 +97,26 @@ impl Cart {
             .with(|ls| ls.iter().find(|(i, _)| i == id).map_or(0, |(_, q)| *q))
     }
 
-    /// Suma `n` unidades de un producto (hasta [`MAX_QTY`]).
+    /// Cuántas unidades de un producto se pueden llevar: las que quedan si
+    /// la tienda las cuenta, y nunca más de [`MAX_QTY`].
+    pub fn limit(&self, id: &str) -> u32 {
+        self.products
+            .with_value(|ps| ps.iter().find(|p| p.id == id).and_then(|p| p.stock))
+            .map_or(MAX_QTY, |s| s.min(MAX_QTY))
+    }
+
+    /// Suma `n` unidades de un producto (hasta [`Cart::limit`]).
     pub fn add(&self, id: &str, n: u32) {
-        self.lines.update(|ls| add_line(ls, id, n));
+        let max = self.limit(id);
+        self.lines.update(|ls| {
+            add_line(ls, id, n);
+            clamp_line(ls, id, max);
+        });
     }
 
     /// Deja `n` unidades de un producto; con 0 lo quita.
     pub fn set(&self, id: &str, n: u32) {
+        let n = n.min(self.limit(id));
         self.lines.update(|ls| set_line(ls, id, n));
     }
 
@@ -195,6 +214,13 @@ fn add_line(lines: &mut Vec<(String, u32)>, id: &str, n: u32) {
         Some((_, q)) => *q = (*q + n).min(MAX_QTY),
         None if n > 0 => lines.push((id.to_string(), n.min(MAX_QTY))),
         None => {}
+    }
+}
+
+/// Si quedan menos unidades que las del carrito, deja las que quedan.
+fn clamp_line(lines: &mut [(String, u32)], id: &str, max: u32) {
+    if let Some((_, q)) = lines.iter_mut().find(|(i, _)| i == id) {
+        *q = (*q).min(max.max(1));
     }
 }
 
@@ -398,7 +424,9 @@ fn CartQty(
             <output class=out aria-live="polite">
                 {move || if card { format!("{} en carrito", qty()) } else { qty().to_string() }}
             </output>
-            <button type="button" class=btn aria-label="Uno más" disabled=move || (qty() >= MAX_QTY)
+            <button type="button" class=btn aria-label="Uno más"
+                disabled=move || { let max = id.with_value(|id| cart.limit(id)); qty() >= max }
+                title=move || { let max = id.with_value(|id| cart.limit(id)); (max < MAX_QTY && qty() >= max).then(|| format!("No quedan más (hay {max})")) }
                 on:click=move |_| id.with_value(|id| cart.add(id, 1))>"+"</button>
         </div>
     }
@@ -437,6 +465,9 @@ pub fn QtyStepper(
     #[prop(into)] label: String,
     #[prop(optional)] small: bool,
     #[prop(optional)] disabled: bool,
+    /// Lo más que se puede elegir.
+    #[prop(default = MAX_QTY)]
+    max: u32,
 ) -> impl IntoView {
     let btn = if small {
         "btn btn-ghost btn-sm btn-square rounded-none"
@@ -448,8 +479,8 @@ pub fn QtyStepper(
             <button type="button" class=btn aria-label="Uno menos" disabled=move || disabled || (value.get() <= 1)
                 on:click=move |_| value.update(|v| *v = v.saturating_sub(1).max(1))>"−"</button>
             <output class="min-w-8 border-x border-base-300 px-1 text-center font-semibold tabular-nums" aria-live="polite">{move || value.get()}</output>
-            <button type="button" class=btn aria-label="Uno más" disabled=move || disabled || (value.get() >= MAX_QTY)
-                on:click=move |_| value.update(|v| *v = (*v + 1).min(MAX_QTY))>"+"</button>
+            <button type="button" class=btn aria-label="Uno más" disabled=move || disabled || (value.get() >= max)
+                on:click=move |_| value.update(|v| *v = (*v + 1).min(max))>"+"</button>
         </div>
     }
 }
@@ -481,7 +512,7 @@ pub fn AddToCart(
     // Todo en una línea: el bloque recorta lo que no entra.
     view! {
         <div class="mk-pbtn flex h-full flex-nowrap items-start gap-2">
-            <QtyStepper value=qty label=format!("Cantidad de {}", product.name)/>
+            <QtyStepper value=qty label=format!("Cantidad de {}", product.name) max=id.with_value(|id| cart.limit(id)).max(1)/>
             <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
                 on:click=move |_| {
                     id.with_value(|id| cart.add(id, qty.get()));
@@ -666,7 +697,10 @@ fn CartRow(item: CartItem, cart: Cart) -> impl IntoView {
                 </div>
                 {if product.in_stock {
                     view! {
-                        <p class="mt-0.5 text-sm text-base-content/70">{unit}</p>
+                        <p class="mt-0.5 text-sm text-base-content/70">
+                            {unit}
+                            {product.few_left().map(|t| view! { <span class="ml-2 font-semibold text-warning">{t}</span> })}
+                        </p>
                         <div class="mt-2 flex items-center gap-2">
                             <CartQty id name=name.clone() cart/>
                             <button type="button" class="btn btn-ghost btn-sm gap-1 text-base-content/70"
