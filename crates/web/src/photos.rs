@@ -1,12 +1,12 @@
 //! Mis fotos en la plataforma (`/mis-fotos`): todas las fotos del dueño, con
 //! cuánto pesan, dónde se usan, y para cambiarles el nombre o borrarlas.
 
-use domain::{MediaItem, MyPhoto};
+use domain::{MediaItem, MyLibrary, MyPhoto};
 use leptos::prelude::*;
 
 /// Las fotos de quien entró, con dónde se usa cada una. Vacío si no entró.
 #[server]
-pub async fn my_photos() -> Result<Option<Vec<MyPhoto>>, ServerFnError> {
+pub async fn my_photos() -> Result<Option<MyLibrary>, ServerFnError> {
     use crate::server::{internal, pool};
     let Some(user) = crate::auth::current_user().await? else {
         return Ok(None);
@@ -14,19 +14,19 @@ pub async fn my_photos() -> Result<Option<Vec<MyPhoto>>, ServerFnError> {
     let pool = pool()?;
     let items = db::media::list(&pool, user.id).await.map_err(internal)?;
     let usage = db::media::usage(&pool, user.id).await.map_err(internal)?;
-    Ok(Some(
-        items
-            .into_iter()
-            .map(|item| {
-                let used_in = usage
-                    .iter()
-                    .filter(|(id, _, _)| id.to_string() == item.id)
-                    .map(|(_, store, page)| format!("{store} · {}", domain::page_label(page)))
-                    .collect();
-                MyPhoto { item, used_in }
-            })
-            .collect(),
-    ))
+    let quota = db::media::quota(&pool, user.id).await.map_err(internal)?;
+    let photos = items
+        .into_iter()
+        .map(|item| {
+            let used_in = usage
+                .iter()
+                .filter(|(id, _, _)| id.to_string() == item.id)
+                .map(|(_, store, page)| format!("{store} · {}", domain::page_label(page)))
+                .collect();
+            MyPhoto { item, used_in }
+        })
+        .collect();
+    Ok(Some(MyLibrary { photos, quota }))
 }
 
 /// Cambia el nombre de una foto.
@@ -47,6 +47,30 @@ pub async fn rename_photo(id: String, name: String) -> Result<(), ServerFnError>
     Ok(())
 }
 
+/// Cambia la descripción de una foto (qué se ve en ella).
+#[server]
+pub async fn set_photo_alt(id: String, alt: String) -> Result<(), ServerFnError> {
+    use crate::server::{internal, pool};
+    let user = crate::auth::current_user()
+        .await?
+        .ok_or_else(|| ServerFnError::new("Tenés que entrar con tu cuenta."))?;
+    let alt: String = alt
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(domain::PHOTO_ALT_MAX)
+        .collect();
+    let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Esa foto no existe."))?;
+    if !db::media::set_alt(&pool()?, user.id, id, &alt)
+        .await
+        .map_err(internal)?
+    {
+        return Err(ServerFnError::new("Esa foto ya no está en Mis fotos."));
+    }
+    Ok(())
+}
+
 /// Borra una foto de Mis fotos y sus archivos.
 #[server]
 pub async fn delete_photo(id: String) -> Result<(), ServerFnError> {
@@ -55,12 +79,12 @@ pub async fn delete_photo(id: String) -> Result<(), ServerFnError> {
         .await?
         .ok_or_else(|| ServerFnError::new("Tenés que entrar con tu cuenta."))?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Esa foto no existe."))?;
-    if db::media::delete(&pool()?, user.id, id)
+    if let Some(folder) = db::media::delete(&pool()?, user.id, id)
         .await
         .map_err(internal)?
     {
         if let Some(store) = use_context::<media::Store>() {
-            _ = store.delete_all(&id.to_string()).await;
+            _ = store.delete_all(&folder).await;
         }
     }
     Ok(())
@@ -124,18 +148,23 @@ pub fn MyPhotosPage() -> impl IntoView {
                             Err(_) => view! {
                                 <div role="alert" class="alert alert-error">"No pudimos traer tus fotos. Recargá la página."</div>
                             }.into_any(),
-                            Ok(Some(list)) if list.is_empty() => view! {
-                                <div class="card bg-base-100 shadow-sm"><div class="card-body">
-                                    <p>"Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."</p>
-                                </div></div>
-                            }.into_any(),
-                            Ok(Some(list)) => {
-                                let total = list.len();
+                            Ok(Some(MyLibrary { photos, quota })) => {
+                                let empty = photos.is_empty();
                                 view! {
-                                    <p class="text-sm text-base-content/70">{format!("{total} de 500 fotos")}</p>
-                                    <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tus fotos">
-                                        {list.into_iter().map(|p| view! { <PhotoCard photo=p reload/> }).collect_view()}
-                                    </ul>
+                                    <QuotaBar quota/>
+                                    {if empty {
+                                        view! {
+                                            <div class="card bg-base-100 shadow-sm"><div class="card-body">
+                                                <p>"Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."</p>
+                                            </div></div>
+                                        }.into_any()
+                                    } else {
+                                        view! {
+                                            <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tus fotos">
+                                                {photos.into_iter().map(|p| view! { <PhotoCard photo=p reload/> }).collect_view()}
+                                            </ul>
+                                        }.into_any()
+                                    }}
                                 }.into_any()
                             }
                         }
@@ -157,6 +186,8 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
         height,
         original_bytes,
         web_bytes,
+        alt,
+        ..
     } = item;
     let thumb = domain::media_base(&url)
         .map(|b| format!("{b}/480.webp"))
@@ -168,6 +199,25 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
     let rename =
         Action::new(|(id, name): &(String, String)| rename_photo(id.clone(), name.clone()));
     let remove = Action::new(|id: &String| delete_photo(id.clone()));
+    let saved_alt = RwSignal::new(alt.clone());
+    let alt_draft = RwSignal::new(alt);
+    let alt_action =
+        Action::new(|(id, alt): &(String, String)| set_photo_alt(id.clone(), alt.clone()));
+    Effect::new(move |_| match alt_action.value().get() {
+        Some(Ok(())) => {
+            saved_alt.set(alt_draft.get_untracked().trim().to_string());
+            error.set(None);
+        }
+        Some(Err(e)) => error.set(Some(clean(e))),
+        None => {}
+    });
+    let id_alt = id.clone();
+    let save_alt = move || {
+        let a = alt_draft.get_untracked().trim().to_string();
+        if a != saved_alt.get_untracked() {
+            alt_action.dispatch((id_alt.clone(), a));
+        }
+    };
     Effect::new(move |_| match rename.value().get() {
         Some(Ok(())) => {
             saved_name.set(draft.get_untracked());
@@ -192,6 +242,8 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
     };
     let save2 = save.clone();
     let input_id = format!("foto-{id}");
+    let alt_id = format!("foto-{id}-alt");
+    let alt_help = format!("foto-{id}-alt-ayuda");
     let uses = used_in.len();
     let sizes = if original_bytes > 0 && web_bytes > 0 {
         format!(
@@ -213,6 +265,20 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
                     on:input=move |ev| draft.set(event_target_value(&ev))
                     on:blur=move |_| save()
                     on:keydown=move |ev| if ev.key() == "Enter" { save2() }/>
+                <label for=alt_id.clone() class="text-xs font-medium text-base-content/70">"Qué se ve en la foto"</label>
+                <textarea id=alt_id class="textarea textarea-sm w-full" rows="2" maxlength=domain::PHOTO_ALT_MAX
+                    aria-describedby=alt_help.clone()
+                    placeholder="Ej.: Remera azul de algodón, vista de frente"
+                    prop:value=move || alt_draft.get()
+                    on:input=move |ev| alt_draft.set(event_target_value(&ev))
+                    on:blur=move |_| save_alt()></textarea>
+                <p id=alt_help class="text-xs text-base-content/60">
+                    {move || if saved_alt.with(String::is_empty) {
+                        "Ayuda a que Google la encuentre y a quien no ve la pantalla. Se usa en los bloques donde la pongas."
+                    } else {
+                        "Guardado. Se usa en los bloques nuevos donde la pongas."
+                    }}
+                </p>
                 <p class="text-xs text-base-content/70">{sizes}</p>
                 <p class="text-xs">
                     {if uses == 0 {
@@ -244,6 +310,33 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
                 </div>
             </div>
         </li>
+    }
+}
+
+/// Cuánto usa de Mis fotos y cuánto le queda.
+#[component]
+fn QuotaBar(quota: domain::PhotoQuota) -> impl IntoView {
+    let pct = quota.percent();
+    let class = if pct >= 90 {
+        "progress progress-error w-full"
+    } else if pct >= 75 {
+        "progress progress-warning w-full"
+    } else {
+        "progress progress-primary w-full"
+    };
+    view! {
+        <div class="card bg-base-100 shadow-sm">
+            <div class="card-body gap-2 p-4">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                    <span class="font-medium">{quota.text()}</span>
+                    <span class="text-sm text-base-content/70">{quota.left_text()}</span>
+                </div>
+                <progress class=class value=pct.to_string() max="100" aria-label="Espacio usado de Mis fotos"></progress>
+                {(pct >= 90).then(|| view! {
+                    <p class="text-sm text-error">"Te queda poco lugar. Borrá las fotos que no uses para poder subir otras."</p>
+                })}
+            </div>
+        </div>
     }
 }
 

@@ -101,7 +101,26 @@ pub(crate) fn PropField(
             state.apply_grouped(Some(&group), |d| set_field(d, rid, key, v));
         });
     });
-    view! { <FieldInput products field uid value set/> }
+    // Al elegir una foto de Mis fotos, su descripción pasa al bloque si el
+    // bloque tiene "Descripción" y está vacía.
+    let on_photo = (key == "image_url").then(|| {
+        Callback::new(move |item: MediaItem| {
+            if item.alt.is_empty() {
+                return;
+            }
+            id.with_value(|rid| {
+                let empty = state
+                    .doc
+                    .with_untracked(|d| field_value(d, rid, "alt").as_str() == Some(""));
+                if empty {
+                    state.apply(|d| {
+                        set_field(d, rid, "alt", serde_json::Value::String(item.alt.clone()))
+                    });
+                }
+            });
+        })
+    });
+    view! { <FieldInput products field uid value set on_photo/> }
 }
 
 /// Control de un campo según su tipo. `value` es el valor actual y `set`
@@ -116,6 +135,9 @@ fn FieldInput(
     uid: String,
     value: Signal<serde_json::Value>,
     set: Callback<serde_json::Value>,
+    /// Se eligió una foto de Mis fotos (para copiar su descripción).
+    #[prop(default = None)]
+    on_photo: Option<Callback<MediaItem>>,
 ) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let ui = expect_context::<Ui>();
@@ -190,7 +212,7 @@ fn FieldInput(
         return view! {
             <div class="flex flex-col gap-1">
                 <span class="text-sm font-medium" id=format!("{uid}-label")>{field.label}</span>
-                <ImagePicker uid=uid.clone() value set pick=Callback::new(set_once) on_blur=Callback::new(move |()| end())/>
+                <ImagePicker uid=uid.clone() value set pick=Callback::new(set_once) on_blur=Callback::new(move |()| end()) on_photo/>
                 {move || error.get().map(|e| view! { <FieldError id=format!("{uid}-error") text=e/> })}
             </div>
         }
@@ -501,6 +523,8 @@ fn ImagePicker(
     pick: Callback<serde_json::Value>,
     /// Al salir del campo de la dirección.
     on_blur: Callback<()>,
+    /// Se eligió (o subió) una foto de Mis fotos.
+    on_photo: Option<Callback<MediaItem>>,
 ) -> impl IntoView {
     let photos = use_context::<MyPhotos>().unwrap_or_else(MyPhotos::new);
     let open = RwSignal::new(false);
@@ -533,7 +557,10 @@ fn ImagePicker(
     let file_id = format!("{uid}-file");
     let mine_id = format!("{uid}-mine");
     let done = Callback::new(move |item: MediaItem| {
-        pick.run(serde_json::Value::String(item.url));
+        pick.run(serde_json::Value::String(item.url.clone()));
+        if let Some(cb) = on_photo {
+            cb.run(item);
+        }
         open.set(false);
     });
     view! {
@@ -653,6 +680,9 @@ fn ImagePicker(
                                         title=p.name.clone()
                                         on:click=move |_| {
                                             pick.run(serde_json::Value::String(p.url.clone()));
+                                            if let Some(cb) = on_photo {
+                                                cb.run(p.clone());
+                                            }
                                             open.set(false);
                                         }
                                     >

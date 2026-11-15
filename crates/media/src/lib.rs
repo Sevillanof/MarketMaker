@@ -272,6 +272,105 @@ impl Store {
         }))
     }
 
+    /// Pasa los archivos de una foto de la carpeta `from` a `to`: copia
+    /// todos y recién después borra los viejos. Si falta alguno, no borra
+    /// nada y devuelve error.
+    pub async fn move_photo(&self, from: &str, to: &str) -> Result<u64, MediaError> {
+        let mut files = Vec::new();
+        for w in WIDTHS {
+            for ext in ["avif", "webp"] {
+                let name = format!("{w}.{ext}");
+                let bytes = self.get(from, &name).await?.ok_or_else(|| {
+                    MediaError::Storage(std::io::Error::other(format!("falta {from}/{name}")))
+                })?;
+                let content_type = content_type(&name).unwrap_or("application/octet-stream");
+                files.push(Variant {
+                    name,
+                    content_type,
+                    bytes,
+                });
+            }
+        }
+        let total = files.iter().map(|f| f.bytes.len() as u64).sum();
+        self.put_all(to, &files).await?;
+        self.delete_all(from).await?;
+        Ok(total)
+    }
+
+    /// Las carpetas de fotos que hay en el almacén (`<foto>` o
+    /// `usuarios/<dueño>/fotos/<foto>`), con la fecha UTC del archivo más
+    /// nuevo (`2026-11-15T21:00:00`). Lo que no tiene esa forma no aparece.
+    pub async fn list_folders(&self) -> Result<Vec<StoredFolder>, MediaError> {
+        let mut found: std::collections::BTreeMap<String, String> = Default::default();
+        let mut note = |key: &str, modified: String| {
+            if let Some((folder, file)) = key.rsplit_once('/') {
+                if content_type(file).is_some() && parse_folder(folder).is_some() {
+                    let e = found.entry(folder.to_string()).or_default();
+                    if modified > *e {
+                        *e = modified;
+                    }
+                }
+            }
+        };
+        match self {
+            Store::Local { root } => {
+                let mut stack = vec![root.clone()];
+                while let Some(dir) = stack.pop() {
+                    let mut rd = match tokio::fs::read_dir(&dir).await {
+                        Ok(rd) => rd,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(e) => return Err(e.into()),
+                    };
+                    while let Some(entry) = rd.next_entry().await? {
+                        let meta = entry.metadata().await?;
+                        let path = entry.path();
+                        if meta.is_dir() {
+                            stack.push(path);
+                        } else if let Ok(rel) = path.strip_prefix(root) {
+                            let key = rel.to_string_lossy().replace('\\', "/");
+                            let secs = meta
+                                .modified()
+                                .ok()
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map_or(0, |d| d.as_secs());
+                            note(&key, utc_iso(secs));
+                        }
+                    }
+                }
+            }
+            Store::S3(s) => {
+                let mut token: Option<String> = None;
+                loop {
+                    let mut action =
+                        rusty_s3::actions::ListObjectsV2::new(&s.bucket, Some(&s.credentials));
+                    if let Some(t) = &token {
+                        action.with_continuation_token(t.clone());
+                    }
+                    let url = action.sign(SIGN_FOR);
+                    let res = s.client.get(url).send().await.map_err(s3_err)?;
+                    if !res.status().is_success() {
+                        return Err(s3_status(res.status()));
+                    }
+                    let text = res.text().await.map_err(s3_err)?;
+                    let list = rusty_s3::actions::ListObjectsV2::parse_response(&text)
+                        .map_err(|e| MediaError::Storage(std::io::Error::other(e.to_string())))?;
+                    for obj in &list.contents {
+                        let modified = obj.last_modified.clone().unwrap_or_default();
+                        note(&obj.key, modified.chars().take(19).collect());
+                    }
+                    match list.next_continuation_token {
+                        Some(t) => token = Some(t),
+                        None => break,
+                    }
+                }
+            }
+        }
+        Ok(found
+            .into_iter()
+            .map(|(folder, newest)| StoredFolder { folder, newest })
+            .collect())
+    }
+
     /// Para el registro al arrancar: dónde se guardan las fotos.
     pub fn describe(&self) -> String {
         match self {
@@ -284,11 +383,12 @@ impl Store {
         }
     }
 
-    /// Guarda los archivos de la foto `id`.
-    pub async fn put_all(&self, id: &str, variants: &[Variant]) -> Result<(), MediaError> {
+    /// Guarda los archivos de una foto en la carpeta `folder` (ver
+    /// [`photo_folder`]).
+    pub async fn put_all(&self, folder: &str, variants: &[Variant]) -> Result<(), MediaError> {
         match self {
             Store::Local { root } => {
-                let dir = root.join(id);
+                let dir = root.join(folder);
                 tokio::fs::create_dir_all(&dir).await?;
                 for v in variants {
                     tokio::fs::write(dir.join(&v.name), &v.bytes).await?;
@@ -297,7 +397,7 @@ impl Store {
             }
             Store::S3(s) => {
                 for v in variants {
-                    let key = format!("{id}/{}", v.name);
+                    let key = format!("{folder}/{}", v.name);
                     let url =
                         rusty_s3::actions::PutObject::new(&s.bucket, Some(&s.credentials), &key)
                             .sign(SIGN_FOR);
@@ -318,17 +418,18 @@ impl Store {
         }
     }
 
-    /// El archivo `file` de la foto `id` (`None` si no existe). Quien llama
-    /// valida `id` y `file` antes: acá no se arman rutas con texto ajeno.
-    pub async fn get(&self, id: &str, file: &str) -> Result<Option<Vec<u8>>, MediaError> {
+    /// El archivo `file` de la foto guardada en `folder` (`None` si no
+    /// existe). Quien llama valida `file` y arma `folder` con ids: acá no se
+    /// arman rutas con texto ajeno.
+    pub async fn get(&self, folder: &str, file: &str) -> Result<Option<Vec<u8>>, MediaError> {
         match self {
-            Store::Local { root } => match tokio::fs::read(root.join(id).join(file)).await {
+            Store::Local { root } => match tokio::fs::read(root.join(folder).join(file)).await {
                 Ok(b) => Ok(Some(b)),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(e.into()),
             },
             Store::S3(s) => {
-                let key = format!("{id}/{file}");
+                let key = format!("{folder}/{file}");
                 let url = rusty_s3::actions::GetObject::new(&s.bucket, Some(&s.credentials), &key)
                     .sign(SIGN_FOR);
                 let res = s.client.get(url).send().await.map_err(s3_err)?;
@@ -341,17 +442,17 @@ impl Store {
         }
     }
 
-    /// Borra todos los archivos de la foto `id`.
-    pub async fn delete_all(&self, id: &str) -> Result<(), MediaError> {
+    /// Borra todos los archivos de la foto guardada en `folder`.
+    pub async fn delete_all(&self, folder: &str) -> Result<(), MediaError> {
         match self {
-            Store::Local { root } => match tokio::fs::remove_dir_all(root.join(id)).await {
+            Store::Local { root } => match tokio::fs::remove_dir_all(root.join(folder)).await {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
                 _ => Ok(()),
             },
             Store::S3(s) => {
                 for w in WIDTHS {
                     for ext in ["avif", "webp"] {
-                        let key = format!("{id}/{w}.{ext}");
+                        let key = format!("{folder}/{w}.{ext}");
                         let url = rusty_s3::actions::DeleteObject::new(
                             &s.bucket,
                             Some(&s.credentials),
@@ -395,6 +496,56 @@ pub fn content_type(file: &str) -> Option<&'static str> {
     }
 }
 
+/// Una carpeta de foto en el almacén (ver [`Store::list_folders`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredFolder {
+    pub folder: String,
+    /// Fecha UTC del archivo más nuevo, `2026-11-15T21:00:00`.
+    pub newest: String,
+}
+
+/// El id de la foto de una carpeta (`<foto>` o
+/// `usuarios/<dueño>/fotos/<foto>`); `None` si la carpeta no es de una foto.
+pub fn parse_folder(folder: &str) -> Option<&str> {
+    let is_id = |s: &str| s.len() == 36 && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-');
+    let parts: Vec<&str> = folder.split('/').collect();
+    match parts.as_slice() {
+        [id] if is_id(id) => Some(id),
+        ["usuarios", owner, "fotos", id] if is_id(owner) && is_id(id) => Some(id),
+        _ => None,
+    }
+}
+
+/// Segundos desde 1970 como fecha UTC `2026-11-15T21:00:00`, para comparar
+/// con las fechas que da el bucket.
+pub fn utc_iso(secs: u64) -> String {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    // Días a fecha civil (algoritmo de Howard Hinnant).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
+}
+
+/// La carpeta de una foto en el almacén: `usuarios/<dueño>/fotos/<foto>`,
+/// así en el panel de R2 se ven ordenadas por usuario. Las direcciones
+/// públicas (`/media/<foto>/960.webp`) no cambian.
+pub fn photo_folder(owner: &str, id: &str) -> String {
+    format!("usuarios/{owner}/fotos/{id}")
+}
+
 /// La dirección pública del archivo principal de la foto `id`.
 pub fn main_url(id: &str) -> String {
     format!("/media/{id}/{MAIN_WIDTH}.webp")
@@ -402,6 +553,19 @@ pub fn main_url(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn utc_dates_and_photo_folders() {
+        assert_eq!(super::utc_iso(0), "1970-01-01T00:00:00");
+        assert_eq!(super::utc_iso(1_794_776_400), "2026-11-15T21:00:00");
+        assert_eq!(super::utc_iso(951_782_400), "2000-02-29T00:00:00");
+        let id = "0b6f6c1e-8d3a-4f0e-9a51-3f1a2b3c4d5e";
+        assert_eq!(super::parse_folder(id), Some(id));
+        let f = super::photo_folder("7c0e2b9a-1111-4222-8333-444455556666", id);
+        assert_eq!(super::parse_folder(&f), Some(id));
+        assert_eq!(super::parse_folder("otra/cosa"), None);
+        assert_eq!(super::parse_folder("usuarios/x/fotos/y"), None);
+    }
+
     use super::*;
 
     fn png(w: u32, h: u32) -> Vec<u8> {

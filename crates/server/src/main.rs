@@ -70,6 +70,8 @@ async fn main() {
     // Dónde se guardan: Cloudflare R2 si está en `.env.local`, si no `MEDIA_DIR`.
     let store = ::media::Store::from_env().unwrap_or_else(|e| panic!("Mis fotos: {e}"));
     log!("Mis fotos se guardan en {}", store.describe());
+    tokio::spawn(move_old_photos(pool.clone(), store.clone()));
+    tokio::spawn(sweep_loose_files(pool.clone(), store.clone()));
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
         store: store.clone(),
@@ -146,4 +148,90 @@ async fn same_site_posts(
         }
     }
     next.run(req).await
+}
+
+/// Pasa las fotos subidas antes de ordenarlas por usuario (en `<foto>/`) a
+/// `usuarios/<dueño>/fotos/<foto>/`. Corre de fondo al arrancar; mientras
+/// tanto `/media/…` las busca en las dos carpetas, así nada deja de verse.
+async fn move_old_photos(pool: db::Pool, store: ::media::Store) {
+    let pending = match db::media::not_in_user_folder(&pool).await {
+        Ok(p) => p,
+        Err(e) => return log!("No pudimos revisar las fotos para ordenarlas: {e}"),
+    };
+    if pending.is_empty() {
+        return;
+    }
+    log!("Ordenando {} fotos por usuario…", pending.len());
+    let mut moved = 0;
+    for (id, owner) in pending {
+        let old = id.to_string();
+        let new = db::media::media_folder(owner, id);
+        let done = match store.move_photo(&old, &new).await {
+            Ok(bytes) => Some(Some(bytes)),
+            // Quizás ya se había movido y se cortó antes de anotarlo.
+            Err(e) => match store.get(&new, "960.webp").await {
+                Ok(Some(_)) => Some(None),
+                _ => {
+                    log!("No pudimos mover la foto {id}: {e}");
+                    None
+                }
+            },
+        };
+        if let Some(bytes) = done {
+            if db::media::mark_in_user_folder(&pool, id, bytes)
+                .await
+                .is_err()
+            {
+                continue;
+            }
+            moved += 1;
+        }
+    }
+    log!("Fotos ordenadas por usuario: {moved}");
+}
+
+/// Cada tanto borra del almacén las carpetas de fotos que no son de ninguna
+/// foto de Mis fotos (una subida que se cortó, un borrado que falló) o que
+/// quedaron en la carpeta vieja. Solo toca carpetas con forma de foto y de
+/// más de una hora, así nunca pisa una subida en curso.
+async fn sweep_loose_files(pool: db::Pool, store: ::media::Store) {
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+    // Primero que termine de mover las fotos viejas.
+    tokio::time::sleep(std::time::Duration::from_secs(5 * 60)).await;
+    loop {
+        match sweep_once(&pool, &store).await {
+            Ok(0) => {}
+            Ok(n) => log!("Mis fotos: se borraron {n} carpetas sueltas del almacén"),
+            Err(e) => log!("Mis fotos: no pudimos revisar el almacén: {e}"),
+        }
+        tokio::time::sleep(EVERY).await;
+    }
+}
+
+async fn sweep_once(pool: &db::Pool, store: &::media::Store) -> Result<usize, String> {
+    let expected = db::media::all_folders(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let cutoff = ::media::utc_iso(now.saturating_sub(60 * 60));
+    let mut removed = 0;
+    for f in store.list_folders().await.map_err(|e| e.to_string())? {
+        let Some(id) = ::media::parse_folder(&f.folder) else {
+            continue;
+        };
+        // Un archivo recién escrito puede ser de una subida o una mudanza en
+        // curso: solo se borra lo que tiene más de una hora.
+        let keep = expected.get(id).is_some_and(|want| *want == f.folder);
+        if keep || f.newest.is_empty() || f.newest > cutoff {
+            continue;
+        }
+        store
+            .delete_all(&f.folder)
+            .await
+            .map_err(|e| e.to_string())?;
+        removed += 1;
+    }
+    Ok(removed)
 }

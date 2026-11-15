@@ -18,6 +18,77 @@ pub struct MediaItem {
     /// Lo que baja un visitante: la foto de 960 px en AVIF.
     #[serde(default)]
     pub web_bytes: u64,
+    /// Qué se ve en la foto, para buscadores y quien no ve la pantalla.
+    #[serde(default)]
+    pub alt: String,
+    /// Al subirla: ya estaba en Mis fotos y se usó esa.
+    #[serde(default)]
+    pub duplicate: bool,
+}
+
+/// Cuántas fotos puede tener cada usuario en Mis fotos.
+pub const PHOTOS_MAX_PER_OWNER: u64 = 1000;
+/// Cuánto pueden ocupar (todos sus tamaños) las fotos de cada usuario.
+pub const PHOTO_BYTES_MAX_PER_OWNER: u64 = 500 * 1024 * 1024;
+/// Largo máximo de la descripción de una foto.
+pub const PHOTO_ALT_MAX: usize = 150;
+
+/// Cuánto usa el usuario de Mis fotos y cuánto le queda.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct PhotoQuota {
+    pub photos: u64,
+    pub bytes: u64,
+}
+
+impl PhotoQuota {
+    /// Qué tan lleno está, de 0 a 100 (lo que esté más cerca del límite).
+    pub fn percent(&self) -> u64 {
+        let by_photos = self.photos * 100 / PHOTOS_MAX_PER_OWNER;
+        let by_bytes = self.bytes * 100 / PHOTO_BYTES_MAX_PER_OWNER;
+        by_photos.max(by_bytes).min(100)
+    }
+
+    /// "Usás 23,4 MB de 500 MB · 34 de 1000 fotos".
+    pub fn text(&self) -> String {
+        format!(
+            "Usás {} de {} · {} de {} fotos",
+            format_bytes(self.bytes),
+            format_bytes(PHOTO_BYTES_MAX_PER_OWNER),
+            self.photos,
+            PHOTOS_MAX_PER_OWNER
+        )
+    }
+
+    /// "Te quedan 476,6 MB y 966 fotos".
+    pub fn left_text(&self) -> String {
+        let bytes = PHOTO_BYTES_MAX_PER_OWNER.saturating_sub(self.bytes);
+        let photos = PHOTOS_MAX_PER_OWNER.saturating_sub(self.photos);
+        format!("Te quedan {} y {photos} fotos", format_bytes(bytes))
+    }
+
+    /// Si se puede sumar una foto que ocupa `bytes`; si no, por qué.
+    pub fn room_for(&self, bytes: u64) -> Result<(), String> {
+        if self.photos >= PHOTOS_MAX_PER_OWNER {
+            return Err(format!(
+                "Ya tenés {} fotos, que es el máximo. Borrá alguna que no uses para subir otra.",
+                self.photos
+            ));
+        }
+        if self.bytes + bytes > PHOTO_BYTES_MAX_PER_OWNER {
+            return Err(format!(
+                "Llegaste a los {} de Mis fotos. Borrá alguna que no uses para subir otra.",
+                format_bytes(PHOTO_BYTES_MAX_PER_OWNER)
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// La pantalla Mis fotos: las fotos y cuánto se usa.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MyLibrary {
+    pub photos: Vec<MyPhoto>,
+    pub quota: PhotoQuota,
 }
 
 /// Peso legible: `3,4 MB`, `21 KB`.
@@ -107,6 +178,25 @@ pub fn media_name(file_name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn quota_texts_and_limits() {
+        let q = super::PhotoQuota {
+            photos: 34,
+            bytes: 24 * 1024 * 1024,
+        };
+        assert_eq!(q.text(), "Usás 24,0 MB de 500,0 MB · 34 de 1000 fotos");
+        assert_eq!(q.left_text(), "Te quedan 476,0 MB y 966 fotos");
+        assert_eq!(q.percent(), 4);
+        assert!(q.room_for(1024).is_ok());
+        assert!(q.room_for(480 * 1024 * 1024).is_err());
+        let full = super::PhotoQuota {
+            photos: 1000,
+            bytes: 0,
+        };
+        assert_eq!(full.percent(), 100);
+        assert!(full.room_for(1).is_err());
+    }
+
     use super::*;
 
     #[test]
@@ -134,6 +224,8 @@ mod tests {
             height: 1,
             original_bytes: 3_565_158,
             web_bytes: 21_000,
+            alt: String::new(),
+            duplicate: false,
         };
         assert_eq!(
             savings_text(&item).unwrap(),
