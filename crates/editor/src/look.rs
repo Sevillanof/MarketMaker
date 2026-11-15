@@ -17,7 +17,7 @@ const THUMB_W: f64 = 156.0;
 /// Alto máximo de una miniatura; lo que sobra del bloque se recorta.
 const THUMB_MAX_H: f64 = 104.0;
 /// Ancho máximo del bloque que entra en una miniatura, en píxeles.
-const THUMB_VIEW_MAX_W: f64 = 640.0;
+const THUMB_VIEW_MAX_W: f64 = 900.0;
 
 #[component]
 pub(crate) fn BlockLook(
