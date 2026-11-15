@@ -27,6 +27,13 @@ fn sample_products() -> Vec<Product> {
             price_cents: 1_234_500 + i as i64 * 250_050,
             image_url: format!("/img/product-{}.webp", i + 1),
             description: format!("{name} de ejemplo, con envío a todo el país."),
+            compare_at_cents: if i % 3 == 0 {
+                1_234_500 + i as i64 * 250_050 + 300_000
+            } else {
+                0
+            },
+            in_stock: i != 2,
+            ..Product::default()
         })
         .collect()
 }

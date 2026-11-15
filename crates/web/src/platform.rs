@@ -107,6 +107,7 @@ fn Dashboard(email: String, stores: Vec<StoreCard>) -> impl IntoView {
                             <div class="card-actions mt-2">
                                 <button class="btn btn-primary btn-sm" disabled=move || open.pending().get()
                                     on:click=move |_| { open.dispatch(slug.clone()); }>"Editar"</button>
+                                <a class="btn btn-outline btn-sm" href=format!("/tienda/{}/productos", s.slug)>"Productos"</a>
                                 <a class="btn btn-ghost btn-sm" href=s.url.clone() target="_blank" rel="noopener">"Ver tienda"</a>
                             </div>
                         </div>

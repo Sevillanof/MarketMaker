@@ -225,6 +225,21 @@ pub fn Price(cents: i64) -> impl IntoView {
     view! { <span class="mk-price font-semibold">{format_price(cents)}</span> }
 }
 
+/// Precio con el anterior tachado al lado, si hay oferta (`was` > `cents`).
+#[component]
+pub fn PriceWas(cents: i64, was: i64) -> impl IntoView {
+    view! {
+        <span class="inline-flex flex-wrap items-baseline gap-x-2">
+            <Price cents/>
+            {(was > cents).then(|| view! {
+                <s class="mk-price-was text-[0.85em] opacity-55">
+                    <span class="sr-only">"Antes "</span>{format_price(was)}
+                </s>
+            })}
+        </span>
+    }
+}
+
 /// Formatea centavos como `$ 12.345,00`.
 pub fn format_price(cents: i64) -> String {
     let sign = if cents < 0 { "-" } else { "" };
