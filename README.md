@@ -89,6 +89,12 @@ Las imágenes de ejemplo se sirven desde `public/img`, sin depender de servicios
 
 Para una imagen propia en `public/img`, alcanza con poner `/img/nombre.webp` en el editor: si existe `/img/nombre.avif`, el navegador la usa automáticamente.
 
+### Mis fotos
+
+Cada dueño sube sus fotos desde el selector de imagen del editor ("Subir fotos"). El servidor las gira según el celular, les borra los datos ocultos (incluida la ubicación GPS) y guarda AVIF + WebP en 480, 960 y 1600 px. Los bloques guardan `/media/<id>/960.webp` y la tienda arma el `srcset` con los tres anchos.
+
+Por ahora se guardan en la carpeta `media/` (cambiala con `MEDIA_DIR` en `.env`). Máximo 10 MB por foto y 500 fotos por dueño. JPG, PNG, WebP y GIF; las HEIC del iPhone hay que exportarlas como JPG.
+
 ## Comprobaciones
 
 ```bash
@@ -109,7 +115,8 @@ Usan la base local: `sqlx::test` crea una base temporal por test a partir de `DA
 
 ```text
 Cargo.toml        workspace + configuración de cargo-leptos
-.env              DATABASE_URL
+.env              DATABASE_URL, ALLOWED_EMAILS, MEDIA_DIR
+media/            fotos subidas por los dueños (no va a git)
 migrations/       SQL versionado (esquema y datos de ejemplo)
 style/            tailwind.css, daisyui.mjs, daisyui-theme.mjs
 public/img/       imágenes de ejemplo (AVIF + WebP, logos SVG)
@@ -122,6 +129,7 @@ crates/
   editor/         lienzo, paleta e inspector
   storefront/     marketplace final
   db/             consultas SQLx (solo servidor)
+  media/          convertir fotos a AVIF/WebP y guardarlas (solo servidor)
   web/            rutas y server functions (load_page, save_page)
   wasm/           entrada del navegador (hidratación)
   server/         binario Axum: pool, migraciones, rutas Leptos

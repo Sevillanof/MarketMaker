@@ -1,10 +1,11 @@
 //! Campos del inspector: un control por tipo de campo, con ayuda, contador
 //! de caracteres y el error explicado junto al campo.
 
-use domain::{Field, FieldKind, PageDoc, Product, Widget};
+use domain::{Field, FieldKind, MediaItem, PageDoc, Product, Widget};
 use leptos::prelude::*;
 
 use crate::icons::Icon;
+use crate::photos::{take_files, MyPhotos};
 use crate::{EditorState, Ui};
 
 /// Cambia una prop de un nodo pasando por `serde_json::Value`.
@@ -487,8 +488,9 @@ fn Stars(
     }
 }
 
-/// Selector de imagen: la actual, una galería con las imágenes de la
-/// biblioteca y, para quien la necesite, una dirección propia.
+/// Selector de imagen: la actual, Mis fotos (las que subió el dueño, con el
+/// botón para subir más), las fotos de ejemplo y, para quien la necesite,
+/// una dirección propia.
 #[component]
 fn ImagePicker(
     uid: String,
@@ -500,10 +502,18 @@ fn ImagePicker(
     /// Al salir del campo de la dirección.
     on_blur: Callback<()>,
 ) -> impl IntoView {
+    let photos = use_context::<MyPhotos>().unwrap_or_else(MyPhotos::new);
     let open = RwSignal::new(false);
     let src = move || value.get().as_str().unwrap_or_default().to_string();
     let name = move || {
         let s = src();
+        if let Some(p) = photos
+            .items
+            .get()
+            .and_then(|l| l.into_iter().find(|p| p.url == s))
+        {
+            return p.name;
+        }
         ui::LIBRARY_IMAGES
             .iter()
             .find(|(p, _)| *p == s)
@@ -511,6 +521,8 @@ fn ImagePicker(
             .unwrap_or_else(|| {
                 if s.is_empty() {
                     "Sin imagen".into()
+                } else if domain::media_base(&s).is_some() {
+                    "Foto de Mis fotos".into()
                 } else {
                     "Imagen propia".into()
                 }
@@ -518,6 +530,12 @@ fn ImagePicker(
     };
     let panel_id = format!("{uid}-panel");
     let url_id = format!("{uid}-url");
+    let file_id = format!("{uid}-file");
+    let mine_id = format!("{uid}-mine");
+    let done = Callback::new(move |item: MediaItem| {
+        pick.run(serde_json::Value::String(item.url));
+        open.set(false);
+    });
     view! {
         <div class="flex items-center gap-3 rounded-field border border-base-300 p-2">
             <div class="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded bg-base-200">
@@ -536,13 +554,110 @@ fn ImagePicker(
                 class="btn btn-sm"
                 aria-expanded=move || open.get().to_string()
                 aria-controls=panel_id.clone()
-                on:click=move |_| open.update(|o| *o = !*o)
+                on:click=move |_| {
+                    open.update(|o| *o = !*o);
+                    if open.get_untracked() {
+                        photos.ensure_loaded();
+                    }
+                }
             >
                 {move || if open.get() { "Cerrar" } else { "Cambiar" }}
             </button>
         </div>
         <div id=panel_id class="flex flex-col gap-2 rounded-field border border-base-300 p-2" class:hidden=move || !open.get()>
-            <ul class="grid grid-cols-3 gap-1.5" aria-label="Imágenes disponibles">
+            <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-semibold" id=mine_id.clone()>"Mis fotos"</span>
+                // El `<label>` abre el selector de archivos; el input queda
+                // oculto pero sigue siendo operable con teclado desde el label.
+                <label
+                    for=file_id.clone()
+                    class="btn btn-primary btn-xs"
+                    class:btn-disabled=move || photos.progress.get().is_some()
+                    tabindex="0"
+                    role="button"
+                    on:keydown=move |ev| {
+                        if ev.key() == "Enter" || ev.key() == " " {
+                            ev.prevent_default();
+                            if let Some(t) = ev.current_target() {
+                                use wasm_bindgen::JsCast;
+                                if let Some(el) = t.dyn_ref::<web_sys::HtmlElement>() {
+                                    el.click();
+                                }
+                            }
+                        }
+                    }
+                >
+                    <Icon name="plus" class="h-3.5 w-3.5"/>
+                    "Subir fotos"
+                </label>
+                <input
+                    id=file_id
+                    type="file"
+                    class="sr-only"
+                    tabindex="-1"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
+                    on:change=move |ev| photos.upload(take_files(&ev), done)
+                />
+            </div>
+            <p class="text-xs text-base-content/70" role="status" aria-live="polite">
+                {move || photos.progress.get().unwrap_or_default()}
+            </p>
+            {move || {
+                let errors = photos.upload_errors.get();
+                (!errors.is_empty()).then(|| view! {
+                    <ul class="flex flex-col gap-1 text-xs text-error" role="alert">
+                        {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
+                    </ul>
+                })
+            }}
+            {move || match (photos.items.get(), photos.load_error.get()) {
+                (_, Some(err)) => view! { <p class="text-xs text-error">{err}</p> }.into_any(),
+                (None, None) => view! {
+                    <div class="grid grid-cols-3 gap-1.5" aria-busy="true" aria-label="Cargando tus fotos">
+                        <div class="skeleton aspect-[4/3] w-full"></div>
+                        <div class="skeleton aspect-[4/3] w-full"></div>
+                        <div class="skeleton aspect-[4/3] w-full"></div>
+                    </div>
+                }.into_any(),
+                (Some(list), None) if list.is_empty() => view! {
+                    <p class="text-xs text-base-content/70">
+                        "Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."
+                    </p>
+                }.into_any(),
+                (Some(list), None) => view! {
+                    <ul class="grid max-h-48 grid-cols-3 gap-1.5 overflow-y-auto" aria-labelledby=mine_id.clone()>
+                        {list.into_iter().map(|p| {
+                            let url = p.url.clone();
+                            let url2 = p.url.clone();
+                            let url3 = p.url.clone();
+                            let thumb = domain::media_base(&p.url)
+                                .map(|b| format!("{b}/480.webp"))
+                                .unwrap_or_else(|| p.url.clone());
+                            view! {
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="block aspect-[4/3] w-full overflow-hidden rounded border-2 bg-base-200"
+                                        class:border-primary=move || src() == url
+                                        class:border-transparent=move || src() != url2
+                                        aria-pressed=move || (src() == url3).to_string()
+                                        title=p.name.clone()
+                                        on:click=move |_| {
+                                            pick.run(serde_json::Value::String(p.url.clone()));
+                                            open.set(false);
+                                        }
+                                    >
+                                        <img src=thumb alt=p.name.clone() loading="lazy" class="h-full w-full object-cover"/>
+                                    </button>
+                                </li>
+                            }
+                        }).collect_view()}
+                    </ul>
+                }.into_any(),
+            }}
+            <span class="mt-1 text-xs font-semibold">"Fotos de ejemplo"</span>
+            <ul class="grid grid-cols-3 gap-1.5" aria-label="Fotos de ejemplo">
                 {ui::LIBRARY_IMAGES.iter().map(|(path, desc)| view! {
                     <li>
                         <button

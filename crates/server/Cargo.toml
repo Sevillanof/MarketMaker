@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 web = { path = "../web", default-features = false, features = ["ssr"] }
 db = { path = "../db" }
+media = { path = "../media" }
 leptos = { workspace = true, features = [ "ssr" ]}
 leptos_axum.workspace = true
 

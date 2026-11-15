@@ -4,6 +4,7 @@
 //! que compilar no dependa de tener la base levantada.
 
 pub mod auth;
+pub mod media;
 
 use domain::{PageDoc, Product, SaveOutcome};
 use sqlx::{FromRow, PgExecutor, PgPool};

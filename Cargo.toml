@@ -8,6 +8,7 @@ members = [
     "crates/editor",
     "crates/storefront",
     "crates/db",
+    "crates/media",
     "crates/web",
     "crates/wasm",
     "crates/server",
@@ -37,7 +38,8 @@ tokio = { version = "1.45.0", features = ["full"] }
 tower = { version = "0.5.2", features = ["full"] }
 tower-http = { version = "0.6.4", features = ["full"] }
 wasm-bindgen = "0.2.106"
-web-sys = { version = "0.3", features = ["BeforeUnloadEvent", "CssStyleDeclaration", "Document", "DomRect", "DomTokenList", "FocusEvent", "FocusOptions", "Element", "HtmlDetailsElement", "HtmlDialogElement", "HtmlElement", "HtmlTextAreaElement", "KeyboardEvent", "Node", "NodeList", "PointerEvent", "ScrollBehavior", "ScrollIntoViewOptions", "ScrollLogicalPosition", "Storage", "ResizeObserver", "Window"] }
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["BeforeUnloadEvent", "CssStyleDeclaration", "Document", "DomRect", "DomTokenList", "File", "FileList", "FocusEvent", "FocusOptions", "FormData", "Element", "HtmlInputElement", "Request", "RequestCredentials", "RequestInit", "Response", "HtmlDetailsElement", "HtmlDialogElement", "HtmlElement", "HtmlTextAreaElement", "KeyboardEvent", "Node", "NodeList", "PointerEvent", "ScrollBehavior", "ScrollIntoViewOptions", "ScrollLogicalPosition", "Storage", "ResizeObserver", "Window"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dotenvy = "0.15"
@@ -111,3 +113,12 @@ lib-features = []
 #
 # Optional. Defaults to false.
 lib-default-features = false
+
+# Convertir fotos a AVIF con las dependencias sin optimizar tarda casi un
+# minuto; optimizadas, unos segundos, también con `cargo leptos watch`.
+# Solo afecta a las dependencias: nuestro código compila igual de rápido.
+[profile.dev.package."*"]
+opt-level = 3
+# El código genérico de rav1e se compila dentro de `media`: también va optimizado.
+[profile.dev.package.media]
+opt-level = 3

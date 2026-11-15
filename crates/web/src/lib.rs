@@ -14,6 +14,8 @@ use storefront::StorefrontPage;
 mod account;
 pub mod auth;
 mod dev;
+#[cfg(feature = "ssr")]
+pub mod media;
 mod platform;
 pub mod server;
 pub mod site;

@@ -84,13 +84,20 @@ pub fn Picture(
     #[prop(into)] alt: String,
     #[prop(into)] class: String,
 ) -> impl IntoView {
-    let avif = avif_variant(&src);
+    // Las fotos de Mis fotos vienen en tres anchos: el navegador elige.
+    let (avif, webp) = match srcsets(&src) {
+        Some((a, w)) => (Some(a), Some(w)),
+        None => (avif_variant(&src), None),
+    };
+    let sizes = webp.as_ref().map(|_| PHOTO_SIZES);
     view! {
         <picture>
-            {avif.map(|a| view! { <source type="image/avif" srcset=a/> })}
+            {avif.map(|a| view! { <source type="image/avif" srcset=a sizes=sizes/> })}
             <img
                 class=class
                 src=src
+                srcset=webp
+                sizes=sizes
                 alt=alt
                 draggable="false"
                 loading="lazy"
@@ -142,6 +149,23 @@ pub fn avif_variant(src: &str) -> Option<String> {
     src.strip_prefix("/img/")
         .and_then(|rest| rest.strip_suffix(".webp"))
         .map(|name| format!("/img/{name}.avif"))
+}
+
+/// Qué ancho ocupa una foto en pantalla, para elegir entre los tres tamaños.
+const PHOTO_SIZES: &str = "(max-width: 640px) 100vw, 50vw";
+
+/// Para una foto de Mis fotos (`/media/<id>/960.webp`), los `srcset` AVIF y
+/// WebP con sus tres anchos.
+pub fn srcsets(src: &str) -> Option<(String, String)> {
+    let base = domain::media_base(src)?;
+    let set = |ext: &str| {
+        domain::MEDIA_WIDTHS
+            .iter()
+            .map(|w| format!("{base}/{w}.{ext} {w}w"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    Some((set("avif"), set("webp")))
 }
 
 /// Bloque de carga de daisyUI.
@@ -218,7 +242,18 @@ pub fn format_price(cents: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{avif_variant, format_price};
+    use super::{avif_variant, format_price, srcsets};
+
+    #[test]
+    fn library_photos_get_three_widths() {
+        let (avif, webp) = srcsets("/media/ab-12/960.webp").unwrap();
+        assert_eq!(
+            avif,
+            "/media/ab-12/480.avif 480w, /media/ab-12/960.avif 960w, /media/ab-12/1600.avif 1600w"
+        );
+        assert!(webp.starts_with("/media/ab-12/480.webp 480w"));
+        assert_eq!(srcsets("/img/hero.webp"), None);
+    }
 
     #[test]
     fn avif_only_for_own_webp_images() {
