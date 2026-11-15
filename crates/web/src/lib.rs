@@ -13,12 +13,14 @@ use storefront::StorefrontPage;
 
 mod account;
 pub mod auth;
+mod checkout;
 mod dev;
 #[cfg(feature = "ssr")]
 pub mod media;
 mod photos;
 mod platform;
 mod products;
+mod sales;
 pub mod server;
 pub mod site;
 pub mod stores;
@@ -63,6 +65,9 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/mis-fotos") view=photos::MyPhotosPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/productos") view=products::ProductsPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/productos/:id") view=products::ProductEditPage ssr=SsrMode::Async/>
+                    <Route path=path!("/tienda/:slug/ventas") view=sales::SalesPage ssr=SsrMode::Async/>
+                    <Route path=path!("/comprar") view=checkout::CheckoutPage ssr=SsrMode::Async/>
+                    <Route path=path!("/pedido/:id") view=checkout::OrderPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>

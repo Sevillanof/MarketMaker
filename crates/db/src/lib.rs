@@ -5,6 +5,7 @@
 
 pub mod auth;
 pub mod media;
+pub mod orders;
 pub mod products;
 
 use domain::{PageDoc, Product, SaveOutcome};
