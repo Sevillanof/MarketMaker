@@ -76,8 +76,8 @@ pub(crate) fn drop_cell(
 }
 
 /// Producto de la tarjeta que está bajo el puntero dentro del bloque
-/// `node_id`, si hay. El contenido del bloque no recibe el puntero
-/// (`pointer-events: none`), así que se mira la posición de cada tarjeta.
+/// `node_id`, si hay. Se mira la posición de cada tarjeta (así cuenta toda
+/// la tarjeta, también su borde).
 fn product_under(node_id: &str, client_x: i32, client_y: i32) -> Option<String> {
     let selector = format!("[data-node-id='{node_id}'] [data-product-id]");
     let cards = document().query_selector_all(&selector).ok()?;
@@ -91,6 +91,25 @@ fn product_under(node_id: &str, client_x: i32, client_y: i32) -> Option<String> 
             .flatten()
             .filter(|id| !id.is_empty())
     })
+}
+
+/// Lo que se puede tocar dentro de un bloque y funciona igual que en la
+/// tienda: flechas y puntos del carrusel, pestañas, preguntas frecuentes…
+/// Los botones desactivados (los que llevan a otra página mientras se
+/// edita) no cuentan: los resuelve [`link_under`].
+const CONTROLS: &str = "button:not(:disabled), summary, input:not(:disabled), label, select";
+
+/// Control del contenido del bloque `node_id` que está bajo el puntero, si
+/// hay. El arrastre captura el puntero en la grilla, así que el clic del
+/// navegador nunca le llega al control: el editor lo busca y lo toca.
+fn control_under(node_id: &str, client_x: i32, client_y: i32) -> Option<web_sys::HtmlElement> {
+    let hit = document().element_from_point(client_x as f32, client_y as f32)?;
+    let control = hit.closest(CONTROLS).ok()??;
+    let content = control.closest(".mk-content").ok()??;
+    let node = content.closest("[data-node-id]").ok()??;
+    (node.get_attribute("data-node-id").as_deref() == Some(node_id))
+        .then(|| control.dyn_into::<web_sys::HtmlElement>().ok())
+        .flatten()
 }
 
 /// Enlace bajo el puntero dentro del bloque `node_id`, si hay: su dirección
@@ -568,6 +587,12 @@ pub(crate) fn Canvas(
                 actions.open_modal(Some(pid));
                 return;
             }
+            // Uno sobre un control del bloque (las flechas del carrusel, una
+            // pestaña, una pregunta…) lo usa, como en la tienda.
+            if let Some(control) = control_under(&d.id, ev.client_x(), ev.client_y()) {
+                control.click();
+                return;
+            }
             // Y uno sobre un enlace (del menú, un botón…) lleva a esa página.
             if let Some((href, label)) = link_under(&d.id, ev.client_x(), ev.client_y()) {
                 actions.follow_link(&href, &label);
@@ -843,7 +868,7 @@ pub(crate) fn Canvas(
                 on:keydown=move |ev| on_node_key(ev, &key_id, actions)
             >
                 <div class="mk-anode-box">
-                    <div class="pointer-events-none h-full" inert=true>{content}</div>
+                    <div class="mk-content h-full">{content}</div>
                     {toolbar}
                     {badge}
                     {handles}
