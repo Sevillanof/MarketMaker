@@ -23,7 +23,23 @@ pub struct Cart {
     products: StoredValue<Vec<Product>>,
     /// El cajón del carrito está abierto.
     pub open: RwSignal<bool>,
+    /// Lo último que se quitó, para poder deshacerlo un rato.
+    removed: RwSignal<Option<Removed>>,
 }
+
+/// Un producto recién quitado: qué, cuántos y en qué lugar estaba.
+#[derive(Clone, Debug, PartialEq)]
+struct Removed {
+    id: String,
+    name: String,
+    qty: u32,
+    at: usize,
+    /// Distingue un quitar de otro, para que el aviso viejo no borre el nuevo.
+    token: u32,
+}
+
+/// Cuánto dura el aviso "Quitaste … · Deshacer".
+const UNDO_MS: u64 = 6000;
 
 /// Un renglón del carrito con su producto.
 #[derive(Clone, Debug, PartialEq)]
@@ -40,6 +56,7 @@ impl Cart {
             lines: RwSignal::new(Vec::new()),
             products: StoredValue::new(products),
             open: RwSignal::new(false),
+            removed: RwSignal::new(None),
         };
         let loaded = StoredValue::new(false);
         let lines = cart.lines;
@@ -77,6 +94,51 @@ impl Cart {
     /// Deja `n` unidades de un producto; con 0 lo quita.
     pub fn set(&self, id: &str, n: u32) {
         self.lines.update(|ls| set_line(ls, id, n));
+    }
+
+    /// Quita un producto y deja "Deshacer" unos segundos.
+    pub fn remove(&self, id: &str) {
+        let Some(at) = self.lines.with(|ls| ls.iter().position(|(i, _)| i == id)) else {
+            return;
+        };
+        let qty = self.qty_of(id);
+        let name = self
+            .products
+            .with_value(|ps| ps.iter().find(|p| p.id == id).map(|p| p.name.clone()))
+            .unwrap_or_default();
+        let token = self
+            .removed
+            .with_untracked(|r| r.as_ref().map_or(0, |r| r.token + 1));
+        self.lines.update(|ls| set_line(ls, id, 0));
+        self.removed.set(Some(Removed {
+            id: id.to_string(),
+            name,
+            qty,
+            at,
+            token,
+        }));
+        let removed = self.removed;
+        set_timeout(
+            move || {
+                if removed.with_untracked(|r| r.as_ref().is_some_and(|r| r.token == token)) {
+                    removed.set(None);
+                }
+            },
+            std::time::Duration::from_millis(UNDO_MS),
+        );
+    }
+
+    /// Vuelve a poner lo último que se quitó, en el mismo lugar.
+    pub fn undo(&self) {
+        let Some(r) = self.removed.get_untracked() else {
+            return;
+        };
+        self.lines.update(|ls| {
+            if !ls.iter().any(|(i, _)| *i == r.id) {
+                ls.insert(r.at.min(ls.len()), (r.id.clone(), r.qty));
+            }
+        });
+        self.removed.set(None);
     }
 
     /// Los renglones cuyos productos siguen en la tienda, en el orden en que
@@ -233,8 +295,15 @@ pub fn CartNavButton() -> impl IntoView {
     }
 }
 
-/// Botón de una tarjeta de producto: "Agregar al carrito", o "En el carrito
-/// (n)" si ya está (y entonces abre el cajón). Sin stock no se muestra.
+fn trash_icon() -> impl IntoView {
+    view! {
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+    }
+}
+
+/// Botón de una tarjeta de producto: "Agregar al carrito"; si ya está, un
+/// selector − n + en el mismo lugar (así ese lugar siempre cambia la
+/// cantidad). Sin stock no se muestra.
 #[component]
 pub fn CardCartButton(product: Product) -> impl IntoView {
     if !product.in_stock {
@@ -248,34 +317,102 @@ pub fn CardCartButton(product: Product) -> impl IntoView {
     };
     let id = StoredValue::new(product.id);
     let name = product.name;
-    let qty = move || id.with_value(|id| cart.qty_of(id));
+    // Solo cambia al entrar o salir del carrito: sumar uno no vuelve a
+    // dibujar el selector y el foco se queda en el botón.
+    let in_cart = Memo::new(move |_| id.with_value(|id| cart.qty_of(id)) > 0);
+    let label = format!("Agregar {name} al carrito");
     view! {
-        <button
-            type="button"
-            class=move || if qty() == 0 {
-                "btn btn-sm btn-block btn-soft btn-primary mk-cart-add relative z-10 mt-2"
-            } else {
-                "btn btn-sm btn-block btn-primary mk-cart-add relative z-10 mt-2"
-            }
-            aria-label=move || match qty() {
-                0 => format!("Agregar {name} al carrito"),
-                n => format!("{name}: {n} en el carrito. Ver carrito"),
-            }
-            on:click=move |_| {
-                if qty() == 0 {
-                    id.with_value(|id| cart.add(id, 1));
-                } else {
-                    cart.open.set(true);
-                }
-            }
-        >
-            {move || match qty() {
-                0 => view! { "Agregar al carrito" }.into_any(),
-                n => view! { {check_icon()}{format!("En el carrito ({n})")} }.into_any(),
-            }}
-        </button>
+        <Show when=move || in_cart.get() fallback=move || view! {
+            <button type="button" class="btn btn-sm btn-block btn-soft btn-primary mk-cart-add relative z-10 mt-2"
+                aria-label=label.clone()
+                on:click=move |_| id.with_value(|id| cart.add(id, 1))>"Agregar al carrito"</button>
+        }>
+            <CartQty id name=name.clone() cart card=true/>
+        </Show>
     }
     .into_any()
+}
+
+/// − n + atado al carrito. En 1, el − es un tachito que quita el producto
+/// (con "Deshacer").
+#[component]
+fn CartQty(
+    id: StoredValue<String>,
+    name: String,
+    cart: Cart,
+    #[prop(optional)] card: bool,
+) -> impl IntoView {
+    let qty = move || id.with_value(|id| cart.qty_of(id));
+    let (wrap, btn) = if card {
+        (
+            "mk-qty mk-cart-add relative z-10 mt-2 flex w-full items-center rounded-field bg-primary text-primary-content",
+            "btn btn-sm btn-square btn-ghost text-primary-content hover:bg-black/15",
+        )
+    } else {
+        (
+            "mk-qty join shrink-0 items-center rounded-field border border-base-300",
+            "btn btn-ghost btn-sm btn-square rounded-none",
+        )
+    };
+    let out = if card {
+        "min-w-0 flex-1 truncate whitespace-nowrap text-center text-sm font-semibold tabular-nums"
+    } else {
+        "min-w-8 border-x border-base-300 px-1 text-center font-semibold tabular-nums"
+    };
+    let minus_label = {
+        let name = name.clone();
+        move || {
+            if qty() <= 1 {
+                format!("Quitar {name} del carrito")
+            } else {
+                "Uno menos".to_string()
+            }
+        }
+    };
+    view! {
+        <div class=wrap role="group" aria-label=format!("Cantidad de {name} en el carrito")>
+            <button type="button" class=btn aria-label=minus_label
+                on:click=move |_| id.with_value(|id| {
+                    match cart.qty_of(id) {
+                        0 | 1 => cart.remove(id),
+                        q => cart.set(id, q - 1),
+                    }
+                })>
+                {move || if qty() <= 1 { trash_icon().into_any() } else { view! { "−" }.into_any() }}
+            </button>
+            <output class=out aria-live="polite">
+                {move || if card { format!("{} en carrito", qty()) } else { qty().to_string() }}
+            </output>
+            <button type="button" class=btn aria-label="Uno más" disabled=move || (qty() >= MAX_QTY)
+                on:click=move |_| id.with_value(|id| cart.add(id, 1))>"+"</button>
+        </div>
+    }
+}
+
+/// "Quitaste … · Deshacer" durante unos segundos. Hay uno dentro del cajón y
+/// otro en la página (el cajón deja inerte lo de atrás); se ve el que toca.
+#[component]
+fn UndoToast(cart: Cart, in_drawer: bool) -> impl IntoView {
+    let show = move || cart.removed.with(|r| r.is_some()) && cart.open.get() == in_drawer;
+    let class = if in_drawer {
+        "pointer-events-none absolute inset-x-6 bottom-64 z-10 flex justify-center"
+    } else {
+        "pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center"
+    };
+    view! {
+        <div class=class role="status" aria-live="polite">
+            {move || show().then(|| {
+                let name = cart.removed.with(|r| r.as_ref().map(|r| r.name.clone()).unwrap_or_default());
+                view! {
+                    <div class="mk-undo pointer-events-auto flex items-center gap-2 rounded-box bg-neutral py-2 pr-2 pl-4 text-sm text-neutral-content shadow-lg">
+                        <span>"Quitaste "<b>{name}</b></span>
+                        <button type="button" class="btn btn-sm btn-ghost text-neutral-content underline hover:bg-white/10"
+                            on:click=move |_| cart.undo()>"Deshacer"</button>
+                    </div>
+                }
+            })}
+        </div>
+    }
 }
 
 /// − cantidad + . Nunca baja de 1.
@@ -324,13 +461,13 @@ pub fn AddToCart(
     let id = StoredValue::new(product.id.clone());
     let added = RwSignal::new(false);
     let in_cart = move || id.with_value(|id| cart.qty_of(id));
-    // El bloque mide una sola línea (lo que sobra se recorta), así que lo que
-    // ya hay en el carrito se dice en el mismo botón, un momento después de
-    // agregar.
+    let has = Memo::new(move |_| in_cart() > 0);
+    let open_product = use_context::<crate::OpenProduct>();
+    // Todo en una línea: el bloque recorta lo que no entra.
     view! {
-        <div class="mk-pbtn flex h-full flex-wrap items-start gap-2">
+        <div class="mk-pbtn flex h-full flex-nowrap items-start gap-2">
             <QtyStepper value=qty label=format!("Cantidad de {}", product.name)/>
-            <button type="button" class="btn btn-primary mk-btn flex-1"
+            <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
                 on:click=move |_| {
                     id.with_value(|id| cart.add(id, qty.get()));
                     qty.set(1);
@@ -338,11 +475,23 @@ pub fn AddToCart(
                     set_timeout(move || added.set(false), std::time::Duration::from_millis(2000));
                 }>
                 {move || if added.get() {
-                    view! { {check_icon()}{format!("Agregado · {} en el carrito", in_cart())} }.into_any()
+                    view! { {check_icon()}<span class="truncate">"Agregado"</span> }.into_any()
                 } else {
-                    view! { {label.clone()} }.into_any()
+                    view! { <span class="truncate">{label.clone()}</span> }.into_any()
                 }}
             </button>
+            <Show when=move || has.get()>
+                <button type="button" class="btn btn-outline btn-primary mk-view-cart shrink-0" aria-haspopup="dialog"
+                    aria-label=move || format!("Ver carrito, tenés {} de este producto", in_cart())
+                    on:click=move |_| {
+                        if let Some(crate::OpenProduct(open)) = open_product {
+                            open.set(None);
+                        }
+                        cart.open.set(true);
+                    }>
+                    <BagIcon class="h-5 w-5"/>"Ver carrito"
+                </button>
+            </Show>
             <span class="sr-only" aria-live="polite">
                 {move || added.get().then(|| format!("Agregado. Tenés {} en el carrito.", in_cart()))}
             </span>
@@ -388,6 +537,7 @@ pub fn CartBar() -> impl IntoView {
                 </div>
             </div>
         </Show>
+        <UndoToast cart in_drawer=false/>
     }
     .into_any()
 }
@@ -464,33 +614,28 @@ pub fn CartDrawer() -> impl IntoView {
                     </footer>
                 </Show>
             </div>
+            <UndoToast cart in_drawer=true/>
         </dialog>
     }
     .into_any()
 }
 
-/// Un producto del cajón: foto, nombre, precio, cantidad y Quitar.
+/// Un producto del cajón: foto, nombre, precio, cantidad, Quitar y el total
+/// del renglón.
 #[component]
 fn CartRow(item: CartItem, cart: Cart) -> impl IntoView {
-    let CartItem { product, qty } = item;
+    let product = item.product;
     let id = StoredValue::new(product.id.clone());
-    let value = RwSignal::new(qty);
-    // Lo que se cambia acá va directo al carrito.
-    Effect::new(move |prev: Option<u32>| {
-        let v = value.get();
-        if prev.is_some_and(|p| p != v) {
-            id.with_value(|id| cart.set(id, v));
-        }
-        v
-    });
+    let qty = move || id.with_value(|id| cart.qty_of(id));
     let price = product.price_cents;
     let unit = move || {
-        if value.get() > 1 {
+        if qty() > 1 {
             format!("{} c/u", format_price(price))
         } else {
             format_price(price)
         }
     };
+    let line_total = move || format_price(price * i64::from(qty()));
     let name = product.name.clone();
     view! {
         <li class="flex items-start gap-4 border-b border-base-200 py-4">
@@ -498,20 +643,33 @@ fn CartRow(item: CartItem, cart: Cart) -> impl IntoView {
                 <Image src=product.image_url.clone() alt=""/>
             </div>
             <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-semibold">{product.name.clone()}</p>
+                <div class="flex items-baseline gap-3">
+                    <p class="min-w-0 flex-1 truncate text-sm font-semibold">{product.name.clone()}</p>
+                    {product.in_stock.then(|| view! {
+                        <p class="mk-line-total shrink-0 font-bold tabular-nums">{line_total}</p>
+                    })}
+                </div>
                 {if product.in_stock {
                     view! {
-                        <p class="mk-price mt-0.5 text-sm font-semibold">{unit}</p>
-                        <div class="mt-2"><QtyStepper value label=format!("Cantidad de {name}") small=true/></div>
+                        <p class="mt-0.5 text-sm text-base-content/70">{unit}</p>
+                        <div class="mt-2 flex items-center gap-2">
+                            <CartQty id name=name.clone() cart/>
+                            <button type="button" class="btn btn-ghost btn-sm gap-1 text-base-content/70"
+                                aria-label=format!("Quitar {name} del carrito")
+                                on:click=move |_| id.with_value(|id| cart.remove(id))>{trash_icon()}"Quitar"</button>
+                        </div>
                     }
                     .into_any()
                 } else {
-                    view! { <p class="mt-1"><span class="badge badge-neutral badge-sm">"Agotado"</span>" "<span class="text-xs text-base-content/70">"No se va a cobrar"</span></p> }.into_any()
+                    view! {
+                        <p class="mt-1"><span class="badge badge-neutral badge-sm">"Agotado"</span>" "<span class="text-xs text-base-content/70">"No se va a cobrar"</span></p>
+                        <button type="button" class="btn btn-ghost btn-sm mt-1 gap-1 text-base-content/70"
+                            aria-label=format!("Quitar {name} del carrito")
+                            on:click=move |_| id.with_value(|id| cart.remove(id))>{trash_icon()}"Quitar"</button>
+                    }
+                    .into_any()
                 }}
             </div>
-            <button type="button" class="btn btn-link btn-xs text-base-content/60"
-                aria-label=format!("Quitar {} del carrito", product.name)
-                on:click=move |_| id.with_value(|id| cart.set(id, 0))>"Quitar"</button>
         </li>
     }
 }
