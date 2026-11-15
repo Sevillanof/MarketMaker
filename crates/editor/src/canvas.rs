@@ -106,6 +106,9 @@ struct Drag {
     id: String,
     kind: DragKind,
     moved: bool,
+    /// El puntero que empezó el arrastre: los demás (un segundo dedo, otro
+    /// mouse) no lo mueven ni lo terminan.
+    pointer_id: i32,
 }
 
 /// Nuevo `(w, h)` al arrastrar `edge` `dx`, `dy` píxeles de pantalla, con
@@ -152,6 +155,41 @@ fn on_node_key(ev: KeyboardEvent, id: &str, actions: Actions) {
     ev.stop_propagation();
 }
 
+/// Flechas, Inicio y Fin dentro de la barra de un bloque: mueven el foco
+/// entre sus botones (una sola parada de Tab para toda la barra).
+fn on_toolbar_key(ev: KeyboardEvent, active: RwSignal<usize>) {
+    let Some(bar) = ev
+        .current_target()
+        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+    else {
+        return;
+    };
+    let Ok(buttons) = bar.query_selector_all("button") else {
+        return;
+    };
+    let n = buttons.length() as usize;
+    if n == 0 {
+        return;
+    }
+    let i = active.get_untracked().min(n - 1);
+    let next = match ev.key().as_str() {
+        "ArrowRight" | "ArrowDown" => (i + 1) % n,
+        "ArrowLeft" | "ArrowUp" => (i + n - 1) % n,
+        "Home" => 0,
+        "End" => n - 1,
+        _ => return,
+    };
+    ev.prevent_default();
+    ev.stop_propagation();
+    active.set(next);
+    if let Some(b) = buttons
+        .get(next as u32)
+        .and_then(|b| b.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        _ = b.focus();
+    }
+}
+
 #[component]
 pub(crate) fn Canvas(
     products: StoredValue<Vec<Product>>,
@@ -194,6 +232,30 @@ pub(crate) fn Canvas(
         }
         cb.forget();
     });
+
+    // Termina el arrastre de un bloque del lienzo sin aplicarlo: el bloque
+    // vuelve a su lugar (el CSS lo anima).
+    let cancel_drag = move |announce: bool| {
+        let Some(d) = drag.get_untracked() else {
+            return;
+        };
+        drag.set(None);
+        ui.block_drag.set_value(false);
+        if let Some(grid_el) = grid_ref.get_untracked() {
+            if grid_el.has_pointer_capture(d.pointer_id) {
+                _ = grid_el.release_pointer_capture(d.pointer_id);
+            }
+        }
+        let changed = preview.get_untracked().is_some();
+        preview.set(None);
+        drag_pos.set(None);
+        if announce && changed {
+            ui.announce(match d.kind {
+                DragKind::Move { .. } => "Movimiento cancelado. El bloque volvió a su lugar.",
+                DragKind::Resize { .. } => "Cambio de tamaño cancelado.",
+            });
+        }
+    };
 
     // Arrastre desde la paleta: el puntero no está capturado por nadie, así
     // que se sigue desde la ventana.
@@ -278,6 +340,11 @@ pub(crate) fn Canvas(
             }
         });
         let on_key = window_event_listener(leptos::ev::keydown, move |ev| {
+            if ev.key() == "Escape" && drag.with_untracked(Option::is_some) {
+                ev.prevent_default();
+                cancel_drag(true);
+                return;
+            }
             if ev.key() == "Escape" && ui.new_drag.with_untracked(Option::is_some) {
                 ev.prevent_default();
                 ui.swallow_click.set_value(true);
@@ -294,7 +361,7 @@ pub(crate) fn Canvas(
     });
 
     let on_pointer_down = move |ev: PointerEvent, id: String| {
-        if ev.button() != 0 {
+        if ev.button() != 0 || drag.with_untracked(Option::is_some) {
             return;
         }
         ev.prevent_default();
@@ -320,11 +387,13 @@ pub(crate) fn Canvas(
                 start_y: y,
             },
             moved: false,
+            pointer_id: ev.pointer_id(),
         }));
+        ui.block_drag.set_value(true);
     };
 
     let on_resize_down = move |ev: PointerEvent, id: String, edge: Edge| {
-        if ev.button() != 0 {
+        if ev.button() != 0 || drag.with_untracked(Option::is_some) {
             return;
         }
         ev.prevent_default();
@@ -345,11 +414,16 @@ pub(crate) fn Canvas(
                 start_h: size.h,
             },
             moved: false,
+            pointer_id: ev.pointer_id(),
         }));
+        ui.block_drag.set_value(true);
     };
 
     let on_pointer_move = move |ev: PointerEvent| {
-        let Some(d) = drag.get_untracked() else {
+        let Some(d) = drag
+            .get_untracked()
+            .filter(|d| d.pointer_id == ev.pointer_id())
+        else {
             return;
         };
         let Some(grid_el) = grid_ref.get_untracked() else {
@@ -412,9 +486,16 @@ pub(crate) fn Canvas(
     };
 
     let on_pointer_up = move |ev: PointerEvent| {
-        let Some(d) = drag.get_untracked() else {
+        let Some(d) = drag
+            .get_untracked()
+            .filter(|d| d.pointer_id == ev.pointer_id())
+        else {
             return;
         };
+        // Primero se termina el arrastre: soltar la captura dispara
+        // `lostpointercapture`, que así ya no encuentra nada que cancelar.
+        drag.set(None);
+        ui.block_drag.set_value(false);
         if let Some(grid_el) = grid_ref.get_untracked() {
             _ = grid_el.release_pointer_capture(ev.pointer_id());
         }
@@ -424,7 +505,6 @@ pub(crate) fn Canvas(
         }
         preview.set(None);
         drag_pos.set(None);
-        drag.set(None);
         crate::reveal_node(&d.id, d.moved && matches!(d.kind, DragKind::Move { .. }));
     };
 
@@ -558,6 +638,10 @@ pub(crate) fn Canvas(
             move || {
                 (is_selected.get() && !is_moving.get() && !is_resizing.get()).then(|| {
                     let (up, down, dup, del) = (id.clone(), id.clone(), id.clone(), id.clone());
+                    // Una sola parada de Tab: el botón activo tiene tabindex 0
+                    // y las flechas pasan de uno a otro.
+                    let active = RwSignal::new(0_usize);
+                    let tab = move |i: usize| move || if active.get() == i { "0" } else { "-1" };
                     view! {
                         <div
                             data-theme="light"
@@ -565,17 +649,18 @@ pub(crate) fn Canvas(
                             role="toolbar"
                             aria-label=move || format!("Acciones de {}", label())
                             on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
+                            on:keydown=move |ev: KeyboardEvent| on_toolbar_key(ev, active)
                         >
-                            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Subir" title="Subir (flecha arriba)" on:click=move |_| actions.move_up(&up)>
+                            <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(0) on:focus=move |_| active.set(0) aria-label="Subir" title="Subir (flecha arriba)" on:click=move |_| actions.move_up(&up)>
                                 <Icon name="up"/>
                             </button>
-                            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Bajar" title="Bajar (flecha abajo)" on:click=move |_| actions.move_down(&down)>
+                            <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(1) on:focus=move |_| active.set(1) aria-label="Bajar" title="Bajar (flecha abajo)" on:click=move |_| actions.move_down(&down)>
                                 <Icon name="down"/>
                             </button>
-                            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Duplicar" title="Duplicar" on:click=move |_| actions.duplicate(&dup)>
+                            <button type="button" class="btn btn-ghost btn-sm btn-square" tabindex=tab(2) on:focus=move |_| active.set(2) aria-label="Duplicar" title="Duplicar" on:click=move |_| actions.duplicate(&dup)>
                                 <Icon name="copy"/>
                             </button>
-                            <button type="button" class="btn btn-ghost btn-sm btn-square text-red-700" aria-label="Borrar" title="Borrar (Suprimir)" on:click=move |_| actions.delete(&del)>
+                            <button type="button" class="btn btn-ghost btn-sm btn-square text-red-700" tabindex=tab(3) on:focus=move |_| active.set(3) aria-label="Borrar" title="Borrar (Suprimir)" on:click=move |_| actions.delete(&del)>
                                 <Icon name="trash"/>
                             </button>
                             <span class="badge badge-primary badge-sm ml-1" aria-hidden="true">
@@ -727,7 +812,16 @@ pub(crate) fn Canvas(
                                     }
                                     on:pointermove=on_pointer_move
                                     on:pointerup=on_pointer_up
-                                    on:pointercancel=on_pointer_up
+                                    on:pointercancel=move |ev: PointerEvent| {
+                                        if drag.with_untracked(|d| d.as_ref().is_some_and(|d| d.pointer_id == ev.pointer_id())) {
+                                            cancel_drag(false);
+                                        }
+                                    }
+                                    on:lostpointercapture=move |ev: PointerEvent| {
+                                        if drag.with_untracked(|d| d.as_ref().is_some_and(|d| d.pointer_id == ev.pointer_id())) {
+                                            cancel_drag(false);
+                                        }
+                                    }
                                 >
                                     {move || slot.get().map(|_| view! {
                                         <div class="mk-slot" style=move || {
