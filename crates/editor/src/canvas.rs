@@ -716,7 +716,7 @@ pub(crate) fn Canvas(
                                     let r = btn.get_bounding_client_rect();
                                     let style = web_sys::HtmlElement::style(&menu);
                                     _ = style.set_property("--mk-menu-top", &format!("{:.0}px", r.bottom() + 4.0));
-                                    _ = style.set_property("--mk-menu-right", &format!("{:.0}px", f64::from(window().inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(0.0)) - r.right()));
+                                    _ = style.set_property("--mk-menu-right", &format!("{:.0}px", window().inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(0.0) - r.right()));
                                 }
                             }
                         >
