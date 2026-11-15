@@ -1154,7 +1154,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 {move || match (ui.preview.get(), ui.store_open.get()) {
                     (true, _) => ().into_any(),
                     (false, true) => view! { <store_drawer::StoreDrawer/> }.into_any(),
-                    (false, false) => view! { <Palette/> }.into_any(),
+                    (false, false) => view! { <Palette products/> }.into_any(),
                 }}
                 {view! { <Canvas products welcome/> }.into_any()}
                 {move || (!ui.preview.get()).then(|| view! { <Inspector products/> })}
