@@ -45,19 +45,21 @@ cargo leptos watch
 
 La primera compilación tarda unos minutos. Al arrancar, el servidor aplica las migraciones de `migrations/` y carga los datos de ejemplo (tenant `demo`, página `home` y ocho productos). No hay pasos manuales además de crear la base.
 
-- Marketplace: <http://localhost:3000>
-- Editor: <http://localhost:3000/editor>
-- Entrar: <http://localhost:3000/entrar>
+- Plataforma (entrar, tus tiendas, crear una tienda): <http://localhost:3000>
+- Tienda de ejemplo: <http://demo.localhost:3000> y su editor en <http://demo.localhost:3000/editor>
+- Cada tienda nueva vive en su dirección: `nombre.localhost:3000`. Chrome y Firefox abren `*.localhost` sin configurar nada; si Safari no la abre, usá Chrome o agregá `127.0.0.1 nombre.localhost` a `/etc/hosts`.
 
-### Entrar al editor
+### Entrar y crear tiendas
 
-El editor es solo para el dueño de la tienda. Por ahora solo pueden entrar los emails de una lista: en `.env`, completá `ALLOWED_EMAILS` con tu email (varios, separados por comas) y reiniciá el servidor.
+Por ahora solo pueden entrar los emails de una lista: en `.env`, completá `ALLOWED_EMAILS` con tu email (varios, separados por comas). El archivo se relee en cada intento, no hace falta reiniciar.
 
-1. Abrí `/editor` (o `/entrar`) y escribí tu email.
+1. Abrí <http://localhost:3000>, tocá **Entrar** y escribí tu email.
 2. Todavía no se mandan emails: el código de 6 números aparece en la terminal donde corre `cargo leptos watch` ("Código para entrar de …").
-3. Escribilo y entrás al editor. La sesión dura 30 días en ese navegador.
+3. En **Tus tiendas** ves las tuyas y podés crear otra: nombre y dirección (se sugiere sola). La tienda nueva arranca como copia de la de ejemplo y te lleva directo a su editor.
+4. **Editar** abre el editor de esa tienda sin pedir otro código. La sesión dura 30 días en ese navegador.
 
-La primera persona habilitada que entra queda como dueña de la tienda `demo`; las demás pueden entrar pero no editarla. Con la sesión abierta, la tienda muestra arriba la barra **Editar mi tienda** (solo la ve el dueño) con el botón **Salir**.
+La primera persona habilitada que entra en `demo.localhost:3000` queda como dueña de la demo. En cada tienda, el dueño ve arriba la barra **Editar mi tienda** con **Tus tiendas** y **Salir**; los visitantes no ven nada de eso.
+
 - Catálogo de widgets (solo en desarrollo): <http://localhost:3000/dev/widgets>
 
 En el editor (pensado para alguien sin experiencia):

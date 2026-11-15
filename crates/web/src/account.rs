@@ -22,7 +22,12 @@ enum Step {
 #[component]
 pub fn SignInPage() -> impl IntoView {
     let query = use_query_map();
-    let next = move || domain::safe_next(&query.read().get("volver").unwrap_or_default());
+    // Sin `volver`: en una tienda, al editor; en la plataforma, a tus tiendas.
+    let next = move || match query.read().get("volver") {
+        Some(v) => domain::safe_next(&v),
+        None if crate::site::current_site() == domain::Site::Platform => "/".to_string(),
+        None => "/editor".to_string(),
+    };
     let me = Resource::new(|| (), |_| crate::auth::who_am_i());
 
     view! {
@@ -46,6 +51,7 @@ pub fn SignInPage() -> impl IntoView {
 
 #[component]
 fn AlreadyIn(me: Me, next: String) -> impl IntoView {
+    let platform = crate::site::current_site() == domain::Site::Platform;
     let out = Action::new(|_: &()| sign_out());
     Effect::new(move |_| {
         if let Some(Ok(())) = out.value().get() {
@@ -55,12 +61,12 @@ fn AlreadyIn(me: Me, next: String) -> impl IntoView {
     view! {
         <h1 class="card-title text-2xl">"Ya entraste"</h1>
         <p>"Estás con la cuenta " <strong>{me.email.clone()}</strong> "."</p>
-        {(!me.can_edit).then(|| view! {
+        {(!me.can_edit && !platform).then(|| view! {
             <div role="alert" class="alert alert-warning">"Tu cuenta no puede editar esta tienda."</div>
         })}
         <div class="flex flex-wrap gap-2">
-            {me.can_edit.then(|| view! { <a class="btn btn-primary" href=next.clone()>"Seguir"</a> })}
-            <a class="btn btn-ghost" href="/">"Ver la tienda"</a>
+            {(me.can_edit || platform).then(|| view! { <a class="btn btn-primary" href=next.clone()>"Seguir"</a> })}
+            {(!platform).then(|| view! { <a class="btn btn-ghost" href="/">"Ver la tienda"</a> })}
             <button class="btn btn-ghost" on:click=move |_| { out.dispatch(()); }>"Salir"</button>
         </div>
     }
@@ -221,6 +227,7 @@ pub fn OwnerBar(me: Option<Me>) -> impl IntoView {
                 class="bg-neutral text-neutral-content text-sm px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
                 <span class="grow">"Estás viendo tu tienda como la ven tus clientes."</span>
                 <a class="btn btn-sm btn-primary" href="/editor">"Editar mi tienda"</a>
+                <a class="btn btn-sm btn-ghost text-neutral-content hover:bg-white/10" href=crate::site::platform_url()>"Tus tiendas"</a>
                 <button class="btn btn-sm btn-ghost text-neutral-content hover:bg-white/10" title="Esconde esta barra hasta que recargues la página"
                     on:click=move |_| hidden.set(true)>"Ver como cliente"</button>
                 <button class="btn btn-sm btn-ghost text-neutral-content hover:bg-white/10" on:click=move |_| { out.dispatch(()); }>"Salir"</button>

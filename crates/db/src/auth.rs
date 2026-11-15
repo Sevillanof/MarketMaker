@@ -210,3 +210,142 @@ pub async fn claim_if_ownerless(pool: &PgPool, tenant_id: Uuid, user_id: Uuid) -
     .await?;
     Ok(())
 }
+
+/// Una tienda de la persona.
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+pub struct StoreRow {
+    pub slug: String,
+    pub name: String,
+    pub role: String,
+}
+
+/// Las tiendas donde la persona tiene un rol, la más nueva primero.
+pub async fn stores_for_user(pool: &PgPool, user_id: Uuid) -> sqlx::Result<Vec<StoreRow>> {
+    sqlx::query_as::<_, StoreRow>(
+        "SELECT t.slug, t.name, m.role
+         FROM memberships m JOIN tenants t ON t.id = m.tenant_id
+         WHERE m.user_id = $1
+         ORDER BY t.created_at DESC, t.slug",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// La dirección ya la usa otra tienda.
+pub async fn slug_taken(pool: &PgPool, slug: &str) -> sqlx::Result<bool> {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM tenants WHERE slug = $1)")
+        .bind(slug)
+        .fetch_one(pool)
+        .await
+}
+
+/// Crea la tienda `slug` con la persona como dueña. Arranca como copia de lo
+/// publicado en la tienda `template` (su página y sus productos), así no
+/// empieza vacía. Devuelve `false` si la dirección ya estaba tomada.
+pub async fn create_store(
+    pool: &PgPool,
+    name: &str,
+    slug: &str,
+    owner: Uuid,
+    template: &str,
+) -> sqlx::Result<bool> {
+    let mut tx = pool.begin().await?;
+    let tenant: Option<Uuid> = sqlx::query_scalar(
+        "INSERT INTO tenants (slug, name, created_by) VALUES ($1, $2, $3)
+         ON CONFLICT (slug) DO NOTHING
+         RETURNING id",
+    )
+    .bind(slug)
+    .bind(name)
+    .bind(owner)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(tenant) = tenant else {
+        return Ok(false);
+    };
+    sqlx::query("INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'owner')")
+        .bind(tenant)
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?;
+    let page: Uuid =
+        sqlx::query_scalar("INSERT INTO pages (tenant_id, slug) VALUES ($1, 'home') RETURNING id")
+            .bind(tenant)
+            .fetch_one(&mut *tx)
+            .await?;
+    // La versión 1 es lo publicado de la plantilla; queda vigente y publicada.
+    let version: Option<Uuid> = sqlx::query_scalar(
+        "INSERT INTO page_versions (page_id, tenant_id, number, doc, created_by)
+         SELECT $1, $2, 1, v.doc, $3
+         FROM tenants t
+         JOIN pages p ON p.tenant_id = t.id AND p.slug = 'home'
+         JOIN page_versions v ON v.id = p.published_version_id
+         WHERE t.slug = $4
+         RETURNING id",
+    )
+    .bind(page)
+    .bind(tenant)
+    .bind(owner)
+    .bind(template)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(version) = version {
+        sqlx::query(
+            "UPDATE pages SET current_version_id = $2, published_version_id = $2 WHERE id = $1",
+        )
+        .bind(page)
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query(
+        "INSERT INTO products (tenant_id, name, price_cents, image_url, description, created_at)
+         SELECT $1, p.name, p.price_cents, p.image_url, p.description, p.created_at
+         FROM products p JOIN tenants t ON t.id = p.tenant_id
+         WHERE t.slug = $2",
+    )
+    .bind(tenant)
+    .bind(template)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// Cuánto dura un pase para pasar de la plataforma a una tienda.
+pub const HANDOFF_SECONDS: i32 = 60;
+
+/// Crea un pase de un solo uso para que la persona abra sesión en la tienda.
+pub async fn create_handoff(pool: &PgPool, user_id: Uuid, tenant_id: Uuid) -> sqlx::Result<String> {
+    let token = new_token();
+    sqlx::query(
+        "INSERT INTO login_handoffs (token_hash, user_id, tenant_id, expires_at)
+         VALUES ($1, $2, $3, now() + make_interval(secs => $4))",
+    )
+    .bind(token_hash(&token))
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(f64::from(HANDOFF_SECONDS))
+    .execute(pool)
+    .await?;
+    Ok(token)
+}
+
+/// Usa el pase en la tienda `tenant_id`: devuelve la persona si es válido,
+/// es para esa tienda, no venció y no se usó.
+pub async fn redeem_handoff(
+    pool: &PgPool,
+    token: &str,
+    tenant_id: Uuid,
+) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query_scalar(
+        "UPDATE login_handoffs SET used_at = now()
+         WHERE token_hash = $1 AND tenant_id = $2 AND used_at IS NULL AND expires_at > now()
+         RETURNING user_id",
+    )
+    .bind(token_hash(token))
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+}
