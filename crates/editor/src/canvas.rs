@@ -534,7 +534,8 @@ pub(crate) fn Canvas(
             _ = grid_el.release_pointer_capture(ev.pointer_id());
         }
         if let Some(nodes) = preview.get_untracked() {
-            state.apply(|doc| doc.nodes = nodes);
+            // Los bloques de la capa que se edita (la página o la ficha).
+            state.apply_nodes(|layer_nodes| *layer_nodes = nodes);
             ui.announce(actions.position_text(&d.id));
         }
         preview.set(None);
@@ -935,7 +936,7 @@ pub(crate) fn Canvas(
                             // y abre la ficha al tocar un producto, como la tienda.
                             let open = RwSignal::new(None::<String>);
                             provide_context(OpenProduct(open));
-                            let modal = state.doc.with(|d| d.product_modal.clone());
+                            let modal = state.doc.with_untracked(|d| d.product_modal.clone());
                             return view! {
                                 <div class="mk-grid min-h-96">{static_page()}</div>
                                 <ProductDialog modal products=products.get_value() open editing=true/>
