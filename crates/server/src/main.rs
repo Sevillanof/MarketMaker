@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use axum::http::{header, HeaderValue};
 use axum::Router;
 use leptos::logging::log;
@@ -41,6 +43,13 @@ async fn main() {
     let routes = generate_route_list(App);
     let site_root = leptos_options.site_root.to_string();
 
+    // Quién puede entrar (ALLOWED_EMAILS). La cookie de sesión es `Secure`
+    // solo en producción, para que funcione en http://localhost.
+    let auth = AuthConfig::from_env(leptos_options.env == leptos::config::Env::PROD);
+    if auth.allowed.is_empty() {
+        log!("Aviso: ALLOWED_EMAILS está vacío, nadie puede entrar al editor (ver README).");
+    }
+
     // Los archivos van antes que las páginas de la tienda: la ruta `/*any`
     // de la tienda también atraparía `/pkg/…` o `/favicon.ico`.
     let mut app = Router::new();
@@ -60,7 +69,10 @@ async fn main() {
             routes,
             {
                 let pool = pool.clone();
-                move || provide_context(pool.clone())
+                move || {
+                    provide_context(pool.clone());
+                    provide_context(auth.clone());
+                }
             },
             {
                 let leptos_options = leptos_options.clone();
@@ -68,6 +80,7 @@ async fn main() {
             },
         )
         .fallback(leptos_axum::file_and_error_handler(shell))
+        .layer(axum::middleware::from_fn(same_site_posts))
         // El JS, WASM y CSS de `/pkg` tienen siempre el mismo nombre: con
         // `no-cache` el navegador pregunta antes de reusarlos y nunca mezcla
         // una versión vieja con el HTML nuevo (pasaba después de un `git pull`).
@@ -82,4 +95,32 @@ async fn main() {
     axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
+}
+
+/// Rechaza los POST que vienen de otro sitio (un formulario ajeno que intenta
+/// guardar con la sesión del dueño). Los navegadores mandan `Origin` en todo
+/// POST; si no coincide con la dirección pedida, no se procesa.
+async fn same_site_posts(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if req.method() == axum::http::Method::POST {
+        let host = req
+            .headers()
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok());
+        let origin = req
+            .headers()
+            .get(header::ORIGIN)
+            .and_then(|v| v.to_str().ok());
+        if let (Some(host), Some(origin)) = (host, origin) {
+            let origin_host = origin.split_once("://").map_or(origin, |(_, rest)| rest);
+            if origin_host != host {
+                return (axum::http::StatusCode::FORBIDDEN, "Pedido de otro sitio.")
+                    .into_response();
+            }
+        }
+    }
+    next.run(req).await
 }

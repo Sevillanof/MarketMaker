@@ -14,7 +14,7 @@ pub(crate) fn pool() -> Result<db::Pool, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
-fn internal(e: impl std::fmt::Display) -> ServerFnError {
+pub(crate) fn internal(e: impl std::fmt::Display) -> ServerFnError {
     ServerFnError::new(e.to_string())
 }
 
@@ -53,11 +53,9 @@ pub async fn save_page(
     base_version: u32,
 ) -> Result<SaveOutcome, ServerFnError> {
     let pool = pool()?;
-    let tenant = db::get_tenant_by_slug(&pool, TENANT_SLUG)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| ServerFnError::new("no existe el tenant demo"))?;
-    db::save_page(&pool, tenant.id, &slug, &doc, base_version)
+    let tenant = crate::auth::current_tenant().await?;
+    let user = crate::auth::require_editor(&tenant).await?;
+    db::save_page_by(&pool, tenant.id, &slug, &doc, base_version, Some(user.id))
         .await
         .map_err(internal)
 }

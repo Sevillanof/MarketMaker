@@ -47,6 +47,17 @@ La primera compilación tarda unos minutos. Al arrancar, el servidor aplica las 
 
 - Marketplace: <http://localhost:3000>
 - Editor: <http://localhost:3000/editor>
+- Entrar: <http://localhost:3000/entrar>
+
+### Entrar al editor
+
+El editor es solo para el dueño de la tienda. Por ahora solo pueden entrar los emails de una lista: en `.env`, completá `ALLOWED_EMAILS` con tu email (varios, separados por comas) y reiniciá el servidor.
+
+1. Abrí `/editor` (o `/entrar`) y escribí tu email.
+2. Todavía no se mandan emails: el código de 6 números aparece en la terminal donde corre `cargo leptos watch` ("Código para entrar de …").
+3. Escribilo y entrás al editor. La sesión dura 30 días en ese navegador.
+
+La primera persona habilitada que entra queda como dueña de la tienda `demo`; las demás pueden entrar pero no editarla. Con la sesión abierta, la tienda muestra arriba la barra **Editar mi tienda** (solo la ve el dueño) con el botón **Salir**.
 - Catálogo de widgets (solo en desarrollo): <http://localhost:3000/dev/widgets>
 
 En el editor (pensado para alguien sin experiencia):
