@@ -232,6 +232,13 @@ impl PageDoc {
     /// el menú arriba y el pie justo debajo.
     pub fn add_page(&mut self, path: String, name: String, from: usize) -> usize {
         let mut nodes: Vec<Node> = Vec::new();
+        // Los bloques de origen quedan compartidos (si no lo estaban) y las
+        // copias entran en el mismo grupo.
+        for n in self.layer_mut(Layer::Page(from)) {
+            if SHARED_ON_NEW_PAGE.contains(&n.widget.type_name()) && n.shared.is_empty() {
+                n.shared = n.id.clone();
+            }
+        }
         let mut shared: Vec<Node> = self
             .layer(Layer::Page(from))
             .iter()
@@ -248,6 +255,49 @@ impl PageDoc {
         }
         self.pages.push(StorePage { path, name, nodes });
         self.pages.len()
+    }
+
+    /// En cuántas páginas está el grupo compartido `group`.
+    pub fn shared_pages(&self, group: &str) -> usize {
+        if group.is_empty() {
+            return 0;
+        }
+        (0..self.page_count())
+            .filter(|&i| self.layer(Layer::Page(i)).iter().any(|n| n.shared == group))
+            .count()
+    }
+
+    /// Une el menú y el pie de las páginas que se crearon antes de que se
+    /// compartieran: cada bloque de [`SHARED_ON_NEW_PAGE`] de otra página
+    /// que es igual (mismo contenido y letras) a uno de Inicio entra en su
+    /// grupo. Solo actúa si el documento todavía no tiene ningún grupo.
+    pub fn link_shared(&mut self) {
+        if self.pages.is_empty() || self.all_nodes().any(|n| !n.shared.is_empty()) {
+            return;
+        }
+        let home: Vec<(String, Widget, TextStyle)> = self
+            .nodes
+            .iter()
+            .filter(|n| SHARED_ON_NEW_PAGE.contains(&n.widget.type_name()))
+            .map(|n| (n.id.clone(), n.widget.clone(), n.style.clone()))
+            .collect();
+        let mut used = std::collections::HashSet::new();
+        for page in &mut self.pages {
+            for n in &mut page.nodes {
+                if let Some((id, _, _)) = home
+                    .iter()
+                    .find(|(_, w, st)| *w == n.widget && *st == n.style)
+                {
+                    n.shared = id.clone();
+                    used.insert(id.clone());
+                }
+            }
+        }
+        for n in &mut self.nodes {
+            if used.contains(&n.id) {
+                n.shared = n.id.clone();
+            }
+        }
     }
 
     /// Un id de bloque que no usa nadie (ni `extra`, que todavía no está en
@@ -344,6 +394,11 @@ pub struct Node {
     /// Letras propias del bloque; lo vacío se toma de la tienda.
     #[serde(default, skip_serializing_if = "TextStyle::is_default")]
     pub style: TextStyle,
+    /// Grupo de bloques compartidos entre páginas (el menú y el pie): los
+    /// bloques con el mismo grupo muestran lo mismo en todas las páginas, y
+    /// cambiar uno cambia todos (ver [`sync_shared`]). Vacío: no se comparte.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub shared: String,
 }
 
 impl Node {
@@ -356,6 +411,7 @@ impl Node {
             pos: Pos { x: 0, y: 0 },
             size,
             style: TextStyle::default(),
+            shared: String::new(),
         }
     }
 }
@@ -507,7 +563,41 @@ pub fn parse_doc(mut value: serde_json::Value) -> Result<PageDoc, String> {
         }
         value["schema"] = serde_json::json!(SCHEMA_VERSION);
     }
-    serde_json::from_value(value).map_err(|e| e.to_string())
+    let mut doc: PageDoc = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    doc.link_shared();
+    Ok(doc)
+}
+
+/// Después de un cambio (`before` → `after`): si cambió el contenido o las
+/// letras de un bloque compartido, se copian a los demás bloques de su grupo,
+/// en todas las páginas. La posición y el tamaño son de cada página.
+pub fn sync_shared(before: &PageDoc, after: &mut PageDoc) {
+    let changed: Vec<(String, Widget, TextStyle)> = after
+        .all_nodes()
+        .filter(|n| !n.shared.is_empty())
+        .filter(|n| {
+            before
+                .node(&n.id)
+                .is_some_and(|b| b.widget != n.widget || b.style != n.style)
+        })
+        .map(|n| (n.shared.clone(), n.widget.clone(), n.style.clone()))
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    for (group, widget, style) in changed {
+        if !seen.insert(group.clone()) {
+            continue;
+        }
+        let pages = after
+            .nodes
+            .iter_mut()
+            .chain(after.pages.iter_mut().flat_map(|p| p.nodes.iter_mut()));
+        for n in pages {
+            if n.shared == group && n.widget.type_name() == widget.type_name() {
+                n.widget = widget.clone();
+                n.style = style.clone();
+            }
+        }
+    }
 }
 
 /// Lo que necesita el marketplace (y el editor) para mostrar una página.
@@ -785,6 +875,17 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
         }
     }
 
+    let mut groups: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for n in doc.all_nodes().filter(|n| !n.shared.is_empty()) {
+        let t = n.widget.type_name();
+        if *groups.entry(n.shared.as_str()).or_insert(t) != t {
+            errors.push(format!(
+                "el grupo compartido {} mezcla bloques de distinto tipo",
+                n.shared
+            ));
+        }
+    }
+
     let mut ids = std::collections::HashSet::new();
     validate_nodes(&doc.nodes, HOME, &mut ids, &mut errors);
     for (i, page) in doc.pages.iter().enumerate() {
@@ -1052,6 +1153,61 @@ mod tests {
         let mut bad = doc.clone();
         bad.pages[0].nodes[0].id = "nav".into();
         assert_invalid(&bad, "repetido");
+    }
+
+    #[test]
+    fn shared_menu_changes_on_every_page() {
+        let mut doc = example();
+        doc.nodes.insert(0, node("nav", "Navbar", 0, 200));
+        let p = doc.add_page("/ofertas".into(), "Ofertas".into(), 0);
+        doc.add_page("/contacto".into(), "Contacto".into(), 0);
+        assert_eq!(doc.nodes[0].shared, "nav");
+        assert_eq!(doc.shared_pages("nav"), 3);
+        assert_eq!(validate(&doc), Ok(()));
+
+        // Cambiar el menú en Ofertas lo cambia en Inicio y en Contacto.
+        let before = doc.clone();
+        let copy = doc.layer(Layer::Page(p))[0].id.clone();
+        if let Some(Widget::Navbar(nb)) = doc.node_mut(&copy).map(|n| &mut n.widget) {
+            nb.brand = "Otra marca".into();
+        }
+        doc.node_mut(&copy).unwrap().pos.x = 0;
+        doc.node_mut(&copy).unwrap().style.bold = true;
+        sync_shared(&before, &mut doc);
+        for i in 0..3 {
+            let n = &doc.layer(Layer::Page(i))[0];
+            assert!(
+                matches!(&n.widget, Widget::Navbar(nb) if nb.brand == "Otra marca"),
+                "{i}"
+            );
+            assert!(n.style.bold);
+        }
+        // La posición es de cada página.
+        assert_eq!(doc.nodes[0].pos.y, 200);
+        assert_eq!(doc.layer(Layer::Page(p))[0].pos.y, 0);
+
+        // Grupo con tipos mezclados: inválido.
+        let mut bad = doc.clone();
+        bad.nodes[1].shared = "nav".into();
+        assert_invalid(&bad, "distinto tipo");
+    }
+
+    #[test]
+    fn old_pages_get_their_menu_linked_on_load() {
+        let mut doc = example();
+        doc.nodes.insert(0, node("nav", "Navbar", 0, 200));
+        doc.add_page("/ofertas".into(), "Ofertas".into(), 0);
+        // Como quedaban antes: sin grupos.
+        let mut old = doc.clone();
+        for n in old.nodes.iter_mut().chain(old.pages[0].nodes.iter_mut()) {
+            n.shared.clear();
+        }
+        let json = serde_json::to_value(&old).unwrap();
+        assert!(json["nodes"][0].get("shared").is_none());
+        let loaded = parse_doc(json).unwrap();
+        assert_eq!(loaded.nodes[0].shared, "nav");
+        assert_eq!(loaded.pages[0].nodes[0].shared, "nav");
+        assert!(loaded.nodes[1].shared.is_empty());
     }
 
     #[test]

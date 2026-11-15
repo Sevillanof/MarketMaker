@@ -84,6 +84,8 @@ impl EditorState {
         let before = self.doc.get_untracked();
         let mut next = before.clone();
         f(&mut next);
+        // El menú y el pie compartidos cambian en todas las páginas.
+        domain::sync_shared(&before, &mut next);
         if next == before {
             return;
         }
@@ -413,6 +415,8 @@ impl Actions {
         };
         let new_id = new_node_id(&self.state.doc.get_untracked());
         copy.id = new_id.clone();
+        // La copia es un bloque aparte: no se comparte con las otras páginas.
+        copy.shared.clear();
         let label = copy.widget.label();
         self.state
             .apply_nodes(|nodes| grid::insert_below(nodes, id, copy));
@@ -582,9 +586,11 @@ impl Actions {
             })
         };
         let start = match (has("Navbar"), has("Footer")) {
-            (true, true) => " Arranca con tu menú superior y tu pie de página.",
-            (true, false) => " Arranca con tu menú superior.",
-            (false, true) => " Arranca con tu pie de página.",
+            (true, true) => {
+                " Ya tiene tu menú superior y tu pie de página, compartidos con las demás páginas."
+            }
+            (true, false) => " Ya tiene tu menú superior, compartido con las demás páginas.",
+            (false, true) => " Ya tiene tu pie de página, compartido con las demás páginas.",
             (false, false) => "",
         };
         self.ui.toast(
@@ -608,6 +614,21 @@ impl Actions {
         });
         self.ui
             .toast(format!("Página {name} borrada. Volviste a Inicio."), true);
+    }
+
+    /// Deja de compartir el bloque `id` con las otras páginas: desde ahora
+    /// se cambia solo en esta.
+    pub fn unshare(&self, id: &str) {
+        let label = self.label(id);
+        self.state.apply(|d| {
+            if let Some(n) = d.node_mut(id) {
+                n.shared.clear();
+            }
+        });
+        self.ui.toast(
+            format!("{label} separado: los cambios ya no se copian a las otras páginas."),
+            true,
+        );
     }
 
     /// Elige un bloque y lleva el foco al inspector.
