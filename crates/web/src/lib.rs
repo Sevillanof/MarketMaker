@@ -1,5 +1,5 @@
 use domain::PageDoc;
-use editor::{Editor, SaveAction};
+use editor::{Editor, PublishAction, SaveAction};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
@@ -62,7 +62,7 @@ pub fn App() -> impl IntoView {
     }
 }
 
-/// Marketplace: la última versión guardada de la tienda, en la página de la
+/// Marketplace: la última versión publicada de la tienda, en la página de la
 /// dirección actual (`/` es Inicio, `/ofertas` es Ofertas…). Toda la tienda
 /// se guarda en un solo documento, el de `home`.
 #[component]
@@ -95,10 +95,12 @@ fn HomePage() -> impl IntoView {
     }
 }
 
-/// Editor en `/editor`: arranca desde la última versión guardada de `home`.
+/// Editor en `/editor`: arranca desde el borrador (lo último guardado) de `home`.
 #[component]
 fn EditorPage() -> impl IntoView {
-    let page = Resource::new(|| (), |_| load_page("home".to_string()));
+    let page = Resource::new(|| (), |_| load_draft("home".to_string()));
+    let publish: PublishAction =
+        Action::new(|version: &u32| publish_page("home".to_string(), *version));
     let save: SaveAction = Action::new(|(doc, base_version): &(PageDoc, u32)| {
         save_page("home".to_string(), doc.clone(), *base_version)
     });
@@ -115,7 +117,7 @@ fn EditorPage() -> impl IntoView {
                     _ => return view! { <Redirect path="/entrar?volver=/editor"/> }.into_any(),
                 }
                 match page.await {
-                    Ok(initial) => view! { <Editor initial save/> }.into_any(),
+                    Ok(initial) => view! { <Editor initial save publish/> }.into_any(),
                     Err(e) => view! {
                         <div class="p-8">
                             <div class="alert alert-error">{format!("No se pudo cargar la página: {e}")}</div>

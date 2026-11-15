@@ -2,7 +2,7 @@
 //! salir y saber quién está mirando.
 //!
 //! Por ahora solo pueden entrar los emails de `ALLOWED_EMAILS` (una lista
-//! separada por comas en `.env`). El código se escribe en la terminal del
+//! separada por comas en `.env`, que se relee en cada pedido). El código se escribe en la terminal del
 //! servidor: todavía no hay servicio de envío de emails.
 
 use domain::{CodeCheck, CodeRequest, Me};
@@ -17,33 +17,46 @@ mod ssr {
     use crate::server::{internal, pool, TENANT_SLUG};
     use http::{header, HeaderValue};
     use std::collections::HashSet;
-    use std::sync::Arc;
 
     /// Nombre de la cookie de sesión.
     pub const COOKIE: &str = "mm_session";
 
-    /// Configuración de las cuentas, leída una vez al arrancar.
+    /// Configuración de las cuentas.
     #[derive(Clone, Debug, Default)]
     pub struct AuthConfig {
-        /// Emails habilitados para entrar, normalizados.
-        pub allowed: Arc<HashSet<String>>,
         /// Cookie `Secure` (solo con https, en producción).
         pub secure_cookie: bool,
     }
 
     impl AuthConfig {
-        /// Lee `ALLOWED_EMAILS` del entorno.
-        pub fn from_env(secure_cookie: bool) -> Self {
-            let allowed = std::env::var("ALLOWED_EMAILS")
-                .unwrap_or_default()
-                .split(',')
-                .filter_map(domain::normalize_email)
-                .collect();
-            Self {
-                allowed: Arc::new(allowed),
-                secure_cookie,
-            }
+        pub fn new(secure_cookie: bool) -> Self {
+            Self { secure_cookie }
         }
+    }
+
+    /// Emails habilitados para entrar, normalizados: los de `ALLOWED_EMAILS`
+    /// del entorno más los que tenga hoy el archivo `.env`. El archivo se lee
+    /// en cada pedido, así que agregar un email no obliga a reiniciar el
+    /// servidor (y una variable vieja en la terminal no lo tapa).
+    pub fn allowed_emails() -> HashSet<String> {
+        let from_env = std::env::var("ALLOWED_EMAILS").unwrap_or_default();
+        let from_file = dotenvy::from_filename_iter(".env")
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|(k, _)| k == "ALLOWED_EMAILS")
+            .map(|(_, v)| v)
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{from_env},{from_file}")
+            .split([',', ';', ' '])
+            .map(|e| e.trim_matches(|c| c == '"' || c == '\''))
+            .filter_map(domain::normalize_email)
+            .collect()
+    }
+
+    pub fn is_allowed(email: &str) -> bool {
+        allowed_emails().contains(email)
     }
 
     pub(crate) fn config() -> AuthConfig {
@@ -91,7 +104,7 @@ mod ssr {
         let user = db::auth::session_user(&pool()?, &token)
             .await
             .map_err(internal)?;
-        Ok(user.filter(|u| config().allowed.contains(&u.email)))
+        Ok(user.filter(|u| is_allowed(&u.email)))
     }
 
     /// La tienda de este pedido. Por ahora siempre `demo`.
@@ -151,7 +164,11 @@ pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {
     let Some(email) = domain::normalize_email(&email) else {
         return Ok(CodeRequest::BadEmail);
     };
-    if !config().allowed.contains(&email) {
+    if !is_allowed(&email) {
+        leptos::logging::log!(
+            "\n  {email} pidió un código pero no está en ALLOWED_EMAILS (hay {} habilitados). Agregalo en .env.\n",
+            allowed_emails().len()
+        );
         return Ok(CodeRequest::NotAllowed);
     }
     let pool = crate::server::pool()?;
@@ -184,7 +201,7 @@ pub async fn check_code(
             left: db::auth::CODE_ATTEMPTS as u32,
         });
     };
-    if !config().allowed.contains(&email) {
+    if !is_allowed(&email) {
         return Ok(CodeCheck::Expired);
     }
     let pool = crate::server::pool()?;

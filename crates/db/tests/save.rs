@@ -82,9 +82,10 @@ async fn only_the_last_20_versions_are_kept(pool: PgPool) {
         }
     }
     assert_eq!(version, 26);
-    assert_eq!(version_count(&pool).await, 20);
+    // Las últimas 20, más la 1, que sigue publicada.
+    assert_eq!(version_count(&pool).await, 21);
     let (min, max): (i32, i32) =
-        sqlx::query_as("SELECT min(number), max(number) FROM page_versions")
+        sqlx::query_as("SELECT min(number), max(number) FROM page_versions WHERE number > 1")
             .fetch_one(&pool)
             .await
             .unwrap();

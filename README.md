@@ -66,6 +66,7 @@ En el editor (pensado para alguien sin experiencia):
 - Elegí un bloque con un clic (o con Tab y Enter) y editalo en el panel de la derecha. La pestaña **Contenido** tiene sus textos, imágenes, listas y el grupo **Botón** (un interruptor para mostrarlo, su texto y adónde lleva, con un aviso si falta algo). La pestaña **Diseño** tiene el tamaño (ancho con nombres, Más bajo/Más alto y "Ajustar a mano" para los números exactos) y las letras del bloque. Las imágenes se eligen de una galería; también se puede pegar una dirección.
 - Doble clic sobre un título, subtítulo o descripción en el lienzo para escribir ahí mismo: Enter (o Ctrl/⌘+Enter en textos largos) o un clic afuera lo guarda, Esc lo deja como estaba. Los botones y enlaces se cambian en el panel.
 - Movelo arrastrando, con los botones Subir y Bajar o con las flechas del teclado. Cambiá el tamaño tirando de los bordes, con los botones de ancho o con Mayús + flechas.
+- Los cambios se guardan solos como borrador unos segundos después de editar (arriba dice "Guardado, sin publicar"). Los visitantes siguen viendo la última versión publicada hasta que tocás **Publicar**.
 - Los errores aparecen junto al campo y en un aviso al guardar, en palabras simples.
 - Atajos: Ctrl/⌘+Z deshacer, Ctrl/⌘+Mayús+Z rehacer, Ctrl/⌘+S guardar, Suprimir borrar, Esc soltar el bloque. Lo que escribís en un campo se deshace de una sola vez.
 - Los cambios sin guardar quedan también en el navegador: si cerrás la pestaña, al volver el editor ofrece recuperarlos.

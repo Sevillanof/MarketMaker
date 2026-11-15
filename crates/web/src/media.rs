@@ -11,13 +11,12 @@ use axum::routing::{delete, get};
 use axum::{Json, Router};
 use uuid::Uuid;
 
-use crate::auth::{AuthConfig, COOKIE};
+use crate::auth::COOKIE;
 
 /// Lo que necesitan las rutas de fotos.
 #[derive(Clone)]
 pub struct MediaState {
     pub pool: db::Pool,
-    pub auth: AuthConfig,
     pub store: media::Store,
 }
 
@@ -73,7 +72,7 @@ async fn owner(state: &MediaState, headers: &HeaderMap) -> Result<db::auth::Sess
                 "No pudimos revisar tu sesión. Probá de nuevo.",
             )
         })?;
-    user.filter(|u| state.auth.allowed.contains(&u.email))
+    user.filter(|u| crate::auth::is_allowed(&u.email))
         .ok_or_else(denied)
 }
 

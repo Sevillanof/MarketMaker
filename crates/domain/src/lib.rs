@@ -635,7 +635,11 @@ pub fn sync_shared(before: &PageDoc, after: &mut PageDoc) {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PageView {
     pub doc: PageDoc,
+    /// Versión de `doc`: en el editor, la del borrador; en la tienda, la publicada.
     pub version: u32,
+    /// Versión que ven los visitantes (0 si nunca se publicó).
+    #[serde(default)]
+    pub published: u32,
     pub products: Vec<Product>,
 }
 
