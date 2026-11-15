@@ -241,7 +241,9 @@ pub fn node_style(node: &Node) -> String {
     )
 }
 
-/// Enlace si hay `href` y no se está editando; si no, un `div` con la misma clase.
+/// Enlace si hay `href` y no se está editando; si no, un `div` con la misma
+/// clase. Mientras se edita, el `div` lleva el enlace en `data-href`: el
+/// editor lo usa para ir a esa página al tocarlo.
 #[component]
 fn MaybeLink(
     #[prop(into)] href: String,
@@ -249,8 +251,10 @@ fn MaybeLink(
     #[prop(into)] class: String,
     children: Children,
 ) -> impl IntoView {
-    if editing || href.is_empty() {
+    if href.is_empty() {
         view! { <div class=class>{children()}</div> }.into_any()
+    } else if editing {
+        view! { <div class=class data-href=href>{children()}</div> }.into_any()
     } else {
         view! { <a class=class href=href>{children()}</a> }.into_any()
     }
@@ -645,6 +649,7 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
                 <a
                     class="btn btn-sm bg-primary-content text-primary border-0"
                     href=(!editing).then(|| props.button_href.clone())
+                    data-href=(editing && !props.button_href.is_empty()).then(|| props.button_href.clone())
                 >
                     {props.button_label.clone()}
                 </a>

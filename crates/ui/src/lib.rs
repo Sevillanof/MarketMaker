@@ -16,6 +16,11 @@ pub fn Button(
             <a class="btn btn-primary" href=href>{label}</a>
         }
         .into_any(),
+        // Mientras se edita, el enlace queda en `data-href` (ver `MaybeLink`).
+        Some(href) if !href.is_empty() => view! {
+            <button type="button" class="btn btn-primary" disabled=disabled data-href=href>{label}</button>
+        }
+        .into_any(),
         _ => view! {
             <button type="button" class="btn btn-primary" disabled=disabled>{label}</button>
         }

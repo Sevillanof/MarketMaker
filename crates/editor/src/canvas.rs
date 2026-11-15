@@ -93,6 +93,28 @@ fn product_under(node_id: &str, client_x: i32, client_y: i32) -> Option<String> 
     })
 }
 
+/// Enlace bajo el puntero dentro del bloque `node_id`, si hay: su dirección
+/// y su texto. Igual que [`product_under`], mira la posición de cada enlace
+/// (los widgets los marcan con `data-href` mientras se edita).
+fn link_under(node_id: &str, client_x: i32, client_y: i32) -> Option<(String, String)> {
+    let selector = format!("[data-node-id='{node_id}'] [data-href]");
+    let links = document().query_selector_all(&selector).ok()?;
+    let (x, y) = (f64::from(client_x), f64::from(client_y));
+    (0..links.length()).find_map(|i| {
+        let el = links.get(i)?.dyn_into::<web_sys::Element>().ok()?;
+        let r = el.get_bounding_client_rect();
+        let inside = x >= r.left() && x <= r.right() && y >= r.top() && y <= r.bottom();
+        if !inside {
+            return None;
+        }
+        let href = el.get_attribute("data-href")?;
+        Some((
+            href,
+            el.text_content().unwrap_or_default().trim().to_string(),
+        ))
+    })
+}
+
 /// Qué borde se arrastra al redimensionar.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Edge {
@@ -546,6 +568,11 @@ pub(crate) fn Canvas(
                 actions.open_modal(Some(pid));
                 return;
             }
+            // Y uno sobre un enlace (del menú, un botón…) lleva a esa página.
+            if let Some((href, label)) = link_under(&d.id, ev.client_x(), ev.client_y()) {
+                actions.follow_link(&href, &label);
+                return;
+            }
         }
         crate::reveal_node(&d.id, d.moved && matches!(d.kind, DragKind::Move { .. }));
     };
@@ -888,7 +915,7 @@ pub(crate) fn Canvas(
                 editing: true,
                 product: None,
             };
-            let mut nodes = state.doc.with(|d| d.nodes.clone());
+            let mut nodes = state.doc.with(|d| d.layer(state.page_layer()).clone());
             grid::sort_by_position(&mut nodes);
             nodes
             .into_iter()
@@ -898,6 +925,42 @@ pub(crate) fn Canvas(
             .collect_view()
         };
     let product_choices = move || products.get_value();
+    // En la vista previa, tocar un enlace muestra esa página, como en la tienda.
+    let on_preview_click = move |ev: leptos::ev::MouseEvent| {
+        let Some(el) = ev
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+            .and_then(|t| t.closest("[data-href]").ok().flatten())
+        else {
+            return;
+        };
+        let href = el.get_attribute("data-href").unwrap_or_default();
+        match state.doc.with_untracked(|d| d.page_index(&href)) {
+            Some(i) => {
+                state.page.set(i);
+                state.layer.set(domain::Layer::Page(i));
+                state.selected.set(None);
+                if let Some(el) = document().get_element_by_id("mk-canvas") {
+                    el.set_scroll_top(0);
+                }
+            }
+            None if domain::normalize_path(&href).is_none() => ui.toast(
+                "Este enlace lleva a otro sitio. En tu tienda se abre al tocarlo.",
+                false,
+            ),
+            None => ui.toast(
+                "Esa página todavía no existe. Volvé a editar y tocá el enlace para crearla.",
+                false,
+            ),
+        }
+    };
+    let pages = move || {
+        state.doc.with(|d| {
+            (0..d.page_count())
+                .map(|i| (i, d.page_name(i).to_string(), d.page_path(i).to_string()))
+                .collect::<Vec<_>>()
+        })
+    };
 
     view! {
         <section id="mk-canvas" node_ref=section_ref class="min-w-0 flex-1 overflow-auto" aria-label="Lienzo de la página">
@@ -934,6 +997,49 @@ pub(crate) fn Canvas(
                         </label>
                     })}
                     <button type="button" class="btn btn-sm btn-primary" title="Volver a la página (Esc)" aria-keyshortcuts="Escape" on:click=move |_| actions.close_modal()>"Volver a la página"</button>
+                </div>
+            })}
+            {move || (!state.in_modal() && !ui.preview.get()).then(|| view! {
+                <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm" role="region" aria-label="Páginas de la tienda">
+                    <span class="rounded-field bg-base-200 p-1.5" aria-hidden="true"><Icon name="page" class="h-4 w-4"/></span>
+                    <label class="flex items-center gap-2">
+                        <span class="whitespace-nowrap font-semibold">"Página"</span>
+                        <select
+                            id="mk-page-select"
+                            class="select select-sm w-48"
+                            prop:value=move || state.page.get().to_string()
+                            on:change=move |ev| {
+                                if let Ok(i) = event_target_value(&ev).parse::<usize>() {
+                                    actions.open_page(i, true);
+                                }
+                            }
+                        >
+                            {move || pages()
+                                .into_iter()
+                                .map(|(i, name, _)| view! { <option value=i.to_string() selected=move || state.page.get() == i>{name}</option> })
+                                .collect_view()}
+                        </select>
+                    </label>
+                    <code class="rounded-field bg-base-200 px-2 py-0.5 text-xs text-base-content/80" title="Dirección de la página en tu tienda">
+                        {move || state.doc.with(|d| d.page_path(state.page.get()).to_string())}
+                    </code>
+                    <span class="min-w-0 flex-1 truncate text-xs text-base-content/75">
+                        {move || if state.doc.with(|d| d.pages.is_empty()) {
+                            "Tocá un enlace del menú superior (Ofertas, Categorías…) para crear y editar esa página."
+                        } else {
+                            "Tocá un enlace del menú para ir a esa página, o elegila acá."
+                        }}
+                    </span>
+                    {move || (state.page.get() > 0).then(|| view! {
+                        <button
+                            type="button"
+                            class="btn btn-ghost btn-sm text-red-700"
+                            on:click=move |_| actions.delete_page(state.page.get_untracked())
+                        >
+                            <Icon name="trash" class="h-4 w-4"/>
+                            "Borrar esta página"
+                        </button>
+                    })}
                 </div>
             })}
             <div
@@ -978,7 +1084,7 @@ pub(crate) fn Canvas(
                             provide_context(OpenProduct(open));
                             let modal = state.doc.with_untracked(|d| d.product_modal.clone());
                             return view! {
-                                <div class="mk-grid min-h-96">{static_page()}</div>
+                                <div class="mk-grid min-h-96" on:click=on_preview_click>{static_page()}</div>
                                 <ProductDialog modal products=products.get_value() open editing=true/>
                             }
                             .into_any();
@@ -1017,10 +1123,10 @@ pub(crate) fn Canvas(
                         }
                         stage().into_any()
                     }}
-                    {move || (!state.in_modal() && state.doc.with(|d| d.nodes.is_empty())).then(|| view! {
+                    {move || (!state.in_modal() && state.doc.with(|d| d.layer(state.page_layer()).is_empty())).then(|| view! {
                         <div data-theme="light" class="mx-auto mt-2 flex max-w-md flex-col items-center gap-2 rounded-box border-2 border-dashed border-base-content/40 bg-base-100 p-8 text-center text-base-content">
                             <Icon name="plus" class="h-8 w-8 text-primary"/>
-                            <p class="font-semibold">"Tu página está vacía"</p>
+                            <p class="font-semibold">{move || if state.page.get() == 0 { "Tu página está vacía" } else { "Esta página está vacía" }}</p>
                             <p class="text-sm text-base-content/75">"Elegí un bloque de la columna izquierda, o arrastralo hasta aquí, para empezar. Te recomendamos un Menú superior y un Banner."</p>
                         </div>
                     })}
