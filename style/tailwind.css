@@ -528,3 +528,230 @@ dialog.mk-dialog::backdrop {
     margin-block: 4px;
   }
 }
+
+/* ── Diseños de los bloques ──────────────────────────────────────────────
+   Cada bloque va en un `.mk-look.mk-dN` (N = 1..5, ver `domain::DESIGNS`)
+   con su color en `--mk-c` y el texto que se lee encima en `--mk-cc`
+   (ver `domain::Look`). Los widgets marcan sus partes con clases:
+   `.mk-box` (la caja del bloque), `.mk-item` (tarjetas repetidas),
+   `.mk-title` (título), `.mk-sub` (títulos chicos), `.mk-btn` (botones),
+   `.mk-icon`, `.mk-link`, `.mk-brand` y otras propias de cada widget.
+   Contraste: el texto sobre `--mk-c` siempre es `--mk-cc`; el color como
+   texto sobre el fondo de la tienda es `--mk-ct`, mezclado con el texto
+   del tema, y se usa solo en títulos e íconos (WCAG 1.4.3 / 1.4.11). */
+.mk-look {
+  --mk-c: var(--color-primary);
+  --mk-cc: var(--color-primary-content);
+}
+.mk-look {
+  --mk-ct: color-mix(in oklab, var(--mk-c) 70%, var(--color-base-content));
+  --mk-soft: color-mix(in oklab, var(--mk-c) 14%, var(--color-base-100));
+  --mk-line: color-mix(in oklab, var(--mk-c) 45%, transparent);
+}
+
+/* Botones: rellenos del color en todos los diseños, salvo que se diga otra cosa. */
+.mk-look .btn.mk-btn {
+  --btn-color: var(--mk-c);
+  --btn-fg: var(--mk-cc);
+}
+/* Botón sobre un relleno del color: invertido. */
+.mk-d4 .btn.mk-btn,
+.mk-d1 .mk-countdown .btn.mk-btn {
+  --btn-color: var(--mk-cc);
+  --btn-fg: var(--mk-c);
+}
+.mk-d4 .mk-item .btn.mk-btn {
+  --btn-color: var(--mk-c);
+  --btn-fg: var(--mk-cc);
+}
+.mk-d2 .btn.mk-btn {
+  --btn-bg: transparent;
+  --btn-border: var(--mk-c);
+  --btn-shadow: none;
+  border-width: 2px;
+  color: var(--mk-ct);
+  background-image: none;
+}
+.mk-d2 .btn.mk-btn:hover {
+  --btn-bg: var(--mk-c);
+  color: var(--mk-cc);
+}
+.mk-d5 .btn.mk-btn {
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  --btn-shadow: none;
+  background-image: none;
+}
+.mk-look .mk-price { color: var(--mk-ct); }
+.mk-d4 .mk-box:not(.mk-pad) .mk-price { color: inherit; }
+
+/* 1 · Clásico: la caja de siempre; el color va en botones, íconos y detalles. */
+.mk-d1 .mk-icon { background: color-mix(in oklab, var(--mk-c) 14%, transparent); color: var(--mk-ct); }
+.mk-d1 .mk-avatar { background: var(--mk-c); color: var(--mk-cc); }
+
+/* 2 · Con borde: marco y títulos del color sobre fondo claro. */
+.mk-d2 .mk-box:not(.mk-pad) { border: 2px solid var(--mk-c); box-shadow: none; }
+.mk-d2 .mk-item { border: 1.5px solid var(--mk-line); box-shadow: none; }
+.mk-d2 :is(.mk-title, .mk-brand, .mk-sub) { color: var(--mk-ct); }
+.mk-d2 .mk-icon { border: 2px solid var(--mk-c); color: var(--mk-ct); background: transparent; }
+.mk-d2 .mk-avatar { border: 2px solid var(--mk-c); color: var(--mk-ct); background: var(--color-base-100); }
+
+/* 3 · Suave: fondo con un toque del color, tarjetas blancas encima. */
+.mk-d3 .mk-box { background: var(--mk-soft); border-color: transparent; color: var(--color-base-content); }
+.mk-d3 .mk-box.mk-pad { padding: 1rem; }
+.mk-d3 .mk-item { background: var(--color-base-100); border-color: transparent; box-shadow: 0 1px 3px rgb(0 0 0 / 0.08); }
+.mk-d3 :is(.mk-title, .mk-brand) { color: var(--mk-ct); }
+.mk-d3 .mk-icon, .mk-d3 .mk-avatar { background: var(--mk-c); color: var(--mk-cc); }
+
+/* 4 · Intenso: todo el bloque del color; las tarjetas quedan claras. */
+.mk-d4 .mk-box { background: var(--mk-c); color: var(--mk-cc); border-color: transparent; }
+.mk-d4 .mk-box.mk-pad { padding: 1rem; }
+.mk-d4 .mk-item { background: var(--color-base-100); color: var(--color-base-content); border-color: transparent; }
+.mk-d4 .mk-icon { background: color-mix(in oklab, var(--mk-cc) 18%, transparent); color: var(--mk-cc); }
+.mk-d4 .mk-avatar { background: var(--mk-c); color: var(--mk-cc); }
+.mk-d4 .mk-item .mk-price { color: var(--mk-ct); }
+
+/* 5 · Minimal: sin caja, títulos en mayúsculas con una línea del color. */
+.mk-d5 .mk-box { background: transparent; border-color: transparent; box-shadow: none; border-radius: 0; }
+.mk-d5 .mk-item { background: transparent; border: 0; border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent); border-radius: 0; box-shadow: none; }
+.mk-d5 .mk-title {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration-line: underline;
+  text-decoration-color: var(--mk-c);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.35em;
+  line-height: 1.6;
+}
+.mk-d5 :is(.mk-sub, .mk-brand) { text-transform: uppercase; letter-spacing: 0.06em; }
+.mk-d5 .mk-icon { background: transparent; color: var(--mk-ct); }
+.mk-d5 .mk-avatar { background: transparent; color: var(--mk-ct); border: 1.5px solid currentColor; }
+
+/* Banner */
+.mk-banner .mk-banner-body { color: var(--color-base-content); }
+.mk-banner.mk-has-img .mk-banner-body { color: var(--color-neutral-content); }
+.mk-d2 .mk-banner .mk-banner-ov { display: none; }
+.mk-d2 .mk-banner.mk-has-img .mk-banner-body { color: var(--color-base-content); }
+.mk-d2 .mk-banner.mk-has-img .mk-banner-panel {
+  background: color-mix(in oklab, var(--color-base-100) 94%, transparent);
+  border-top: 4px solid var(--mk-c);
+  border-radius: var(--radius-box);
+  padding: 1.25rem 1.5rem;
+}
+.mk-d3 .mk-banner.mk-has-img { grid-template-columns: 1fr 1fr; place-items: stretch; }
+.mk-d3 .mk-banner.mk-has-img .mk-banner-img { position: relative; inset: auto; grid-column: 2; grid-row: 1; }
+.mk-d3 .mk-banner.mk-has-img .mk-banner-ov { display: none; }
+.mk-d3 .mk-banner.mk-has-img .mk-banner-body { grid-column: 1; grid-row: 1; align-self: center; justify-self: start; text-align: left; color: var(--color-base-content); padding-inline: 2rem; }
+.mk-d4 .mk-banner .mk-banner-ov { background: color-mix(in oklab, var(--mk-c) 82%, transparent); }
+.mk-d4 .mk-banner .mk-banner-body { color: var(--mk-cc); }
+.mk-d5 .mk-banner .mk-banner-ov { background: linear-gradient(to top, rgb(0 0 0 / 0.78), rgb(0 0 0 / 0.1) 75%); }
+.mk-d5 .mk-banner .mk-banner-body { align-self: end; justify-self: start; text-align: left; padding: 1.5rem 2rem; }
+.mk-d5 .mk-banner.mk-has-img .mk-banner-body { color: #fff; }
+
+/* Carrusel */
+.mk-d2 .mk-carousel .mk-car-ov { display: none; }
+.mk-d2 .mk-carousel .mk-car-body {
+  inset: auto auto 2.5rem 3.5rem;
+  max-width: 26rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-box);
+  border-left: 5px solid var(--mk-c);
+  background: color-mix(in oklab, var(--color-base-100) 94%, transparent);
+  color: var(--color-base-content);
+}
+.mk-d3 .mk-carousel .mk-car-ov { background: linear-gradient(to right, var(--mk-soft) 40%, transparent 75%); }
+.mk-d3 .mk-carousel .mk-car-body { color: var(--color-base-content); }
+.mk-d4 .mk-carousel .mk-car-ov { background: linear-gradient(to right, color-mix(in oklab, var(--mk-c) 94%, transparent) 42%, transparent 78%); }
+.mk-d4 .mk-carousel .mk-car-body { color: var(--mk-cc); }
+.mk-d4 .mk-carousel .mk-car-arrow { background: var(--mk-c); color: var(--mk-cc); }
+.mk-d5 .mk-carousel .mk-car-ov { background: linear-gradient(to top, rgb(0 0 0 / 0.75), transparent 65%); }
+.mk-d5 .mk-carousel .mk-car-body { inset: auto 0 2.25rem 0; max-width: none; align-items: center; text-align: center; }
+.mk-d5 .mk-carousel .mk-car-arrow { border-radius: 0; }
+.mk-look:not(.mk-d1) .mk-carousel .mk-car-dot { background: var(--mk-c); outline: 1px solid var(--mk-cc); }
+
+/* Menú */
+.mk-d2 .mk-nav .mk-link:hover, .mk-d3 .mk-nav .mk-link:hover { color: var(--mk-ct); }
+.mk-d4 .mk-nav .mk-link { color: inherit; }
+.mk-d5 .mk-nav { border-bottom: 2px solid var(--mk-c); }
+.mk-d5 .mk-nav .mk-link { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8em; }
+
+/* Texto: en "Con borde", una barra a la izquierda en vez del marco. */
+.mk-d2 .mk-box.mk-text { border: 0; border-left: 6px solid var(--mk-c); }
+
+/* Categorías */
+.mk-d2 .mk-cats .mk-cat { outline: 3px solid var(--mk-c); outline-offset: -3px; }
+.mk-d2 .mk-cats .mk-cat-label { background: color-mix(in oklab, var(--color-base-100) 94%, transparent); color: var(--color-base-content); }
+.mk-d3 .mk-cats .mk-cat-label { inset: auto auto 0.75rem 0.75rem; background: var(--mk-c); color: var(--mk-cc); border-radius: 999px; padding: 0.25rem 0.85rem; }
+.mk-d4 .mk-cats .mk-cat-label { background: var(--mk-c); color: var(--mk-cc); outline: 1px solid color-mix(in oklab, var(--mk-cc) 30%, transparent); }
+.mk-d5 .mk-cats .mk-cat { border-radius: 0; }
+.mk-d5 .mk-cats .mk-cat-label { text-align: center; text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* Beneficios */
+.mk-d5 .mk-benefits .mk-benefit + .mk-benefit { border-left: 2px solid var(--mk-c); padding-left: 1rem; }
+
+/* Cuenta regresiva */
+.mk-d1 .mk-countdown { background: var(--mk-c); color: var(--mk-cc); }
+.mk-d1 .mk-countdown .mk-unit { background: color-mix(in oklab, var(--mk-cc) 15%, transparent); }
+.mk-d2 .mk-countdown { background: var(--color-base-100); }
+.mk-d2 .mk-countdown .mk-unit { border: 2px solid var(--mk-c); color: var(--mk-ct); }
+.mk-d3 .mk-countdown .mk-unit { background: var(--mk-c); color: var(--mk-cc); }
+.mk-d4 .mk-countdown .mk-unit { background: var(--mk-cc); color: var(--mk-c); }
+.mk-d5 .mk-countdown .mk-unit { color: var(--mk-ct); border-bottom: 3px solid var(--mk-c); border-radius: 0; }
+
+/* Tarjeta con la imagen de fondo */
+.mk-d4 .mk-card-overlay::before { background: var(--mk-c); opacity: 0.82; }
+.mk-d4 .mk-card-overlay .card-body { color: var(--mk-cc); }
+.mk-d2 .mk-card-overlay .card-body { color: var(--color-neutral-content); }
+
+/* Pestañas */
+.mk-tabs > .tab { --tab-border-color: transparent; }
+.mk-d2 .mk-tabs { background: var(--color-base-100); }
+.mk-d2 .mk-tabs > .tab:checked { box-shadow: inset 0 -3px var(--mk-c); color: var(--mk-ct); }
+.mk-d3 .mk-tabs > .tab:checked { --tab-bg: var(--mk-c); color: var(--mk-cc); }
+.mk-d4 .mk-tabs > .tab { color: var(--mk-cc); }
+.mk-d4 .mk-tabs > .tab:checked { --tab-bg: var(--color-base-100); color: var(--color-base-content); }
+.mk-d5 .mk-tabs > .tab { text-transform: uppercase; letter-spacing: 0.06em; }
+.mk-d5 .mk-tabs > .tab:checked { --tab-bg: transparent; box-shadow: inset 0 -3px var(--mk-c); }
+
+/* Preguntas */
+.mk-look .mk-faq .collapse-title::after { color: var(--mk-ct); }
+.mk-d2 .mk-faq details[open] > .collapse-title { color: var(--mk-ct); }
+.mk-d3 .mk-faq .join { gap: 0.5rem; }
+.mk-d3 .mk-faq .join > .mk-item { border-radius: var(--radius-box); }
+
+/* Opiniones */
+.mk-d5 .mk-testi .mk-item { border: 0; border-left: 3px solid var(--mk-c); }
+
+/* Logos */
+.mk-d2 .mk-logos .mk-logo { border: 1.5px solid var(--mk-line); border-radius: 999px; padding: 0.4rem 1rem; }
+.mk-d4 .mk-logos .mk-logo { background: var(--color-base-100); border-radius: var(--radius-field); padding: 0.4rem 0.9rem; }
+.mk-d4 .mk-logos .mk-sub { color: inherit; }
+.mk-d5 .mk-logos .mk-logo img { filter: none; opacity: 1; }
+
+/* Imagen */
+.mk-d2 .mk-image { border: 4px solid var(--mk-c); }
+.mk-d3 .mk-image, .mk-d4 .mk-image { padding: 0.6rem; }
+.mk-d3 .mk-image .mk-img, .mk-d4 .mk-image .mk-img { border-radius: calc(var(--radius-box) * 0.7); overflow: hidden; }
+.mk-d5 .mk-image { box-shadow: 0 10px 24px -12px rgb(0 0 0 / 0.45); }
+
+/* Pie */
+.mk-d1 .mk-footer { background: var(--color-neutral); color: var(--color-neutral-content); border-top: 4px solid var(--mk-c); }
+.mk-d2 .mk-footer, .mk-d5 .mk-footer { background: var(--color-base-100); color: var(--color-base-content); }
+.mk-d5 .mk-footer { background: transparent; border-top: 2px solid var(--mk-c); }
+
+/* Ficha del producto */
+.mk-d2 .mk-pname { box-shadow: none; border: 0; }
+.mk-d1 .mk-pname, .mk-d1 .mk-pdesc, .mk-d2 .mk-pname { padding: 0; }
+.mk-d1 .mk-pdesc, .mk-d5 .mk-pdesc { padding: 0; }
+.mk-d2 .mk-pdesc { border: 0; border-left: 4px solid var(--mk-c); border-radius: 0; padding: 0 0 0 1rem; }
+.mk-d5 .mk-pdesc p::first-letter { float: left; font-size: 2.6em; line-height: 0.9; padding-right: 0.12em; font-weight: 700; color: var(--mk-ct); }
+.mk-pprice .mk-pricetag { color: var(--mk-ct); }
+.mk-pprice .mk-pricetag .mk-price { color: inherit; }
+.mk-d2 .mk-pprice .mk-pricetag { border: 2px solid var(--mk-c); border-radius: 999px; padding: 0.15rem 0.9rem; }
+.mk-d3 .mk-pprice .mk-pricetag { background: var(--mk-soft); border-radius: 999px; padding: 0.15rem 0.9rem; }
+.mk-d4 .mk-pprice .mk-pricetag { background: var(--mk-c); color: var(--mk-cc); border-radius: var(--radius-field); padding: 0.2rem 0.9rem; }
+.mk-d5 .mk-pprice .mk-pricetag { font-size: 1.5em; text-decoration: underline 3px var(--mk-c); text-underline-offset: 0.3em; }
+.mk-d3 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-soft); --btn-fg: var(--mk-ct); --btn-shadow: none; }
+.mk-d4 .mk-pbtn { align-items: stretch; }
+.mk-d4 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-c); --btn-fg: var(--mk-cc); width: 100%; box-shadow: 0 8px 20px -8px var(--mk-c); }

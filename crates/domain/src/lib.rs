@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
+mod look;
 mod typography;
 mod widgets;
 
+pub use look::*;
 pub use typography::*;
 pub use widgets::*;
 
@@ -399,6 +401,9 @@ pub struct Node {
     /// cambiar uno cambia todos (ver [`sync_shared`]). Vacío: no se comparte.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub shared: String,
+    /// Diseño (uno de cinco) y color del bloque.
+    #[serde(default, skip_serializing_if = "Look::is_default")]
+    pub look: Look,
 }
 
 impl Node {
@@ -412,6 +417,7 @@ impl Node {
             size,
             style: TextStyle::default(),
             shared: String::new(),
+            look: Look::default(),
         }
     }
 }
@@ -572,18 +578,25 @@ pub fn parse_doc(mut value: serde_json::Value) -> Result<PageDoc, String> {
 /// letras de un bloque compartido, se copian a los demás bloques de su grupo,
 /// en todas las páginas. La posición y el tamaño son de cada página.
 pub fn sync_shared(before: &PageDoc, after: &mut PageDoc) {
-    let changed: Vec<(String, Widget, TextStyle)> = after
+    let changed: Vec<(String, Widget, TextStyle, Look)> = after
         .all_nodes()
         .filter(|n| !n.shared.is_empty())
         .filter(|n| {
             before
                 .node(&n.id)
-                .is_some_and(|b| b.widget != n.widget || b.style != n.style)
+                .is_some_and(|b| b.widget != n.widget || b.style != n.style || b.look != n.look)
         })
-        .map(|n| (n.shared.clone(), n.widget.clone(), n.style.clone()))
+        .map(|n| {
+            (
+                n.shared.clone(),
+                n.widget.clone(),
+                n.style.clone(),
+                n.look.clone(),
+            )
+        })
         .collect();
     let mut seen = std::collections::HashSet::new();
-    for (group, widget, style) in changed {
+    for (group, widget, style, look) in changed {
         if !seen.insert(group.clone()) {
             continue;
         }
@@ -595,6 +608,7 @@ pub fn sync_shared(before: &PageDoc, after: &mut PageDoc) {
             if n.shared == group && n.widget.type_name() == widget.type_name() {
                 n.widget = widget.clone();
                 n.style = style.clone();
+                n.look = look.clone();
             }
         }
     }
@@ -737,6 +751,7 @@ fn validate_fields(node: &Node, errors: &mut Vec<String>) {
     let path = format!("{} › ", node.widget.label());
     validate_props(node.widget.fields(), value.get("props"), &path, errors);
     node.style.errors(&path, errors);
+    node.look.errors(&path, errors);
 }
 
 /// Valida los bloques de una capa: ids (únicos en todo el documento),

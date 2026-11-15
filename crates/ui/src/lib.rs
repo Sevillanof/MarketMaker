@@ -13,16 +13,16 @@ pub fn Button(
 ) -> impl IntoView {
     match href {
         Some(href) if !disabled && !href.is_empty() => view! {
-            <a class="btn btn-primary" href=href>{label}</a>
+            <a class="btn btn-primary mk-btn" href=href>{label}</a>
         }
         .into_any(),
         // Mientras se edita, el enlace queda en `data-href` (ver `MaybeLink`).
         Some(href) if !href.is_empty() => view! {
-            <button type="button" class="btn btn-primary" disabled=disabled data-href=href>{label}</button>
+            <button type="button" class="btn btn-primary mk-btn" disabled=disabled data-href=href>{label}</button>
         }
         .into_any(),
         _ => view! {
-            <button type="button" class="btn btn-primary" disabled=disabled>{label}</button>
+            <button type="button" class="btn btn-primary mk-btn" disabled=disabled>{label}</button>
         }
         .into_any(),
     }
@@ -32,7 +32,7 @@ pub fn Button(
 #[component]
 pub fn Card(children: Children) -> impl IntoView {
     view! {
-        <div class="card card-sm bg-base-100 shadow-sm border border-base-300 h-full min-h-0 overflow-hidden">
+        <div class="card card-sm mk-item bg-base-100 shadow-sm border border-base-300 h-full min-h-0 overflow-hidden">
             {children()}
         </div>
     }
@@ -196,7 +196,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
 /// Precio con formato argentino a partir de centavos: `$ 12.345,00`.
 #[component]
 pub fn Price(cents: i64) -> impl IntoView {
-    view! { <span class="font-semibold">{format_price(cents)}</span> }
+    view! { <span class="mk-price font-semibold">{format_price(cents)}</span> }
 }
 
 /// Formatea centavos como `$ 12.345,00`.
