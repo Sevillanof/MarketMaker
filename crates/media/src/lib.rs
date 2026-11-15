@@ -7,6 +7,8 @@
 use std::io::Cursor;
 use std::path::PathBuf;
 
+use rusty_s3::S3Action;
+
 use image::{DynamicImage, ImageDecoder, ImageReader};
 
 /// Anchos que se generan. Una foto más chica no se agranda.
@@ -180,32 +182,79 @@ fn is_heic(bytes: &[u8]) -> bool {
         )
 }
 
-/// Dónde se guardan los archivos. Hoy, una carpeta del servidor; mañana se
-/// suma un almacén S3 (MinIO en la VPS o Cloudflare R2) con la misma forma.
+/// Dónde se guardan los archivos: una carpeta del servidor o un bucket S3
+/// (Cloudflare R2). MarketMaker los entrega siempre en `/media/…`, así el
+/// bucket no necesita ser público.
 #[derive(Clone, Debug)]
 pub enum Store {
-    /// Carpeta local; se sirve en `/media`.
+    /// Carpeta local (`MEDIA_DIR`, por defecto `media/`).
     Local { root: PathBuf },
+    /// Bucket S3 compatible, como Cloudflare R2.
+    S3(S3Store),
 }
 
+#[derive(Clone, Debug)]
+pub struct S3Store {
+    bucket: rusty_s3::Bucket,
+    credentials: rusty_s3::Credentials,
+    client: reqwest::Client,
+}
+
+/// Cuánto vale cada firma de un pedido al bucket.
+const SIGN_FOR: std::time::Duration = std::time::Duration::from_secs(120);
+
 impl Store {
-    /// `MEDIA_DIR` del entorno, o `media/` en la carpeta actual.
-    pub fn from_env() -> Self {
-        let root = std::env::var_os("MEDIA_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("media"));
-        Store::Local { root }
+    /// Cloudflare R2 si están `R2_ACCOUNT_ID`, `R2_BUCKET`,
+    /// `R2_ACCESS_KEY_ID` y `R2_SECRET_ACCESS_KEY`; si no, la carpeta
+    /// `MEDIA_DIR` (o `media/`). `S3_ENDPOINT` reemplaza la dirección de R2
+    /// para usar otro servicio compatible.
+    pub fn from_env() -> Result<Self, String> {
+        let var = |k: &str| {
+            std::env::var(k)
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+        };
+        let Some(bucket) = var("R2_BUCKET") else {
+            let root = std::env::var_os("MEDIA_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("media"));
+            return Ok(Store::Local { root });
+        };
+        let missing = |k: &str| format!("falta {k} en .env (para guardar las fotos en R2)");
+        let endpoint = match var("S3_ENDPOINT") {
+            Some(e) => e,
+            None => format!(
+                "https://{}.r2.cloudflarestorage.com",
+                var("R2_ACCOUNT_ID").ok_or_else(|| missing("R2_ACCOUNT_ID"))?
+            ),
+        };
+        let key = var("R2_ACCESS_KEY_ID").ok_or_else(|| missing("R2_ACCESS_KEY_ID"))?;
+        let secret = var("R2_SECRET_ACCESS_KEY").ok_or_else(|| missing("R2_SECRET_ACCESS_KEY"))?;
+        let endpoint =
+            url::Url::parse(&endpoint).map_err(|e| format!("dirección de R2 inválida: {e}"))?;
+        let bucket = rusty_s3::Bucket::new(endpoint, rusty_s3::UrlStyle::Path, bucket, "auto")
+            .map_err(|e| format!("bucket de R2 inválido: {e}"))?;
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(Store::S3(S3Store {
+            bucket,
+            credentials: rusty_s3::Credentials::new(key, secret),
+            client,
+        }))
     }
 
-    /// El archivo `file` de la foto `id` (`None` si no existe). Quien llama
-    /// valida `id` y `file` antes: acá no se arman rutas con texto ajeno.
-    pub async fn get(&self, id: &str, file: &str) -> Result<Option<Vec<u8>>, MediaError> {
+    /// Para el registro al arrancar: dónde se guardan las fotos.
+    pub fn describe(&self) -> String {
         match self {
-            Store::Local { root } => match tokio::fs::read(root.join(id).join(file)).await {
-                Ok(b) => Ok(Some(b)),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                Err(e) => Err(e.into()),
-            },
+            Store::Local { root } => format!("la carpeta {}", root.display()),
+            Store::S3(s) => format!(
+                "el bucket {} ({})",
+                s.bucket.name(),
+                s.bucket.object_url("").host_str().unwrap_or("")
+            ),
         }
     }
 
@@ -220,6 +269,49 @@ impl Store {
                 }
                 Ok(())
             }
+            Store::S3(s) => {
+                for v in variants {
+                    let key = format!("{id}/{}", v.name);
+                    let url =
+                        rusty_s3::actions::PutObject::new(&s.bucket, Some(&s.credentials), &key)
+                            .sign(SIGN_FOR);
+                    let res = s
+                        .client
+                        .put(url)
+                        .header("content-type", v.content_type)
+                        .body(v.bytes.clone())
+                        .send()
+                        .await
+                        .map_err(s3_err)?;
+                    if !res.status().is_success() {
+                        return Err(s3_status(res.status()));
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// El archivo `file` de la foto `id` (`None` si no existe). Quien llama
+    /// valida `id` y `file` antes: acá no se arman rutas con texto ajeno.
+    pub async fn get(&self, id: &str, file: &str) -> Result<Option<Vec<u8>>, MediaError> {
+        match self {
+            Store::Local { root } => match tokio::fs::read(root.join(id).join(file)).await {
+                Ok(b) => Ok(Some(b)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(e.into()),
+            },
+            Store::S3(s) => {
+                let key = format!("{id}/{file}");
+                let url = rusty_s3::actions::GetObject::new(&s.bucket, Some(&s.credentials), &key)
+                    .sign(SIGN_FOR);
+                let res = s.client.get(url).send().await.map_err(s3_err)?;
+                match res.status() {
+                    st if st.is_success() => Ok(Some(res.bytes().await.map_err(s3_err)?.to_vec())),
+                    reqwest::StatusCode::NOT_FOUND => Ok(None),
+                    st => Err(s3_status(st)),
+                }
+            }
         }
     }
 
@@ -230,8 +322,36 @@ impl Store {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
                 _ => Ok(()),
             },
+            Store::S3(s) => {
+                for w in WIDTHS {
+                    for ext in ["avif", "webp"] {
+                        let key = format!("{id}/{w}.{ext}");
+                        let url = rusty_s3::actions::DeleteObject::new(
+                            &s.bucket,
+                            Some(&s.credentials),
+                            &key,
+                        )
+                        .sign(SIGN_FOR);
+                        let res = s.client.delete(url).send().await.map_err(s3_err)?;
+                        if !res.status().is_success()
+                            && res.status() != reqwest::StatusCode::NOT_FOUND
+                        {
+                            return Err(s3_status(res.status()));
+                        }
+                    }
+                }
+                Ok(())
+            }
         }
     }
+}
+
+fn s3_err(e: reqwest::Error) -> MediaError {
+    MediaError::Storage(std::io::Error::other(e))
+}
+
+fn s3_status(st: reqwest::StatusCode) -> MediaError {
+    MediaError::Storage(std::io::Error::other(format!("el bucket respondió {st}")))
 }
 
 /// Si `file` es uno de los archivos que se guardan por foto (`960.avif`…),

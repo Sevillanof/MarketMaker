@@ -13,6 +13,9 @@ use web::*;
 #[tokio::main]
 async fn main() {
     // DATABASE_URL sale de `.env` (o del entorno, que tiene prioridad).
+    // `.env.local` va primero y no está en git: ahí van las claves secretas
+    // (las de Cloudflare R2). Lo que ya está definido no se pisa.
+    _ = dotenvy::from_filename(".env.local");
     _ = dotenvy::dotenv();
     let database_url = std::env::var("DATABASE_URL").expect("falta DATABASE_URL (ver .env)");
 
@@ -56,10 +59,14 @@ async fn main() {
     // Los archivos van antes que las páginas de la tienda: la ruta `/*any`
     // de la tienda también atraparía `/pkg/…` o `/favicon.ico`.
     // Mis fotos: subir, listar, borrar y servir los archivos (`/media/…`).
-    // Dónde se guardan sale de `MEDIA_DIR` (por defecto `media/`).
+    // Dónde se guardan: Cloudflare R2 si está en `.env`, si no `MEDIA_DIR`.
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
-        store: ::media::Store::from_env(),
+        store: {
+            let store = ::media::Store::from_env().unwrap_or_else(|e| panic!("Mis fotos: {e}"));
+            log!("Mis fotos se guardan en {}", store.describe());
+            store
+        },
     }));
     for dir in ["pkg", "fonts", "img"] {
         app = app.nest_service(
