@@ -52,7 +52,13 @@ async fn main() {
 
     // Los archivos van antes que las páginas de la tienda: la ruta `/*any`
     // de la tienda también atraparía `/pkg/…` o `/favicon.ico`.
-    let mut app = Router::new();
+    // Mis fotos: subir, listar, borrar y servir los archivos (`/media/…`).
+    // Dónde se guardan sale de `MEDIA_DIR` (por defecto `media/`).
+    let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
+        pool: pool.clone(),
+        auth: auth.clone(),
+        store: ::media::Store::from_env(),
+    }));
     for dir in ["pkg", "fonts", "img"] {
         app = app.nest_service(
             &format!("/{dir}"),

@@ -14,6 +14,7 @@ mod inline;
 mod inspector;
 mod look;
 mod palette;
+mod photos;
 mod store_drawer;
 mod topbar;
 mod typography;
@@ -867,6 +868,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
     provide_context(state);
     provide_context(ui);
     provide_context(actions);
+    provide_context(photos::MyPhotos::new());
     // Documento enviado en el guardado en curso.
     let sent = RwSignal::new(None::<PageDoc>);
     // Borrador de una sesión anterior que se puede recuperar.

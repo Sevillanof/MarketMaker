@@ -17,6 +17,10 @@ ui = { path = "../ui" }
 storefront = { path = "../storefront" }
 editor = { path = "../editor" }
 db = { path = "../db", optional = true }
+media = { path = "../media", optional = true }
+axum = { workspace = true, optional = true, features = ["multipart"] }
+tokio = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
 serde_json = { workspace = true }
 
 http.workspace = true
@@ -26,5 +30,5 @@ thiserror.workspace = true
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr", "dep:leptos_axum", "dep:db"]
+ssr = ["leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr", "dep:leptos_axum", "dep:db", "dep:media", "dep:axum", "dep:tokio", "dep:uuid"]
 
