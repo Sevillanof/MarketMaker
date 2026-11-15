@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use domain::PageDoc;
 use editor::{Editor, PublishAction, SaveAction};
 use leptos::prelude::*;
@@ -14,10 +16,14 @@ pub mod auth;
 mod dev;
 #[cfg(feature = "ssr")]
 pub mod media;
+mod platform;
 pub mod server;
+pub mod site;
+pub mod stores;
 
 pub use auth::*;
 pub use server::*;
+pub use stores::*;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -49,16 +55,29 @@ pub fn App() -> impl IntoView {
         <Router>
             <main>
                 <Routes fallback=|| "Página no encontrada.".into_view()>
-                    <Route path=StaticSegment("") view=HomePage ssr=SsrMode::Async/>
+                    <Route path=StaticSegment("") view=Home ssr=SsrMode::Async/>
                     <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
+                    <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
                     // Las demás páginas de la tienda (/ofertas, /categorias…).
-                    <Route path=WildcardSegment("any") view=HomePage ssr=SsrMode::Async/>
+                    <Route path=WildcardSegment("any") view=Home ssr=SsrMode::Async/>
                 </Routes>
             </main>
         </Router>
+    }
+}
+
+/// `localhost:3000` es la plataforma (tus tiendas); `nombre.localhost:3000`
+/// es la tienda `nombre`.
+#[component]
+fn Home() -> impl IntoView {
+    let platform_root = move || use_location().pathname.get_untracked() == "/";
+    match site::current_site() {
+        domain::Site::Platform if platform_root() => view! { <platform::PlatformHome/> }.into_any(),
+        domain::Site::Platform => view! { <platform::NotAStore/> }.into_any(),
+        domain::Site::Store(_) => view! { <HomePage/> }.into_any(),
     }
 }
 
@@ -83,12 +102,7 @@ fn HomePage() -> impl IntoView {
                         }}
                     }
                     .into_any(),
-                    Err(e) => view! {
-                        <div class="p-8">
-                            <div class="alert alert-error">{format!("No se pudo cargar la página: {e}")}</div>
-                        </div>
-                    }
-                    .into_any(),
+                    Err(_) => view! { <platform::StoreNotFound/> }.into_any(),
                 }
             })}
         </Suspense>
@@ -105,6 +119,10 @@ fn EditorPage() -> impl IntoView {
         save_page("home".to_string(), doc.clone(), *base_version)
     });
     let me = Resource::new(|| (), |_| who_am_i());
+    if site::current_site() == domain::Site::Platform {
+        // En la plataforma no hay editor: cada tienda tiene el suyo.
+        return view! { <Redirect path="/"/> }.into_any();
+    }
     view! {
         <Title text="Editor · Marketplace"/>
         <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
@@ -128,6 +146,7 @@ fn EditorPage() -> impl IntoView {
             })}
         </Suspense>
     }
+    .into_any()
 }
 
 /// `/editor` con una cuenta que no es dueña de esta tienda.
