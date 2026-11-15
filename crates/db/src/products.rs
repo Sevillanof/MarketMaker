@@ -202,3 +202,16 @@ pub async fn tag_counts(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<domain:
         .map(|(tag, products)| domain::TagCount { tag, products })
         .collect())
 }
+
+/// Los productos `ids` de la tienda (los que existan), para armar un pedido
+/// con los precios de la base y no con los que mande el navegador.
+pub async fn by_ids(pool: &PgPool, tenant: Uuid, ids: &[Uuid]) -> sqlx::Result<Vec<Product>> {
+    let rows = sqlx::query_as::<_, Row>(select!(
+        "FROM products WHERE tenant_id = $1 AND id = ANY($2)"
+    ))
+    .bind(tenant)
+    .bind(ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}

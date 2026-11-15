@@ -1,0 +1,425 @@
+//! Compras: cómo entrega cada tienda, el formulario de "Finalizar compra" y
+//! los pedidos que quedan guardados.
+
+use serde::{Deserialize, Serialize};
+
+/// Cómo entrega sus pedidos una tienda (lo elige el dueño en Ventas).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct DeliverySettings {
+    pub pickup_enabled: bool,
+    /// Dónde se retira, por ejemplo "Av. Corrientes 1234, CABA".
+    pub pickup_address: String,
+    /// Cuándo, por ejemplo "Lun a Vie de 10 a 18 h".
+    pub pickup_hours: String,
+    pub shipping_enabled: bool,
+    /// Costo fijo del envío: 0 es gratis; `None`, se coordina con el comprador.
+    pub shipping_cents: Option<i64>,
+    /// Lo que se le dice al comprador, por ejemplo "Lo coordinamos por WhatsApp".
+    pub shipping_note: String,
+}
+
+impl Default for DeliverySettings {
+    fn default() -> Self {
+        Self {
+            pickup_enabled: false,
+            pickup_address: String::new(),
+            pickup_hours: String::new(),
+            shipping_enabled: true,
+            shipping_cents: None,
+            shipping_note: "Lo coordinamos por WhatsApp".to_string(),
+        }
+    }
+}
+
+pub const PICKUP_ADDRESS_MAX: usize = 120;
+pub const PICKUP_HOURS_MAX: usize = 80;
+pub const SHIPPING_NOTE_MAX: usize = 120;
+/// Envío de más de esto es seguro un error de tipeo.
+pub const SHIPPING_MAX_CENTS: i64 = 1_000_000_000;
+
+/// Limpia los ajustes de entrega y devuelve los problemas (vacío si están bien).
+pub fn tidy_delivery(d: &mut DeliverySettings) -> Vec<String> {
+    d.pickup_address = clip(d.pickup_address.trim(), PICKUP_ADDRESS_MAX);
+    d.pickup_hours = clip(d.pickup_hours.trim(), PICKUP_HOURS_MAX);
+    d.shipping_note = clip(d.shipping_note.trim(), SHIPPING_NOTE_MAX);
+    let mut errors = Vec::new();
+    if !d.pickup_enabled && !d.shipping_enabled {
+        errors.push("Elegí al menos una forma de entrega: retiro o envío.".to_string());
+    }
+    if d.pickup_enabled && d.pickup_address.is_empty() {
+        errors.push("Poné la dirección donde se retiran los pedidos.".to_string());
+    }
+    if d.shipping_cents.is_some_and(|c| !(0..=SHIPPING_MAX_CENTS).contains(&c)) {
+        errors.push("El costo del envío no parece correcto.".to_string());
+    }
+    errors
+}
+
+/// Cómo recibe el pedido el comprador.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Delivery {
+    Pickup,
+    #[default]
+    Shipping,
+}
+
+impl Delivery {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Delivery::Pickup => "pickup",
+            Delivery::Shipping => "shipping",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        if s == "pickup" {
+            Delivery::Pickup
+        } else {
+            Delivery::Shipping
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Delivery::Pickup => "Retiro en el local",
+            Delivery::Shipping => "Envío a domicilio",
+        }
+    }
+}
+
+/// Lo que completa el comprador en "Finalizar compra".
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct CheckoutForm {
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+    pub delivery: Delivery,
+    pub address: String,
+    pub postal_code: String,
+    pub city: String,
+    pub notes: String,
+    /// Producto y cantidad, como están en el carrito.
+    pub lines: Vec<(String, u32)>,
+}
+
+/// Un campo del formulario con problema, para mostrarlo al lado del campo.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct FieldError {
+    /// `name`, `email`, `phone`, `delivery`, `address`, `postal_code`, `city` o `cart`.
+    pub field: String,
+    pub message: String,
+}
+
+pub const NAME_MAX: usize = 80;
+pub const EMAIL_MAX: usize = 120;
+pub const ADDRESS_MAX: usize = 120;
+pub const CITY_MAX: usize = 60;
+pub const NOTES_MAX: usize = 300;
+/// Más renglones que esto en un pedido es seguro un error (o un abuso).
+pub const MAX_ORDER_LINES: usize = 50;
+
+fn clip(s: &str, max: usize) -> String {
+    s.chars().take(max).collect()
+}
+
+fn err(field: &str, message: &str) -> FieldError {
+    FieldError {
+        field: field.to_string(),
+        message: message.to_string(),
+    }
+}
+
+/// ¿Parece un email? (algo@algo.algo, sin espacios)
+pub fn looks_like_email(s: &str) -> bool {
+    let Some((user, host)) = s.split_once('@') else {
+        return false;
+    };
+    !user.is_empty()
+        && !host.contains('@')
+        && host.contains('.')
+        && !host.starts_with('.')
+        && !host.ends_with('.')
+        && !s.chars().any(char::is_whitespace)
+}
+
+/// Los dígitos de un teléfono: acepta espacios, guiones, paréntesis y +.
+pub fn phone_digits(s: &str) -> String {
+    s.chars().filter(char::is_ascii_digit).collect()
+}
+
+/// Limpia el formulario y devuelve los problemas de cada campo (vacío si
+/// está todo bien). Se usa igual en el navegador y en el servidor.
+pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldError> {
+    f.name = clip(&f.name.split_whitespace().collect::<Vec<_>>().join(" "), NAME_MAX);
+    f.email = clip(f.email.trim(), EMAIL_MAX).to_lowercase();
+    f.phone = clip(f.phone.trim(), 30);
+    f.address = clip(f.address.trim(), ADDRESS_MAX);
+    f.postal_code = clip(f.postal_code.trim(), 10).to_uppercase();
+    f.city = clip(f.city.trim(), CITY_MAX);
+    f.notes = clip(f.notes.trim(), NOTES_MAX);
+    f.lines.retain(|(id, q)| !id.is_empty() && *q > 0);
+
+    let mut e = Vec::new();
+    if f.name.chars().count() < 2 {
+        e.push(err("name", "Escribí tu nombre y apellido."));
+    }
+    if f.email.is_empty() {
+        e.push(err("email", "Escribí tu email: ahí te llega el comprobante."));
+    } else if !looks_like_email(&f.email) {
+        e.push(err("email", "Revisá el email, por ejemplo: nombre@correo.com"));
+    }
+    let digits = phone_digits(&f.phone).len();
+    if digits == 0 {
+        e.push(err("phone", "Escribí un teléfono para coordinar la entrega."));
+    } else if !(8..=15).contains(&digits) {
+        e.push(err("phone", "Revisá el teléfono, con característica: por ejemplo 11 5555-1234."));
+    }
+    let allowed = match f.delivery {
+        Delivery::Pickup => d.pickup_enabled,
+        Delivery::Shipping => d.shipping_enabled,
+    };
+    if !allowed {
+        e.push(err("delivery", "Elegí cómo querés recibir tu pedido."));
+    }
+    if f.delivery == Delivery::Shipping {
+        if f.address.is_empty() {
+            e.push(err("address", "Escribí la calle y el número."));
+        }
+        let pc_ok = (4..=8).contains(&f.postal_code.len())
+            && f.postal_code.chars().all(|c| c.is_ascii_alphanumeric());
+        if f.postal_code.is_empty() {
+            e.push(err("postal_code", "Escribí el código postal."));
+        } else if !pc_ok {
+            e.push(err("postal_code", "Revisá el código postal, por ejemplo 1123."));
+        }
+        if f.city.is_empty() {
+            e.push(err("city", "Escribí la ciudad o localidad."));
+        }
+    } else {
+        f.address.clear();
+        f.postal_code.clear();
+        f.city.clear();
+    }
+    if f.lines.is_empty() {
+        e.push(err("cart", "Tu carrito está vacío."));
+    } else if f.lines.len() > MAX_ORDER_LINES {
+        e.push(err("cart", "Hay demasiados productos distintos en el carrito."));
+    }
+    e
+}
+
+/// Costo del envío para esta forma de entrega (lo que se suma al total; si
+/// se coordina después, 0).
+pub fn shipping_for(delivery: Delivery, d: &DeliverySettings) -> i64 {
+    match delivery {
+        Delivery::Pickup => 0,
+        Delivery::Shipping => d.shipping_cents.unwrap_or(0),
+    }
+}
+
+/// Cómo se muestra el costo del envío: "$ 4.500,00", "Gratis" o "A coordinar".
+pub fn shipping_label(d: &DeliverySettings, format_price: impl Fn(i64) -> String) -> String {
+    match d.shipping_cents {
+        None => "A coordinar".to_string(),
+        Some(0) => "Gratis".to_string(),
+        Some(c) => format_price(c),
+    }
+}
+
+/// Lo que necesita la página "Finalizar compra" además de los productos.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CheckoutInfo {
+    pub store_name: String,
+    pub delivery: DeliverySettings,
+}
+
+/// Un producto dentro de un pedido, como estaba al comprarlo.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct OrderItem {
+    pub product_id: String,
+    pub name: String,
+    pub image_url: String,
+    pub unit_cents: i64,
+    pub qty: u32,
+}
+
+impl OrderItem {
+    pub fn total_cents(&self) -> i64 {
+        self.unit_cents * i64::from(self.qty)
+    }
+}
+
+/// En qué está un pedido.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrderStatus {
+    /// Recibido, el pago se coordina con la tienda.
+    New,
+    PendingPayment,
+    Paid,
+    Shipped,
+    Delivered,
+    Cancelled,
+}
+
+impl OrderStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OrderStatus::New => "new",
+            OrderStatus::PendingPayment => "pending_payment",
+            OrderStatus::Paid => "paid",
+            OrderStatus::Shipped => "shipped",
+            OrderStatus::Delivered => "delivered",
+            OrderStatus::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "pending_payment" => OrderStatus::PendingPayment,
+            "paid" => OrderStatus::Paid,
+            "shipped" => OrderStatus::Shipped,
+            "delivered" => OrderStatus::Delivered,
+            "cancelled" => OrderStatus::Cancelled,
+            _ => OrderStatus::New,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            OrderStatus::New => "Recibido",
+            OrderStatus::PendingPayment => "Esperando pago",
+            OrderStatus::Paid => "Pagado",
+            OrderStatus::Shipped => "Enviado",
+            OrderStatus::Delivered => "Entregado",
+            OrderStatus::Cancelled => "Cancelado",
+        }
+    }
+}
+
+/// Un pedido, para mostrarlo.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Order {
+    pub id: String,
+    pub number: i32,
+    pub status: OrderStatus,
+    pub customer_name: String,
+    pub email: String,
+    pub phone: String,
+    pub delivery: Delivery,
+    pub address: String,
+    pub postal_code: String,
+    pub city: String,
+    pub notes: String,
+    pub items: Vec<OrderItem>,
+    pub subtotal_cents: i64,
+    pub shipping_cents: i64,
+    pub total_cents: i64,
+    /// Cuándo se hizo, RFC 3339.
+    pub created_at: String,
+}
+
+/// La página de un pedido ya hecho, en la tienda.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct OrderReceipt {
+    pub store_name: String,
+    pub order: Order,
+    pub delivery: DeliverySettings,
+}
+
+/// Qué pasó al tocar "Confirmar pedido".
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum PlaceOrder {
+    /// Listo: el pedido quedó guardado.
+    Placed { id: String, number: i32 },
+    /// Hay campos para corregir.
+    Invalid { errors: Vec<FieldError> },
+    /// Algo del carrito cambió (un producto se agotó o ya no está).
+    CartChanged { message: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn good() -> CheckoutForm {
+        CheckoutForm {
+            name: "  Lucía   Fernández ".into(),
+            email: " Lucia@Correo.com ".into(),
+            phone: "(11) 5555-1234".into(),
+            delivery: Delivery::Shipping,
+            address: "Av. Santa Fe 2050".into(),
+            postal_code: "c1123aaa".into(),
+            city: "CABA".into(),
+            notes: String::new(),
+            lines: vec![("a".into(), 2), ("b".into(), 0)],
+        }
+    }
+
+    #[test]
+    fn tidies_a_good_form() {
+        let mut f = good();
+        assert!(tidy_checkout(&mut f, &DeliverySettings::default()).is_empty());
+        assert_eq!(f.name, "Lucía Fernández");
+        assert_eq!(f.email, "lucia@correo.com");
+        assert_eq!(f.postal_code, "C1123AAA");
+        assert_eq!(f.lines, vec![("a".to_string(), 2)]);
+    }
+
+    #[test]
+    fn points_at_each_bad_field() {
+        let mut f = CheckoutForm {
+            email: "lucia@correo".into(),
+            phone: "123".into(),
+            ..CheckoutForm::default()
+        };
+        let fields: Vec<_> = tidy_checkout(&mut f, &DeliverySettings::default())
+            .into_iter()
+            .map(|e| e.field)
+            .collect();
+        assert_eq!(
+            fields,
+            ["name", "email", "phone", "address", "postal_code", "city", "cart"]
+        );
+    }
+
+    #[test]
+    fn pickup_needs_no_address_but_must_be_offered() {
+        let mut f = good();
+        f.delivery = Delivery::Pickup;
+        let d = DeliverySettings::default(); // sin retiro
+        let errors = tidy_checkout(&mut f, &d);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "delivery");
+        assert!(f.address.is_empty());
+        let d = DeliverySettings {
+            pickup_enabled: true,
+            pickup_address: "Corrientes 1234".into(),
+            ..DeliverySettings::default()
+        };
+        assert!(tidy_checkout(&mut f, &d).is_empty());
+        assert_eq!(shipping_for(Delivery::Pickup, &d), 0);
+    }
+
+    #[test]
+    fn delivery_settings_need_one_option() {
+        let mut d = DeliverySettings {
+            shipping_enabled: false,
+            ..DeliverySettings::default()
+        };
+        assert_eq!(tidy_delivery(&mut d).len(), 1);
+        d.pickup_enabled = true;
+        assert_eq!(tidy_delivery(&mut d).len(), 1); // falta la dirección
+        d.pickup_address = " Corrientes 1234 ".into();
+        assert!(tidy_delivery(&mut d).is_empty());
+        assert_eq!(d.pickup_address, "Corrientes 1234");
+    }
+
+    #[test]
+    fn emails() {
+        assert!(looks_like_email("a@b.co"));
+        assert!(!looks_like_email("a@b"));
+        assert!(!looks_like_email("a b@c.com"));
+        assert!(!looks_like_email("@c.com"));
+        assert!(!looks_like_email("a@.com"));
+    }
+}

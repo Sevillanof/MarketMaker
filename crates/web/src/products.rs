@@ -7,7 +7,7 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
 #[cfg(feature = "ssr")]
-mod server {
+pub(crate) mod server {
     use crate::server::{internal, pool};
     use leptos::prelude::ServerFnError;
 
@@ -173,7 +173,7 @@ pub async fn delete_product(slug: String, id: String) -> Result<(), ServerFnErro
     Ok(())
 }
 
-fn error_text(e: &ServerFnError) -> String {
+pub(crate) fn error_text(e: &ServerFnError) -> String {
     match e {
         ServerFnError::ServerError(m) => m.clone(),
         _ => "No pudimos conectarnos con el servidor. Revisá tu conexión y probá de nuevo.".into(),
@@ -182,7 +182,7 @@ fn error_text(e: &ServerFnError) -> String {
 
 /// Encabezado de las pantallas de la plataforma.
 #[component]
-fn Shell(children: Children) -> impl IntoView {
+pub(crate) fn Shell(children: Children) -> impl IntoView {
     view! {
         <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">
             <header class="flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-3">
@@ -194,10 +194,10 @@ fn Shell(children: Children) -> impl IntoView {
 }
 
 #[component]
-fn SignInFirst(back: String) -> impl IntoView {
+pub(crate) fn SignInFirst(back: String) -> impl IntoView {
     view! {
         <div class="card bg-base-100 shadow-sm"><div class="card-body items-start">
-            <p>"Entrá con tu cuenta para ver los productos de tu tienda."</p>
+            <p>"Entrá con tu cuenta para ver tu tienda."</p>
             <a class="btn btn-primary" href=format!("/entrar?volver={back}")>"Entrar"</a>
         </div></div>
     }
@@ -211,7 +211,7 @@ fn photo_count(n: usize) -> String {
     }
 }
 
-fn slug_param() -> Memo<String> {
+pub(crate) fn slug_param() -> Memo<String> {
     let params = use_params_map();
     Memo::new(move |_| params.read().get("slug").unwrap_or_default())
 }

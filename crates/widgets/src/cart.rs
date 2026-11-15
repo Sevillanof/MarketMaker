@@ -25,6 +25,8 @@ pub struct Cart {
     pub open: RwSignal<bool>,
     /// Lo último que se quitó, para poder deshacerlo un rato.
     removed: RwSignal<Option<Removed>>,
+    /// Ya se leyó del navegador (antes de hidratar el carrito está vacío).
+    pub ready: RwSignal<bool>,
 }
 
 /// Un producto recién quitado: qué, cuántos y en qué lugar estaba.
@@ -57,7 +59,9 @@ impl Cart {
             products: StoredValue::new(products),
             open: RwSignal::new(false),
             removed: RwSignal::new(None),
+            ready: RwSignal::new(false),
         };
+        let ready = cart.ready;
         let loaded = StoredValue::new(false);
         let lines = cart.lines;
         // Los efectos corren solo en el navegador, después de hidratar: el
@@ -70,6 +74,7 @@ impl Cart {
                 {
                     lines.set(parse(&saved));
                 }
+                ready.set(true);
                 return;
             }
             if let Some(s) = storage() {
@@ -94,6 +99,16 @@ impl Cart {
     /// Deja `n` unidades de un producto; con 0 lo quita.
     pub fn set(&self, id: &str, n: u32) {
         self.lines.update(|ls| set_line(ls, id, n));
+    }
+
+    /// Producto y cantidad de cada renglón, para armar el pedido.
+    pub fn lines(&self) -> Vec<(String, u32)> {
+        self.lines.get()
+    }
+
+    /// Vacía el carrito (después de hacer el pedido).
+    pub fn clear(&self) {
+        self.lines.set(Vec::new());
     }
 
     /// Quita un producto y deja "Deshacer" unos segundos.
@@ -609,7 +624,7 @@ pub fn CartDrawer() -> impl IntoView {
                         <div class="flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{move || format_price(cart.total_cents())}</span></div>
                         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>"Se calcula después"</span></div>
                         <div class="mt-3 mb-4 flex justify-between text-lg font-bold"><span>"Total"</span><span>{move || format_price(cart.total_cents())}</span></div>
-                        <button type="button" class="btn btn-block btn-lg" disabled>"Finalizar compra · próximamente"</button>
+                        <a class="btn btn-primary btn-block btn-lg" href="/comprar">"Finalizar compra"</a>
                         <button type="button" class="btn btn-link btn-block mt-1" on:click=move |_| close()>"Seguir comprando"</button>
                     </footer>
                 </Show>
