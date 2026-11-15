@@ -68,13 +68,11 @@ async fn main() {
     // de la tienda también atraparía `/pkg/…` o `/favicon.ico`.
     // Mis fotos: subir, listar, borrar y servir los archivos (`/media/…`).
     // Dónde se guardan: Cloudflare R2 si está en `.env.local`, si no `MEDIA_DIR`.
+    let store = ::media::Store::from_env().unwrap_or_else(|e| panic!("Mis fotos: {e}"));
+    log!("Mis fotos se guardan en {}", store.describe());
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
-        store: {
-            let store = ::media::Store::from_env().unwrap_or_else(|e| panic!("Mis fotos: {e}"));
-            log!("Mis fotos se guardan en {}", store.describe());
-            store
-        },
+        store: store.clone(),
     }));
     for dir in ["pkg", "fonts", "img"] {
         app = app.nest_service(
@@ -92,9 +90,11 @@ async fn main() {
             routes,
             {
                 let pool = pool.clone();
+                let store = store.clone();
                 move || {
                     provide_context(pool.clone());
                     provide_context(auth.clone());
+                    provide_context(store.clone());
                 }
             },
             {

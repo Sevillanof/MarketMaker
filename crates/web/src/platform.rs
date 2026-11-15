@@ -90,6 +90,7 @@ fn Dashboard(email: String, stores: Vec<StoreCard>) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <h1 class="grow text-3xl font-bold">{if empty { "Creá tu primera tienda" } else { "Tus tiendas" }}</h1>
+            <a class="btn btn-outline btn-sm" href="/mis-fotos">"Mis fotos"</a>
             <span class="text-sm text-base-content/70">{email}</span>
             <button class="btn btn-ghost btn-sm" on:click=move |_| { out.dispatch(()); }>"Salir"</button>
         </div>
