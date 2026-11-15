@@ -13,6 +13,7 @@ mod icons;
 mod inspector;
 mod look;
 mod palette;
+mod store_drawer;
 mod topbar;
 mod typography;
 
@@ -212,6 +213,8 @@ pub(crate) struct Ui {
     /// Texto para lectores de pantalla (región `role=status` invisible).
     announce: RwSignal<String>,
     pub preview: RwSignal<bool>,
+    /// El cajón "Mi tienda" está abierto en lugar de la lista de bloques.
+    pub store_open: RwSignal<bool>,
     /// Bloque nuevo que se está arrastrando desde la paleta.
     pub new_drag: RwSignal<Option<NewDrag>>,
     /// El último apretar y soltar fue un arrastre: el clic que lo sigue no
@@ -851,6 +854,7 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
         toast_focus: StoredValue::new(false),
         announce: RwSignal::new(String::new()),
         preview: RwSignal::new(false),
+        store_open: RwSignal::new(false),
         new_drag: RwSignal::new(None),
         swallow_click: StoredValue::new(false),
         block_drag: StoredValue::new(false),
@@ -1146,7 +1150,11 @@ pub fn Editor(initial: PageView, save: SaveAction) -> impl IntoView {
                 }
             })}
             <div class="flex min-h-0 flex-1">
-                {move || (!ui.preview.get()).then(|| view! { <Palette/> })}
+                {move || match (ui.preview.get(), ui.store_open.get()) {
+                    (true, _) => ().into_any(),
+                    (false, true) => view! { <store_drawer::StoreDrawer/> }.into_any(),
+                    (false, false) => view! { <Palette/> }.into_any(),
+                }}
                 {view! { <Canvas products welcome/> }.into_any()}
                 {move || (!ui.preview.get()).then(|| view! { <Inspector products/> })}
             </div>

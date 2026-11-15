@@ -1,13 +1,10 @@
-//! Letras: las de toda la tienda (dentro del menú "Mi tienda") y la
-//! sección "Letras de este bloque" del inspector.
+//! Letras: la sección "Letras de este bloque" del inspector (las de toda la
+//! tienda están en el cajón "Mi tienda", ver `store_drawer`).
 //!
 //! Pocas opciones y con muestra: se elige una combinación de fuentes de un
 //! clic, y quien quiera puede elegir cada fuente por separado.
 
-use domain::{
-    font, font_css, TextStyle, Typography, ALIGN_OPTIONS, BLOCK_SIZES, FONTS, FONT_PAIRS,
-    STORE_SIZES,
-};
+use domain::{font, font_css, TextStyle, ALIGN_OPTIONS, BLOCK_SIZES, FONTS};
 use leptos::prelude::*;
 
 use crate::icons::Icon;
@@ -15,80 +12,6 @@ use crate::{choice_class, EditorState};
 
 fn font_label(id: &str) -> &'static str {
     font(id).map_or("Simple", |f| f.label)
-}
-
-/// Letras de toda la tienda: combinaciones de fuentes con muestra, cada
-/// fuente por separado y el tamaño general. Va dentro del menú "Mi tienda".
-#[component]
-pub(crate) fn StoreTypographyFields() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let typo = Memo::new(move |_| state.doc.with(|d| d.typography.clone()));
-    let set = move |f: Box<dyn FnOnce(&mut Typography)>| state.apply(|d| f(&mut d.typography));
-
-    view! {
-        <section aria-labelledby="mk-letters-title">
-            <div class="mb-2 flex items-center justify-between gap-3">
-                <h3 id="mk-letters-title" class="text-xs font-semibold uppercase tracking-wide text-base-content/75">"Letras"</h3>
-                <div class="join" role="group" aria-label="Tamaño del texto" title="Grande ayuda a leer mejor, sobre todo en el celular.">
-                    {STORE_SIZES.iter().map(|(id, name, _)| {
-                        let active = move || typo.with(|t| t.size == *id);
-                        view! {
-                            <button
-                                type="button"
-                                class=move || format!("{} btn-xs join-item", choice_class(active()))
-                                aria-pressed=move || active().to_string()
-                                on:click=move |_| set(Box::new(move |t| t.size = (*id).into()))
-                            >{*name}</button>
-                        }
-                    }).collect_view()}
-                </div>
-            </div>
-            <div class="grid grid-cols-4 gap-2">
-                {FONT_PAIRS.iter().map(|p| {
-                    let active = move || typo.with(|t| t.heading == p.heading && t.body == p.body);
-                    view! {
-                        <button
-                            type="button"
-                            class=move || if active() {
-                                "flex flex-col items-start gap-0.5 rounded-field border-2 border-primary bg-primary/10 px-2.5 py-2 text-left"
-                            } else {
-                                "flex flex-col items-start gap-0.5 rounded-field border-2 border-base-300 px-2.5 py-2 text-left transition-colors hover:border-primary"
-                            }
-                            aria-pressed=move || active().to_string()
-                            on:click=move |_| set(Box::new(move |t| {
-                                t.heading = p.heading.into();
-                                t.body = p.body.into();
-                            }))
-                        >
-                            <span class="text-lg font-bold leading-tight" style=format!("font-family:{}", font_css(p.heading))>"Ofertas"</span>
-                            <span class="text-xs" style=format!("font-family:{}", font_css(p.body))>"Envíos a todo el país"</span>
-                            <span class="mt-1 flex items-center gap-1 text-xs font-medium text-base-content/75">
-                                {move || active().then(|| view! { <Icon name="check" class="h-3.5 w-3.5 text-primary"/> })}
-                                {p.label}
-                            </span>
-                        </button>
-                    }
-                }).collect_view()}
-            </div>
-            <details class="collapse collapse-arrow mt-2 border border-base-300">
-                <summary class="collapse-title min-h-0 py-2.5 text-sm font-medium">"Elegir cada fuente por separado"</summary>
-                <div class="collapse-content grid grid-cols-2 gap-3">
-                    <FontSelect
-                        label="Títulos"
-                        value=Signal::derive(move || typo.with(|t| t.heading.clone()))
-                        sample="Nuestros productos"
-                        on_pick=Callback::new(move |id: String| set(Box::new(move |t| t.heading = id)))
-                    />
-                    <FontSelect
-                        label="Texto"
-                        value=Signal::derive(move || typo.with(|t| t.body.clone()))
-                        sample="Envíos en 24 a 72 horas a todo el país."
-                        on_pick=Callback::new(move |id: String| set(Box::new(move |t| t.body = id)))
-                    />
-                </div>
-            </details>
-        </section>
-    }
 }
 
 /// Selector de una fuente con una muestra escrita en ella.
