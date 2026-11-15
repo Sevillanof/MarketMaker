@@ -11,6 +11,7 @@ use wasm_bindgen::JsCast;
 use widgets::{node_style, render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx};
 
 use crate::icons::Icon;
+use crate::inline::{inline_at, InlineEdit, InlineEditor};
 use crate::{new_node_id, size_badge, size_text, Actions, EditorState, NewDrag, Ui, WELCOME_KEY};
 
 /// La página en el lienzo: ancho del contenido y margen de cada lado, en
@@ -352,6 +353,8 @@ pub(crate) fn Canvas(
     // Escala de la ficha del producto (que tiene su propio ancho).
     let modal_scale = RwSignal::new(1.0_f64);
     let width_drag = RwSignal::new(None::<WidthDrag>);
+    // El texto que se está escribiendo directo en el lienzo.
+    let inline_edit = RwSignal::new(None::<InlineEdit>);
     // La página: ancho del contenido y margen (px de diseño) y escala.
     let frame = Memo::new(move |_| {
         let wd = width_drag.get();
@@ -1035,6 +1038,23 @@ pub(crate) fn Canvas(
                     }
                     on:pointermove=on_pointer_move
                     on:pointerup=on_pointer_up
+                    on:dblclick=move |ev: leptos::ev::MouseEvent| {
+                        // Doble clic sobre un texto del bloque: se escribe ahí mismo.
+                        if inline_edit.with_untracked(Option::is_some) {
+                            return;
+                        }
+                        let Some(stage) = stage_ref.get_untracked() else {
+                            return;
+                        };
+                        let found = state
+                            .doc
+                            .with_untracked(|d| inline_at(d, &stage, ev.client_x(), ev.client_y()));
+                        if let Some(e) = found {
+                            ev.prevent_default();
+                            state.selected.set(Some(e.node_id.clone()));
+                            inline_edit.set(Some(e));
+                        }
+                    }
                     on:pointercancel=move |ev: PointerEvent| {
                         if drag.with_untracked(|d| d.as_ref().is_some_and(|d| d.pointer_id == ev.pointer_id())) {
                             cancel_drag(false);
@@ -1061,6 +1081,7 @@ pub(crate) fn Canvas(
                     })}
                     <For each=move || order_ids.get() key=|id| id.clone() children=node_view/>
                 </div>
+                {move || inline_edit.with(Option::is_some).then(|| view! { <InlineEditor edit=inline_edit/> })}
             </div>
         }
     };
@@ -1249,7 +1270,7 @@ pub(crate) fn Canvas(
     view! {
         <section id="mk-canvas" node_ref=section_ref class="min-w-0 flex-1 overflow-auto" aria-label="Lienzo de la página">
             <p id="mk-node-help" class="sr-only">
-                "Enter para editar. Flechas arriba y abajo para cambiar el orden, izquierda y derecha para correrlo. Mayúscula más flechas para cambiar el tamaño. Suprimir para borrar."
+                "Enter para editar. Doble clic sobre un texto para cambiarlo ahí mismo. Flechas arriba y abajo para cambiar el orden, izquierda y derecha para correrlo. Mayúscula más flechas para cambiar el tamaño. Suprimir para borrar."
             </p>
             {move || ui.preview.get().then(|| view! {
                 <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm">

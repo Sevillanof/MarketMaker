@@ -10,6 +10,7 @@
 mod canvas;
 mod fields;
 mod icons;
+mod inline;
 mod inspector;
 mod look;
 mod palette;
