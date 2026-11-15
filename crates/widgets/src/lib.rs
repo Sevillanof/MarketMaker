@@ -7,7 +7,8 @@
 use domain::{
     BannerProps, BenefitsProps, CardProps, CarouselProps, CategoriesProps, CountdownProps,
     FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps, ImageProps, LogosProps,
-    NavbarProps, Node, Product, ProductGridProps, TabsProps, TestimonialsProps, TextProps, Widget,
+    NavbarProps, Node, Product, ProductButtonProps, ProductGridProps, ProductImageProps,
+    ProductModal, TabsProps, TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
 use leptos::prelude::*;
@@ -19,7 +20,26 @@ pub struct RenderCtx {
     pub products: Vec<Product>,
     /// En el editor: desactiva enlaces, botones y animaciones automáticas.
     pub editing: bool,
+    /// Producto que muestran los bloques de la ficha del producto.
+    pub product: Option<Product>,
 }
+
+/// Producto que se muestra en la ficha cuando la tienda todavía no tiene
+/// productos (solo en el editor).
+pub fn sample_product() -> Product {
+    Product {
+        id: String::new(),
+        name: "Producto de ejemplo".to_string(),
+        price_cents: 1_999_900,
+        image_url: "/img/product-1.webp".to_string(),
+        description: "Así se va a ver la descripción de cada producto.".to_string(),
+    }
+}
+
+/// Producto abierto en la ficha de la tienda, por contexto. Si está, las
+/// tarjetas de producto se pueden tocar para abrir su ficha.
+#[derive(Clone, Copy)]
+pub struct OpenProduct(pub RwSignal<Option<String>>);
 
 /// Dibuja un nodo dentro de su envoltorio de letras (`.mk-type`, ver
 /// [`domain::TextStyle`] y `style/tailwind.css`).
@@ -66,6 +86,146 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::Logos(p) => view! { <LogosWidget props=p.clone() editing/> }.into_any(),
         Widget::Image(p) => view! { <ImageWidget props=p.clone() editing/> }.into_any(),
         Widget::Footer(p) => view! { <FooterWidget props=p.clone() editing/> }.into_any(),
+        Widget::ProductImage(p) => {
+            view! { <ProductImageWidget props=p.clone() product=ctx.product.clone()/> }.into_any()
+        }
+        Widget::ProductName(_) => {
+            let name = ctx
+                .product
+                .as_ref()
+                .map(|p| p.name.clone())
+                .unwrap_or_default();
+            view! {
+                <div class="flex h-full items-start overflow-hidden">
+                    <h2 class="text-2xl font-bold leading-tight line-clamp-2">{name}</h2>
+                </div>
+            }
+            .into_any()
+        }
+        Widget::ProductPrice(_) => {
+            let cents = ctx.product.as_ref().map_or(0, |p| p.price_cents);
+            view! {
+                <div class="flex h-full items-start overflow-hidden text-xl text-primary">
+                    <Price cents/>
+                </div>
+            }
+            .into_any()
+        }
+        Widget::ProductDescription(_) => {
+            let text = ctx
+                .product
+                .as_ref()
+                .map(|p| p.description.clone())
+                .unwrap_or_default();
+            let empty = text.is_empty();
+            view! {
+                <div class="h-full overflow-y-auto">
+                    {if empty && editing {
+                        view! { <p class="text-base-content/60 italic">"Este producto todavía no tiene descripción."</p> }.into_any()
+                    } else {
+                        view! { <p class="whitespace-pre-line text-base-content/80">{text}</p> }.into_any()
+                    }}
+                </div>
+            }
+            .into_any()
+        }
+        Widget::ProductButton(p) => {
+            view! { <ProductButtonWidget props=p.clone() editing/> }.into_any()
+        }
+    }
+}
+
+#[component]
+pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
+    let (src, alt) = product.map_or_else(Default::default, |p| (p.image_url, p.name));
+    view! {
+        <div class="h-full overflow-hidden rounded-box bg-base-200">
+            <Image src alt contain=props.fit == "contain"/>
+        </div>
+    }
+}
+
+#[component]
+pub fn ProductButtonWidget(props: ProductButtonProps, editing: bool) -> impl IntoView {
+    view! {
+        <div class="flex h-full items-start">
+            <Button label=props.label href=props.href disabled=editing/>
+        </div>
+    }
+}
+
+/// Ficha del producto en la tienda: un `<dialog>` modal con el diseño de
+/// [`ProductModal`], para el producto de `open`. Se abre con `showModal()`
+/// (fondo inerte, foco dentro, Esc la cierra y el foco vuelve a la tarjeta)
+/// y también se cierra tocando afuera o con el botón Cerrar.
+#[component]
+pub fn ProductDialog(
+    modal: ProductModal,
+    products: Vec<Product>,
+    open: RwSignal<Option<String>>,
+    /// En la vista previa del editor: sin enlaces que naveguen.
+    #[prop(optional)]
+    editing: bool,
+) -> impl IntoView {
+    let dialog_ref = NodeRef::<leptos::html::Dialog>::new();
+    let products = StoredValue::new(products);
+    let mut nodes = modal.nodes;
+    nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
+    let nodes = StoredValue::new(nodes);
+    let product = Memo::new(move |_| {
+        let id = open.get()?;
+        products.with_value(|ps| ps.iter().find(|p| p.id == id).cloned())
+    });
+
+    Effect::new(move |_| {
+        let Some(dialog) = dialog_ref.get() else {
+            return;
+        };
+        if product.get().is_some() {
+            if !dialog.open() {
+                _ = dialog.show_modal();
+            }
+        } else if dialog.open() {
+            dialog.close();
+        }
+    });
+
+    view! {
+        <dialog
+            node_ref=dialog_ref
+            class="modal mk-dialog"
+            aria-label=move || product.get().map(|p| p.name).unwrap_or_default()
+            on:close=move |_| open.set(None)
+        >
+            <div class="modal-box mk-dialog-box">
+                <form method="dialog" class="absolute right-2 top-2 z-10">
+                    <button class="btn btn-sm btn-circle btn-ghost" aria-label="Cerrar">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                    </button>
+                </form>
+                {move || product.get().map(|p| {
+                    let ctx = RenderCtx {
+                        products: products.get_value(),
+                        editing,
+                        product: Some(p),
+                    };
+                    view! {
+                        <div class="mk-grid">
+                            {nodes
+                                .get_value()
+                                .into_iter()
+                                .map(|node| view! {
+                                    <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
+                                })
+                                .collect_view()}
+                        </div>
+                    }
+                })}
+            </div>
+            <form method="dialog" class="modal-backdrop">
+                <button tabindex="-1">"Cerrar"</button>
+            </form>
+        </dialog>
     }
 }
 
@@ -180,9 +340,14 @@ pub fn FeaturedProductWidget(props: FeaturedProductProps, products: Vec<Product>
 }
 
 /// Tarjeta de producto: la imagen ocupa todo el alto que deja el texto.
+/// En la tienda (con [`OpenProduct`]) se puede tocar para abrir su ficha.
 #[component]
 fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
+    let open = use_context::<OpenProduct>();
+    let id = product.id.clone();
+    let name = product.name.clone();
     view! {
+        <div class="relative h-full" data-product-id=product.id.clone()>
         <Card>
             <div class="relative min-h-0 flex-1">
                 <div class="absolute inset-0">
@@ -194,6 +359,16 @@ fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
                 {show_price.then(|| view! { <Price cents=product.price_cents/> })}
             </div>
         </Card>
+        {open.map(|OpenProduct(open)| view! {
+            <button
+                type="button"
+                class="absolute inset-0 cursor-pointer rounded-box focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                aria-haspopup="dialog"
+                aria-label=format!("Ver {name}")
+                on:click=move |_| open.set(Some(id.clone()))
+            ></button>
+        })}
+        </div>
     }
 }
 

@@ -26,6 +26,7 @@ fn sample_products() -> Vec<Product> {
             name: (*name).to_string(),
             price_cents: 1_234_500 + i as i64 * 250_050,
             image_url: format!("/img/product-{}.webp", i + 1),
+            description: format!("{name} de ejemplo, con envío a todo el país."),
         })
         .collect()
 }
@@ -38,8 +39,9 @@ pub fn DevWidgetsPage() -> impl IntoView {
     let products = sample_products();
     let first_id = products[0].id.clone();
     let ctx = RenderCtx {
-        products,
+        products: products.clone(),
         editing: false,
+        product: Some(products[0].clone()),
     };
 
     let cases: Vec<(String, Node)> = WIDGET_TYPES

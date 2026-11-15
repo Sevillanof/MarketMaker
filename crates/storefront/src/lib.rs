@@ -2,14 +2,18 @@
 
 use domain::PageView;
 use leptos::prelude::*;
-use widgets::{node_style, render_widget, RenderCtx};
+use widgets::{node_style, render_widget, OpenProduct, ProductDialog, RenderCtx};
 
 #[component]
 pub fn StorefrontPage(view: PageView) -> impl IntoView {
     let PageView { doc, products, .. } = view;
+    // Tocar un producto abre su ficha (ver `widgets::ProductDialog`).
+    let open = RwSignal::new(None::<String>);
+    provide_context(OpenProduct(open));
     let ctx = RenderCtx {
-        products,
+        products: products.clone(),
         editing: false,
+        product: None,
     };
     // Orden de lectura (y, x): en pantallas angostas los nodos se apilan así.
     let mut nodes = doc.nodes;
@@ -29,6 +33,7 @@ pub fn StorefrontPage(view: PageView) -> impl IntoView {
                         .collect_view()}
                 </div>
             </div>
+            <ProductDialog modal=doc.product_modal products open/>
         </div>
     }
 }

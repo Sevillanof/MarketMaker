@@ -1,17 +1,42 @@
 //! Paleta: los bloques que se pueden agregar, en miniaturas agrupadas y con
 //! buscador.
 
-use domain::WIDGET_TYPES;
+use domain::{allowed_in, Layer, WIDGET_TYPES};
 use leptos::ev::PointerEvent;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
 use crate::icons::Icon;
-use crate::{Actions, NewDrag, Ui};
+use crate::{Actions, EditorState, NewDrag, Ui};
 
 /// Grupo, ícono y descripción breve de cada tipo de bloque, en el orden en
 /// que se muestran.
 pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
+    (
+        "Del producto",
+        "ProductImage",
+        "image",
+        "La foto del producto que se abre",
+    ),
+    (
+        "Del producto",
+        "ProductName",
+        "type",
+        "Su nombre, como título",
+    ),
+    ("Del producto", "ProductPrice", "tag", "Su precio"),
+    (
+        "Del producto",
+        "ProductDescription",
+        "text",
+        "El texto que lo describe",
+    ),
+    (
+        "Del producto",
+        "ProductButton",
+        "button",
+        "Un botón para consultar o comprar",
+    ),
     ("Encabezado", "Navbar", "navbar", "Logo, nombre y enlaces"),
     ("Encabezado", "Banner", "banner", "Imagen grande con título"),
     (
@@ -66,7 +91,14 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
     ("Pie", "Footer", "footer", "Datos y enlaces al final"),
 ];
 
-const GROUPS: &[&str] = &["Encabezado", "Productos", "Contenido", "Confianza", "Pie"];
+const GROUPS: &[&str] = &[
+    "Del producto",
+    "Encabezado",
+    "Productos",
+    "Contenido",
+    "Confianza",
+    "Pie",
+];
 
 /// Ícono y descripción de un tipo de bloque.
 pub(crate) fn block_info(type_name: &str) -> (&'static str, &'static str) {
@@ -102,6 +134,7 @@ fn fold(s: &str) -> String {
 pub(crate) fn Palette() -> impl IntoView {
     let actions = expect_context::<Actions>();
     let ui = expect_context::<Ui>();
+    let state = expect_context::<EditorState>();
     // Apretar con el mouse prepara un arrastre; el lienzo lo sigue desde ahí
     // (ver `canvas::Canvas`) y decide si fue un clic o un arrastre.
     let on_pointer_down = move |ev: PointerEvent, type_name: &'static str| {
@@ -137,16 +170,29 @@ pub(crate) fn Palette() -> impl IntoView {
         actions.add(type_name);
     };
     let query = RwSignal::new(String::new());
+    // En la ficha del producto solo se ofrecen los bloques que van ahí.
     let matches = move |type_name: &str, desc: &str| {
+        if !allowed_in(type_name, state.layer.get()) {
+            return false;
+        }
         let q = fold(query.get().trim());
         q.is_empty() || fold(label_of(type_name)).contains(&q) || fold(desc).contains(&q)
     };
+    let in_modal = move || state.layer.get() == Layer::ProductModal;
 
     view! {
         <nav class="flex w-72 shrink-0 flex-col border-r border-base-300 bg-base-100" aria-labelledby="mk-palette-title">
             <div class="flex flex-col gap-2 border-b border-base-300 p-3">
-                <h2 id="mk-palette-title" class="font-semibold">"Agregá un bloque"</h2>
-                <p class="text-xs text-base-content/75">"Hacé clic en uno y se suma al final de la página, o arrastralo al lugar del lienzo donde lo quieras."</p>
+                <h2 id="mk-palette-title" class="font-semibold">
+                    {move || if in_modal() { "Agregá a la ficha" } else { "Agregá un bloque" }}
+                </h2>
+                <p class="text-xs text-base-content/75">
+                    {move || if in_modal() {
+                        "Bloques para la ficha del producto. Los de \"Del producto\" muestran la foto, el nombre o el precio del producto que se abre."
+                    } else {
+                        "Hacé clic en uno y se suma al final de la página, o arrastralo al lugar del lienzo donde lo quieras."
+                    }}
+                </p>
                 <label class="input input-sm w-full">
                     <span class="sr-only">"Buscar bloque"</span>
                     <svg class="h-4 w-4 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-4-4"/></svg>
@@ -180,7 +226,7 @@ pub(crate) fn Palette() -> impl IntoView {
                                                     class="flex h-full w-full cursor-grab select-none flex-col items-stretch gap-1.5 rounded-box border border-base-300 bg-base-100 p-2 text-left transition duration-150 hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                                                     class:opacity-50=move || ui.new_drag.with(|d| d.as_ref().is_some_and(|d| d.active && d.type_name == type_name))
                                                     class:scale-95=move || ui.new_drag.with(|d| d.as_ref().is_some_and(|d| d.active && d.type_name == type_name))
-                                                    title="Clic para agregarlo al final, o arrastralo al lienzo"
+                                                    title=move || if in_modal() { "Clic para agregarlo al final de la ficha, o arrastralo a la ficha" } else { "Clic para agregarlo al final, o arrastralo al lienzo" }
                                                     on:pointerdown=move |ev| on_pointer_down(ev, type_name)
                                                     on:click=move |_| on_click(type_name)
                                                 >

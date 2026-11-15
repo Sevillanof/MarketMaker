@@ -9,7 +9,7 @@ use crate::{EditorState, Ui};
 
 /// Cambia una prop de un nodo pasando por `serde_json::Value`.
 pub(crate) fn set_field(doc: &mut PageDoc, id: &str, key: &str, value: serde_json::Value) {
-    let Some(node) = doc.nodes.iter_mut().find(|n| n.id == id) else {
+    let Some(node) = doc.node_mut(id) else {
         return;
     };
     let Ok(mut v) = serde_json::to_value(&node.widget) else {
@@ -24,9 +24,7 @@ pub(crate) fn set_field(doc: &mut PageDoc, id: &str, key: &str, value: serde_jso
 }
 
 pub(crate) fn field_value(doc: &PageDoc, id: &str, key: &str) -> serde_json::Value {
-    doc.nodes
-        .iter()
-        .find(|n| n.id == id)
+    doc.node(id)
         .and_then(|n| serde_json::to_value(&n.widget).ok())
         .and_then(|v| v.get("props").and_then(|p| p.get(key)).cloned())
         .unwrap_or(serde_json::Value::Null)

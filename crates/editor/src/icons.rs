@@ -27,6 +27,9 @@ fn path(name: &str) -> &'static str {
         "align-auto" => "M4 6h16M4 10h16M4 14h16M4 18h16",
         "star" => "M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
         // Bloques
+        "tag" => "M3 12V4h8l10 10-8 8zM7.5 8v.01",
+        "button" => "M3 8h18v8H3zM8 12h8",
+        "modal" => "M3 4h18v16H3zM7 8h10v8H7z",
         "navbar" => "M3 5h18v4H3zM6 7h3M14 7h2M18 7h1M3 13h18M3 17h12",
         "banner" => "M3 5h18v11H3zM7 9h8M7 12h5M3 20h18",
         "carousel" => "M6 6h12v10H6zM2 9v4M22 9v4M10 20h.01M12 20h.01M14 20h.01",

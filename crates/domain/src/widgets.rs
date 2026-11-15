@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Field, FieldKind, Size, SizeLimits};
+use crate::{Field, FieldKind, Layer, Size, SizeLimits};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", content = "props")]
@@ -25,6 +25,32 @@ pub enum Widget {
     Logos(LogosProps),
     Image(ImageProps),
     Footer(FooterProps),
+    // Bloques de la ficha del producto: muestran el producto que se abrió.
+    ProductImage(ProductImageProps),
+    ProductName(ProductNameProps),
+    ProductPrice(ProductPriceProps),
+    ProductDescription(ProductDescriptionProps),
+    ProductButton(ProductButtonProps),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct ProductImageProps {
+    pub fit: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct ProductNameProps {}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct ProductPriceProps {}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct ProductDescriptionProps {}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct ProductButtonProps {
+    pub label: String,
+    pub href: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -234,7 +260,34 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Logos", "Logos de marcas"),
     ("Image", "Imagen"),
     ("Footer", "Pie de página"),
+    ("ProductImage", "Foto del producto"),
+    ("ProductName", "Nombre del producto"),
+    ("ProductPrice", "Precio del producto"),
+    ("ProductDescription", "Descripción del producto"),
+    ("ProductButton", "Botón de la ficha"),
 ];
+
+/// Bloques que solo tienen sentido dentro de la ficha de un producto.
+pub const PRODUCT_MODAL_ONLY: &[&str] = &[
+    "ProductImage",
+    "ProductName",
+    "ProductPrice",
+    "ProductDescription",
+    "ProductButton",
+];
+
+/// Bloques de la página que también se pueden poner en la ficha.
+pub const PRODUCT_MODAL_SHARED: &[&str] =
+    &["Text", "Image", "Benefits", "Tabs", "Faq", "Testimonials"];
+
+/// ¿Se puede poner un bloque de este tipo en `layer`?
+pub fn allowed_in(type_name: &str, layer: Layer) -> bool {
+    let only_modal = PRODUCT_MODAL_ONLY.contains(&type_name);
+    match layer {
+        Layer::Page => !only_modal,
+        Layer::ProductModal => only_modal || PRODUCT_MODAL_SHARED.contains(&type_name),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Campos del inspector
@@ -511,6 +564,18 @@ const IMAGE_FIELDS: &[Field] = &[
     ),
 ];
 
+const PRODUCT_IMAGE_FIELDS: &[Field] = &[field(
+    "fit",
+    "Ajuste",
+    FieldKind::Select {
+        options: IMAGE_FIT_OPTIONS,
+    },
+)];
+const PRODUCT_BUTTON_FIELDS: &[Field] = &[
+    field("label", "Texto del botón", text(30)),
+    field("href", "Enlace del botón", FieldKind::Url),
+];
+
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
     field("description", "Descripción", text(200)),
@@ -560,6 +625,11 @@ impl Widget {
             Widget::Logos(_) => "Logos",
             Widget::Image(_) => "Image",
             Widget::Footer(_) => "Footer",
+            Widget::ProductImage(_) => "ProductImage",
+            Widget::ProductName(_) => "ProductName",
+            Widget::ProductPrice(_) => "ProductPrice",
+            Widget::ProductDescription(_) => "ProductDescription",
+            Widget::ProductButton(_) => "ProductButton",
         }
     }
 
@@ -594,6 +664,11 @@ impl Widget {
             Widget::Logos(_) => limits(12, 48, 12, 36, 48, 24),
             Widget::Image(_) => limits(4, 48, 12, 120, 16, 36),
             Widget::Footer(_) => limits(24, 48, 24, 60, 48, 24),
+            Widget::ProductImage(_) => limits(8, 48, 12, 120, 24, 52),
+            Widget::ProductName(_) => limits(8, 48, 5, 24, 24, 9),
+            Widget::ProductPrice(_) => limits(6, 48, 4, 16, 24, 6),
+            Widget::ProductDescription(_) => limits(8, 48, 6, 96, 24, 28),
+            Widget::ProductButton(_) => limits(8, 48, 6, 12, 24, 7),
         }
     }
 
@@ -616,6 +691,9 @@ impl Widget {
             Widget::Logos(_) => LOGOS_FIELDS,
             Widget::Image(_) => IMAGE_FIELDS,
             Widget::Footer(_) => FOOTER_FIELDS,
+            Widget::ProductImage(_) => PRODUCT_IMAGE_FIELDS,
+            Widget::ProductName(_) | Widget::ProductPrice(_) | Widget::ProductDescription(_) => &[],
+            Widget::ProductButton(_) => PRODUCT_BUTTON_FIELDS,
         }
     }
 
@@ -830,6 +908,14 @@ impl Widget {
                     link("Contacto", "/contacto"),
                 ],
                 legal: s("© 2026 Mi tienda. Todos los derechos reservados."),
+            }),
+            "ProductImage" => Widget::ProductImage(ProductImageProps { fit: s("cover") }),
+            "ProductName" => Widget::ProductName(ProductNameProps {}),
+            "ProductPrice" => Widget::ProductPrice(ProductPriceProps {}),
+            "ProductDescription" => Widget::ProductDescription(ProductDescriptionProps {}),
+            "ProductButton" => Widget::ProductButton(ProductButtonProps {
+                label: s("Consultar por este producto"),
+                href: s("/contacto"),
             }),
             _ => return None,
         };
