@@ -15,7 +15,7 @@ mod inspector;
 mod look;
 mod palette;
 mod photos;
-pub use photos::{take_files, MyPhotos};
+pub use photos::{take_files, LinkImport, MyPhotos};
 mod store_drawer;
 mod topbar;
 mod typography;

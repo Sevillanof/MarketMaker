@@ -75,6 +75,12 @@ async fn main() {
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
         store: store.clone(),
+        // Traer fotos de la red local solo en pruebas (debug y a pedido).
+        fetcher: ::media::Fetcher::new(
+            cfg!(debug_assertions)
+                && std::env::var("MEDIA_LINKS_ALLOW_LOCAL").as_deref() == Ok("1"),
+        )
+        .unwrap_or_else(|e| panic!("Mis fotos: {e}")),
     }));
     for dir in ["pkg", "fonts", "img"] {
         app = app.nest_service(

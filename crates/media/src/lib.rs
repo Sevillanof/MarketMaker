@@ -4,6 +4,9 @@
 //! Al convertir se gira la foto según cómo la sacó el celular y se pierden
 //! los datos ocultos del archivo original (incluida la ubicación GPS).
 
+pub mod fetch;
+pub use fetch::Fetcher;
+
 use std::io::Cursor;
 use std::path::PathBuf;
 

@@ -7,7 +7,7 @@
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use domain::MediaItem;
 use uuid::Uuid;
@@ -19,6 +19,8 @@ use crate::auth::COOKIE;
 pub struct MediaState {
     pub pool: db::Pool,
     pub store: media::Store,
+    /// Trae fotos de enlaces de otros sitios.
+    pub fetcher: media::Fetcher,
 }
 
 /// `GET/POST /api/media`, `DELETE /api/media/{id}` y los archivos en
@@ -27,6 +29,7 @@ pub struct MediaState {
 pub fn media_routes<S: Clone + Send + Sync + 'static>(state: MediaState) -> Router<S> {
     Router::new()
         .route("/api/media", get(list).post(upload))
+        .route("/api/media/link", post(from_link))
         .route("/api/media/{id}", delete(remove))
         .route("/media/{id}/{file}", get(serve))
         // Un poco más que el máximo, para responder "pesa demasiado" en
@@ -142,10 +145,64 @@ async fn upload(
         );
     };
 
+    save(&state, user.id, quota, name, bytes.to_vec()).await
+}
+
+/// `POST /api/media/link` con `{"url": "…"}`: trae la foto del enlace y la
+/// guarda en Mis fotos igual que una subida.
+async fn from_link(
+    State(state): State<MediaState>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let user = match owner(&state, &headers).await {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let quota = match db::media::quota(&state.pool, user.id).await {
+        Ok(q) => q,
+        Err(_) => {
+            return fail(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "No pudimos guardar la foto. Probá de nuevo.",
+            )
+        }
+    };
+    if let Err(msg) = quota.room_for(0) {
+        return fail(StatusCode::CONFLICT, msg);
+    }
+    let link = body.get("url").and_then(|u| u.as_str()).unwrap_or_default();
+    if link.trim().is_empty() || link.len() > 2048 {
+        return fail(StatusCode::BAD_REQUEST, "Pegá el enlace de la foto.");
+    }
+    match state.fetcher.fetch(link).await {
+        Ok(f) => {
+            save(
+                &state,
+                user.id,
+                quota,
+                domain::media_name(&format!("{}.x", f.name)),
+                f.bytes,
+            )
+            .await
+        }
+        Err(msg) => fail(StatusCode::UNPROCESSABLE_ENTITY, msg),
+    }
+}
+
+/// Convierte la foto, la guarda en la carpeta del dueño y la anota. Si ya la
+/// tenía (mismo archivo), devuelve esa.
+async fn save(
+    state: &MediaState,
+    owner_id: Uuid,
+    quota: domain::PhotoQuota,
+    name: String,
+    bytes: Vec<u8>,
+) -> Response {
     let size = bytes.len();
     // La misma foto que ya subió: se usa esa, sin convertir ni guardar otra.
     let sha256 = db::media::fingerprint(&bytes);
-    match db::media::find_by_hash(&state.pool, user.id, &sha256).await {
+    match db::media::find_by_hash(&state.pool, owner_id, &sha256).await {
         Ok(Some(existing)) => {
             return Json(MediaItem {
                 duplicate: true,
@@ -176,13 +233,13 @@ async fn upload(
         return fail(StatusCode::CONFLICT, msg);
     }
     let id = Uuid::new_v4();
-    let folder = db::media::media_folder(user.id, id);
+    let folder = db::media::media_folder(owner_id, id);
     if let Err(e) = state.store.put_all(&folder, &processed.variants).await {
         return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
     }
     let new = db::media::NewMedia {
         id,
-        owner_id: user.id,
+        owner_id: owner_id,
         name: &name,
         width: processed.width,
         height: processed.height,

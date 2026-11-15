@@ -5,7 +5,7 @@ use domain::{Field, FieldKind, MediaItem, PageDoc, Product, Widget};
 use leptos::prelude::*;
 
 use crate::icons::Icon;
-use crate::photos::{take_files, MyPhotos};
+use crate::photos::{take_files, LinkImport, MyPhotos};
 use crate::{EditorState, Ui};
 
 /// Cambia una prop de un nodo pasando por `serde_json::Value`.
@@ -212,7 +212,7 @@ fn FieldInput(
         return view! {
             <div class="flex flex-col gap-1">
                 <span class="text-sm font-medium" id=format!("{uid}-label")>{field.label}</span>
-                <ImagePicker uid=uid.clone() value set pick=Callback::new(set_once) on_blur=Callback::new(move |()| end()) on_photo/>
+                <ImagePicker uid=uid.clone() value pick=Callback::new(set_once) on_photo/>
                 {move || error.get().map(|e| view! { <FieldError id=format!("{uid}-error") text=e/> })}
             </div>
         }
@@ -517,12 +517,8 @@ fn Stars(
 fn ImagePicker(
     uid: String,
     value: Signal<serde_json::Value>,
-    /// Cambio que se agrupa (escribir la dirección).
-    set: Callback<serde_json::Value>,
     /// Cambio de un solo clic.
     pick: Callback<serde_json::Value>,
-    /// Al salir del campo de la dirección.
-    on_blur: Callback<()>,
     /// Se eligió (o subió) una foto de Mis fotos.
     on_photo: Option<Callback<MediaItem>>,
 ) -> impl IntoView {
@@ -718,17 +714,10 @@ fn ImagePicker(
             <button type="button" class="btn btn-ghost btn-xs self-start" on:click=move |_| pick.run(serde_json::Value::String(String::new()))>
                 "Quitar imagen"
             </button>
-            <label for=url_id.clone() class="text-xs font-medium">"O pegá la dirección de una imagen"</label>
-            <input
-                id=url_id
-                type="text"
-                inputmode="url"
-                class="input input-sm w-full"
-                placeholder="https://…"
-                prop:value=src
-                on:input=move |ev| set.run(serde_json::Value::String(event_target_value(&ev)))
-                on:blur=move |_| on_blur.run(())
-            />
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-medium">"¿La foto está en otro sitio?"</span>
+                <LinkImport photos done uid=url_id small=true/>
+            </div>
         </div>
     }
 }
