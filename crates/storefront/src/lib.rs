@@ -2,7 +2,9 @@
 
 use domain::{Layer, PageView};
 use leptos::prelude::*;
-use widgets::{node_style, render_widget, OpenProduct, ProductDialog, RenderCtx};
+use widgets::{
+    node_style, render_widget, Cart, CartBar, CartDrawer, OpenProduct, ProductDialog, RenderCtx,
+};
 
 /// La página de la tienda que está en la dirección `path` (`/` es Inicio).
 /// Si no hay ninguna ahí, un aviso con un enlace a Inicio.
@@ -24,6 +26,8 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     // Tocar un producto abre su ficha (ver `widgets::ProductDialog`).
     let open = RwSignal::new(None::<String>);
     provide_context(OpenProduct(open));
+    // Carrito del comprador, guardado en su navegador (ver `widgets::cart`).
+    Cart::provide(products.clone());
     let ctx = RenderCtx {
         products: products.clone(),
         editing: false,
@@ -48,6 +52,8 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
                 </div>
             </div>
             <ProductDialog modal=doc.product_modal products open/>
+            <CartBar/>
+            <CartDrawer/>
         </div>
     }
     .into_any()

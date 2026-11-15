@@ -555,6 +555,31 @@ dialog.mk-dialog::backdrop {
   overscroll-behavior: contain;
 }
 
+/* Cajón del carrito (ver `widgets::cart::CartDrawer`): un `<dialog>` modal
+   pegado a la derecha, de todo el alto. */
+dialog.mk-cart {
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  width: min(420px, 100vw);
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  box-shadow: -8px 0 30px rgb(0 0 0 / 0.15);
+  overscroll-behavior: contain;
+}
+dialog.mk-cart::backdrop {
+  background: rgb(17 24 39 / 0.42);
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.mk-cart[open] {
+    animation: mk-cart-in 0.2s ease-out;
+  }
+}
+@keyframes mk-cart-in {
+  from { transform: translateX(100%); }
+}
+
 /* Menú de un bloque del editor (ver `canvas.rs`): se abre debajo del botón
    ⋯, alineado a su borde derecho, y se da vuelta si no entra. Sin anchor
    positioning, el script deja la posición del botón en variables. */
