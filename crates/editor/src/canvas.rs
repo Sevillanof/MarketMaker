@@ -487,7 +487,8 @@ pub(crate) fn Canvas(
             let id = id.clone();
             move |_| shown.with(|nodes| nodes.iter().find(|n| n.id == id).cloned())
         });
-        let widget = Memo::new(move |_| node.get().map(|n| n.widget));
+        // Solo lo que cambia el dibujo del bloque: moverlo no lo redibuja.
+        let widget = Memo::new(move |_| node.get().map(|n| (n.widget, n.style)));
         let is_selected = Memo::new({
             let id = id.clone();
             move |_| state.selected.get().as_deref() == Some(id.as_str())
@@ -540,12 +541,14 @@ pub(crate) fn Canvas(
         let content = {
             let id = id.clone();
             move || {
-                widget.get().map(|w| {
+                widget.get().map(|(w, style)| {
                     let ctx = RenderCtx {
                         products: products.get_value(),
                         editing: true,
                     };
-                    render_widget(&Node::new(id.clone(), w), &ctx)
+                    let mut node = Node::new(id.clone(), w);
+                    node.style = style;
+                    render_widget(&node, &ctx)
                 })
             }
         };
@@ -661,7 +664,11 @@ pub(crate) fn Canvas(
                     <button type="button" class="btn btn-sm btn-primary" on:click=move |_| ui.preview.set(false)>"Volver a editar"</button>
                 </div>
             })}
-            <div data-theme=move || state.doc.with(|d| d.theme.clone()) class="min-h-full bg-base-200 text-base-content">
+            <div
+                data-theme=move || state.doc.with(|d| d.theme.clone())
+                class="mk-store min-h-full bg-base-200 text-base-content"
+                style=move || state.doc.with(|d| d.typography.css_vars())
+            >
                 <div class="mx-auto max-w-6xl p-4">
                     {move || (welcome.get() && !ui.preview.get()).then(|| view! {
                         <div data-theme="light" class="mb-4 rounded-box border border-primary/30 bg-base-100 p-4 text-base-content shadow-sm" role="region" aria-labelledby="mk-welcome-title">

@@ -16,7 +16,7 @@ pub fn StorefrontPage(view: PageView) -> impl IntoView {
     nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
 
     view! {
-        <div data-theme=doc.theme class="min-h-screen bg-base-200 text-base-content">
+        <div data-theme=doc.theme class="mk-store min-h-screen bg-base-200 text-base-content" style=doc.typography.css_vars()>
             <div class="mx-auto max-w-6xl p-4">
                 <div class="mk-grid">
                     {nodes

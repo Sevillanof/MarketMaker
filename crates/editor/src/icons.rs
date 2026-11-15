@@ -20,6 +20,11 @@ fn path(name: &str) -> &'static str {
         "alert" => "M12 4l9 16H3zM12 10v4M12 17v.01",
         "info" => "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 11v5M12 8v.01",
         "image" => "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9v.01",
+        "type" => "M4 7V5h16v2M12 5v14M9 19h6",
+        "align-left" => "M4 6h16M4 10h10M4 14h16M4 18h10",
+        "align-center" => "M4 6h16M7 10h10M4 14h16M7 18h10",
+        "align-right" => "M4 6h16M10 10h10M4 14h16M10 18h10",
+        "align-auto" => "M4 6h16M4 10h16M4 14h16M4 18h16",
         "star" => "M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
         // Bloques
         "navbar" => "M3 5h18v4H3zM6 7h3M14 7h2M18 7h1M3 13h18M3 17h12",

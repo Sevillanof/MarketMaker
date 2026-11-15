@@ -21,11 +21,27 @@ pub struct RenderCtx {
     pub editing: bool,
 }
 
+/// Dibuja un nodo dentro de su envoltorio de letras (`.mk-type`, ver
+/// [`domain::TextStyle`] y `style/tailwind.css`).
 pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
+    let class = format!("{} h-full", node.style.classes());
+    let style = node.style.css_vars();
+    let content = render_content(node, ctx);
+    view! { <div class=class style=style>{content}</div> }.into_any()
+}
+
+fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
     let editing = ctx.editing;
     match &node.widget {
         Widget::Banner(p) => view! { <BannerWidget props=p.clone() editing/> }.into_any(),
-        Widget::Text(p) => view! { <TextWidget props=p.clone()/> }.into_any(),
+        Widget::Text(p) => {
+            // La alineación del estilo del bloque manda sobre la vieja del texto.
+            let mut props = p.clone();
+            if !node.style.align.is_empty() {
+                props.align = node.style.align.clone();
+            }
+            view! { <TextWidget props/> }.into_any()
+        }
         Widget::ProductGrid(p) => {
             view! { <ProductGridWidget props=p.clone() products=ctx.products.clone()/> }.into_any()
         }
@@ -116,6 +132,7 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
 pub fn TextWidget(props: TextProps) -> impl IntoView {
     let class = match props.align.as_str() {
         "center" => "h-full overflow-hidden rounded-box bg-base-100 p-4 text-center",
+        "right" => "h-full overflow-hidden rounded-box bg-base-100 p-4 text-right",
         _ => "h-full overflow-hidden rounded-box bg-base-100 p-4 text-left",
     };
     view! {
@@ -189,7 +206,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool) -> impl IntoView {
                 {(!props.logo_url.is_empty()).then(|| view! {
                     <img class="h-8 w-8 object-contain" src=props.logo_url.clone() alt="" draggable="false"/>
                 })}
-                <span class="text-lg font-bold whitespace-nowrap">{props.brand.clone()}</span>
+                <span class="mk-h text-lg font-bold whitespace-nowrap">{props.brand.clone()}</span>
             </MaybeLink>
             <ul class="menu menu-horizontal min-w-0 flex-1 flex-nowrap justify-end overflow-x-auto px-0">
                 {props
@@ -332,7 +349,7 @@ pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView 
                                 <Image src=c.image_url.clone() alt=c.label.clone()/>
                             </div>
                             <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
-                                <span class="font-semibold text-white">{c.label.clone()}</span>
+                                <span class="mk-h font-semibold text-white">{c.label.clone()}</span>
                             </div>
                         </MaybeLink>
                     })
@@ -356,7 +373,7 @@ pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
                                 <Icon name=b.icon class="h-6 w-6"/>
                             </div>
                             <div class="min-w-0">
-                                <p class="font-semibold truncate">{b.title}</p>
+                                <p class="mk-h font-semibold truncate">{b.title}</p>
                                 <p class="text-sm opacity-70 line-clamp-2">{b.text}</p>
                             </div>
                         </div>
@@ -676,7 +693,7 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
         <footer class="@container flex h-full flex-col justify-between gap-3 overflow-hidden rounded-box bg-neutral px-6 py-4 text-neutral-content">
             <div class="flex flex-col gap-4 @2xl:flex-row @2xl:justify-between">
                 <aside class="max-w-sm">
-                    <p class="text-lg font-bold">{props.brand.clone()}</p>
+                    <p class="mk-h text-lg font-bold">{props.brand.clone()}</p>
                     <p class="text-sm opacity-80 line-clamp-2">{props.description.clone()}</p>
                 </aside>
                 <nav class="flex flex-wrap content-start gap-x-6 gap-y-1 text-sm @2xl:max-w-md @2xl:justify-end">

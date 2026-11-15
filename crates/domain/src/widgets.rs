@@ -40,6 +40,9 @@ pub struct BannerProps {
 pub struct TextProps {
     pub heading: String,
     pub body: String,
+    /// Alineación de los documentos anteriores a [`crate::TextStyle`]; la del
+    /// estilo del bloque, si hay, tiene prioridad.
+    #[serde(default)]
     pub align: String,
 }
 
@@ -262,7 +265,6 @@ const fn long(max: usize) -> FieldKind {
     FieldKind::LongText { max }
 }
 
-pub const TEXT_ALIGN_OPTIONS: &[(&str, &str)] = &[("left", "Izquierda"), ("center", "Centro")];
 pub const CARD_LAYOUT_OPTIONS: &[(&str, &str)] = &[
     ("vertical", "Imagen arriba"),
     ("side", "Imagen al costado"),
@@ -287,16 +289,11 @@ const BANNER_FIELDS: &[Field] = &[
     adv("button_label", "Texto del botón", text(30)),
     adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
+// La alineación del texto se elige en "Letras de este bloque" (`Node::style`);
+// `TextProps::align` queda como valor de partida de los documentos viejos.
 const TEXT_FIELDS: &[Field] = &[
     field("heading", "Título", text(80)),
     field("body", "Texto", long(1000)),
-    adv(
-        "align",
-        "Alineación",
-        FieldKind::Select {
-            options: TEXT_ALIGN_OPTIONS,
-        },
-    ),
 ];
 const PRODUCT_GRID_FIELDS: &[Field] = &[
     field("title", "Título", text(80)),

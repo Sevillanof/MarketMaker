@@ -315,3 +315,179 @@
     animation: none;
   }
 }
+
+/* Letras de la tienda (ver `domain::Typography` y `domain::TextStyle`).
+   Las fuentes se sirven desde `public/fonts` (subconjunto latino, variables
+   en peso; licencias en `public/fonts/LICENSE.txt`). El navegador baja solo
+   las que se usan. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/inter-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/inter-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Montserrat Variable";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/montserrat-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Montserrat Variable";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/montserrat-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Nunito Variable";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/nunito-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Nunito Variable";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/nunito-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next Variable";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/atkinson-hyperlegible-next-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next Variable";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/atkinson-hyperlegible-next-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Lora Variable";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/lora-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Lora Variable";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/lora-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Playfair Display Variable";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/playfair-display-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Playfair Display Variable";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/playfair-display-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Oswald Variable";
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url("/fonts/oswald-normal.woff2") format("woff2");
+}
+/* `.mk-store` es la raíz de la tienda (y del lienzo del editor); cada bloque
+   va en un `.mk-type`. El tamaño general y el del bloque se multiplican en
+   `--mk-scale`, que agranda o achica las medidas de texto de Tailwind. Se
+   recalculan en cada `.mk-type` porque una variable se resuelve donde se
+   declara. Ningún texto baja de 12 px. */
+.mk-store {
+  --mk-scale: var(--mk-store-scale, 1);
+}
+.mk-type {
+  --mk-scale: calc(var(--mk-store-scale, 1) * var(--mk-block-scale, 1));
+}
+.mk-store,
+.mk-type {
+  --text-xs: max(0.75rem, calc(0.75rem * var(--mk-scale)));
+  --text-sm: max(0.75rem, calc(0.875rem * var(--mk-scale)));
+  --text-base: max(0.75rem, calc(1rem * var(--mk-scale)));
+  --text-lg: calc(1.125rem * var(--mk-scale));
+  --text-xl: calc(1.25rem * var(--mk-scale));
+  --text-2xl: calc(1.5rem * var(--mk-scale));
+  --text-3xl: calc(1.875rem * var(--mk-scale));
+  --text-4xl: calc(2.25rem * var(--mk-scale));
+  font-family: var(--mk-body, inherit);
+  font-size: var(--text-base);
+}
+/* Los controles del editor que van sobre el lienzo (guía, barra del bloque,
+   página vacía) llevan `data-theme="light"`: conservan las letras del editor. */
+.mk-store [data-theme="light"] {
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  font-family: var(--default-font-family);
+  font-size: 1rem;
+}
+.mk-store :is(h1, h2, h3, h4, h5, h6, .mk-h) {
+  font-family: var(--mk-heading, inherit);
+}
+.mk-store [data-theme="light"] :is(h1, h2, h3, h4, h5, h6) {
+  font-family: inherit;
+}
+.mk-bold {
+  font-weight: 700;
+}
+.mk-italic {
+  font-style: italic;
+}
+/* Fuera de las capas de Tailwind, así ganan a `text-center` y compañía. */
+.mk-align-left,
+.mk-align-left * {
+  text-align: left;
+}
+.mk-align-center,
+.mk-align-center * {
+  text-align: center;
+}
+.mk-align-right,
+.mk-align-right * {
+  text-align: right;
+}
+/* El banner centra su texto en una caja: con otra alineación se corre
+   también la caja. */
+.mk-align-left :is(.hero, .hero-content) {
+  justify-items: start;
+  justify-content: flex-start;
+}
+.mk-align-right :is(.hero, .hero-content) {
+  justify-items: end;
+  justify-content: flex-end;
+}
+
+/* Panel "Letras" del editor: va en la capa superior (API `popover`), debajo
+   de la barra y contra el borde derecho. */
+.mk-popover {
+  inset: auto;
+  top: 3.75rem;
+  right: 1rem;
+  margin: 0;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+}
