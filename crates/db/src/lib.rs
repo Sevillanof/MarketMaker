@@ -5,6 +5,7 @@
 
 pub mod auth;
 pub mod media;
+pub mod mp;
 pub mod orders;
 pub mod products;
 

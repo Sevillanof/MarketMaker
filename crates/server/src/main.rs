@@ -82,6 +82,11 @@ async fn main() {
         )
         .unwrap_or_else(|e| panic!("Mis fotos: {e}")),
     }));
+    // Mercado Pago: vuelve de "Vincular mi cuenta" y avisa los pagos.
+    app = app.merge(web::mp::routes(pool.clone()));
+    if web::mp::config().is_none() {
+        log!("Mercado Pago sin configurar (MP_CLIENT_ID y MP_CLIENT_SECRET en .env.local): los pedidos se pagan coordinando.");
+    }
     for dir in ["pkg", "fonts", "img"] {
         app = app.nest_service(
             &format!("/{dir}"),
