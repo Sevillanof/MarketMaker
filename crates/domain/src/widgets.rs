@@ -50,6 +50,7 @@ pub struct ProductDescriptionProps {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ProductButtonProps {
     pub label: String,
+    #[serde(default)]
     pub href: String,
 }
 
@@ -571,10 +572,9 @@ const PRODUCT_IMAGE_FIELDS: &[Field] = &[field(
         options: IMAGE_FIT_OPTIONS,
     },
 )];
-const PRODUCT_BUTTON_FIELDS: &[Field] = &[
-    field("label", "Texto del botón", text(30)),
-    field("href", "Enlace del botón", FieldKind::Url),
-];
+/// El botón de la ficha agrega al carrito: ya no lleva enlace (`href`
+/// queda solo para leer fichas viejas).
+const PRODUCT_BUTTON_FIELDS: &[Field] = &[field("label", "Texto del botón", text(30))];
 
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
@@ -914,8 +914,8 @@ impl Widget {
             "ProductPrice" => Widget::ProductPrice(ProductPriceProps {}),
             "ProductDescription" => Widget::ProductDescription(ProductDescriptionProps {}),
             "ProductButton" => Widget::ProductButton(ProductButtonProps {
-                label: s("Consultar por este producto"),
-                href: s("/contacto"),
+                label: s("Agregar al carrito"),
+                href: String::new(),
             }),
             _ => return None,
         };

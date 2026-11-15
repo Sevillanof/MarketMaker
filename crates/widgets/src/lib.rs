@@ -14,6 +14,9 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
+pub mod cart;
+pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
+
 /// Contexto que recibe todo widget al dibujarse.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderCtx {
@@ -134,8 +137,8 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             .into_any()
         }
         Widget::ProductButton(p) => {
-            let sold_out = ctx.product.as_ref().is_some_and(|p| !p.in_stock);
-            view! { <ProductButtonWidget props=p.clone() editing sold_out/> }.into_any()
+            view! { <ProductButtonWidget props=p.clone() editing product=ctx.product.clone()/> }
+                .into_any()
         }
     }
 }
@@ -186,23 +189,31 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
     .into_any()
 }
 
+/// Texto del botón de la ficha. Las fichas viejas decían "Consultar por este
+/// producto" y llevaban a Contacto; ahora el botón agrega al carrito.
+pub fn product_button_label(label: &str) -> String {
+    match label.trim() {
+        "" | "Consultar por este producto" => "Agregar al carrito".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[component]
 pub fn ProductButtonWidget(
     props: ProductButtonProps,
     editing: bool,
-    /// Sin stock: el botón dice "Agotado" y no se puede tocar.
-    #[prop(optional)]
-    sold_out: bool,
+    /// El producto de la ficha. Sin stock: el botón dice "Agotado".
+    product: Option<Product>,
 ) -> impl IntoView {
-    view! {
-        <div class="mk-pbtn flex h-full items-start">
-            {if sold_out {
-                view! { <button type="button" class="btn btn-primary mk-btn" disabled>"Agotado"</button> }.into_any()
-            } else {
-                view! { <Button label=props.label href=props.href disabled=editing/> }.into_any()
-            }}
-        </div>
+    if product.as_ref().is_some_and(|p| !p.in_stock) {
+        return view! {
+            <div class="mk-pbtn flex h-full items-start">
+                <button type="button" class="btn btn-primary mk-btn" disabled>"Agotado"</button>
+            </div>
+        }
+        .into_any();
     }
+    view! { <AddToCart product label=product_button_label(&props.label) editing/> }.into_any()
 }
 
 /// Ficha del producto en la tienda: un `<dialog>` modal con el diseño de
@@ -408,6 +419,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     let name = product.name.clone();
     let sold_out = !product.in_stock;
     let off = show_price.then(|| product.discount_pct()).flatten();
+    let cart_product = product.clone();
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
         <Card>
@@ -425,6 +437,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
             <div class="card-body grow-0 shrink-0 gap-0">
                 <h3 class="mk-sub card-title text-sm truncate block">{product.name.clone()}</h3>
                 {show_price.then(|| view! { <PriceWas cents=product.price_cents was=product.compare_at_cents/> })}
+                <CardCartButton product=cart_product/>
             </div>
         </Card>
         {open.map(|OpenProduct(open)| view! {
@@ -465,6 +478,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool) -> impl IntoView {
             {has_button.then(|| view! {
                 <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
             })}
+            <CartNavButton/>
         </nav>
     }
 }

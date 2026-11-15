@@ -1461,16 +1461,16 @@ mod tests {
     #[test]
     fn product_modal_problems_say_they_are_in_the_modal() {
         let mut doc = PageDoc::default();
-        if let Widget::ProductButton(b) = &mut doc.product_modal.nodes[4].widget {
-            b.href = "www.ejemplo.com".into();
+        let mut image = Node::new("m6", Widget::defaults("Image").unwrap());
+        if let Widget::Image(i) = &mut image.widget {
+            i.image_url = "www.ejemplo.com".into();
         }
+        doc.product_modal.nodes.push(image);
         let found = problems(&doc);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].layer, Layer::ProductModal);
-        assert_eq!(found[0].node_id, "m5");
-        assert!(found[0]
-            .text
-            .starts_with("Ficha del producto › Botón de la ficha › Enlace del botón"));
+        assert_eq!(found[0].node_id, "m6");
+        assert!(found[0].text.starts_with("Ficha del producto › Imagen"));
         // Los ids nuevos no chocan con los de la ficha.
         doc.nodes
             .push(Node::new("n1", Widget::defaults("Text").unwrap()));
