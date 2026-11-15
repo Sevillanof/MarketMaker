@@ -5,6 +5,8 @@ use crate::Product;
 use serde::{Deserialize, Serialize};
 
 pub const PRODUCT_NAME_MAX: usize = 120;
+/// Unidades de un producto: más es seguro un error de tipeo.
+pub const STOCK_MAX: u32 = 1_000_000;
 pub const PRODUCT_DESC_MAX: usize = 600;
 pub const PRODUCT_PHOTOS_MAX: usize = 10;
 pub const PRODUCT_TAGS_MAX: usize = 20;
@@ -174,6 +176,13 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     }
     if p.compare_at_cents > PRICE_MAX_CENTS || p.compare_at_cents < 0 {
         errors.push("Revisá el precio anterior.".to_string());
+    }
+    if p.stock.is_some_and(|s| s > STOCK_MAX) {
+        errors.push(format!("La cantidad puede ser hasta {STOCK_MAX}."));
+    }
+    if p.stock.is_some() {
+        // La cantidad manda: en 0 se ve "Agotado".
+        p.in_stock = true;
     }
     if p.description.chars().count() > PRODUCT_DESC_MAX {
         errors.push(format!(

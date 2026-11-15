@@ -676,6 +676,10 @@ pub struct Product {
     pub compare_at_cents: i64,
     #[serde(default = "yes")]
     pub in_stock: bool,
+    /// Unidades que quedan, si la tienda las cuenta (`None`: no las cuenta).
+    /// Con 0, `in_stock` es `false`.
+    #[serde(default)]
+    pub stock: Option<u32>,
     /// Si aparece en la tienda.
     #[serde(default = "yes")]
     pub visible: bool,
@@ -701,6 +705,7 @@ impl Default for Product {
             description: String::new(),
             compare_at_cents: 0,
             in_stock: true,
+            stock: None,
             visible: true,
             photos: Vec::new(),
             tags: Vec::new(),
@@ -708,7 +713,19 @@ impl Default for Product {
     }
 }
 
+/// Con tan pocas unidades, la tienda muestra "Quedan N".
+pub const FEW_LEFT: u32 = 3;
+
 impl Product {
+    /// "Quedan 2" cuando quedan pocas (y la tienda las cuenta).
+    pub fn few_left(&self) -> Option<String> {
+        match self.stock {
+            Some(1) => Some("Queda 1".to_string()),
+            Some(n) if n > 0 && n <= FEW_LEFT => Some(format!("Quedan {n}")),
+            _ => None,
+        }
+    }
+
     /// Las fotos para mostrar: `photos`, o la principal si no hay lista.
     pub fn all_photos(&self) -> Vec<String> {
         if self.photos.is_empty() && !self.image_url.is_empty() {

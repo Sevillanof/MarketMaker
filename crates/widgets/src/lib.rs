@@ -418,6 +418,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     let id = product.id.clone();
     let name = product.name.clone();
     let sold_out = !product.in_stock;
+    let few_left = product.few_left();
     let off = show_price.then(|| product.discount_pct()).flatten();
     let cart_product = product.clone();
     view! {
@@ -429,6 +430,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
                 </div>
                 <div class="absolute left-2 top-2 flex flex-col items-start gap-1">
                     {sold_out.then(|| view! { <span class="badge badge-neutral">"Agotado"</span> })}
+                    {few_left.map(|t| view! { <span class="badge badge-warning">{t}</span> })}
                     {off.map(|n| view! {
                         <span class="badge badge-error">{format!("-{n}%")}</span>
                     })}

@@ -466,6 +466,8 @@ struct Form {
     photos: RwSignal<Vec<String>>,
     tags: RwSignal<Vec<String>>,
     in_stock: RwSignal<bool>,
+    /// Cantidad disponible; vacío si no se cuenta.
+    stock: RwSignal<String>,
     visible: RwSignal<bool>,
 }
 
@@ -489,7 +491,8 @@ impl Form {
             description: RwSignal::new(p.description.clone()),
             photos: RwSignal::new(p.all_photos()),
             tags: RwSignal::new(p.tags.clone()),
-            in_stock: RwSignal::new(p.in_stock),
+            in_stock: RwSignal::new(p.in_stock || p.stock.is_some()),
+            stock: RwSignal::new(p.stock.map(|s| s.to_string()).unwrap_or_default()),
             visible: RwSignal::new(p.visible),
         }
     }
@@ -520,6 +523,18 @@ impl Form {
                 0
             })
         };
+        let stock_text = self.stock.get();
+        let stock = if stock_text.trim().is_empty() {
+            None
+        } else {
+            match stock_text.trim().replace('.', "").parse::<u32>() {
+                Ok(n) => Some(n),
+                Err(_) => {
+                    errors.push("La cantidad tiene que ser un número entero, como 5, o quedar vacía.".to_string());
+                    None
+                }
+            }
+        };
         let photos = self.photos.get();
         let p = Product {
             id: id.to_string(),
@@ -528,7 +543,8 @@ impl Form {
             image_url: photos.first().cloned().unwrap_or_default(),
             description: self.description.get(),
             compare_at_cents,
-            in_stock: self.in_stock.get(),
+            in_stock: self.in_stock.get() || stock.is_some(),
+            stock,
             visible: self.visible.get(),
             photos,
             tags: self.tags.get(),
@@ -571,6 +587,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         form.photos.track();
         form.tags.track();
         form.in_stock.track();
+        form.stock.track();
         form.visible.track();
         if first.is_some() {
             dirty.set(true);
@@ -719,15 +736,28 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                 <div class="grid gap-4 sm:grid-cols-2">
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">"Stock"</legend>
-                        <div class="join" role="group" aria-label="Stock">
-                            <button type="button" class="btn join-item" class:btn-primary=move || form.in_stock.get()
-                                aria-pressed=move || form.in_stock.get().to_string()
-                                on:click=move |_| form.in_stock.set(true)>"Hay stock"</button>
-                            <button type="button" class="btn join-item" class:btn-primary=move || !form.in_stock.get()
-                                aria-pressed=move || (!form.in_stock.get()).to_string()
-                                on:click=move |_| form.in_stock.set(false)>"Sin stock"</button>
-                        </div>
-                        <p class="label">"Sin stock se ve \"Agotado\" y no se puede comprar."</p>
+                        <label class="fieldset-label" for="p-stock">"Cantidad disponible " <span class="text-base-content/60">"(opcional)"</span></label>
+                        <input id="p-stock" class="input w-40" inputmode="numeric" placeholder="Sin contar"
+                            aria-describedby="p-stock-hint"
+                            prop:value=move || form.stock.get()
+                            on:input=move |ev| form.stock.set(event_target_value(&ev))/>
+                        {move || form.stock.with(|s| s.trim().is_empty()).then(|| view! {
+                            <div class="join mt-1" role="group" aria-label="Stock">
+                                <button type="button" class="btn btn-sm join-item" class:btn-primary=move || form.in_stock.get()
+                                    aria-pressed=move || form.in_stock.get().to_string()
+                                    on:click=move |_| form.in_stock.set(true)>"Hay stock"</button>
+                                <button type="button" class="btn btn-sm join-item" class:btn-primary=move || !form.in_stock.get()
+                                    aria-pressed=move || (!form.in_stock.get()).to_string()
+                                    on:click=move |_| form.in_stock.set(false)>"Sin stock"</button>
+                            </div>
+                        })}
+                        <p id="p-stock-hint" class="label whitespace-normal">
+                            {move || if form.stock.with(|s| s.trim().is_empty()) {
+                                "Dejala vacía si no querés llevar la cuenta. Sin stock se ve \"Agotado\"."
+                            } else {
+                                "Cada venta descuenta. En 0 se ve \"Agotado\"; con 3 o menos, \"Quedan N\"."
+                            }}
+                        </p>
                     </fieldset>
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">"En la tienda"</legend>

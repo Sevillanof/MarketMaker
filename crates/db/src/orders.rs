@@ -67,11 +67,50 @@ pub struct NewOrder<'a> {
     pub shipping_cents: i64,
 }
 
-/// Guarda el pedido con el próximo número de la tienda. Devuelve id y número.
-pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Result<(Uuid, i32)> {
+/// Cómo salió guardar un pedido.
+pub enum Created {
+    Saved { id: Uuid, number: i32 },
+    /// No alcanzan las unidades de un producto (quedan `left`).
+    Short { name: String, left: u32 },
+}
+
+/// Guarda el pedido con el próximo número de la tienda y descuenta el stock
+/// de los productos que lo cuentan, todo junto: si no alcanza, no se guarda.
+pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Result<Created> {
     let subtotal: i64 = o.items.iter().map(OrderItem::total_cents).sum();
     let items = serde_json::to_value(o.items).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
     let mut tx = pool.begin().await?;
+    for item in o.items {
+        let Ok(product) = Uuid::parse_str(&item.product_id) else {
+            continue;
+        };
+        // Solo baja si alcanza; la fila queda bloqueada hasta el final, así
+        // dos compras a la vez no se llevan la misma unidad.
+        let done = sqlx::query(
+            "UPDATE products SET stock = stock - $3
+             WHERE tenant_id = $1 AND id = $2 AND stock IS NOT NULL AND stock >= $3",
+        )
+        .bind(tenant)
+        .bind(product)
+        .bind(item.qty as i32)
+        .execute(&mut *tx)
+        .await?;
+        if done.rows_affected() == 0 {
+            let left: Option<Option<i32>> =
+                sqlx::query_scalar("SELECT stock FROM products WHERE tenant_id = $1 AND id = $2")
+                    .bind(tenant)
+                    .bind(product)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            if let Some(Some(left)) = left {
+                tx.rollback().await?;
+                return Ok(Created::Short {
+                    name: item.name.clone(),
+                    left: left.max(0) as u32,
+                });
+            }
+        }
+    }
     // El UPDATE bloquea la fila de la tienda: dos compras a la vez no
     // pueden llevarse el mismo número.
     let (number,): (i32,) = sqlx::query_as(
@@ -106,7 +145,7 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok((id, number))
+    Ok(Created::Saved { id, number })
 }
 
 #[derive(FromRow)]
@@ -186,20 +225,52 @@ pub async fn list(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Order>> {
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
-/// Cambia el estado de un pedido de la tienda. `false` si no existe.
+/// Cambia el estado de un pedido de la tienda. `false` si no existe. Al
+/// cancelar, las unidades vuelven al stock; al recuperar un cancelado, se
+/// descuentan otra vez (sin bajar de 0).
 pub async fn set_status(
     pool: &PgPool,
     tenant: Uuid,
     id: Uuid,
     status: OrderStatus,
 ) -> sqlx::Result<bool> {
-    let r = sqlx::query(
-        "UPDATE orders SET status = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2",
+    let mut tx = pool.begin().await?;
+    let before: Option<(String, serde_json::Value)> = sqlx::query_as(
+        "SELECT status, items FROM orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
     )
     .bind(tenant)
     .bind(id)
-    .bind(status.as_str())
-    .execute(pool)
+    .fetch_optional(&mut *tx)
     .await?;
-    Ok(r.rows_affected() == 1)
+    let Some((before, items)) = before else {
+        return Ok(false);
+    };
+    let was_cancelled = OrderStatus::from_str(&before) == OrderStatus::Cancelled;
+    let cancel = status == OrderStatus::Cancelled;
+    if was_cancelled != cancel {
+        let items: Vec<OrderItem> = serde_json::from_value(items).unwrap_or_default();
+        let sign: i32 = if cancel { 1 } else { -1 };
+        for item in items {
+            let Ok(product) = Uuid::parse_str(&item.product_id) else {
+                continue;
+            };
+            sqlx::query(
+                "UPDATE products SET stock = GREATEST(stock + $3, 0)
+                 WHERE tenant_id = $1 AND id = $2 AND stock IS NOT NULL",
+            )
+            .bind(tenant)
+            .bind(product)
+            .bind(sign * item.qty as i32)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    sqlx::query("UPDATE orders SET status = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant)
+        .bind(id)
+        .bind(status.as_str())
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(true)
 }
