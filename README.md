@@ -51,7 +51,7 @@ La primera compilación tarda unos minutos. Al arrancar, el servidor aplica las 
 
 ### Entrar y crear tiendas
 
-Por ahora solo pueden entrar los emails de una lista: en `.env`, completá `ALLOWED_EMAILS` con tu email (varios, separados por comas). El archivo se relee en cada intento, no hace falta reiniciar.
+Por ahora solo pueden entrar los emails de una lista. Creá el archivo `.env.local` en la carpeta del proyecto (git lo ignora, así tu email no se sube a GitHub) con una línea `ALLOWED_EMAILS=tu@email.com` (varios, separados por comas). Desde la terminal: `echo 'ALLOWED_EMAILS=tu@email.com' >> .env.local`. El archivo se relee en cada intento, no hace falta reiniciar.
 
 1. Abrí <http://localhost:3000>, tocá **Entrar** y escribí tu email.
 2. Todavía no se mandan emails: el código de 6 números aparece en la terminal donde corre `cargo leptos watch` ("Código para entrar de …").
@@ -115,7 +115,8 @@ Usan la base local: `sqlx::test` crea una base temporal por test a partir de `DA
 
 ```text
 Cargo.toml        workspace + configuración de cargo-leptos
-.env              DATABASE_URL, ALLOWED_EMAILS, MEDIA_DIR
+.env              DATABASE_URL, MEDIA_DIR (en git)
+.env.local        ALLOWED_EMAILS y claves de R2 (no va a git)
 media/            fotos subidas por los dueños (no va a git)
 migrations/       SQL versionado (esquema y datos de ejemplo)
 style/            tailwind.css, daisyui.mjs, daisyui-theme.mjs
