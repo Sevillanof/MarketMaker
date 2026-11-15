@@ -48,6 +48,31 @@ pub fn savings_text(item: &MediaItem) -> Option<String> {
     Some(text)
 }
 
+/// Una foto con los lugares donde se usa, para la pantalla Mis fotos.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MyPhoto {
+    pub item: MediaItem,
+    /// "Mi tienda · Inicio", uno por página que la usa (borrador o publicada).
+    pub used_in: Vec<String>,
+}
+
+/// Cómo se llama una página para el dueño: `home` es "Inicio"; las demás,
+/// su dirección con mayúscula (`ofertas` → "Ofertas").
+pub fn page_label(slug: &str) -> String {
+    if slug == "home" {
+        return "Inicio".into();
+    }
+    let mut c = slug.chars();
+    match c.next() {
+        Some(f) => f
+            .to_uppercase()
+            .chain(c)
+            .collect::<String>()
+            .replace('-', " "),
+        None => "Inicio".into(),
+    }
+}
+
 /// Anchos en los que se guarda cada foto (ver el crate `media`).
 pub const MEDIA_WIDTHS: [u32; 3] = [480, 960, 1600];
 

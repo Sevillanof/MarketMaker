@@ -84,3 +84,32 @@ fn item(id: Uuid, name: String, width: i32, height: i32, bytes: i64, web_bytes: 
         web_bytes: web_bytes.max(0) as u64,
     }
 }
+
+/// Cambia el nombre de la foto si es del dueño. Devuelve si existía.
+pub async fn rename(pool: &PgPool, owner_id: Uuid, id: Uuid, name: &str) -> sqlx::Result<bool> {
+    let r = sqlx::query("UPDATE media SET name = $3 WHERE id = $1 AND owner_id = $2")
+        .bind(id)
+        .bind(owner_id)
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(r.rows_affected() > 0)
+}
+
+/// Dónde usa el dueño cada una de sus fotos: (foto, tienda, página), para
+/// las páginas de sus tiendas cuyo borrador o versión publicada la nombra.
+pub async fn usage(pool: &PgPool, owner_id: Uuid) -> sqlx::Result<Vec<(Uuid, String, String)>> {
+    sqlx::query_as(
+        "SELECT DISTINCT m.id, t.name, p.slug
+         FROM media m
+         JOIN memberships ms ON ms.user_id = m.owner_id
+         JOIN tenants t ON t.id = ms.tenant_id
+         JOIN pages p ON p.tenant_id = t.id
+         JOIN page_versions v ON v.id = p.current_version_id OR v.id = p.published_version_id
+         WHERE m.owner_id = $1 AND strpos(v.doc::text, m.id::text) > 0
+         ORDER BY t.name, p.slug",
+    )
+    .bind(owner_id)
+    .fetch_all(pool)
+    .await
+}

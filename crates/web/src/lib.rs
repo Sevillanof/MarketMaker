@@ -16,6 +16,7 @@ pub mod auth;
 mod dev;
 #[cfg(feature = "ssr")]
 pub mod media;
+mod photos;
 mod platform;
 pub mod server;
 pub mod site;
@@ -58,6 +59,7 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("") view=Home ssr=SsrMode::Async/>
                     <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
+                    <Route path=path!("/mis-fotos") view=photos::MyPhotosPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
