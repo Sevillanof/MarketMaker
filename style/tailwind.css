@@ -108,8 +108,9 @@
   position: relative;
   height: 100%;
   overflow: hidden;
-  border-radius: var(--radius-box);
-  outline: 1px dashed color-mix(in oklab, var(--color-base-content) 50%, transparent);
+  /* Igual que en la tienda: sin contorno ni esquinas propias. El contorno
+     aparece al pasar el mouse o al elegir el bloque. */
+  outline: 1px dashed transparent;
   transition:
     transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
     box-shadow 0.18s ease,
@@ -118,6 +119,10 @@
 }
 .mk-anode:hover > .mk-anode-box {
   outline-color: var(--color-primary);
+}
+/* Mientras se arrastra un bloque, se ven todos para ubicarse. */
+.mk-grid-guides .mk-anode-box {
+  outline-color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
 }
 .mk-anode.mk-selected > .mk-anode-box {
   outline: 2px solid var(--color-primary);

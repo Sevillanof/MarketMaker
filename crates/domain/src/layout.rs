@@ -27,10 +27,6 @@ pub const MIN_WIDTH: u16 = 640;
 pub const MAX_WIDTH: u16 = 1600;
 /// Al arrastrar los bordes, el ancho salta de a estos píxeles.
 pub const WIDTH_STEP: u16 = 40;
-/// Con "Ancho completo", el editor dibuja la página como una pantalla de
-/// este ancho como mínimo, el de una pantalla grande (si el lienzo es más
-/// ancho, usa todo el lienzo).
-pub const FULL_MIN_PX: u16 = 1600;
 
 /// Margen que viene de fábrica en cada lado, en px.
 pub const DEFAULT_PAD: u16 = 16;
