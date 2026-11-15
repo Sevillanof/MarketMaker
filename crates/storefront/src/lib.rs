@@ -34,7 +34,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
 
     view! {
-        <div data-theme=doc.theme class="mk-store min-h-screen bg-base-200 text-base-content" style=doc.typography.css_vars()>
+        <div data-theme=doc.theme class="mk-store min-h-screen bg-base-200 text-base-content" style=format!("{}; {}", doc.typography.css_vars(), doc.style.css_vars())>
             <div class="mk-wrap" style=doc.layout.css_vars()>
                 <div class="mk-grid">
                     {nodes

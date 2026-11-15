@@ -24,18 +24,29 @@
   margin: 8px;
   overflow: hidden;
 }
-/* Contenedor de la tienda publicada: margen y ancho máximo del contenido
-   (ver `domain::StoreLayout`). En el celular el margen no pasa de 16 px. */
+/* Contenedor de la tienda publicada: margen de cada lado y ancho máximo del
+   contenido (ver `domain::StoreLayout`). En el celular ningún margen pasa
+   de 16 px. */
 .mk-wrap {
-  --mk-pad-now: var(--mk-pad, 16px);
+  --mk-pt-now: var(--mk-pt, 16px);
+  --mk-pr-now: var(--mk-pr, 16px);
+  --mk-pb-now: var(--mk-pb, 16px);
+  --mk-pl-now: var(--mk-pl, 16px);
   margin-inline: auto;
-  padding: var(--mk-pad-now);
-  max-width: calc(var(--mk-maxw, 1120px) + 2 * var(--mk-pad-now));
+  padding: var(--mk-pt-now) var(--mk-pr-now) var(--mk-pb-now) var(--mk-pl-now);
+  max-width: calc(var(--mk-maxw, 1120px) + var(--mk-pl-now) + var(--mk-pr-now));
 }
 @media (max-width: 767px) {
   .mk-wrap {
-    --mk-pad-now: min(var(--mk-pad, 16px), 16px);
+    --mk-pt-now: min(var(--mk-pt, 16px), 16px);
+    --mk-pr-now: min(var(--mk-pr, 16px), 16px);
+    --mk-pb-now: min(var(--mk-pb, 16px), 16px);
+    --mk-pl-now: min(var(--mk-pl, 16px), 16px);
   }
+}
+/* Fondo de la tienda (ver `domain::StoreStyle`): sale del tema. */
+.mk-store {
+  background-color: var(--mk-bg, var(--color-base-200));
 }
 /* Guías de la grilla en el editor, mientras se arrastra un bloque. */
 .mk-grid-guides {
@@ -863,31 +874,55 @@ dialog.mk-dialog::backdrop {
   transition: none;
 }
 
-/* Miniaturas de "Márgenes" en el menú Mi tienda: una página dibujada con
-   el margen de cada opción. */
-.mk-margin-thumb {
-  display: grid;
-  gap: 3px;
-  align-content: start;
-  height: 4.25rem;
+/* Cajón "Mi tienda" (ver `store_drawer.rs`). `.mk-side` es la medida de
+   un lado en el cuadro de márgenes; `.mk-seg`, un selector de dos o más
+   opciones en una sola pieza. */
+.mk-side {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  border-radius: 6px;
+  border: 1px solid var(--color-base-300);
+  background: var(--color-base-100);
+  padding: 2px 7px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mk-side small {
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+.mk-side:hover {
+  border-color: var(--color-primary);
+}
+.mk-side.is-active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 18%, transparent);
+}
+.mk-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
   border-radius: var(--radius-field);
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   background: var(--color-base-200);
 }
-.mk-margin-thumb .mk-mt-bar {
-  border-radius: 2px;
-  background: color-mix(in oklab, var(--color-primary) 55%, var(--color-base-100));
+.mk-seg > button {
+  flex: 1;
+  white-space: nowrap;
+  border-radius: calc(var(--radius-field) - 1px);
+  padding: 4px 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
 }
-.mk-margin-thumb .mk-mt-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
+.mk-seg > button.is-active {
+  background: var(--color-base-100);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
 }
 
-/* Panel "Mi tienda" del editor: debajo de la barra, contra el borde
-   izquierdo, donde está su botón. */
-.mk-store-panel {
-  top: 4.25rem;
-  right: auto;
-  left: 1rem;
-}
