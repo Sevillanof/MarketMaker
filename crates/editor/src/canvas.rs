@@ -32,17 +32,26 @@ impl Frame {
     }
 }
 
-/// La página como la dibuja la tienda publicada (ver `domain::StoreLayout`).
-/// Con "Ancho completo" se usa todo el lienzo, y como mínimo una pantalla
-/// grande. `dragging` es el ancho que se está probando al arrastrar los
-/// bordes. La escala hace que entre entera en el lienzo.
-pub(crate) fn page_frame(layout: &StoreLayout, dragging: Option<u16>, canvas_w: f64) -> Frame {
+/// La página como la ve una persona en una pantalla de `screen_w` px (la
+/// misma que muestra la vista previa), achicada para que entre en el lienzo
+/// de `canvas_w` px: así Editar se ve igual que la vista previa, solo que
+/// más chico. El contenido mide su ancho máximo o, si no entra, lo que deja
+/// la pantalla (como en la tienda); con "Ancho completo", toda la pantalla.
+/// `dragging` es el ancho que se está probando al arrastrar los bordes.
+pub(crate) fn page_frame(
+    layout: &StoreLayout,
+    dragging: Option<u16>,
+    canvas_w: f64,
+    screen_w: f64,
+) -> Frame {
     let px = |s: Side| f64::from(layout.pad(s));
     let (left, right) = (px(Side::Left), px(Side::Right));
+    let screen_w = screen_w.max(canvas_w);
+    let avail = (screen_w - left - right).max(f64::from(GRID_COLS));
     let w = match dragging {
         Some(w) => f64::from(w),
-        None if layout.is_full() => (canvas_w - left - right).max(f64::from(domain::FULL_MIN_PX)),
-        None => f64::from(layout.max_width),
+        None if layout.is_full() => avail,
+        None => f64::from(layout.max_width).min(avail),
     };
     Frame {
         w,
@@ -50,7 +59,7 @@ pub(crate) fn page_frame(layout: &StoreLayout, dragging: Option<u16>, canvas_w: 
         right,
         bottom: px(Side::Bottom),
         left,
-        k: fit_scale(canvas_w, w + left + right),
+        k: fit_scale(canvas_w, screen_w.max(w + left + right)),
     }
 }
 
@@ -336,8 +345,10 @@ pub(crate) fn Canvas(
     // Esquina del bloque que se arrastra con el mouse, en píxeles de diseño:
     // sigue al puntero sin imán, y el lugar donde va a quedar se ve aparte.
     let drag_pos = RwSignal::new(None::<(f64, f64)>);
-    // Ancho del lienzo en pantalla.
+    // Ancho del lienzo en pantalla, y el de la pantalla que muestra la
+    // vista previa (todo el ancho de la ventana, sin las columnas).
     let canvas_w = RwSignal::new(1200.0_f64);
+    let screen_w = RwSignal::new(1440.0_f64);
     // Escala de la ficha del producto (que tiene su propio ancho).
     let modal_scale = RwSignal::new(1.0_f64);
     let width_drag = RwSignal::new(None::<WidthDrag>);
@@ -346,9 +357,14 @@ pub(crate) fn Canvas(
         let wd = width_drag.get();
         // Siempre entra entera en el lienzo, también mientras se arrastra un
         // borde: la página se achica o se agranda y la etiqueta dice el ancho.
-        state
-            .doc
-            .with(|d| page_frame(&d.layout, wd.and_then(|d| d.width), canvas_w.get()))
+        state.doc.with(|d| {
+            page_frame(
+                &d.layout,
+                wd.and_then(|d| d.width),
+                canvas_w.get(),
+                screen_w.get(),
+            )
+        })
     });
     // Píxeles de pantalla por píxel de diseño de la capa que se edita.
     let scale = Memo::new(move |_| {
@@ -387,6 +403,15 @@ pub(crate) fn Canvas(
                 let w = f64::from(section.client_width());
                 if w > 0.0 && (canvas_w.get_untracked() - w).abs() > 0.5 {
                     canvas_w.set(w);
+                }
+                // La vista previa ocupa todo el ancho, menos la barra de
+                // desplazamiento del lienzo.
+                let bar = f64::from(section.offset_width() - section.client_width());
+                if let Some(root) = document().document_element() {
+                    let sw = f64::from(root.client_width()) - bar;
+                    if sw > 0.0 && (screen_w.get_untracked() - sw).abs() > 0.5 {
+                        screen_w.set(sw);
+                    }
                 }
             }
             if state.in_modal_untracked() {
@@ -1419,20 +1444,24 @@ mod tests {
     #[test]
     fn page_frame_follows_the_store_layout() {
         let mut l = StoreLayout::default();
-        let f = page_frame(&l, None, 900.0);
+        // Lienzo de 900 px en una pantalla de 1500: se dibuja la pantalla
+        // entera achicada, con el contenido de 1120 px en el medio.
+        let f = page_frame(&l, None, 900.0, 1500.0);
         assert_eq!((f.w, f.left, f.top), (1120.0, 16.0, 16.0));
-        assert!((f.k - 900.0 / 1152.0).abs() < 1e-9);
-        // Mientras se arrastra manda el ancho que se prueba.
-        assert_eq!(page_frame(&l, Some(960), 900.0).w, 960.0);
+        assert!((f.k - 900.0 / 1500.0).abs() < 1e-9);
+        // En una pantalla más angosta que el ancho máximo, el contenido se
+        // achica como en la tienda.
+        assert_eq!(page_frame(&l, None, 900.0, 1000.0).w, 968.0);
+        // Mientras se arrastra manda el ancho que se prueba (y si no entra
+        // en la pantalla, se achica todo).
+        let f = page_frame(&l, Some(1600), 900.0, 1500.0);
+        assert_eq!(f.w, 1600.0);
+        assert!((f.k - 900.0 / 1632.0).abs() < 1e-9);
         l.set_pad(Side::Left, 48);
         l.set_pad(Side::Right, 8);
         l.max_width = 0;
-        // Ancho completo: todo el lienzo, y como mínimo una pantalla grande.
-        assert_eq!(
-            page_frame(&l, None, 900.0).w,
-            f64::from(domain::FULL_MIN_PX)
-        );
-        let f = page_frame(&l, None, 2000.0);
+        // Ancho completo: toda la pantalla.
+        let f = page_frame(&l, None, 2000.0, 2000.0);
         assert_eq!((f.w, f.left, f.right, f.k), (1944.0, 48.0, 8.0, 1.0));
         assert!((fit_scale(576.0, 1152.0) - 0.5).abs() < 1e-9);
     }
