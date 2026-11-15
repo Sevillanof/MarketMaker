@@ -931,3 +931,26 @@ dialog.mk-dialog::backdrop {
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
 }
 
+
+/* Edición directa en el lienzo: el texto original se esconde y encima va un
+   cuadro con las mismas letras. */
+.mk-inline-hidden {
+  visibility: hidden;
+}
+.mk-inline-edit {
+  position: absolute;
+  z-index: 40;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-base-100) 55%, transparent);
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
