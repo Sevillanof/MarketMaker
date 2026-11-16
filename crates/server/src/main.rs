@@ -87,6 +87,18 @@ async fn main() {
     if web::mp::config().is_none() {
         log!("Mercado Pago sin configurar (MP_CLIENT_ID y MP_CLIENT_SECRET en .env.local): los pedidos se pagan coordinando.");
     }
+    // Caddy pregunta acá antes de pedir el certificado https de una dirección
+    // nueva (`ana.<plataforma>`): solo la plataforma y las tiendas que existen.
+    app = app.route(
+        "/tls-ok",
+        axum::routing::get({
+            let pool = pool.clone();
+            move |q: axum::extract::Query<std::collections::HashMap<String, String>>| {
+                let pool = pool.clone();
+                async move { tls_ok(&pool, q.get("domain").map(String::as_str).unwrap_or("")).await }
+            }
+        }),
+    );
     for dir in ["pkg", "fonts", "img"] {
         app = app.nest_service(
             &format!("/{dir}"),
@@ -131,6 +143,29 @@ async fn main() {
     axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
+}
+
+/// ¿Se puede pedir el certificado https de `domain`? Solo si es la
+/// plataforma (la de `APP_URL`) o una tienda que existe en ella.
+async fn tls_ok(pool: &db::Pool, domain: &str) -> axum::http::StatusCode {
+    use axum::http::StatusCode;
+    let domain = domain.trim().to_lowercase();
+    let app = web::email::app_url();
+    let platform = app.split_once("://").map_or(app.as_str(), |(_, h)| h);
+    let platform = platform.split(':').next().unwrap_or(platform).to_lowercase();
+    if domain == platform || domain == format!("www.{platform}") {
+        return StatusCode::OK;
+    }
+    if ::domain::platform_host(&domain) != platform {
+        return StatusCode::NOT_FOUND;
+    }
+    match ::domain::site_from_host(&domain) {
+        ::domain::Site::Store(slug) => match db::get_tenant_by_slug(pool, &slug).await {
+            Ok(Some(_)) => StatusCode::OK,
+            _ => StatusCode::NOT_FOUND,
+        },
+        ::domain::Site::Platform => StatusCode::NOT_FOUND,
+    }
 }
 
 /// Rechaza los POST que vienen de otro sitio (un formulario ajeno que intenta

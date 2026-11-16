@@ -1,0 +1,24 @@
+[Unit]
+Description=MarketMaker
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=marketmaker
+Group=marketmaker
+WorkingDirectory=/opt/marketmaker/current
+ExecStart=/opt/marketmaker/current/server
+Environment=LEPTOS_ENV=PROD
+Environment=LEPTOS_SITE_ADDR=127.0.0.1:3000
+Environment=LEPTOS_SITE_ROOT=site
+Environment=LEPTOS_OUTPUT_NAME=marketplace
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/marketmaker/current
+
+[Install]
+WantedBy=multi-user.target

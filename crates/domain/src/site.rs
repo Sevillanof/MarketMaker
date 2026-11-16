@@ -37,6 +37,25 @@ pub const RESERVED_STORE_SLUGS: &[&str] = &[
     "marketmaker",
 ];
 
+/// Cuántos nombres del final forman el dominio base de la plataforma:
+/// `localhost` (1), `marketmaker.tienda` (2), `marketmaker.com.ar` (3) y,
+/// mientras no haya dominio propio, la IP del servidor en `sslip.io` o
+/// `nip.io` (`1-2-3-4.sslip.io`, 3).
+fn base_labels(labels: &[&str]) -> usize {
+    let n = labels.len();
+    match labels {
+        [.., "localhost"] => 1,
+        [.., ip, "sslip" | "nip", "io"] if is_dashed_ip(ip) => 3,
+        [.., "com" | "net" | "org" | "gob" | "edu", tld] if n >= 3 && tld.len() == 2 => 3,
+        _ => 2,
+    }
+}
+
+/// `1-2-3-4`, una IP escrita con guiones (como la usa sslip.io).
+fn is_dashed_ip(label: &str) -> bool {
+    label.replace('-', ".").parse::<std::net::Ipv4Addr>().is_ok()
+}
+
 /// Lee el sitio de un `Host` (`demo.localhost:3000` → `Store("demo")`).
 ///
 /// El dominio base es `localhost` o los dos últimos nombres
@@ -54,11 +73,7 @@ pub fn site_from_host(host: &str) -> Site {
         return Site::Platform;
     }
     let labels: Vec<&str> = name.split('.').filter(|l| !l.is_empty()).collect();
-    let base = if labels.last() == Some(&"localhost") {
-        1
-    } else {
-        2
-    };
+    let base = base_labels(&labels);
     if labels.len() <= base {
         return Site::Platform;
     }
@@ -273,11 +288,17 @@ mod tests {
         assert_eq!(site_from_host("www.marketmaker.tienda"), Site::Platform);
         assert_eq!(site_from_host("ana.marketmaker.tienda"), store("ana"));
         assert_eq!(site_from_host("x.ana.localhost:3000"), store("ana"));
+        assert_eq!(site_from_host("185-2-3-4.sslip.io"), Site::Platform);
+        assert_eq!(site_from_host("ana.185-2-3-4.sslip.io"), store("ana"));
+        assert_eq!(site_from_host("marketmaker.com.ar"), Site::Platform);
+        assert_eq!(site_from_host("ana.marketmaker.com.ar"), store("ana"));
     }
 
     #[test]
     fn store_hosts_from_the_platform() {
         assert_eq!(store_host("localhost:3000", "ana"), "ana.localhost:3000");
+        assert_eq!(store_host("185-2-3-4.sslip.io", "ana"), "ana.185-2-3-4.sslip.io");
+        assert_eq!(platform_host("ana.185-2-3-4.sslip.io"), "185-2-3-4.sslip.io");
         assert_eq!(store_host("127.0.0.1:3000", "ana"), "ana.localhost:3000");
         assert_eq!(
             store_host("www.marketmaker.tienda", "ana"),
