@@ -179,7 +179,10 @@ fn where_(o: &Order, pickup_address: &str) -> String {
     match o.delivery {
         Delivery::Pickup if pickup_address.is_empty() => "Retiro en el local".to_string(),
         Delivery::Pickup => format!("Retiro en {pickup_address}"),
-        Delivery::Shipping => format!("Envío a {}, {} ({})", o.address, o.city, o.postal_code),
+        Delivery::Shipping => format!(
+            "Envío a {}",
+            domain::ship_address(&o.address, &o.city, &o.postal_code)
+        ),
     }
 }
 
@@ -200,8 +203,9 @@ pub fn to_buyer(
         "Tu pago está aprobado. La tienda ya está preparando tu pedido.".to_string()
     } else if o.pay == domain::PayMethod::Transfer {
         format!(
-            "Transferí {} a: {transfer_info}. Cuando la tienda reciba la transferencia, empieza a preparar tu pedido. Si no la recibe en 48 horas, el pedido se cancela.",
-            ui::format_price(o.total_cents)
+            "Transferí {} a: {}. Cuando la tienda reciba la transferencia, empieza a preparar tu pedido. Si no la recibe en 48 horas, el pedido se cancela.",
+            ui::format_price(o.total_cents),
+            transfer_info.replace('\n', ", ")
         )
     } else {
         format!(
@@ -333,8 +337,15 @@ pub async fn order_emails(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid
         let transfer = db::orders::payment_options(pool, tenant)
             .await
             .map_err(|e| e.to_string())?
-            .transfer_info;
-        send(to_buyer(&name, &slug, &o, &d.pickup_address, &transfer, paid));
+            .transfer_text();
+        send(to_buyer(
+            &name,
+            &slug,
+            &o,
+            &d.pickup_address,
+            &transfer,
+            paid,
+        ));
         send(to_owner(owners, &name, &slug, &o, paid));
         Ok::<_, String>(())
     }

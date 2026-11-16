@@ -100,21 +100,41 @@ impl PayMethod {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct PaymentOptions {
     pub transfer: bool,
-    /// Alias, CBU o CVU y titular, como lo ve el comprador.
-    pub transfer_info: String,
+    /// Alias, CBU o CVU adonde le transfieren.
+    #[serde(default)]
+    pub transfer_alias: String,
+    /// Titular de la cuenta (opcional).
+    #[serde(default)]
+    pub transfer_holder: String,
     pub coordinate: bool,
 }
 
-pub const TRANSFER_INFO_MAX: usize = 300;
-
-/// Limpia las formas de cobro y devuelve los problemas (vacío si están bien).
-pub fn tidy_payment_options(p: &mut PaymentOptions) -> Vec<String> {
-    p.transfer_info = clip(p.transfer_info.trim(), TRANSFER_INFO_MAX);
-    let mut errors = Vec::new();
-    if p.transfer && p.transfer_info.is_empty() {
-        errors.push("Poné tu alias o CBU para que te puedan transferir.".to_string());
+impl PaymentOptions {
+    /// Adónde transferir, como lo ve el comprador (una línea por dato).
+    pub fn transfer_text(&self) -> String {
+        if self.transfer_holder.is_empty() {
+            self.transfer_alias.clone()
+        } else {
+            format!("{}\nTitular: {}", self.transfer_alias, self.transfer_holder)
+        }
     }
-    errors
+}
+
+pub const TRANSFER_ALIAS_MAX: usize = 300;
+pub const TRANSFER_HOLDER_MAX: usize = 80;
+
+/// Limpia las formas de cobro y devuelve el problema para mostrar, si hay.
+pub fn tidy_payment_options(p: &mut PaymentOptions) -> Option<String> {
+    p.transfer_alias = clip(p.transfer_alias.trim(), TRANSFER_ALIAS_MAX);
+    p.transfer_holder = clip(
+        &p.transfer_holder
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+        TRANSFER_HOLDER_MAX,
+    );
+    (p.transfer && p.transfer_alias.is_empty())
+        .then(|| "Escribí tu alias, CBU o CVU para activar la transferencia.".to_string())
 }
 
 /// Las formas de pago que puede elegir el comprador, en orden. Vacío: la
@@ -281,11 +301,10 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
         if f.address.is_empty() {
             e.push(err("address", "Escribí la calle y el número."));
         }
+        // El código postal ya no se pide; si llega, tiene que tener forma de uno.
         let pc_ok = (4..=8).contains(&f.postal_code.len())
             && f.postal_code.chars().all(|c| c.is_ascii_alphanumeric());
-        if f.postal_code.is_empty() {
-            e.push(err("postal_code", "Escribí el código postal."));
-        } else if !pc_ok {
+        if !f.postal_code.is_empty() && !pc_ok {
             e.push(err(
                 "postal_code",
                 "Revisá el código postal, por ejemplo 1123.",
@@ -320,6 +339,20 @@ pub fn shipping_for(delivery: Delivery, d: &DeliverySettings) -> i64 {
 }
 
 /// Cómo se muestra el costo del envío: "$ 4.500,00", "Gratis" o "A coordinar".
+/// La dirección de envío en una línea: "calle, localidad" y el código
+/// postal entre paréntesis si lo hay (los pedidos viejos lo tienen).
+pub fn ship_address(address: &str, city: &str, postal_code: &str) -> String {
+    let mut s = [address, city]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if !postal_code.is_empty() {
+        s.push_str(&format!(" ({postal_code})"));
+    }
+    s
+}
+
 pub fn shipping_label(d: &DeliverySettings, format_price: impl Fn(i64) -> String) -> String {
     match d.shipping_cents {
         None => "A coordinar".to_string(),
@@ -627,15 +660,7 @@ mod tests {
             .collect();
         assert_eq!(
             fields,
-            [
-                "name",
-                "email",
-                "phone",
-                "address",
-                "postal_code",
-                "city",
-                "cart"
-            ]
+            ["name", "email", "phone", "address", "city", "cart"]
         );
     }
 

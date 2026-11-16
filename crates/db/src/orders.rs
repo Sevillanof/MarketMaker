@@ -36,15 +36,18 @@ pub async fn delivery(pool: &PgPool, tenant: Uuid) -> sqlx::Result<DeliverySetti
 
 /// Formas de cobro de la tienda además de Mercado Pago.
 pub async fn payment_options(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::PaymentOptions> {
-    let (transfer, transfer_info, coordinate): (bool, String, bool) = sqlx::query_as(
-        "SELECT pay_transfer, transfer_info, pay_coordinate FROM tenants WHERE id = $1",
-    )
-    .bind(tenant)
-    .fetch_one(pool)
-    .await?;
+    let (transfer, transfer_alias, transfer_holder, coordinate): (bool, String, String, bool) =
+        sqlx::query_as(
+            "SELECT pay_transfer, transfer_alias, transfer_holder, pay_coordinate
+             FROM tenants WHERE id = $1",
+        )
+        .bind(tenant)
+        .fetch_one(pool)
+        .await?;
     Ok(domain::PaymentOptions {
         transfer,
-        transfer_info,
+        transfer_alias,
+        transfer_holder,
         coordinate,
     })
 }
@@ -55,12 +58,14 @@ pub async fn save_payment_options(
     p: &domain::PaymentOptions,
 ) -> sqlx::Result<()> {
     sqlx::query(
-        "UPDATE tenants SET pay_transfer = $2, transfer_info = $3, pay_coordinate = $4
+        "UPDATE tenants SET pay_transfer = $2, transfer_alias = $3, transfer_holder = $4,
+                            pay_coordinate = $5
          WHERE id = $1",
     )
     .bind(tenant)
     .bind(p.transfer)
-    .bind(&p.transfer_info)
+    .bind(&p.transfer_alias)
+    .bind(&p.transfer_holder)
     .bind(p.coordinate)
     .execute(pool)
     .await?;
