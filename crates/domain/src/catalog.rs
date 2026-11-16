@@ -323,6 +323,16 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     for fit in p.photo_fits.values_mut() {
         *fit = fit.clamped();
     }
+    // Un paquete con algo en 0 o fuera de rango no sirve para cotizar.
+    if let Some(x) = p.parcel {
+        let sides = [x.length_mm, x.width_mm, x.height_mm];
+        if x.weight_g == 0
+            || x.weight_g > crate::PARCEL_MAX_G
+            || sides.iter().any(|s| *s == 0 || *s > crate::PARCEL_MAX_MM)
+        {
+            p.parcel = None;
+        }
+    }
     p.photo_fits.retain(|_, fit| !fit.is_default());
     let mut errors = Vec::new();
     if p.name.is_empty() {

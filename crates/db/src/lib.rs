@@ -3,6 +3,7 @@
 //! Se usa `sqlx::query_as` sin las macros verificadas en compilación, para
 //! que compilar no dependa de tener la base levantada.
 
+pub mod andreani;
 pub mod auth;
 pub mod media;
 pub mod mp;
