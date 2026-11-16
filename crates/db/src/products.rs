@@ -1,8 +1,10 @@
 //! Productos de una tienda: los que carga el dueño en la pantalla Productos
 //! y los que se muestran en la tienda.
 
-use domain::Product;
+use domain::{PhotoFit, Product};
+use sqlx::types::Json;
 use sqlx::{FromRow, PgPool};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 /// Más que esto por tienda es seguro un error (o un abuso).
@@ -21,6 +23,7 @@ struct Row {
     visible: bool,
     photos: Vec<String>,
     tags: Vec<String>,
+    photo_fits: Json<BTreeMap<String, PhotoFit>>,
 }
 
 impl From<Row> for Product {
@@ -37,6 +40,7 @@ impl From<Row> for Product {
             visible: r.visible,
             photos: r.photos,
             tags: r.tags,
+            photo_fits: r.photo_fits.0,
         }
     }
 }
@@ -46,7 +50,7 @@ macro_rules! select {
     ($rest:literal) => {
         concat!(
             "SELECT id, name, price_cents, image_url, description, compare_at_cents, ",
-            "in_stock, stock, visible, photos, tags ",
+            "in_stock, stock, visible, photos, tags, photo_fits ",
             $rest
         )
     };
@@ -108,8 +112,9 @@ pub async fn count(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
 pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uuid> {
     sqlx::query_scalar(
         "INSERT INTO products (tenant_id, name, price_cents, image_url, description,
-                               compare_at_cents, in_stock, visible, photos, tags, stock)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                               compare_at_cents, in_stock, visible, photos, tags, stock,
+                               photo_fits)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id",
     )
     .bind(tenant)
@@ -123,6 +128,7 @@ pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uu
     .bind(&p.photos)
     .bind(&p.tags)
     .bind(p.stock.map(|s| s as i32))
+    .bind(Json(&p.photo_fits))
     .fetch_one(pool)
     .await
 }
@@ -132,7 +138,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     let done = sqlx::query(
         "UPDATE products SET name = $3, price_cents = $4, image_url = $5, description = $6,
                 compare_at_cents = $7, in_stock = $8, visible = $9, photos = $10, tags = $11,
-                stock = $12, updated_at = now()
+                stock = $12, photo_fits = $13, updated_at = now()
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(tenant)
@@ -147,6 +153,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     .bind(&p.photos)
     .bind(&p.tags)
     .bind(p.stock.map(|s| s as i32))
+    .bind(Json(&p.photo_fits))
     .execute(pool)
     .await?;
     Ok(done.rows_affected() == 1)

@@ -686,7 +686,7 @@ fn CartRow(item: CartItem, cart: Cart) -> impl IntoView {
     view! {
         <li class="flex items-start gap-4 border-b border-base-200 py-4">
             <div class="h-18 w-18 shrink-0 overflow-hidden rounded-box">
-                <Image src=product.image_url.clone() alt=""/>
+                <Image src=product.image_url.clone() alt="" fit=product.fit(&product.image_url)/>
             </div>
             <div class="min-w-0 flex-1">
                 <div class="flex items-baseline gap-3">
