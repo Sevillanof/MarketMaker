@@ -56,6 +56,26 @@ enum Step {
     Code(CodeFor),
 }
 
+/// Aviso chico debajo de un campo: rojo con un círculo si algo salió mal,
+/// verde con un tilde si salió bien. Sin recuadro, para que no grite.
+#[component]
+fn FieldNote(ok: bool, #[prop(into)] text: String) -> impl IntoView {
+    let (role, color, icon) = if ok {
+        ("status", "text-green-700", "M5 12.5l4 4 10-10")
+    } else {
+        ("alert", "text-red-700", "M12 8v5m0 3.5v.01")
+    };
+    view! {
+        <p role=role class=format!("-mt-1 flex items-start gap-1.5 text-sm leading-snug {color}")>
+            <svg class="mt-px size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                {(!ok).then(|| view! { <circle cx="12" cy="12" r="9"/> })}
+                <path d=icon/>
+            </svg>
+            <span>{text}</span>
+        </p>
+    }
+}
+
 /// El logo de la plataforma.
 #[component]
 pub fn Logo(#[prop(optional, into)] class: String) -> impl IntoView {
@@ -363,7 +383,7 @@ fn SignInForm(next: String) -> impl IntoView {
     let alert = move || {
         problem
             .get()
-            .map(|p| view! { <div role="alert" class="alert alert-error text-sm">{p}</div> })
+            .map(|p| view! { <FieldNote ok=false text=p/> })
     };
     let shown_email = move || email.get().trim().to_lowercase();
     // El email elegido, con "Cambiar" para volver al primer paso.
@@ -472,7 +492,7 @@ fn SignInForm(next: String) -> impl IntoView {
                     }
                 }>
                     <h1 class="text-3xl font-extrabold tracking-tight">{title}</h1>
-                    {move || info.get().map(|i| view! { <div role="status" class="alert alert-info text-sm">{i}</div> })}
+                    {move || info.get().map(|i| view! { <p role="status" class="text-sm text-base-content/70">{i}</p> })}
                     <p class="text-base-content/80">
                         "Te mandamos un código de 6 números a " <strong>{shown_email}</strong> ". Vence en 10 minutos."
                     </p>
@@ -578,16 +598,7 @@ fn AccountForms(account: domain::AccountInfo) -> impl IntoView {
         None => {}
     });
     let msg = |m: RwSignal<Option<(bool, String)>>| {
-        move || {
-            m.get().map(|(ok, text)| {
-                let class = if ok {
-                    "alert alert-success text-sm"
-                } else {
-                    "alert alert-error text-sm"
-                };
-                view! { <div role=if ok { "status" } else { "alert" } class=class>{text}</div> }
-            })
-        }
+        move || m.get().map(|(ok, text)| view! { <FieldNote ok text/> })
     };
     let first_of_email = account.email.chars().next();
     let initial = move || {
