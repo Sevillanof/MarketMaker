@@ -1,11 +1,18 @@
-//! Cuentas de dueño: server functions para entrar con un código por email,
-//! salir y saber quién está mirando.
+//! Cuentas de dueño: server functions para entrar (email y contraseña, o un
+//! código por email), crear la cuenta, "Mi cuenta", salir y saber quién está
+//! mirando.
 //!
-//! Por ahora solo pueden entrar los emails de `ALLOWED_EMAILS` (una lista
-//! separada por comas en `.env.local`, que se relee en cada pedido). El código se escribe en la terminal del
-//! servidor: todavía no hay servicio de envío de emails.
+//! El código por email se usa para confirmar el email al crear la cuenta y
+//! cuando la persona se olvidó la contraseña (o prefiere no usarla).
+//!
+//! Quién puede tener cuenta: si `REGISTRO_ABIERTO=true`, cualquiera; si no,
+//! solo los emails de `ALLOWED_EMAILS` (una lista separada por comas en
+//! `.env.local`). Las dos cosas se releen en cada pedido.
 
-use domain::{CodeCheck, CodeRequest, Me};
+use domain::{
+    AccountInfo, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn,
+    SetPassword,
+};
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
@@ -38,21 +45,32 @@ mod ssr {
     /// en `.env.local` (no va a git, es el lugar recomendado), en `.env` y en
     /// la terminal. Los archivos se leen en cada pedido, así que agregar o
     /// quitar un email no obliga a reiniciar el servidor.
-    pub fn allowed_emails() -> HashSet<String> {
-        let from_env = std::env::var("ALLOWED_EMAILS").unwrap_or_default();
-        let from_file = [".env.local", ".env"]
+    /// Los valores de `key` en la terminal, `.env.local` y `.env`.
+    fn env_values(key: &str) -> Vec<String> {
+        let from_files = [".env.local", ".env"].into_iter().flat_map(|f| {
+            dotenvy::from_filename_iter(f)
+                .into_iter()
+                .flatten()
+                .flatten()
+        });
+        std::env::var(key)
+            .ok()
             .into_iter()
-            .flat_map(|f| {
-                dotenvy::from_filename_iter(f)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-            })
-            .filter(|(k, _)| k == "ALLOWED_EMAILS")
-            .map(|(_, v)| v)
-            .collect::<Vec<_>>()
-            .join(",");
-        format!("{from_env},{from_file}")
+            .chain(from_files.filter(|(k, _)| k == key).map(|(_, v)| v))
+            .collect()
+    }
+
+    /// Cualquiera puede crear su cuenta (`REGISTRO_ABIERTO=true`). Si no, solo
+    /// los emails de `ALLOWED_EMAILS`.
+    pub fn signup_open() -> bool {
+        env_values("REGISTRO_ABIERTO")
+            .first()
+            .is_some_and(|v| matches!(v.trim().to_lowercase().as_str(), "true" | "1" | "si" | "sí"))
+    }
+
+    pub fn allowed_emails() -> HashSet<String> {
+        env_values("ALLOWED_EMAILS")
+            .join(",")
             .split([',', ';', ' '])
             .map(|e| e.trim_matches(|c| c == '"' || c == '\''))
             .filter_map(domain::normalize_email)
@@ -60,7 +78,31 @@ mod ssr {
     }
 
     pub fn is_allowed(email: &str) -> bool {
-        allowed_emails().contains(email)
+        signup_open() || allowed_emails().contains(email)
+    }
+
+    /// Corre `f` (cálculo pesado, como un hash de contraseña) fuera de los
+    /// hilos que atienden pedidos.
+    pub(crate) async fn blocking<T: Send + 'static>(
+        f: impl FnOnce() -> T + Send + 'static,
+    ) -> Result<T, ServerFnError> {
+        tokio::task::spawn_blocking(f).await.map_err(internal)
+    }
+
+    /// Abre la sesión de `user_id` en este navegador y, si la tienda de esta
+    /// dirección todavía no tiene dueño, esta persona pasa a serlo.
+    pub(crate) async fn open_session(user_id: uuid::Uuid) -> Result<(), ServerFnError> {
+        let pool = pool()?;
+        if let Ok(tenant) = current_tenant().await {
+            db::auth::claim_if_ownerless(&pool, tenant.id, user_id)
+                .await
+                .map_err(internal)?;
+        }
+        let token = db::auth::create_session(&pool, user_id)
+            .await
+            .map_err(internal)?;
+        set_session_cookie(&token);
+        Ok(())
     }
 
     pub(crate) fn config() -> AuthConfig {
@@ -167,6 +209,7 @@ pub async fn who_am_i() -> Result<Option<Me>, ServerFnError> {
     };
     Ok(Some(Me {
         email: user.email,
+        name: user.name,
         can_edit,
     }))
 }
@@ -229,15 +272,7 @@ pub async fn check_code(
         db::auth::CodeResult::Expired => Ok(CodeCheck::Expired),
         db::auth::CodeResult::Ok { user_id } => {
             // Una tienda sin dueño (la demo) queda de quien entra primero.
-            if let Ok(tenant) = current_tenant().await {
-                db::auth::claim_if_ownerless(&pool, tenant.id, user_id)
-                    .await
-                    .map_err(crate::server::internal)?;
-            }
-            let token = db::auth::create_session(&pool, user_id)
-                .await
-                .map_err(crate::server::internal)?;
-            set_session_cookie(&token);
+            open_session(user_id).await?;
             Ok(CodeCheck::In {
                 next: domain::safe_next(&next),
             })
@@ -255,4 +290,200 @@ pub async fn sign_out() -> Result<(), ServerFnError> {
     }
     clear_session_cookie();
     Ok(())
+}
+
+/// Paso 1 de Entrar: ¿este email ya tiene cuenta?
+#[server]
+pub async fn lookup_email(email: String) -> Result<EmailLookup, ServerFnError> {
+    let Some(email) = domain::normalize_email(&email) else {
+        return Ok(EmailLookup::BadEmail);
+    };
+    let account = db::auth::account_by_email(&crate::server::pool()?, &email)
+        .await
+        .map_err(crate::server::internal)?;
+    if !is_allowed(&email) {
+        if account.is_none() {
+            leptos::logging::log!(
+                "\n  {email} quiso crear una cuenta pero no está en ALLOWED_EMAILS (hay {} habilitados). Agregalo en .env.local.\n",
+                allowed_emails().len()
+            );
+        }
+        return Ok(EmailLookup::NotAllowed);
+    }
+    Ok(match account {
+        Some(a) => EmailLookup::Existing {
+            name: a.name,
+            has_password: a.password_hash.is_some(),
+        },
+        None => EmailLookup::New,
+    })
+}
+
+/// Entrar con email y contraseña.
+#[server]
+pub async fn sign_in(
+    email: String,
+    password: String,
+    next: String,
+) -> Result<PasswordSignIn, ServerFnError> {
+    use crate::server::internal;
+    let Some(email) = domain::normalize_email(&email) else {
+        return Ok(PasswordSignIn::Wrong);
+    };
+    if !is_allowed(&email) || password.chars().count() > domain::PASSWORD_MAX {
+        return Ok(PasswordSignIn::Wrong);
+    }
+    let pool = crate::server::pool()?;
+    let Some(account) = db::auth::account_by_email(&pool, &email)
+        .await
+        .map_err(internal)?
+    else {
+        return Ok(PasswordSignIn::Wrong);
+    };
+    if account.locked_minutes > 0 {
+        return Ok(PasswordSignIn::Locked {
+            minutes: account.locked_minutes as u32,
+        });
+    }
+    let Some(hash) = account.password_hash else {
+        return Ok(PasswordSignIn::NoPassword);
+    };
+    let ok = blocking(move || db::auth::verify_password(&password, &hash)).await?;
+    if !ok {
+        let locked = db::auth::record_failed_login(&pool, account.id)
+            .await
+            .map_err(internal)?;
+        return Ok(if locked {
+            PasswordSignIn::Locked {
+                minutes: db::auth::LOCK_MINUTES as u32,
+            }
+        } else {
+            PasswordSignIn::Wrong
+        });
+    }
+    db::auth::clear_failed_logins(&pool, account.id)
+        .await
+        .map_err(internal)?;
+    open_session(account.id).await?;
+    Ok(PasswordSignIn::In {
+        next: domain::safe_next(&next),
+    })
+}
+
+/// Con el código que le llegó por email: crea la cuenta (con nombre) o le pone
+/// una contraseña nueva, y entra. Cierra las otras sesiones de la cuenta.
+#[server]
+pub async fn set_password_with_code(
+    email: String,
+    code: String,
+    name: String,
+    password: String,
+    next: String,
+) -> Result<SetPassword, ServerFnError> {
+    use crate::server::internal;
+    if let Some(reason) = domain::password_problem(&password) {
+        return Ok(SetPassword::Weak { reason });
+    }
+    let (Some(email), Some(code)) = (
+        domain::normalize_email(&email),
+        domain::normalize_code(&code),
+    ) else {
+        return Ok(SetPassword::Wrong {
+            left: db::auth::CODE_ATTEMPTS as u32,
+        });
+    };
+    if !is_allowed(&email) {
+        return Ok(SetPassword::NotAllowed);
+    }
+    let pool = crate::server::pool()?;
+    let user_id = match db::auth::check_login_code(&pool, &email, &code)
+        .await
+        .map_err(internal)?
+    {
+        db::auth::CodeResult::Wrong { left } => return Ok(SetPassword::Wrong { left }),
+        db::auth::CodeResult::Expired => return Ok(SetPassword::Expired),
+        db::auth::CodeResult::Ok { user_id } => user_id,
+    };
+    let name = domain::clean_name(&name);
+    if !name.is_empty() {
+        db::auth::set_name(&pool, user_id, &name)
+            .await
+            .map_err(internal)?;
+    }
+    let hash = blocking(move || db::auth::hash_password(&password)).await?;
+    db::auth::set_password_hash(&pool, user_id, &hash)
+        .await
+        .map_err(internal)?;
+    db::auth::delete_other_sessions(&pool, user_id, None)
+        .await
+        .map_err(internal)?;
+    open_session(user_id).await?;
+    Ok(SetPassword::In {
+        next: domain::safe_next(&next),
+    })
+}
+
+/// Lo que muestra "Mi cuenta". `None` si no entró.
+#[server]
+pub async fn load_account() -> Result<Option<AccountInfo>, ServerFnError> {
+    let Some(user) = current_user().await? else {
+        return Ok(None);
+    };
+    let account = db::auth::account_by_id(&crate::server::pool()?, user.id)
+        .await
+        .map_err(crate::server::internal)?;
+    Ok(account.map(|a| AccountInfo {
+        email: a.email,
+        name: a.name,
+        has_password: a.password_hash.is_some(),
+    }))
+}
+
+/// Cambia el nombre de la cuenta. Devuelve el nombre como quedó.
+#[server]
+pub async fn save_name(name: String) -> Result<String, ServerFnError> {
+    let user = current_user()
+        .await?
+        .ok_or_else(|| ServerFnError::new("Tenés que entrar con tu cuenta."))?;
+    let name = domain::clean_name(&name);
+    db::auth::set_name(&crate::server::pool()?, user.id, &name)
+        .await
+        .map_err(crate::server::internal)?;
+    Ok(name)
+}
+
+/// Cambia la contraseña desde "Mi cuenta". Si la cuenta todavía no tenía,
+/// `current` no se mira. Cierra las otras sesiones de la cuenta.
+#[server]
+pub async fn change_password(
+    current: String,
+    new: String,
+) -> Result<PasswordChange, ServerFnError> {
+    use crate::server::internal;
+    let user = current_user()
+        .await?
+        .ok_or_else(|| ServerFnError::new("Tenés que entrar con tu cuenta."))?;
+    if let Some(reason) = domain::password_problem(&new) {
+        return Ok(PasswordChange::Weak { reason });
+    }
+    let pool = crate::server::pool()?;
+    let account = db::auth::account_by_id(&pool, user.id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ServerFnError::new("No encontramos tu cuenta."))?;
+    if let Some(hash) = account.password_hash {
+        if current.chars().count() > domain::PASSWORD_MAX
+            || !blocking(move || db::auth::verify_password(&current, &hash)).await?
+        {
+            return Ok(PasswordChange::WrongCurrent);
+        }
+    }
+    let hash = blocking(move || db::auth::hash_password(&new)).await?;
+    db::auth::set_password_hash(&pool, user.id, &hash)
+        .await
+        .map_err(internal)?;
+    db::auth::delete_other_sessions(&pool, user.id, session_token().as_deref())
+        .await
+        .map_err(internal)?;
+    Ok(PasswordChange::Done)
 }
