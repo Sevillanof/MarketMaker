@@ -74,6 +74,13 @@ pub async fn load_store_overview(slug: String) -> Result<Option<StoreOverview>, 
     let delivery = db::orders::delivery(&pool, tenant.id)
         .await
         .map_err(internal)?;
+    let mp_linked = db::mp::link(&pool, tenant.id)
+        .await
+        .map_err(internal)?
+        .is_some();
+    let options = db::orders::payment_options(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
     Ok(Some(StoreOverview {
         url: crate::stores::store_url(&tenant.slug),
         name: tenant.name,
@@ -90,10 +97,8 @@ pub async fn load_store_overview(slug: String) -> Result<Option<StoreOverview>, 
             .await
             .map_err(internal)?,
         delivery_ready: delivery.pickup_enabled || delivery.shipping_enabled,
-        mp_linked: db::mp::link(&pool, tenant.id)
-            .await
-            .map_err(internal)?
-            .is_some(),
+        mp_linked,
+        pay_ready: mp_linked || options.transfer || options.coordinate,
         recent: db::orders::recent(&pool, tenant.id, 5)
             .await
             .map_err(internal)?,
@@ -469,10 +474,14 @@ fn Overview(o: StoreOverview) -> impl IntoView {
             Some((format!("{base}/ventas"), "Elegir")),
         ),
         (
-            o.mp_linked,
-            "Vinculá Mercado Pago",
-            "Así tus clientes pagan online.".to_string(),
-            Some((format!("{base}/cobros"), "Vincular")),
+            o.pay_ready,
+            "Elegí cómo te pagan",
+            if o.pay_ready {
+                "Mercado Pago, transferencia o coordinar.".to_string()
+            } else {
+                "Sin una forma de cobro, tu tienda no puede vender.".to_string()
+            },
+            Some((format!("{base}/cobros"), "Elegir")),
         ),
     ];
     let done = steps.iter().filter(|s| s.0).count();

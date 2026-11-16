@@ -1,8 +1,9 @@
 //! Comprar en la tienda: la página "Finalizar compra" (`/comprar`) y la del
 //! pedido ya hecho (`/pedido/:id`).
 //!
-//! Por ahora el pago se coordina con la tienda; cuando esté Mercado Pago, el
-//! botón va a llevar a pagar.
+//! El comprador paga como lo ofrezca la tienda: Mercado Pago (el pedido entra
+//! recién con el pago aprobado), transferencia o coordinando con la tienda
+//! (el dueño marca cuando cobró).
 
 use domain::{
     CheckoutForm, CheckoutInfo, Delivery, DeliverySettings, FieldError, OrderReceipt, PageView,
@@ -24,9 +25,21 @@ pub async fn load_checkout() -> Result<CheckoutInfo, ServerFnError> {
         delivery: db::orders::delivery(&pool, tenant.id)
             .await
             .map_err(internal)?,
-        online_payments: online(&pool, tenant.id).await?,
+        pay_methods: methods(&pool, tenant.id).await?,
         store_name: tenant.name,
     })
+}
+
+/// Las formas de pago que ofrece la tienda, en orden.
+#[cfg(feature = "ssr")]
+async fn methods(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+) -> Result<Vec<domain::PayMethod>, ServerFnError> {
+    let options = db::orders::payment_options(pool, tenant)
+        .await
+        .map_err(crate::server::internal)?;
+    Ok(domain::pay_methods(online(pool, tenant).await?, &options))
 }
 
 /// La tienda cobra con Mercado Pago (está configurado y la vinculó).
@@ -63,8 +76,22 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     if !errors.is_empty() {
         return Ok(PlaceOrder::Invalid { errors });
     }
-    // Frena los pedidos falsos en serie: cada uno descuenta stock y manda
-    // emails. 5 cada 10 minutos por conexión y tienda alcanza para un comprador.
+    let offered = methods(&pool, tenant.id).await?;
+    if offered.is_empty() {
+        return Ok(PlaceOrder::CartChanged {
+            message: "Esta tienda todavía no está recibiendo compras.".into(),
+        });
+    }
+    if !offered.contains(&form.pay) {
+        return Ok(PlaceOrder::Invalid {
+            errors: vec![FieldError {
+                field: "pay".into(),
+                message: "Elegí cómo querés pagar.".into(),
+            }],
+        });
+    }
+    // Frena los pedidos falsos en serie: los de transferencia guardan stock
+    // y mandan emails. 5 cada 10 minutos por conexión y tienda alcanza.
     let ip = crate::limits::client_ip();
     if !crate::limits::allow(
         &format!("order|{}|{ip}", tenant.id),
@@ -107,7 +134,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             qty: (*qty).min(widgets::cart::MAX_QTY),
         });
     }
-    let pay_online = online(&pool, tenant.id).await?;
+    let pay_online = form.pay == domain::PayMethod::MercadoPago;
     let new = db::orders::NewOrder {
         status: if pay_online {
             domain::OrderStatus::PendingPayment
@@ -124,6 +151,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         notes: &form.notes,
         items: &items,
         shipping_cents: domain::shipping_for(form.delivery, &delivery),
+        pay: form.pay,
     };
     let (id, number) = match db::orders::create(&pool, tenant.id, &new)
         .await
@@ -143,8 +171,8 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         }
     };
     if !pay_online {
-        // Sin pago online, la venta ya está: avisos al comprador y al dueño.
-        // Con Mercado Pago se avisa cuando se aprueba el pago.
+        // Transferencia o a coordinar: el pedido ya está, espera que el dueño
+        // marque el pago. Con Mercado Pago se avisa cuando se aprueba.
         crate::email::order_emails(&pool, tenant.id, id, false).await;
     }
     if pay_online {
@@ -161,9 +189,9 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
                     url,
                 })
             }
-            // El pedido ya está guardado: desde su página se puede reintentar.
+            // El intento ya está guardado: desde su página se puede reintentar.
             Err(e) => leptos::logging::log!(
-                "Mercado Pago: no pudimos crear el pago del pedido #{number}: {e}"
+                "Mercado Pago: no pudimos crear el pago del pedido {id}: {e}"
             ),
         }
     }
@@ -198,11 +226,19 @@ pub async fn load_order(
     else {
         return Ok(None);
     };
-    let can_pay = matches!(
-        order.status,
-        domain::OrderStatus::New | domain::OrderStatus::PendingPayment
-    ) && online(&pool, tenant.id).await?;
+    let can_pay = order.status == domain::OrderStatus::PendingPayment
+        && order.pay == domain::PayMethod::MercadoPago
+        && online(&pool, tenant.id).await?;
+    let transfer_info = if order.pay == domain::PayMethod::Transfer {
+        db::orders::payment_options(&pool, tenant.id)
+            .await
+            .map_err(internal)?
+            .transfer_info
+    } else {
+        String::new()
+    };
     Ok(Some(OrderReceipt {
+        transfer_info,
         delivery: db::orders::delivery(&pool, tenant.id)
             .await
             .map_err(internal)?,
@@ -231,16 +267,14 @@ pub async fn pay_order(id: String) -> Result<String, ServerFnError> {
         .await
         .map_err(internal)?
         .filter(|o| {
-            matches!(
-                o.status,
-                domain::OrderStatus::New | domain::OrderStatus::PendingPayment
-            )
+            o.status == domain::OrderStatus::PendingPayment
+                && o.pay == domain::PayMethod::MercadoPago
         })
         .ok_or_else(|| ServerFnError::new("Este pedido ya no se puede pagar."))?;
     crate::mp::create_preference(&pool, tenant.id, &tenant.name, &store_base(), &order)
         .await
         .map_err(|e| {
-            leptos::logging::log!("Mercado Pago: pedido #{}: {e}", order.number);
+            leptos::logging::log!("Mercado Pago: pedido {}: {e}", order.id);
             ServerFnError::new("No pudimos conectar con Mercado Pago. Probá de nuevo en un rato.")
         })
 }
@@ -309,6 +343,7 @@ struct Fields {
     postal_code: RwSignal<String>,
     city: RwSignal<String>,
     notes: RwSignal<String>,
+    pay: RwSignal<domain::PayMethod>,
 }
 
 #[component]
@@ -329,7 +364,9 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         postal_code: RwSignal::new(String::new()),
         city: RwSignal::new(String::new()),
         notes: RwSignal::new(String::new()),
+        pay: RwSignal::new(info.pay_methods.first().copied().unwrap_or_default()),
     };
+    let methods = StoredValue::new(info.pay_methods.clone());
     let errors = RwSignal::new(Vec::<FieldError>::new());
     let problem = RwSignal::new(None::<String>);
     let place = Action::new(|form: &CheckoutForm| send_order(form.clone()));
@@ -338,8 +375,9 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             cart.clear();
             _ = window().location().set_href(&format!("/pedido/{id}"));
         }
+        // El carrito queda como está hasta que Mercado Pago apruebe el pago:
+        // si la persona vuelve sin pagar, lo encuentra igual.
         Some(Ok(PlaceOrder::Pay { url, .. })) => {
-            cart.clear();
             _ = window().location().set_href(&url);
         }
         Some(Ok(PlaceOrder::Invalid { errors: e })) => {
@@ -361,6 +399,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             postal_code: f.postal_code.get_untracked(),
             city: f.city.get_untracked(),
             notes: f.notes.get_untracked(),
+            pay: f.pay.get_untracked(),
             lines: cart
                 .items()
                 .into_iter()
@@ -393,6 +432,14 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             <StoreHeader name=info.store_name/>
             {move || if !cart.ready.get() {
                 view! { <ui::Skeleton class="h-96 w-full"/> }.into_any()
+            } else if methods.with_value(|m| m.is_empty()) {
+                view! {
+                    <div class="card bg-base-100 shadow-sm"><div class="card-body items-center gap-3 py-16 text-center">
+                        <h1 class="mk-h text-2xl font-bold">"Esta tienda todavía no está recibiendo compras"</h1>
+                        <p class="text-base-content/70">"Tu carrito queda guardado. Volvé a intentarlo en unos días."</p>
+                        <a class="btn btn-primary" href="/">"Volver a la tienda"</a>
+                    </div></div>
+                }.into_any()
             } else if empty.get() {
                 view! {
                     <div class="card bg-base-100 shadow-sm"><div class="card-body items-center gap-3 py-16 text-center">
@@ -439,8 +486,10 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                                     prop:value=move || f.notes.get()
                                     on:input=move |ev| f.notes.set(event_target_value(&ev))></textarea>
                             </fieldset>
+                            <h2 class="mk-h mt-5 text-lg font-bold" id="f-pay-label">"¿Cómo pagás?"</h2>
+                            <PayChoice f methods=methods.get_value() errors/>
                         </div></div>
-                        <Summary cart f d=d.get_value() problem busy=Signal::derive(busy) online=info.online_payments/>
+                        <Summary cart f d=d.get_value() problem busy=Signal::derive(busy)/>
                     </form>
                 }.into_any()
             }}
@@ -456,6 +505,7 @@ fn focus_first(errors: &[FieldError]) {
     };
     let id = match first.field.as_str() {
         "delivery" => "f-delivery-0".to_string(),
+        "pay" => "f-pay-0".to_string(),
         "cart" => return,
         f => format!("f-{f}"),
     };
@@ -566,6 +616,43 @@ fn DeliveryChoice(
     }
 }
 
+/// Cómo paga: las formas que ofrece la tienda, como tarjetas para elegir.
+#[component]
+fn PayChoice(
+    f: Fields,
+    methods: Vec<domain::PayMethod>,
+    errors: RwSignal<Vec<FieldError>>,
+) -> impl IntoView {
+    use domain::PayMethod as P;
+    let error = move || error_for(errors, "pay");
+    view! {
+        <div role="radiogroup" aria-labelledby="f-pay-label" class="flex flex-col gap-2">
+            {methods.into_iter().enumerate().map(|(i, kind)| {
+                let detail = match kind {
+                    P::MercadoPago => "Tarjeta de crédito o débito, dinero en cuenta o efectivo.",
+                    P::Transfer => "Al confirmar te mostramos adónde transferir.",
+                    P::Coordinate => "La tienda te escribe para acordar cómo pagás.",
+                };
+                view! {
+                    <label class="flex cursor-pointer items-start gap-3 rounded-box border border-base-300 px-4 py-3 has-checked:border-primary has-checked:bg-primary/8 has-checked:outline has-checked:outline-primary">
+                        <input type="radio" name="pay" class="radio radio-primary radio-sm mt-0.5" id=format!("f-pay-{i}")
+                            prop:checked=move || f.pay.get() == kind
+                            on:change=move |_| {
+                                f.pay.set(kind);
+                                errors.update(|e| e.retain(|e| e.field != "pay"));
+                            }/>
+                        <span class="min-w-0 flex-1">
+                            <span class="block font-semibold">{kind.label()}</span>
+                            <span class="block text-sm text-base-content/70">{detail}</span>
+                        </span>
+                    </label>
+                }
+            }).collect_view()}
+            {move || error().map(|m| view! { <p class="text-sm text-error">{m}</p> })}
+        </div>
+    }
+}
+
 /// "Tu pedido" a la derecha: productos, envío, total y el botón.
 #[component]
 fn Summary(
@@ -574,8 +661,8 @@ fn Summary(
     d: DeliverySettings,
     problem: RwSignal<Option<String>>,
     busy: Signal<bool>,
-    online: bool,
 ) -> impl IntoView {
+    use domain::PayMethod as P;
     let d = StoredValue::new(d);
     let items = move || {
         cart.items()
@@ -613,18 +700,18 @@ fn Summary(
             <div class="mt-3 mb-4 flex justify-between text-lg font-bold"><span>"Total"</span><span>{move || format_price(subtotal() + shipping())}</span></div>
             {move || problem.get().map(|m| view! { <div role="alert" class="alert alert-warning mb-3 text-sm">{m}</div> })}
             <button type="submit" class="btn btn-primary btn-lg btn-block" disabled=busy>
-                {move || match (busy.get(), online) {
-                    (true, true) => "Abriendo Mercado Pago…",
-                    (true, false) => "Enviando…",
-                    (false, true) => "Ir a pagar con Mercado Pago",
-                    (false, false) => "Confirmar pedido",
+                {move || match (busy.get(), f.pay.get()) {
+                    (true, P::MercadoPago) => "Abriendo Mercado Pago…",
+                    (true, _) => "Enviando…",
+                    (false, P::MercadoPago) => "Ir a pagar con Mercado Pago",
+                    (false, _) => "Confirmar pedido",
                 }}
             </button>
             <p class="mt-2 text-center text-xs text-base-content/70">
-                {if online {
-                    "Pagás en Mercado Pago: tarjeta de crédito o débito, dinero en cuenta o efectivo."
-                } else {
-                    "Esta tienda todavía no recibe pagos online: te escribe para coordinar el pago."
+                {move || match f.pay.get() {
+                    P::MercadoPago => "Tu pedido se confirma cuando Mercado Pago aprueba el pago.",
+                    P::Transfer => "Tu pedido se confirma cuando la tienda recibe la transferencia.",
+                    P::Coordinate => "Tu pedido se confirma cuando la tienda recibe el pago.",
                 }}
             </p>
         </div></aside>
@@ -672,14 +759,28 @@ pub fn OrderPage() -> impl IntoView {
 
 #[component]
 fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
-    // Para que el contador del menú quede en 0 si se vuelve a la tienda.
-    Cart::provide(view.products.clone());
+    let cart = Cart::provide(view.products.clone());
     let OrderReceipt {
         store_name,
         order,
         delivery,
         can_pay,
+        transfer_info,
     } = r;
+    // El pedido ya entró (pagado, o por transferencia o a coordinar): el
+    // carrito se vacía. Si todavía falta pagar en Mercado Pago, queda igual.
+    if order.status != domain::OrderStatus::PendingPayment {
+        Effect::new(move |_| {
+            if cart.ready.get() && cart.count() > 0 {
+                cart.clear();
+            }
+        });
+    }
+    let title = if order.number > 0 {
+        format!("Pedido #{}", order.number)
+    } else {
+        "Tu compra".to_string()
+    };
     let first_name = order
         .customer_name
         .split_whitespace()
@@ -709,9 +810,10 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
         <StoreFrame view>
             <StoreHeader name=store_name/>
             <div class="mx-auto flex w-full max-w-2xl flex-col gap-5">
-                <ReceiptHead first_name number=order.number phone=order.phone.clone() status=order.status can_pay id=order.id.clone()/>
+                <ReceiptHead first_name number=order.number phone=order.phone.clone() status=order.status can_pay id=order.id.clone()
+                    method=order.pay transfer_info total=order.total_cents/>
                 <div class="card bg-base-100 shadow-sm"><div class="card-body gap-0 p-6">
-                    <h2 class="mk-h mb-1 text-lg font-bold">{format!("Pedido #{}", order.number)}</h2>
+                    <h2 class="mk-h mb-1 text-lg font-bold">{title}</h2>
                     <ul>
                         {order.items.iter().map(|i| view! {
                             <li class="flex items-center gap-3 border-b border-base-200 py-3">
@@ -747,6 +849,9 @@ fn ReceiptHead(
     status: domain::OrderStatus,
     can_pay: bool,
     id: String,
+    method: domain::PayMethod,
+    transfer_info: String,
+    total: i64,
 ) -> impl IntoView {
     use domain::OrderStatus as S;
     let query = leptos_router::hooks::use_query_map();
@@ -789,24 +894,36 @@ fn ReceiptHead(
                     "No se cobró nada. Podés intentar de nuevo, con otra tarjeta o medio de pago.".to_string(),
                 ),
                 _ => (
-                    format!("{first_name}, falta pagar tu pedido"),
-                    "Tu pedido está guardado. Pagalo en Mercado Pago para que la tienda lo prepare.".to_string(),
+                    format!("{first_name}, falta pagar tu compra"),
+                    "Tu compra se confirma cuando Mercado Pago aprueba el pago. Tu carrito sigue guardado.".to_string(),
                 ),
             };
             let id = id.clone();
             view! {
                 <h1 class="mk-h text-2xl font-bold">{title}</h1>
-                <p class="text-base-content/75">{format!("Pedido #{number} · {text}")}</p>
+                <p class="text-base-content/75">{text}</p>
                 {move || problem.get().map(|m| view! { <div role="alert" class="alert alert-warning text-sm">{m}</div> })}
                 <button type="button" class="btn btn-primary mt-3" disabled=busy on:click=move |_| { problem.set(None); pay.dispatch(id.clone()); }>
                     {move || if busy() { "Abriendo Mercado Pago…" } else { "Pagar con Mercado Pago" }}
                 </button>
+                <a class="link link-hover text-sm text-base-content/70" href="/">"Volver a la tienda"</a>
             }.into_any()
         }
+        S::PendingPayment => view! {
+            <h1 class="mk-h text-2xl font-bold">"Tu compra no se completó"</h1>
+            <p class="text-base-content/75">"No se cobró nada. Tu carrito sigue guardado en la tienda."</p>
+            <a class="btn btn-primary mt-3" href="/">"Volver a la tienda"</a>
+        }.into_any(),
+        S::New if method == domain::PayMethod::Transfer => view! {
+            <h1 class="mk-h text-2xl font-bold">{format!("{first_name}, ya casi está: falta la transferencia")}</h1>
+            <p class="text-base-content/75">{format!("Pedido #{number} · Transferí {} a:", format_price(total))}</p>
+            <p class="w-full max-w-md whitespace-pre-line rounded-box bg-base-200 px-4 py-3 text-left font-mono text-sm select-all">{transfer_info}</p>
+            <p class="text-sm text-base-content/75">{format!("Cuando la tienda reciba la transferencia, empieza a preparar tu pedido. Si no la recibe en 48 horas, el pedido se cancela. Si hace falta algo, te escribe al {phone}.")}</p>
+        }.into_any(),
         _ => view! {
             {check}
             <h1 class="mk-h text-2xl font-bold">{format!("¡Gracias, {first_name}! Recibimos tu pedido")}</h1>
-            <p class="text-base-content/75">{format!("Pedido #{number} · te vamos a escribir al {phone} para coordinar el pago y la entrega.")}</p>
+            <p class="text-base-content/75">{format!("Pedido #{number} · la tienda te va a escribir al {phone} para coordinar el pago. Cuando lo reciba, empieza a prepararlo.")}</p>
             <a class="btn btn-primary mt-3" href="/">"Seguir comprando"</a>
         }.into_any(),
     };

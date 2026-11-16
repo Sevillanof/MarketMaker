@@ -190,6 +190,7 @@ pub fn to_buyer(
     slug: &str,
     o: &Order,
     pickup_address: &str,
+    transfer_info: &str,
     paid: bool,
 ) -> Email {
     let first = o.customer_name.split_whitespace().next().unwrap_or("");
@@ -197,9 +198,14 @@ pub fn to_buyer(
     let (lines_html, lines_text) = order_lines(o);
     let next = if paid {
         "Tu pago está aprobado. La tienda ya está preparando tu pedido.".to_string()
+    } else if o.pay == domain::PayMethod::Transfer {
+        format!(
+            "Transferí {} a: {transfer_info}. Cuando la tienda reciba la transferencia, empieza a preparar tu pedido. Si no la recibe en 48 horas, el pedido se cancela.",
+            ui::format_price(o.total_cents)
+        )
     } else {
         format!(
-            "La tienda te va a escribir al {} para coordinar el pago y la entrega.",
+            "La tienda te va a escribir al {} para coordinar el pago. Cuando lo reciba, empieza a preparar tu pedido.",
             o.phone
         )
     };
@@ -238,9 +244,14 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
             "{} pagó el pedido #{} con Mercado Pago.",
             o.customer_name, o.number
         )
+    } else if o.pay == domain::PayMethod::Transfer {
+        format!(
+            "{} hizo el pedido #{} y va a pagar con transferencia. Cuando la recibas, tocá \"Ya me pagó\" en Pedidos. Si no lo marcás en 48 horas, se cancela solo.",
+            o.customer_name, o.number
+        )
     } else {
         format!(
-            "{} hizo el pedido #{}. Escribile al {} para coordinar el pago.",
+            "{} hizo el pedido #{}. Escribile al {} para coordinar el pago y, cuando cobres, tocá \"Ya me pagó\" en Pedidos. Si no lo marcás en 48 horas, se cancela solo.",
             o.customer_name, o.number, o.phone
         )
     };
@@ -292,7 +303,7 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
             )
         } else {
             format!(
-                "Nuevo pedido: {} · #{} (coordiná el pago)",
+                "Nuevo pedido: {} · #{} (esperando el pago)",
                 ui::format_price(o.total_cents),
                 o.number
             )
@@ -319,7 +330,11 @@ pub async fn order_emails(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid
         let owners = db::mp::owner_emails(pool, tenant)
             .await
             .map_err(|e| e.to_string())?;
-        send(to_buyer(&name, &slug, &o, &d.pickup_address, paid));
+        let transfer = db::orders::payment_options(pool, tenant)
+            .await
+            .map_err(|e| e.to_string())?
+            .transfer_info;
+        send(to_buyer(&name, &slug, &o, &d.pickup_address, &transfer, paid));
         send(to_owner(owners, &name, &slug, &o, paid));
         Ok::<_, String>(())
     }

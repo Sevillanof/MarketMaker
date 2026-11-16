@@ -243,6 +243,9 @@ pub struct StoreOverview {
     pub out_of_stock: i64,
     pub delivery_ready: bool,
     pub mp_linked: bool,
+    /// Hay al menos una forma de cobro (Mercado Pago, transferencia o coordinar).
+    #[serde(default)]
+    pub pay_ready: bool,
     /// Los últimos pedidos, el más nuevo primero.
     pub recent: Vec<crate::Order>,
 }
