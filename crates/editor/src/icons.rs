@@ -50,6 +50,7 @@ fn path(name: &str) -> &'static str {
         "faq" => "M4 5h16v11H9l-5 4zM10 9a2 2 0 1 1 2 2v1M12 14v.01",
         "gallery" => "M3 6h14v12H3zM20 8v12H6M3 15l4-4 3 3 3-3 4 4",
         "testimonials" => "M4 5h16v11H9l-5 4zM8 9h8M8 12h5",
+        "tags" => "M3 12V4h8l10 10-8 8L3 12zM7.5 8.5h.01",
         "logos" => "M4 8h4v8H4zM10 6h4v12h-4zM16 9h4v6h-4z",
         "footer" => "M3 4h18v16H3zM3 14h18M6 17h4M13 17h5",
         _ => "M4 4h16v16H4z",

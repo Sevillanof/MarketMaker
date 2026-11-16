@@ -870,7 +870,7 @@ pub(crate) fn Canvas(
                 (is_selected.get() && !is_moving.get() && !is_resizing.get()).then(|| {
                     let (up, down, dup, del) = (id.clone(), id.clone(), id.clone(), id.clone());
                     let has_modal = node.get_untracked().is_some_and(|n| {
-                        matches!(n.widget, Widget::ProductGrid(_) | Widget::FeaturedProduct(_))
+                        matches!(n.widget, Widget::ProductGrid(_) | Widget::TagTabs(_) | Widget::FeaturedProduct(_))
                     });
                     let menu_id = format!("mk-menu-{id}");
                     let menu_ref = NodeRef::<Div>::new();
@@ -1362,6 +1362,7 @@ pub(crate) fn Canvas(
                             // y abre la ficha al tocar un producto, como la tienda.
                             let open = RwSignal::new(None::<String>);
                             provide_context(OpenProduct(open));
+                            widgets::ProductFilter::provide();
                             let modal = state.doc.with_untracked(|d| d.product_modal.clone());
                             return view! {
                                 <div class="mk-grid min-h-96" on:click=on_preview_click>{static_page()}</div>

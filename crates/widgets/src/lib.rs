@@ -17,7 +17,9 @@ use leptos::prelude::*;
 use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
 pub mod cart;
+pub mod tags;
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
+pub use tags::{FilteredProducts, ProductFilter};
 
 /// Contexto que recibe todo widget al dibujarse.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -71,6 +73,11 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::ProductGrid(p) => {
             view! { <ProductGridWidget props=p.clone() products=ctx.products.clone()/> }.into_any()
         }
+        Widget::TagFilter(_)
+        | Widget::TagList(_)
+        | Widget::TagCircles(_)
+        | Widget::TagSearch(_)
+        | Widget::TagTabs(_) => tags::render(&node.widget, ctx),
         Widget::FeaturedProduct(p) => {
             view! { <FeaturedProductWidget props=p.clone() products=ctx.products.clone()/> }
                 .into_any()
@@ -147,13 +154,15 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
 
 #[component]
 pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
-    let (photos, alt) = product.map_or_else(Default::default, |p| (p.all_photos(), p.name));
+    let (photos, alt, fits) =
+        product.map_or_else(Default::default, |p| (p.all_photos(), p.name, p.photo_fits));
     let contain = props.fit == "contain";
     if photos.len() < 2 {
         let src = photos.into_iter().next().unwrap_or_default();
+        let fit = fits.get(&src).copied();
         return view! {
             <div class="mk-box mk-image h-full overflow-hidden rounded-box bg-base-200">
-                <Image src alt contain/>
+                <Image src alt contain fit/>
             </div>
         }
         .into_any();
@@ -161,6 +170,7 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
     // Varias fotos: la grande arriba y las miniaturas abajo para cambiarla.
     let shown = RwSignal::new(0usize);
     let photos = StoredValue::new(photos);
+    let fits = StoredValue::new(fits);
     let total = photos.with_value(Vec::len);
     view! {
         <div class="mk-image flex h-full flex-col gap-2">
@@ -168,12 +178,14 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
                 {move || {
                     let i = shown.get();
                     let src = photos.with_value(|p| p[i].clone());
-                    view! { <Image src alt=format!("{alt}, foto {} de {total}", i + 1) contain/> }
+                    let fit = fits.with_value(|f| f.get(&src).copied());
+                    view! { <Image src alt=format!("{alt}, foto {} de {total}", i + 1) contain fit/> }
                 }}
             </div>
             <div class="flex shrink-0 gap-2 overflow-x-auto" role="group" aria-label="Fotos del producto">
                 {(0..total).map(|i| {
                     let src = photos.with_value(|p| p[i].clone());
+                    let fit = fits.with_value(|f| f.get(&src).copied());
                     view! {
                         <button type="button"
                             class="h-14 w-14 shrink-0 overflow-hidden rounded-field -outline-offset-2 outline-primary"
@@ -181,7 +193,7 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
                             aria-label=format!("Ver foto {}", i + 1)
                             aria-pressed=move || (shown.get() == i).to_string()
                             on:click=move |_| shown.set(i)>
-                            <Image src alt=""/>
+                            <Image src alt="" fit/>
                         </button>
                     }
                 }).collect_view()}
@@ -376,19 +388,13 @@ pub fn TextWidget(props: TextProps) -> impl IntoView {
 #[component]
 pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> impl IntoView {
     let limit = usize::try_from(props.limit).unwrap_or(0);
-    let shown: Vec<Product> = products.into_iter().take(limit).collect();
-    let empty = shown.is_empty();
+    let filter = use_context::<ProductFilter>();
     view! {
         <div class="mk-box mk-pad @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
-            {empty.then(|| view! {
-                <div class="alert">"Todavía no hay productos."</div>
-            })}
-            <div class="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 @lg:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">
-                {shown.into_iter().map(|p| view! { <ProductCard product=p show_price=true/> }).collect_view()}
-            </div>
+            <FilteredProducts products limit filter/>
         </div>
     }
 }
@@ -423,12 +429,13 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     let few_left = product.few_left();
     let off = show_price.then(|| product.discount_pct()).flatten();
     let cart_product = product.clone();
+    let fit = product.fit(&product.image_url);
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
         <Card>
             <div class="relative min-h-0 flex-1">
                 <div class="absolute inset-0">
-                    <Image src=product.image_url.clone() alt=product.name.clone()/>
+                    <Image src=product.image_url.clone() alt=product.name.clone() fit/>
                 </div>
                 <div class="absolute left-2 top-2 flex flex-col items-start gap-1">
                     {sold_out.then(|| view! { <span class="badge badge-neutral">"Agotado"</span> })}

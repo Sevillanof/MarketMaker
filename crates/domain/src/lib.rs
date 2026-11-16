@@ -1,6 +1,7 @@
 //! Tipos del panel y su validación. Sin Leptos y sin IO: compila a nativo y a WASM.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 mod account;
 mod catalog;
@@ -689,6 +690,10 @@ pub struct Product {
     /// Etiquetas para encontrar y agrupar productos.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Cómo se encuadra cada foto en este producto (por dirección de la
+    /// foto). Las que no están se ven centradas y sin zoom.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub photo_fits: BTreeMap<String, PhotoFit>,
 }
 
 fn yes() -> bool {
@@ -709,6 +714,7 @@ impl Default for Product {
             visible: true,
             photos: Vec::new(),
             tags: Vec::new(),
+            photo_fits: BTreeMap::new(),
         }
     }
 }
@@ -727,6 +733,11 @@ impl Product {
     }
 
     /// Las fotos para mostrar: `photos`, o la principal si no hay lista.
+    /// El encuadre de la foto `url` en este producto, si se ajustó.
+    pub fn fit(&self, url: &str) -> Option<PhotoFit> {
+        self.photo_fits.get(url).copied()
+    }
+
     pub fn all_photos(&self) -> Vec<String> {
         if self.photos.is_empty() && !self.image_url.is_empty() {
             vec![self.image_url.clone()]

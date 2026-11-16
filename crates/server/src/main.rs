@@ -152,7 +152,11 @@ async fn tls_ok(pool: &db::Pool, domain: &str) -> axum::http::StatusCode {
     let domain = domain.trim().to_lowercase();
     let app = web::email::app_url();
     let platform = app.split_once("://").map_or(app.as_str(), |(_, h)| h);
-    let platform = platform.split(':').next().unwrap_or(platform).to_lowercase();
+    let platform = platform
+        .split(':')
+        .next()
+        .unwrap_or(platform)
+        .to_lowercase();
     if domain == platform || domain == format!("www.{platform}") {
         return StatusCode::OK;
     }

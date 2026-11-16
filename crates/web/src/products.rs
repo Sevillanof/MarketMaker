@@ -2,9 +2,10 @@
 //! por etiqueta (`/tienda/:slug/productos`) y la pantalla para cargar o
 //! editar uno (`/tienda/:slug/productos/:id`, `nuevo` para uno nuevo).
 
-use domain::{Product, ProductEdit, ProductSave, SaveResult, StoreProducts};
+use domain::{PhotoFit, Product, ProductEdit, ProductSave, SaveResult, StoreProducts};
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
+use std::collections::BTreeMap;
 
 #[cfg(feature = "ssr")]
 pub(crate) mod server {
@@ -59,6 +60,80 @@ pub async fn list_store_products(slug: String) -> Result<Option<StoreProducts>, 
             .await
             .map_err(internal)?,
     }))
+}
+
+/// Guarda una etiqueta desde "Etiquetas": la crea (`old` vacío) o la
+/// renombra, y queda puesta justo en los productos `ids`.
+#[server]
+pub async fn save_tag(
+    slug: String,
+    old: String,
+    name: String,
+    ids: Vec<String>,
+) -> Result<domain::TagSave, ServerFnError> {
+    use domain::TagSave;
+    let name = match domain::check_tag_name(&name) {
+        Ok(n) => n,
+        Err(error) => return Ok(TagSave::Invalid { error }),
+    };
+    retag_products(&slug, |all| {
+        if name != old && all.iter().any(|p| p.tags.contains(&name)) {
+            return Err(format!(
+                "Ya hay una etiqueta «{name}». Elegí otro nombre o editá esa."
+            ));
+        }
+        Ok(all
+            .iter()
+            .map(|p| {
+                let tags = domain::retag(&p.tags, &old, &name, ids.contains(&p.id));
+                (p.id.clone(), tags)
+            })
+            .collect())
+    })
+    .await
+}
+
+/// Saca la etiqueta `tag` de todos los productos.
+#[server]
+pub async fn delete_tag(slug: String, tag: String) -> Result<domain::TagSave, ServerFnError> {
+    retag_products(&slug, |all| {
+        Ok(all
+            .iter()
+            .map(|p| (p.id.clone(), domain::retag(&p.tags, &tag, &tag, false)))
+            .collect())
+    })
+    .await
+}
+
+/// Aplica `change` (las etiquetas nuevas de cada producto, o un problema)
+/// a los productos de la tienda y devuelve cómo quedaron.
+#[cfg(feature = "ssr")]
+async fn retag_products(
+    slug: &str,
+    change: impl FnOnce(&[Product]) -> Result<Vec<(String, Vec<String>)>, String>,
+) -> Result<domain::TagSave, ServerFnError> {
+    use crate::server::{internal, pool};
+    use domain::TagSave;
+    let tenant = server::require_store(slug).await?;
+    let pool = pool()?;
+    let mut all = db::products::list_all(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
+    let new = match change(&all) {
+        Ok(n) => n,
+        Err(error) => return Ok(TagSave::Invalid { error }),
+    };
+    let mut changes = Vec::new();
+    for (p, (id, tags)) in all.iter_mut().zip(new) {
+        if p.tags != tags {
+            changes.push((server::parse_id(&id)?, tags.clone()));
+            p.tags = tags;
+        }
+    }
+    db::products::set_tags(&pool, tenant.id, &changes)
+        .await
+        .map_err(internal)?;
+    Ok(TagSave::Saved { products: all })
 }
 
 /// El producto `id` para editarlo (o uno vacío si `id` es `nuevo`).
@@ -233,7 +308,17 @@ pub fn ProductsPage() -> impl IntoView {
 #[component]
 fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     let products = RwSignal::new(data.products);
-    let tags = StoredValue::new(data.tags);
+    // Las etiquetas salen de los productos, así se actualizan al cambiarlas
+    // desde "Etiquetas".
+    let tags = Memo::new(move |_| {
+        products.with(|ps| {
+            let mut t: Vec<String> = domain::count_tags(ps).into_iter().map(|c| c.tag).collect();
+            t.sort();
+            t
+        })
+    });
+    let _ = data.tags;
+    let manage = NodeRef::<leptos::html::Dialog>::new();
     let query = RwSignal::new(String::new());
     let tag = RwSignal::new(None::<String>);
     let problem = RwSignal::new(None::<String>);
@@ -289,8 +374,17 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                 <h1 class="text-3xl font-bold">"Productos"</h1>
                 <p class="text-sm text-base-content/70">{data.store_name} " · " {summary}</p>
             </div>
+            <button type="button" class="btn" on:click=move |_| {
+                if let Some(d) = manage.get() { _ = d.show_modal(); }
+            }>"Etiquetas"</button>
             <a class="btn btn-primary" href=new_href.clone()>"+ Nuevo producto"</a>
         </div>
+        <dialog node_ref=manage class="modal" aria-labelledby="etiquetas-titulo">
+            <div class="modal-box max-w-3xl">
+                <TagManager slug=slug.get_value() products tag dialog=manage/>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
         {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
         {if empty {
             view! {
@@ -310,7 +404,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                             prop:value=move || query.get()
                             on:input=move |ev| query.set(event_target_value(&ev))/>
                     </label>
-                    {(!tags.with_value(Vec::is_empty)).then(|| view! {
+                    {move || (!tags.with(Vec::is_empty)).then(|| view! {
                         <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por etiqueta">
                             <span class="text-sm text-base-content/70">"Etiquetas:"</span>
                             <button type="button" class="badge badge-lg cursor-pointer"
@@ -318,7 +412,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                 class:badge-outline=move || tag.get().is_some()
                                 aria-pressed=move || tag.get().is_none().to_string()
                                 on:click=move |_| tag.set(None)>"Todas"</button>
-                            {tags.get_value().into_iter().map(|t| {
+                            {tags.get().into_iter().map(|t| {
                                 let t2 = t.clone();
                                 let t3 = t.clone();
                                 let on = Memo::new(move |_| tag.get().as_deref() == Some(t2.as_str()));
@@ -350,7 +444,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                             <td>
                                                 <a href=href.clone() class="flex items-center gap-3">
                                                     <div class="h-11 w-14 shrink-0 overflow-hidden rounded-field bg-base-200">
-                                                        <ui::Image src=p.image_url.clone() alt=""/>
+                                                        <ui::Image src=p.image_url.clone() alt="" fit=p.fit(&p.image_url)/>
                                                     </div>
                                                     <div class="min-w-0">
                                                         <div class="font-medium">{p.name.clone()}</div>
@@ -398,6 +492,221 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                 </div>
             }.into_any()
         }}
+    }
+}
+
+/// "Etiquetas": crear una etiqueta y elegir sus productos, cambiarle el
+/// nombre o borrarla. A la izquierda las etiquetas; a la derecha la elegida.
+#[component]
+fn TagManager(
+    slug: String,
+    products: RwSignal<Vec<Product>>,
+    /// El filtro de la lista: se limpia si se borra o renombra su etiqueta.
+    tag: RwSignal<Option<String>>,
+    dialog: NodeRef<leptos::html::Dialog>,
+) -> impl IntoView {
+    let slug = StoredValue::new(slug);
+    let counts = Memo::new(move |_| products.with(|ps| domain::count_tags(ps)));
+    // La etiqueta que se está editando: `Some("")` es una nueva.
+    let editing = RwSignal::new(None::<String>);
+    let name = RwSignal::new(String::new());
+    let picked = RwSignal::new(Vec::<String>::new());
+    let search = RwSignal::new(String::new());
+    let problem = RwSignal::new(None::<String>);
+    let saved = RwSignal::new(false);
+    let confirm = RwSignal::new(false);
+    let name_ref = NodeRef::<leptos::html::Input>::new();
+
+    let open = move |t: String| {
+        picked.set(products.with_untracked(|ps| {
+            ps.iter()
+                .filter(|p| !t.is_empty() && p.tags.contains(&t))
+                .map(|p| p.id.clone())
+                .collect()
+        }));
+        name.set(t.clone());
+        editing.set(Some(t));
+        search.set(String::new());
+        problem.set(None);
+        saved.set(false);
+        confirm.set(false);
+        if let Some(i) = name_ref.get_untracked() {
+            _ = i.focus();
+        }
+    };
+    let done = move |r: Result<domain::TagSave, ServerFnError>, now: Option<String>| match r {
+        Ok(domain::TagSave::Saved { products: ps }) => {
+            let old = editing.get_untracked().unwrap_or_default();
+            if !old.is_empty() && tag.get_untracked().as_deref() == Some(old.as_str()) {
+                tag.set(None);
+            }
+            products.set(ps);
+            problem.set(None);
+            confirm.set(false);
+            saved.set(now.is_some());
+            match now {
+                Some(n) => {
+                    name.set(n.clone());
+                    editing.set(Some(n));
+                }
+                None => editing.set(None),
+            }
+        }
+        Ok(domain::TagSave::Invalid { error }) => problem.set(Some(error)),
+        Err(e) => problem.set(Some(error_text(&e))),
+    };
+    let save = Action::new(move |_: &()| {
+        let old = editing.get_untracked().unwrap_or_default();
+        let n = name.get_untracked();
+        let ids = picked.get_untracked();
+        async move {
+            let clean = domain::clean_tag(&n);
+            let r = save_tag(slug.get_value(), old, n, ids).await;
+            done(r, clean);
+        }
+    });
+    let remove = Action::new(move |_: &()| {
+        let t = editing.get_untracked().unwrap_or_default();
+        async move {
+            let r = delete_tag(slug.get_value(), t).await;
+            done(r, None);
+        }
+    });
+    let busy = move || save.pending().get() || remove.pending().get();
+    let shown = Memo::new(move |_| {
+        let q = search.get();
+        products.with(|ps| {
+            ps.iter()
+                .filter(|p| domain::product_matches(p, &q))
+                .map(|p| (p.id.clone(), p.name.clone(), p.image_url.clone()))
+                .collect::<Vec<_>>()
+        })
+    });
+    let close = move |_| {
+        if let Some(d) = dialog.get() {
+            d.close();
+        }
+    };
+
+    view! {
+        <div class="flex items-start gap-3">
+            <div class="grow">
+                <h2 id="etiquetas-titulo" class="text-xl font-bold">"Etiquetas"</h2>
+                <p class="text-sm text-base-content/70">"Sirven para agrupar productos. Si sumás a tu tienda uno de los bloques de etiquetas (en el editor, en Productos), tus clientes las tocan para ver solo esos productos."</p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=close>"✕"</button>
+        </div>
+        <div class="mt-4 grid min-h-[26rem] grid-cols-[14rem_1fr] gap-5">
+            <div class="flex flex-col gap-1 border-r border-base-300 pr-4">
+                <button type="button" class="btn btn-primary btn-sm mb-2 justify-start" on:click=move |_| open(String::new())>"+ Nueva etiqueta"</button>
+                <ul class="flex flex-col gap-0.5 overflow-y-auto" aria-label="Etiquetas de la tienda">
+                    {move || counts.get().into_iter().map(|c| {
+                        let t = c.tag.clone();
+                        let t2 = c.tag.clone();
+                        let on = move || editing.get().as_deref() == Some(t.as_str());
+                        view! {
+                            <li>
+                                <button type="button" class="flex w-full items-center justify-between gap-2 rounded-field px-3 py-2 text-left text-sm hover:bg-base-200"
+                                    class:bg-primary=on.clone()
+                                    class:text-primary-content=on.clone()
+                                    class:hover:bg-primary=on.clone()
+                                    aria-current=move || on().then_some("true")
+                                    on:click=move |_| open(t2.clone())>
+                                    <span class="truncate">{c.tag.clone()}</span>
+                                    <span class="opacity-70">{c.products}</span>
+                                </button>
+                            </li>
+                        }
+                    }).collect_view()}
+                </ul>
+                {move || counts.with(Vec::is_empty).then(|| view! {
+                    <p class="px-1 text-sm text-base-content/60">"Todavía no hay etiquetas."</p>
+                })}
+            </div>
+            <div class="flex min-w-0 flex-col gap-3">
+                {move || match editing.get() {
+                    None => view! {
+                        <div class="flex h-full flex-col items-center justify-center gap-2 text-center text-base-content/70">
+                            <p>"Elegí una etiqueta de la izquierda para cambiarle el nombre o sus productos, o creá una nueva."</p>
+                        </div>
+                    }.into_any(),
+                    Some(t) => {
+                        let is_new = t.is_empty();
+                        view! {
+                            <form class="flex min-h-0 flex-1 flex-col gap-3" on:submit=move |ev| { ev.prevent_default(); save.dispatch(()); }>
+                                <label class="flex flex-col gap-1">
+                                    <span class="text-sm font-medium">{if is_new { "Nombre de la etiqueta nueva" } else { "Nombre" }}</span>
+                                    <input node_ref=name_ref class="input w-full" maxlength="30" required=true
+                                        placeholder="Por ejemplo: ofertas, verano, regalos"
+                                        prop:value=move || name.get()
+                                        on:input=move |ev| { name.set(event_target_value(&ev)); saved.set(false); }/>
+                                </label>
+                                <fieldset class="flex min-h-0 flex-1 flex-col gap-2">
+                                    <legend class="mb-1 text-sm font-medium">
+                                        "Productos con esta etiqueta "
+                                        <span class="font-normal text-base-content/60">{move || format!("({} elegidos)", picked.with(Vec::len))}</span>
+                                    </legend>
+                                    <input type="search" class="input input-sm w-full" placeholder="Buscar producto" aria-label="Buscar producto"
+                                        prop:value=move || search.get()
+                                        on:input=move |ev| search.set(event_target_value(&ev))/>
+                                    <ul class="max-h-64 min-h-0 overflow-y-auto rounded-field border border-base-300">
+                                        <For each=move || shown.get() key=|p| p.0.clone() let:p>
+                                            {
+                                                let (id, pname, img) = p;
+                                                let id2 = id.clone();
+                                                let checked = move || picked.with(|l| l.contains(&id));
+                                                view! {
+                                                    <li class="border-b border-base-200 last:border-0">
+                                                        <label class="flex cursor-pointer items-center gap-3 px-3 py-1.5 hover:bg-base-200">
+                                                            <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
+                                                                prop:checked=checked
+                                                                on:change=move |ev| {
+                                                                    let on = event_target_checked(&ev);
+                                                                    saved.set(false);
+                                                                    picked.update(|l| {
+                                                                        l.retain(|x| x != &id2);
+                                                                        if on { l.push(id2.clone()); }
+                                                                    });
+                                                                }/>
+                                                            <span class="h-8 w-10 shrink-0 overflow-hidden rounded bg-base-200"><ui::Image src=img alt=""/></span>
+                                                            <span class="truncate text-sm">{pname}</span>
+                                                        </label>
+                                                    </li>
+                                                }
+                                            }
+                                        </For>
+                                    </ul>
+                                </fieldset>
+                                {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
+                                {move || if confirm.get() {
+                                    let n = picked.with(Vec::len);
+                                    view! {
+                                        <div role="alert" class="alert alert-warning flex flex-wrap text-sm">
+                                            <span class="grow">{format!("¿Borrar «{}»? Se va a sacar de {n} producto{}. Los productos no se borran.", editing.get_untracked().unwrap_or_default(), if n == 1 { "" } else { "s" })}</span>
+                                            <button type="button" class="btn btn-sm" on:click=move |_| confirm.set(false)>"Cancelar"</button>
+                                            <button type="button" class="btn btn-error btn-sm" disabled=busy on:click=move |_| { remove.dispatch(()); }>"Borrar etiqueta"</button>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="flex items-center gap-2">
+                                            <button type="submit" class="btn btn-primary" disabled=busy>
+                                                {if is_new { "Crear etiqueta" } else { "Guardar cambios" }}
+                                            </button>
+                                            {move || saved.get().then(|| view! { <span role="status" class="text-sm text-success">"✓ Guardado"</span> })}
+                                            <span class="grow"></span>
+                                            {(!is_new).then(|| view! {
+                                                <button type="button" class="btn btn-ghost btn-sm text-error" on:click=move |_| confirm.set(true)>"Borrar etiqueta"</button>
+                                            })}
+                                        </div>
+                                    }.into_any()
+                                }}
+                            </form>
+                        }.into_any()
+                    }
+                }}
+            </div>
+        </div>
     }
 }
 
@@ -449,6 +758,8 @@ struct Form {
     was: RwSignal<String>,
     description: RwSignal<String>,
     photos: RwSignal<Vec<String>>,
+    /// Encuadre de cada foto en este producto.
+    fits: RwSignal<BTreeMap<String, PhotoFit>>,
     tags: RwSignal<Vec<String>>,
     in_stock: RwSignal<bool>,
     /// Cantidad disponible; vacío si no se cuenta.
@@ -475,6 +786,7 @@ impl Form {
             was: RwSignal::new(money(p.compare_at_cents)),
             description: RwSignal::new(p.description.clone()),
             photos: RwSignal::new(p.all_photos()),
+            fits: RwSignal::new(p.photo_fits.clone()),
             tags: RwSignal::new(p.tags.clone()),
             in_stock: RwSignal::new(p.in_stock || p.stock.is_some()),
             stock: RwSignal::new(p.stock.map(|s| s.to_string()).unwrap_or_default()),
@@ -536,6 +848,7 @@ impl Form {
             visible: self.visible.get(),
             photos,
             tags: self.tags.get(),
+            photo_fits: self.fits.get(),
         };
         if errors.is_empty() {
             Ok(p)
@@ -573,6 +886,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         form.was.track();
         form.description.track();
         form.photos.track();
+        form.fits.track();
         form.tags.track();
         form.in_stock.track();
         form.stock.track();
@@ -653,6 +967,13 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             p
         })
     };
+    // La foto que se está encuadrando sobre la vista previa (si sigue estando).
+    let adjusting = RwSignal::new(None::<String>);
+    let adjusting_now = Memo::new(move |_| {
+        adjusting
+            .get()
+            .filter(|url| form.photos.with(|p| p.contains(url)))
+    });
 
     view! {
         <div class="flex flex-wrap items-center gap-3">
@@ -711,7 +1032,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                         </label>
                     </fieldset>
                 </div>
-                <PhotosField photos=form.photos/>
+                <PhotosField photos=form.photos fits=form.fits adjusting/>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">"Descripción"</legend>
                     <textarea class="textarea h-28 w-full" maxlength=domain::PRODUCT_DESC_MAX
@@ -761,6 +1082,13 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             </div></div>
             <aside class="flex flex-col gap-3 lg:sticky lg:top-4">
                 <span class="text-sm font-medium text-base-content/70">"Así se ve en tu tienda"</span>
+                {move || match adjusting_now.get() {
+                    Some(url) => view! {
+                        <PhotoAdjust url fits=form.fits name=form.name
+                            price=Signal::derive(move || preview().map(|p| (p.price_cents, p.compare_at_cents)))
+                            on_done=Callback::new(move |()| adjusting.set(None))/>
+                    }.into_any(),
+                    None => view! {
                 <div class="h-80">
                     {move || match preview() {
                         Some(p) => view! { <widgets::ProductCard product=p show_price=true/> }.into_any(),
@@ -778,6 +1106,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                         "Está oculto: no aparece en la tienda hasta que lo hagas visible."
                     }}
                 </p>
+                    }.into_any(),
+                }}
             </aside>
         </div>
     }
@@ -785,7 +1115,12 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
 
 /// Las fotos del producto: elegir de Mis fotos o subir, ordenar y sacar.
 #[component]
-fn PhotosField(photos: RwSignal<Vec<String>>) -> impl IntoView {
+fn PhotosField(
+    photos: RwSignal<Vec<String>>,
+    fits: RwSignal<BTreeMap<String, PhotoFit>>,
+    /// La foto que se está encuadrando sobre la vista previa.
+    adjusting: RwSignal<Option<String>>,
+) -> impl IntoView {
     let library = editor::MyPhotos::new();
     let picking = RwSignal::new(false);
     let full = move || photos.with(|p| p.len() >= domain::PRODUCT_PHOTOS_MAX);
@@ -799,18 +1134,34 @@ fn PhotosField(photos: RwSignal<Vec<String>>) -> impl IntoView {
     let shift = move |i: usize, to: usize| photos.update(|p| p.swap(i, to));
     view! {
         <fieldset class="fieldset">
-            <legend class="fieldset-legend">"Fotos " <span class="font-normal text-base-content/60">"· la primera es la principal; usá las flechas para ordenarlas"</span></legend>
+            <legend class="fieldset-legend">"Fotos " <span class="font-normal text-base-content/60">"· la primera es la principal; tocá una foto para encuadrarla"</span></legend>
             <ul class="flex flex-wrap gap-3" aria-label="Fotos del producto">
                 {move || {
                     let list = photos.get();
                     let last = list.len().saturating_sub(1);
                     list.into_iter().enumerate().map(|(i, url)| {
                         let n = i + 1;
+                        let fit = fits.with(|f| f.get(&url).copied());
+                        let mine = url.clone();
+                        let here = Memo::new(move |_| adjusting.with(|a| a.as_deref() == Some(mine.as_str())));
+                        let pick = url.clone();
                         view! {
                             <li class="group relative h-24 w-32 overflow-hidden rounded-box bg-base-200"
-                                class:ring-2=i == 0 class:ring-primary=i == 0>
-                                <ui::Image src=url alt=format!("Foto {n}")/>
-                                {(i == 0).then(|| view! { <span class="badge badge-primary badge-sm absolute left-1 top-1">"Principal"</span> })}
+                                class:ring-2=move || i == 0 || here.get()
+                                class:ring-primary=move || i == 0 || here.get()
+                                class:ring-4=move || here.get()>
+                                <ui::Image src=url alt=format!("Foto {n}") fit/>
+                                <button type="button" class="absolute inset-0 cursor-pointer rounded-box focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+                                    aria-label=format!("Encuadrar la foto {n}")
+                                    aria-pressed=move || here.get().to_string()
+                                    on:click=move |_| adjusting.set(Some(pick.clone()))></button>
+                                {move || if here.get() {
+                                    view! { <span class="badge badge-primary badge-sm absolute left-1 top-1">"Encuadrando"</span> }.into_any()
+                                } else if i == 0 {
+                                    view! { <span class="badge badge-primary badge-sm absolute left-1 top-1">"Principal"</span> }.into_any()
+                                } else {
+                                    ().into_any()
+                                }}
                                 <div class="absolute inset-x-1 bottom-1 flex justify-between gap-1">
                                     <button type="button" class="btn btn-xs btn-square" aria-label=format!("Mover la foto {n} a la izquierda")
                                         disabled=i == 0 on:click=move |_| shift(i, i - 1)>"←"</button>
@@ -1032,5 +1383,236 @@ fn TagsField(form: Form, store_tags: Vec<domain::TagCount>) -> impl IntoView {
                 })}
             </div>
         </fieldset>
+    }
+}
+
+/// Forma con la que se prueba el encuadre. La forma de verdad la decide cada
+/// bloque de la tienda; el encuadre vale para todas.
+#[derive(Clone, Copy, PartialEq)]
+enum Shape {
+    Square,
+    Tall,
+    Wide,
+}
+
+impl Shape {
+    const ALL: [Shape; 3] = [Shape::Square, Shape::Tall, Shape::Wide];
+
+    fn class(self) -> &'static str {
+        match self {
+            Shape::Square => "aspect-square",
+            Shape::Tall => "aspect-[4/5]",
+            Shape::Wide => "aspect-[4/3]",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Shape::Square => "Cuadrada",
+            Shape::Tall => "Vertical",
+            Shape::Wide => "Horizontal",
+        }
+    }
+
+    /// Íconito de la forma.
+    fn icon(self) -> &'static str {
+        match self {
+            Shape::Square => "h-3.5 w-3.5",
+            Shape::Tall => "h-4 w-3",
+            Shape::Wide => "h-3 w-4",
+        }
+    }
+}
+
+/// Cuánto % se mueve el punto a la vista al arrastrar `drag` px, en un lado
+/// de `boxed` px donde la foto (ya cubriendo el lugar) mide `shown` px.
+fn drag_to_pct(drag: f64, boxed: f64, shown: f64, zoom: f64) -> f64 {
+    // Al subir 1 % el punto, la foto se corre (sobrante × zoom + lugar ×
+    // (zoom − 1)) / 100 px: lo que sobra por object-position más lo que
+    // agrega el zoom alrededor del punto.
+    let travel = (shown - boxed).max(0.0) * zoom + boxed * (zoom - 1.0);
+    if travel < 1.0 {
+        0.0
+    } else {
+        -drag * 100.0 / travel
+    }
+}
+
+/// Encuadrar una foto sobre la vista previa: se arrastra para moverla, zoom
+/// con la barrita (o la rueda) y se prueba en cada forma. No toca la foto
+/// guardada: queda en `fits` y se guarda con el producto.
+#[component]
+fn PhotoAdjust(
+    url: String,
+    fits: RwSignal<BTreeMap<String, PhotoFit>>,
+    name: RwSignal<String>,
+    /// Precio y precio anterior, si se pueden leer.
+    #[prop(into)]
+    price: Signal<Option<(i64, i64)>>,
+    on_done: Callback<()>,
+) -> impl IntoView {
+    let key = StoredValue::new(url.clone());
+    let opened = fits.with_untracked(|f| f.get(&url).copied().unwrap_or_default());
+    // Mientras se arrastra se mueve esta; al soltar se guarda en `fits`.
+    let fit = RwSignal::new(opened);
+    let commit = move || {
+        let f = fit.get_untracked().clamped();
+        fits.update(|all| {
+            if f.is_default() {
+                all.remove(&key.get_value());
+            } else {
+                all.insert(key.get_value(), f);
+            }
+        });
+    };
+    let shape = RwSignal::new(Shape::Square);
+    let moved = RwSignal::new(false);
+    let img = NodeRef::<leptos::html::Img>::new();
+    // Dónde empezó el arrastre: puntero, encuadre y medidas.
+    let start = StoredValue::new(None::<(f64, f64, PhotoFit)>);
+
+    let measure = move || {
+        let el = img.get_untracked()?;
+        let (bw, bh) = (f64::from(el.client_width()), f64::from(el.client_height()));
+        let (nw, nh) = (
+            f64::from(el.natural_width()),
+            f64::from(el.natural_height()),
+        );
+        if bw < 1.0 || bh < 1.0 || nw < 1.0 || nh < 1.0 {
+            return None;
+        }
+        let cover = (bw / nw).max(bh / nh);
+        Some((bw, bh, nw * cover, nh * cover))
+    };
+    let nudge = move |dx: f64, dy: f64, base: PhotoFit| {
+        let Some((bw, bh, sw, sh)) = measure() else {
+            return;
+        };
+        let z = f64::from(base.zoom) / 100.0;
+        let x = f64::from(base.x) + drag_to_pct(dx, bw, sw, z);
+        let y = f64::from(base.y) + drag_to_pct(dy, bh, sh, z);
+        fit.set(PhotoFit {
+            x: x.round().clamp(0.0, 100.0) as u8,
+            y: y.round().clamp(0.0, 100.0) as u8,
+            ..base
+        });
+    };
+    let set_zoom = move |z: f64| {
+        let z = z
+            .round()
+            .clamp(f64::from(domain::ZOOM_MIN), f64::from(domain::ZOOM_MAX));
+        fit.update(|f| f.zoom = z as u16);
+    };
+
+    let on_down = move |ev: leptos::ev::PointerEvent| {
+        if ev.button() != 0 {
+            return;
+        }
+        ev.prevent_default();
+        if let Some(t) = ev.current_target().and_then(|t| {
+            leptos::wasm_bindgen::JsCast::dyn_into::<leptos::web_sys::Element>(t).ok()
+        }) {
+            _ = t.set_pointer_capture(ev.pointer_id());
+        }
+        start.set_value(Some((
+            f64::from(ev.client_x()),
+            f64::from(ev.client_y()),
+            fit.get_untracked(),
+        )));
+    };
+    let on_move = move |ev: leptos::ev::PointerEvent| {
+        if let Some((x0, y0, base)) = start.get_value() {
+            moved.set(true);
+            nudge(
+                f64::from(ev.client_x()) - x0,
+                f64::from(ev.client_y()) - y0,
+                base,
+            );
+        }
+    };
+    let on_up = move |_: leptos::ev::PointerEvent| {
+        if start.get_value().is_some() {
+            start.set_value(None);
+            commit();
+        }
+    };
+    let on_wheel = move |ev: leptos::ev::WheelEvent| {
+        ev.prevent_default();
+        set_zoom(f64::from(fit.get_untracked().zoom) - ev.delta_y() / 4.0);
+        commit();
+    };
+    let on_key = move |ev: leptos::ev::KeyboardEvent| {
+        let base = fit.get_untracked();
+        let step = 8.0;
+        match ev.key().as_str() {
+            "ArrowLeft" => nudge(-step, 0.0, base),
+            "ArrowRight" => nudge(step, 0.0, base),
+            "ArrowUp" => nudge(0.0, -step, base),
+            "ArrowDown" => nudge(0.0, step, base),
+            "+" | "=" => set_zoom(f64::from(base.zoom) + 10.0),
+            "-" => set_zoom(f64::from(base.zoom) - 10.0),
+            _ => return,
+        }
+        ev.prevent_default();
+        moved.set(true);
+        commit();
+    };
+
+    view! {
+        <div class="card overflow-hidden border border-base-300 bg-base-100 shadow-sm outline-3 outline-offset-2 outline-primary">
+            <div class=move || format!("relative w-full cursor-grab touch-none select-none overflow-hidden bg-base-200 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary {}", shape.get().class())
+                tabindex="0" role="application"
+                aria-label="Encuadre de la foto. Arrastrala o usá las flechas para moverla, y + o − para el zoom."
+                on:pointerdown=on_down on:pointermove=on_move on:pointerup=on_up on:pointercancel=on_up
+                on:wheel=on_wheel on:keydown=on_key>
+                <img node_ref=img src=url class="pointer-events-none block h-full w-full object-cover"
+                    style=move || fit.get().css() alt="" draggable="false"/>
+                {move || (!moved.get()).then(|| view! {
+                    <span class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-1.5 text-sm whitespace-nowrap text-white">
+                        "✥ Arrastrá para mover"
+                    </span>
+                })}
+            </div>
+            <div class="card-body gap-0 p-4">
+                <h3 class="truncate text-sm font-semibold">{move || name.get()}</h3>
+                {move || price.get().map(|(cents, was)| view! { <ui::PriceWas cents was/> })}
+            </div>
+        </div>
+        <div class="flex flex-col gap-3 rounded-box bg-base-100 p-4 shadow-md">
+            <label class="flex items-center gap-3 text-sm">
+                <span>"Zoom"</span>
+                <input type="range" class="range range-primary range-xs grow"
+                    min=domain::ZOOM_MIN max=domain::ZOOM_MAX step="5"
+                    aria-valuetext=move || format!("{} %", fit.get().zoom)
+                    prop:value=move || fit.get().zoom.to_string()
+                    on:input=move |ev| { if let Ok(z) = event_target_value(&ev).parse::<f64>() { set_zoom(z) } }
+                    on:change=move |_| commit()/>
+                <span class="w-14 text-right whitespace-nowrap text-base-content/60 tabular-nums">{move || format!("{} %", fit.get().zoom)}</span>
+            </label>
+            <div class="flex items-center gap-3 text-sm">
+                <span>"Ver en forma"</span>
+                <div class="join" role="group" aria-label="Probar en otra forma">
+                    {Shape::ALL.into_iter().map(|s| view! {
+                        <button type="button" class="btn btn-sm join-item" title=s.label() aria-label=s.label()
+                            class:btn-active=move || shape.get() == s
+                            class:text-primary=move || shape.get() == s
+                            aria-pressed=move || (shape.get() == s).to_string()
+                            on:click=move |_| shape.set(s)>
+                            <span class=format!("inline-block rounded-[2px] border-[1.5px] border-current {}", s.icon())></span>
+                        </button>
+                    }).collect_view()}
+                </div>
+            </div>
+            <p class="text-xs text-base-content/60">"Cada bloque de tu tienda tiene su forma; lo que encuadres vale para todas."</p>
+            <div class="flex items-center gap-2">
+                <button type="button" class="btn btn-ghost btn-sm -ml-2"
+                    on:click=move |_| { fit.set(opened); commit(); }>"↺ Como estaba"</button>
+                <button type="button" class="btn btn-ghost btn-sm"
+                    on:click=move |_| { fit.set(PhotoFit::default()); commit(); }>"Centrar"</button>
+                <span class="grow"></span>
+                <button type="button" class="btn btn-primary btn-sm" on:click=move |_| on_done.run(())>"Listo"</button>
+            </div>
+        </div>
+        <p class="text-xs text-base-content/60">"La foto original no cambia. Al tocar Guardar, tu tienda la muestra así."</p>
     }
 }
