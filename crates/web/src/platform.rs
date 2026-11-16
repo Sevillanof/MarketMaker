@@ -249,7 +249,7 @@ pub(crate) fn NewStore(
 }
 
 /// Lleva el foco a un campo (después de que se dibuje su error).
-fn focus_id(id: &'static str) {
+pub(crate) fn focus_id(id: &'static str) {
     request_animation_frame(move || {
         use leptos::wasm_bindgen::JsCast;
         if let Some(el) = document()

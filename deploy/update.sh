@@ -19,4 +19,7 @@ cargo leptos build --release
 install -m 755 target/release/server "$OUT/server.new" && mv "$OUT/server.new" "$OUT/server"
 rm -rf "$OUT/site.new" && cp -r target/site "$OUT/site.new" && rm -rf "$OUT/site" && mv "$OUT/site.new" "$OUT/site"
 sudo systemctl restart marketmaker
+# Los logos SVG con texto necesitan alguna fuente instalada.
+fc-list 2>/dev/null | grep -q . || ls /usr/share/fonts/truetype >/dev/null 2>&1 \
+  || echo "Aviso: no hay fuentes instaladas; como root: apt-get install -y fonts-dejavu-core"
 echo "MarketMaker actualizado ($(git rev-parse --short HEAD))."

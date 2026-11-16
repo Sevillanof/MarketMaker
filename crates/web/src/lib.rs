@@ -31,6 +31,7 @@ mod photos;
 mod platform;
 mod products;
 mod sales;
+mod store_info;
 pub mod server;
 pub mod site;
 pub mod stores;
@@ -80,6 +81,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/tienda/:slug/pedidos") view=orders::OrdersPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/cobros") view=payments::PaymentsPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/ventas") view=sales::SalesPage ssr=SsrMode::Async/>
+                    <Route path=path!("/tienda/:slug/datos") view=store_info::StoreInfoPage ssr=SsrMode::Async/>
                     <Route path=path!("/comprar") view=checkout::CheckoutPage ssr=SsrMode::Async/>
                     <Route path=path!("/pedido/:id") view=checkout::OrderPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>

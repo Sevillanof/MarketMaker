@@ -15,6 +15,7 @@ pub enum Section {
     Orders,
     Delivery,
     Payments,
+    StoreInfo,
     Photos,
     /// Mi cuenta: no está en el menú, se abre desde tu nombre.
     Account,
@@ -341,6 +342,7 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                 <li class="menu-title mt-3">"Cómo vendés"</li>
                 {item(Section::Delivery, format!("{base}/ventas"), "truck", "Entregas", 0)}
                 {item(Section::Payments, format!("{base}/cobros"), "card", "Cobros", 0)}
+                {item(Section::StoreInfo, format!("{base}/datos"), "store", "Datos de la tienda", 0)}
                 <li class="menu-title mt-3">"Tu cuenta"</li>
                 {item(Section::Photos, format!("/mis-fotos?tienda={s}"), "photo", "Mis fotos", 0)}
             </ul>

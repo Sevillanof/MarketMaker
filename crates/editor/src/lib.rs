@@ -556,6 +556,46 @@ impl Actions {
         });
     }
 
+    /// Crea la página modelo `i` de [`domain::PAGE_TEMPLATES`] (o la abre si
+    /// ya existe), con el menú y el pie de la página actual.
+    pub fn add_template_page(&self, i: usize) {
+        let Some(&(path, name)) = domain::PAGE_TEMPLATES.get(i) else {
+            return;
+        };
+        if let Some(p) = self.state.doc.with_untracked(|d| d.page_index(path)) {
+            self.open_page(p, true);
+            self.ui.toast(format!("Tu tienda ya tiene la página {name}."), false);
+            return;
+        }
+        if self.state.doc.with_untracked(|d| d.pages.len()) >= domain::MAX_PAGES {
+            self.ui.toast(
+                format!(
+                    "Tu tienda ya tiene {} páginas, el máximo. Borrá una para crear otra.",
+                    domain::MAX_PAGES + 1
+                ),
+                false,
+            );
+            return;
+        }
+        let from = self.state.page.get_untracked();
+        let mut created = 0;
+        self.state.apply(|d| {
+            created = d.add_page_with(
+                path.to_string(),
+                name.to_string(),
+                from,
+                domain::template_blocks(path),
+            )
+        });
+        self.open_page(created, false);
+        self.ui.toast(
+            format!(
+                "Creaste la página {name}. Cambiá los textos de ejemplo y sumá un enlace en el menú o el pie para que la encuentren."
+            ),
+            true,
+        );
+    }
+
     /// Lo que pasa al tocar un enlace en el lienzo: va a la página a la que
     /// lleva. Si esa página todavía no existe, la crea (con el menú y el pie
     /// de la página actual) y avisa. `label` es el texto del enlace, para
@@ -871,6 +911,8 @@ fn typing_in_field(ev: &web_sys::KeyboardEvent) -> bool {
 #[component]
 pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> impl IntoView {
     let state = EditorState::new(&initial);
+    // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
+    provide_context(initial.store.clone());
     let products = StoredValue::new(initial.products.clone());
     let status = RwSignal::new(Status::Idle);
     let ui = Ui {

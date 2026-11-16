@@ -467,13 +467,17 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
 #[component]
 pub fn NavbarWidget(props: NavbarProps, editing: bool) -> impl IntoView {
     let has_button = !props.button_label.is_empty();
+    // Vacíos, usan el nombre y el logo de la tienda (ver "Datos de la tienda").
+    let store = use_context::<domain::StoreInfo>().unwrap_or_default();
+    let brand = or_store(&props.brand, &store.name);
+    let logo_url = or_store(&props.logo_url, &store.logo_url);
     view! {
         <nav class="mk-box mk-nav navbar h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm">
             <MaybeLink href="/" editing class="flex shrink-0 items-center gap-2">
-                {(!props.logo_url.is_empty()).then(|| view! {
-                    <img class="h-8 w-8 object-contain" src=props.logo_url.clone() alt="" draggable="false"/>
+                {(!logo_url.is_empty()).then(|| view! {
+                    <img class="h-8 w-8 object-contain" src=logo_url.clone() alt="" draggable="false"/>
                 })}
-                <span class="mk-brand mk-h text-lg font-bold whitespace-nowrap">{props.brand.clone()}</span>
+                <span class="mk-brand mk-h text-lg font-bold whitespace-nowrap">{brand}</span>
             </MaybeLink>
             <ul class="menu menu-horizontal min-w-0 flex-1 flex-nowrap justify-end overflow-x-auto px-0">
                 {props
@@ -958,12 +962,38 @@ pub fn ImageWidget(props: ImageProps, editing: bool) -> impl IntoView {
 
 #[component]
 pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
+    let store = use_context::<domain::StoreInfo>().unwrap_or_default();
+    let brand = or_store(&props.brand, &store.name);
+    let legal = if props.legal.is_empty() && !store.name.is_empty() {
+        format!("© {}", store.name)
+    } else {
+        props.legal.clone()
+    };
+    // Cómo contactar a la tienda, si el dueño lo cargó.
+    let contact: Vec<(&'static str, String)> = [
+        store.whatsapp_url().map(|u| ("WhatsApp", u)),
+        store.instagram_url().map(|u| ("Instagram", u)),
+        (!store.email.is_empty()).then(|| ("Email", format!("mailto:{}", store.email))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     view! {
         <footer class="mk-box mk-footer @container flex h-full flex-col justify-between gap-3 overflow-hidden rounded-box px-6 py-4">
             <div class="flex flex-col gap-4 @2xl:flex-row @2xl:justify-between">
                 <aside class="max-w-sm">
-                    <p class="mk-brand mk-h text-lg font-bold">{props.brand.clone()}</p>
+                    <p class="mk-brand mk-h text-lg font-bold">{brand}</p>
                     <p class="text-sm opacity-80 line-clamp-2">{props.description.clone()}</p>
+                    {(!contact.is_empty()).then(|| view! {
+                        <div class="mt-1 flex flex-wrap gap-x-4 text-sm">
+                            {contact
+                                .into_iter()
+                                .map(|(label, href)| view! {
+                                    <MaybeLink href editing class="mk-link link link-hover">{label}</MaybeLink>
+                                })
+                                .collect_view()}
+                        </div>
+                    })}
                 </aside>
                 <nav class="flex flex-wrap content-start gap-x-6 gap-y-1 text-sm @2xl:max-w-md @2xl:justify-end">
                     {props
@@ -975,11 +1005,16 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
                         .collect_view()}
                 </nav>
             </div>
-            {(!props.legal.is_empty()).then(|| view! {
-                <p class="border-t border-current/20 pt-3 text-xs opacity-70 truncate">{props.legal.clone()}</p>
+            {(!legal.is_empty()).then(|| view! {
+                <p class="border-t border-current/20 pt-3 text-xs opacity-70 truncate">{legal}</p>
             })}
         </footer>
     }
+}
+
+/// El valor del bloque, o el de la tienda si el bloque lo dejó vacío.
+fn or_store(own: &str, store: &str) -> String {
+    if own.trim().is_empty() { store } else { own }.to_string()
 }
 
 #[cfg(test)]

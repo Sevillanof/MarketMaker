@@ -19,7 +19,7 @@ pub(crate) fn internal(e: impl std::fmt::Display) -> ServerFnError {
 fn page_view(
     page: db::CurrentPage,
     products: Vec<domain::Product>,
-    store_name: String,
+    store: domain::StoreInfo,
 ) -> Result<PageView, ServerFnError> {
     let doc = match page.doc {
         Some(v) => domain::parse_doc(v).map_err(internal)?,
@@ -30,7 +30,8 @@ fn page_view(
         version: u32::try_from(page.version).unwrap_or(0),
         published: u32::try_from(page.published).unwrap_or(0),
         products,
-        store_name,
+        store_name: store.name.clone(),
+        store,
     })
 }
 
@@ -48,7 +49,10 @@ pub async fn load_page(slug: String) -> Result<PageView, ServerFnError> {
     let products = db::products::list_for_buyers(&pool, tenant.id)
         .await
         .map_err(internal)?;
-    page_view(page, products, tenant.name)
+    let store = db::auth::store_info(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
+    page_view(page, products, store)
 }
 
 /// Para el editor: lo último guardado (el borrador), aunque no esté
@@ -65,7 +69,10 @@ pub async fn load_draft(slug: String) -> Result<PageView, ServerFnError> {
     let products = db::list_products(&pool, tenant.id)
         .await
         .map_err(internal)?;
-    page_view(page, products, tenant.name)
+    let store = db::auth::store_info(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
+    page_view(page, products, store)
 }
 
 /// Publica la versión `version` de la página: desde ahora la ven los

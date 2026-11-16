@@ -527,3 +527,56 @@ pub async fn set_avatar(
     .await?;
     Ok(done.rows_affected() == 1)
 }
+
+/// Nombre, logo y contacto de la tienda.
+pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::StoreInfo> {
+    let (name, logo, whatsapp, instagram, email): (String, Option<Uuid>, String, String, String) =
+        sqlx::query_as(
+            "SELECT name, logo_id, whatsapp, instagram, contact_email FROM tenants WHERE id = $1",
+        )
+        .bind(tenant)
+        .fetch_one(pool)
+        .await?;
+    Ok(domain::StoreInfo {
+        name,
+        logo_url: logo.map(domain::avatar_url).unwrap_or_default(),
+        whatsapp,
+        instagram,
+        email,
+    })
+}
+
+/// Guarda los datos de la tienda (ya limpios con `domain::tidy_store_info`).
+/// El logo tiene que ser una foto de `user`; `false` si no lo es.
+pub async fn save_store_info(
+    pool: &PgPool,
+    tenant: Uuid,
+    user: Uuid,
+    info: &domain::StoreInfo,
+    logo: Option<Uuid>,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query(
+        "UPDATE tenants SET name = $3, logo_id = $4, whatsapp = $5, instagram = $6,
+                contact_email = $7
+         WHERE id = $1
+           AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM media WHERE id = $4 AND owner_id = $2))",
+    )
+    .bind(tenant)
+    .bind(user)
+    .bind(&info.name)
+    .bind(logo)
+    .bind(&info.whatsapp)
+    .bind(&info.instagram)
+    .bind(&info.email)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// El id del logo de la tienda, si tiene.
+pub async fn store_logo_id(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query_scalar("SELECT logo_id FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .fetch_one(pool)
+        .await
+}

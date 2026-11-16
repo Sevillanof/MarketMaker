@@ -255,6 +255,88 @@ pub struct StoreOverview {
     pub recent: Vec<crate::Order>,
 }
 
+/// Los datos de la tienda que se ven en el diseño: el menú y el pie los usan
+/// cuando sus campos quedan vacíos.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct StoreInfo {
+    pub name: String,
+    /// `/media/<id>/480.webp`, o vacío.
+    pub logo_url: String,
+    /// Como lo escribió el dueño, por ejemplo "11 5555-1234".
+    pub whatsapp: String,
+    /// Usuario sin @, por ejemplo "lahuerta".
+    pub instagram: String,
+    pub email: String,
+}
+
+impl StoreInfo {
+    /// Enlace de WhatsApp (con el 54 de Argentina si falta). `None` si no hay.
+    pub fn whatsapp_url(&self) -> Option<String> {
+        let digits: String = self.whatsapp.chars().filter(char::is_ascii_digit).collect();
+        if digits.len() < 8 {
+            return None;
+        }
+        let full = if digits.starts_with("54") {
+            digits
+        } else {
+            format!("549{}", digits.trim_start_matches('0'))
+        };
+        Some(format!("https://wa.me/{full}"))
+    }
+
+    pub fn instagram_url(&self) -> Option<String> {
+        (!self.instagram.is_empty()).then(|| format!("https://instagram.com/{}", self.instagram))
+    }
+}
+
+/// La pantalla "Datos de la tienda": los datos y el id del logo.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StoreInfoForm {
+    pub info: StoreInfo,
+    pub logo_id: Option<String>,
+}
+
+pub const STORE_NAME_MAX: usize = 60;
+
+/// Limpia los datos de la tienda (sin el logo) y devuelve los problemas, por
+/// campo: `name`, `whatsapp`, `instagram` o `email`.
+pub fn tidy_store_info(i: &mut StoreInfo) -> Vec<(&'static str, String)> {
+    i.name = i.name.trim().to_string();
+    i.whatsapp = i.whatsapp.trim().chars().take(30).collect();
+    i.instagram = i
+        .instagram
+        .trim()
+        .trim_start_matches("https://")
+        .trim_start_matches("www.")
+        .trim_start_matches("instagram.com/")
+        .trim_start_matches('@')
+        .trim_end_matches('/')
+        .chars()
+        .take(30)
+        .collect();
+    i.email = i.email.trim().to_lowercase().chars().take(120).collect();
+    let mut e = Vec::new();
+    if i.name.is_empty() {
+        e.push(("name", "Escribí el nombre de tu tienda.".to_string()));
+    } else if i.name.chars().count() > STORE_NAME_MAX {
+        e.push(("name", format!("El nombre puede tener hasta {STORE_NAME_MAX} letras.")));
+    }
+    if !i.whatsapp.is_empty() && i.whatsapp_url().is_none() {
+        e.push(("whatsapp", "Revisá el número, con característica: por ejemplo 11 5555-1234.".to_string()));
+    }
+    if !i
+        .instagram
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+    {
+        e.push(("instagram", "Escribí solo tu usuario, por ejemplo lahuerta.".to_string()));
+    }
+    if !i.email.is_empty() && !crate::looks_like_email(&i.email) {
+        e.push(("email", "El email no es válido. Revisalo (por ejemplo, ana@correo.com).".to_string()));
+    }
+    e
+}
+
 /// Si una dirección de tienda está libre, mientras se escribe.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum SlugStatus {
@@ -292,6 +374,31 @@ pub fn platform_host(store_host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn store_info_is_tidied_and_links_are_built() {
+        let mut i = StoreInfo {
+            name: "  La Huerta ".into(),
+            whatsapp: "011 5555-1234".into(),
+            instagram: "https://www.instagram.com/la.huerta/".into(),
+            email: "Hola@LaHuerta.com".into(),
+            ..StoreInfo::default()
+        };
+        assert!(tidy_store_info(&mut i).is_empty());
+        assert_eq!(i.name, "La Huerta");
+        assert_eq!(i.instagram, "la.huerta");
+        assert_eq!(i.email, "hola@lahuerta.com");
+        assert_eq!(i.whatsapp_url().unwrap(), "https://wa.me/5491155551234");
+        assert_eq!(i.instagram_url().unwrap(), "https://instagram.com/la.huerta");
+        let mut bad = StoreInfo {
+            whatsapp: "abc".into(),
+            instagram: "mi tienda".into(),
+            email: "x@".into(),
+            ..StoreInfo::default()
+        };
+        let fields: Vec<_> = tidy_store_info(&mut bad).into_iter().map(|(f, _)| f).collect();
+        assert_eq!(fields, ["name", "whatsapp", "instagram", "email"]);
+    }
 
     #[test]
     fn publish_state_compares_saved_and_published() {
