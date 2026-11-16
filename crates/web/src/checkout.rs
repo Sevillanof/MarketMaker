@@ -76,8 +76,12 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     if !errors.is_empty() {
         return Ok(PlaceOrder::Invalid { errors });
     }
+    let open = db::get_published_page(&pool, tenant.id, "home")
+        .await
+        .map_err(internal)?
+        .is_some_and(|p| p.published > 0);
     let offered = methods(&pool, tenant.id).await?;
-    if offered.is_empty() {
+    if !open || offered.is_empty() {
         return Ok(PlaceOrder::CartChanged {
             message: "Esta tienda todavía no está recibiendo compras.".into(),
         });
@@ -115,7 +119,10 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         .map_err(internal)?;
     let mut items = Vec::new();
     for (id, qty) in &form.lines {
-        let Some(p) = products.iter().find(|p| p.id == *id && p.visible) else {
+        let Some(p) = products
+            .iter()
+            .find(|p| p.id == *id && p.visible && !p.example)
+        else {
             return changed(
                 "Un producto del carrito ya no está en la tienda. Revisá el carrito.".into(),
             );

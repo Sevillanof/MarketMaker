@@ -447,9 +447,18 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                                         <ui::Image src=p.image_url.clone() alt="" fit=p.fit(&p.image_url)/>
                                                     </div>
                                                     <div class="min-w-0">
-                                                        <div class="font-medium">{p.name.clone()}</div>
+                                                        <div class="font-medium">
+                                                            {p.name.clone()}
+                                                            {p.example.then(|| view! { <span class="badge badge-sm ml-2 border-0 bg-amber-100 font-semibold text-amber-800">"Ejemplo"</span> })}
+                                                        </div>
                                                         <div class="text-xs text-base-content/60">
-                                                            {if visible { photo_count(p.all_photos().len()) } else { "Oculto · no aparece en la tienda".into() }}
+                                                            {if p.example {
+                                                                "De ejemplo · tus clientes no lo ven".to_string()
+                                                            } else if visible {
+                                                                photo_count(p.all_photos().len())
+                                                            } else {
+                                                                "Oculto · no aparece en la tienda".into()
+                                                            }}
                                                         </div>
                                                         {(!p.tags.is_empty()).then(|| view! {
                                                             <div class="mt-1 flex flex-wrap gap-1">
@@ -849,6 +858,7 @@ impl Form {
             photos,
             tags: self.tags.get(),
             photo_fits: self.fits.get(),
+            example: false,
         };
         if errors.is_empty() {
             Ok(p)

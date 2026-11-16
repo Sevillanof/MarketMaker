@@ -90,19 +90,36 @@ pub async fn load_store_overview(slug: String) -> Result<Option<StoreOverview>, 
         to_prepare: sums.to_prepare,
         month_orders: sums.month_orders,
         month_cents: sums.month_cents,
-        products: db::products::count(&pool, tenant.id)
+        products: db::products::count_real_visible(&pool, tenant.id)
+            .await
+            .map_err(internal)?,
+        examples: db::products::count_examples(&pool, tenant.id)
             .await
             .map_err(internal)?,
         out_of_stock: db::products::out_of_stock(&pool, tenant.id)
             .await
             .map_err(internal)?,
-        delivery_ready: delivery.pickup_enabled || delivery.shipping_enabled,
+        delivery_ready: (delivery.pickup_enabled || delivery.shipping_enabled)
+            && db::orders::delivery_set(&pool, tenant.id)
+                .await
+                .map_err(internal)?,
         mp_linked,
         pay_ready: mp_linked || options.transfer || options.coordinate,
         recent: db::orders::recent(&pool, tenant.id, 5)
             .await
             .map_err(internal)?,
     }))
+}
+
+/// Borra los productos de ejemplo que trajo la tienda nueva.
+#[server]
+pub async fn delete_examples(slug: String) -> Result<(), ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = crate::products::server::require_store(&slug).await?;
+    db::products::delete_examples(&pool()?, tenant.id)
+        .await
+        .map_err(internal)?;
+    Ok(())
 }
 
 /// Abre el editor de una tienda (en su propia dirección, con la sesión ya
@@ -425,6 +442,30 @@ fn Kpi(
     }
 }
 
+/// Aviso de los productos de ejemplo de la tienda nueva, con el botón para
+/// borrarlos.
+#[component]
+fn ExamplesNotice(slug: String, count: i64) -> impl IntoView {
+    let remove = Action::new(move |_: &()| delete_examples(slug.clone()));
+    let gone = move || matches!(remove.value().get(), Some(Ok(())));
+    let failed = move || matches!(remove.value().get(), Some(Err(_)));
+    view! {
+        <Show when=move || !gone()>
+            <div role="region" aria-label="Productos de ejemplo" class="flex flex-wrap items-center gap-3 rounded-box border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                <p class="grow text-sm">
+                    <b>{format!("Tu tienda trae {count} productos de ejemplo.")}</b>
+                    " Sirven para ver cómo queda el diseño: tus clientes no los ven y no se pueden comprar. Si editás uno y lo guardás, pasa a ser tuyo."
+                </p>
+                <button type="button" class="btn btn-sm" disabled=move || remove.pending().get()
+                    on:click=move |_| { remove.dispatch(()); }>
+                    {move || if remove.pending().get() { "Borrando…" } else { "Borrar los de ejemplo" }}
+                </button>
+                {move || failed().then(|| view! { <p class="w-full text-sm text-error">"No pudimos borrarlos. Probá de nuevo."</p> })}
+            </div>
+        </Show>
+    }
+}
+
 #[component]
 fn Overview(o: StoreOverview) -> impl IntoView {
     let (open, open_problem) = editor_opener();
@@ -460,10 +501,12 @@ fn Overview(o: StoreOverview) -> impl IntoView {
         (
             o.publish != PublishState::Never,
             "Publicá tu tienda",
-            if o.publish == PublishState::Changes {
-                "Tenés cambios guardados sin publicar.".to_string()
-            } else {
-                "Así la ven tus clientes.".to_string()
+            match o.publish {
+                PublishState::Changes => "Tenés cambios guardados sin publicar.".to_string(),
+                PublishState::Published => "Tus clientes ya la pueden ver.".to_string(),
+                PublishState::Never => {
+                    "Tocá \"Editar diseño\", cambiá lo que quieras y tocá Publicar.".to_string()
+                }
             },
             None,
         ),
@@ -505,6 +548,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
             </button>
         </header>
         {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
+        {(o.examples > 0).then(|| view! { <ExamplesNotice slug=o.slug.clone() count=o.examples/> })}
 
         <section aria-label="Resumen" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Kpi label="Para preparar" value=o.to_prepare.to_string() link=(orders_href.clone(), "Ver pedidos")/>

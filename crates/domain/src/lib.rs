@@ -10,6 +10,7 @@ mod look;
 mod media;
 mod orders;
 mod site;
+mod starter;
 mod typography;
 mod widgets;
 
@@ -20,6 +21,7 @@ pub use look::*;
 pub use media::*;
 pub use orders::*;
 pub use site::*;
+pub use starter::*;
 pub use typography::*;
 pub use widgets::*;
 
@@ -648,6 +650,9 @@ pub struct PageView {
     #[serde(default)]
     pub published: u32,
     pub products: Vec<Product>,
+    /// Nombre de la tienda, para el título de la pestaña y al compartir.
+    #[serde(default)]
+    pub store_name: String,
 }
 
 /// Resultado de intentar guardar un documento.
@@ -694,6 +699,10 @@ pub struct Product {
     /// foto). Las que no están se ven centradas y sin zoom.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub photo_fits: BTreeMap<String, PhotoFit>,
+    /// De ejemplo: lo trae la tienda nueva para que el diseño no se vea vacío.
+    /// Los compradores no lo ven. Deja de serlo cuando el dueño lo guarda.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub example: bool,
 }
 
 fn yes() -> bool {
@@ -715,6 +724,7 @@ impl Default for Product {
             photos: Vec::new(),
             tags: Vec::new(),
             photo_fits: BTreeMap::new(),
+            example: false,
         }
     }
 }

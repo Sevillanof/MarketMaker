@@ -71,8 +71,8 @@ async fn free_slug(pool: &db::Pool, slug: &str) -> Result<String, ServerFnError>
     Err(ServerFnError::new("No encontramos una dirección libre."))
 }
 
-/// Crea una tienda con quien entró como dueño. Arranca como copia de la
-/// tienda de ejemplo (`demo`).
+/// Crea una tienda con quien entró como dueño. Arranca con el diseño inicial
+/// sin publicar y los productos de `demo` como ejemplo.
 #[server]
 pub async fn create_store(name: String, slug: String) -> Result<NewStoreOutcome, ServerFnError> {
     let user = crate::auth::current_user().await?.ok_or_else(|| {
@@ -94,7 +94,8 @@ pub async fn create_store(name: String, slug: String) -> Result<NewStoreOutcome,
         return Ok(NewStoreOutcome::Problem(problem.into()));
     }
     let pool = crate::server::pool()?;
-    let created = db::auth::create_store(&pool, &name, &slug, user.id, "demo")
+    let doc = serde_json::to_value(domain::starter_doc(&name)).map_err(crate::server::internal)?;
+    let created = db::auth::create_store(&pool, &name, &slug, user.id, "demo", &doc)
         .await
         .map_err(crate::server::internal)?;
     if !created {

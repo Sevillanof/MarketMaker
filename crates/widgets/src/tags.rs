@@ -100,6 +100,9 @@ pub fn FilteredProducts(
     summary: bool,
 ) -> impl IntoView {
     let empty = products.is_empty();
+    // Los agotados van al final (el orden entre los demás se mantiene).
+    let mut products = products;
+    products.sort_by_key(|p| !p.in_stock);
     let products = StoredValue::new(products);
     let chosen = move || filter.map_or_else(Default::default, |f| (f.tags.get(), f.query.get()));
     let shown = move || {

@@ -245,19 +245,21 @@ pub async fn slug_taken(pool: &PgPool, slug: &str) -> sqlx::Result<bool> {
         .await
 }
 
-/// Crea la tienda `slug` con la persona como dueña. Arranca como copia de lo
-/// publicado en la tienda `template` (su página y sus productos), así no
-/// empieza vacía. Devuelve `false` si la dirección ya estaba tomada.
+/// Crea la tienda `slug` con la persona como dueña. Arranca con el diseño
+/// `doc` guardado pero **sin publicar**, y con los productos de la tienda
+/// `template` copiados como ejemplo (los compradores no los ven), así el
+/// diseño no se ve vacío. Devuelve `false` si la dirección ya estaba tomada.
 pub async fn create_store(
     pool: &PgPool,
     name: &str,
     slug: &str,
     owner: Uuid,
     template: &str,
+    doc: &serde_json::Value,
 ) -> sqlx::Result<bool> {
     let mut tx = pool.begin().await?;
     let tenant: Option<Uuid> = sqlx::query_scalar(
-        "INSERT INTO tenants (slug, name, created_by) VALUES ($1, $2, $3)
+        "INSERT INTO tenants (slug, name, created_by, pay_coordinate) VALUES ($1, $2, $3, false)
          ON CONFLICT (slug) DO NOTHING
          RETURNING id",
     )
@@ -279,38 +281,31 @@ pub async fn create_store(
             .bind(tenant)
             .fetch_one(&mut *tx)
             .await?;
-    // La versión 1 es lo publicado de la plantilla; queda vigente y publicada.
-    let version: Option<Uuid> = sqlx::query_scalar(
+    // La versión 1 es el diseño inicial: queda vigente, no publicada.
+    let version: Uuid = sqlx::query_scalar(
         "INSERT INTO page_versions (page_id, tenant_id, number, doc, created_by)
-         SELECT $1, $2, 1, v.doc, $3
-         FROM tenants t
-         JOIN pages p ON p.tenant_id = t.id AND p.slug = 'home'
-         JOIN page_versions v ON v.id = p.published_version_id
-         WHERE t.slug = $4
+         VALUES ($1, $2, 1, $3, $4)
          RETURNING id",
     )
     .bind(page)
     .bind(tenant)
+    .bind(doc)
     .bind(owner)
-    .bind(template)
-    .fetch_optional(&mut *tx)
+    .fetch_one(&mut *tx)
     .await?;
-    if let Some(version) = version {
-        sqlx::query(
-            "UPDATE pages SET current_version_id = $2, published_version_id = $2 WHERE id = $1",
-        )
+    sqlx::query("UPDATE pages SET current_version_id = $2 WHERE id = $1")
         .bind(page)
         .bind(version)
         .execute(&mut *tx)
         .await?;
-    }
     sqlx::query(
         "INSERT INTO products (tenant_id, name, price_cents, image_url, description, created_at,
-                               compare_at_cents, in_stock, visible, photos, tags, photo_fits)
+                               compare_at_cents, in_stock, visible, photos, tags, photo_fits,
+                               example)
          SELECT $1, p.name, p.price_cents, p.image_url, p.description, p.created_at,
-                p.compare_at_cents, p.in_stock, p.visible, p.photos, p.tags, p.photo_fits
+                p.compare_at_cents, p.in_stock, true, p.photos, p.tags, p.photo_fits, true
          FROM products p JOIN tenants t ON t.id = p.tenant_id
-         WHERE t.slug = $2",
+         WHERE t.slug = $2 AND p.visible",
     )
     .bind(tenant)
     .bind(template)

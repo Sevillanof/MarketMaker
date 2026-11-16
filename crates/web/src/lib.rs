@@ -118,8 +118,15 @@ fn HomePage() -> impl IntoView {
             {move || Suspend::new(async move {
                 let me = me.await.ok().flatten();
                 match page.await {
+                    Ok(view) if view.published == 0 => view! {
+                        <account::OwnerBar me/>
+                        <StoreMeta view=view.clone()/>
+                        <StoreSoon name=view.store_name.clone()/>
+                    }
+                    .into_any(),
                     Ok(view) => view! {
                         <account::OwnerBar me/>
+                        <StoreMeta view=view.clone()/>
                         {move || {
                             let path = location.pathname.get();
                             view! { <StorefrontPage view=view.clone() path/> }
@@ -130,6 +137,55 @@ fn HomePage() -> impl IntoView {
                 }
             })}
         </Suspense>
+    }
+}
+
+/// La tienda todavía no se publicó: un aviso amable en lugar de una página
+/// vacía.
+#[component]
+fn StoreSoon(name: String) -> impl IntoView {
+    view! {
+        <div class="grid min-h-screen place-items-center bg-base-200 px-4">
+            <div class="flex max-w-md flex-col items-center gap-3 text-center">
+                <h1 class="text-3xl font-bold">{name}</h1>
+                <p class="text-lg text-base-content/75">"Estamos preparando la tienda. Volvé pronto."</p>
+            </div>
+        </div>
+    }
+}
+
+/// Título de la pestaña y lo que se ve al compartir el enlace (WhatsApp,
+/// redes): el nombre de la tienda, una frase y una foto.
+#[component]
+fn StoreMeta(view: domain::PageView) -> impl IntoView {
+    let name = view.store_name.clone();
+    let banner = view.doc.nodes.iter().find_map(|n| match &n.widget {
+        domain::Widget::Banner(b) => Some(b.clone()),
+        _ => None,
+    });
+    let description = banner
+        .as_ref()
+        .map(|b| b.subtitle.trim().to_string())
+        .filter(|s| !s.is_empty() && !domain::STARTER_PLACEHOLDERS.contains(&s.as_str()))
+        .unwrap_or_else(|| format!("Comprá online en {name}."));
+    let image = banner
+        .map(|b| b.image_url)
+        .filter(|u| !u.is_empty())
+        .or_else(|| view.products.iter().map(|p| p.image_url.clone()).find(|u| !u.is_empty()))
+        .map(|u| {
+            if u.starts_with('/') {
+                format!("{}://{}{u}", site::scheme(), site::current_host())
+            } else {
+                u
+            }
+        });
+    view! {
+        <Title text=name.clone()/>
+        <leptos_meta::Meta name="description" content=description.clone()/>
+        <leptos_meta::Meta property="og:type" content="website"/>
+        <leptos_meta::Meta property="og:title" content=name/>
+        <leptos_meta::Meta property="og:description" content=description/>
+        {image.map(|i| view! { <leptos_meta::Meta property="og:image" content=i/> })}
     }
 }
 
