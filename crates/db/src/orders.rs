@@ -601,3 +601,18 @@ pub async fn tenant_of(pool: &PgPool, order: Uuid) -> sqlx::Result<Option<Uuid>>
         .fetch_optional(pool)
         .await
 }
+
+/// Pedidos con envío de Andreani creado que todavía no se entregó, de los
+/// últimos 30 días (más viejos se dejan de seguir).
+pub async fn shipments_to_track(pool: &PgPool) -> sqlx::Result<Vec<(Uuid, Uuid)>> {
+    sqlx::query_as(
+        "SELECT tenant_id, id FROM orders
+         WHERE shipment->>'state' = 'Created'
+           AND COALESCE(shipment->>'status', '') <> 'entregado'
+           AND status IN ('paid', 'shipped')
+           AND created_at > now() - interval '30 days'
+         ORDER BY tenant_id, created_at",
+    )
+    .fetch_all(pool)
+    .await
+}
