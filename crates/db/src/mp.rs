@@ -181,3 +181,22 @@ pub async fn slug_of(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Option<String>
         .fetch_optional(pool)
         .await
 }
+
+/// Nombre y dirección corta de una tienda, para los emails.
+pub async fn name_and_slug(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Option<(String, String)>> {
+    sqlx::query_as("SELECT name, slug FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .fetch_optional(pool)
+        .await
+}
+
+/// Los emails de los dueños de una tienda (para avisar las ventas).
+pub async fn owner_emails(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar(
+        "SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id
+         WHERE m.tenant_id = $1 AND m.role = 'owner' ORDER BY m.created_at",
+    )
+    .bind(tenant)
+    .fetch_all(pool)
+    .await
+}
