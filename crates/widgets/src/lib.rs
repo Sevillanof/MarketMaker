@@ -17,7 +17,9 @@ use leptos::prelude::*;
 use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
 pub mod cart;
+pub mod tags;
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
+pub use tags::{FilteredProducts, ProductFilter};
 
 /// Contexto que recibe todo widget al dibujarse.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -71,6 +73,11 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::ProductGrid(p) => {
             view! { <ProductGridWidget props=p.clone() products=ctx.products.clone()/> }.into_any()
         }
+        Widget::TagFilter(_)
+        | Widget::TagList(_)
+        | Widget::TagCircles(_)
+        | Widget::TagSearch(_)
+        | Widget::TagTabs(_) => tags::render(&node.widget, ctx),
         Widget::FeaturedProduct(p) => {
             view! { <FeaturedProductWidget props=p.clone() products=ctx.products.clone()/> }
                 .into_any()
@@ -381,19 +388,13 @@ pub fn TextWidget(props: TextProps) -> impl IntoView {
 #[component]
 pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> impl IntoView {
     let limit = usize::try_from(props.limit).unwrap_or(0);
-    let shown: Vec<Product> = products.into_iter().take(limit).collect();
-    let empty = shown.is_empty();
+    let filter = use_context::<ProductFilter>();
     view! {
         <div class="mk-box mk-pad @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
-            {empty.then(|| view! {
-                <div class="alert">"Todavía no hay productos."</div>
-            })}
-            <div class="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 @lg:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">
-                {shown.into_iter().map(|p| view! { <ProductCard product=p show_price=true/> }).collect_view()}
-            </div>
+            <FilteredProducts products limit filter/>
         </div>
     }
 }

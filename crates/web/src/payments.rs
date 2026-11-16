@@ -24,8 +24,9 @@ pub async fn store_payments(slug: String) -> Result<Option<PaymentsInfo>, Server
 pub async fn mp_connect(slug: String) -> Result<String, ServerFnError> {
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
-    let c = crate::mp::config()
-        .ok_or_else(|| ServerFnError::new("Los cobros con Mercado Pago todavía no están disponibles."))?;
+    let c = crate::mp::config().ok_or_else(|| {
+        ServerFnError::new("Los cobros con Mercado Pago todavía no están disponibles.")
+    })?;
     let state = crate::mp::new_state();
     db::mp::save_state(&pool()?, tenant.id, &state)
         .await
@@ -85,7 +86,9 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     let problem = RwSignal::new(query.with_untracked(|q| {
         q.get("error").map(|e| match e.as_str() {
             "cancelado" => "No se vinculó: cancelaste en Mercado Pago.".to_string(),
-            "configuracion" => "Los cobros con Mercado Pago todavía no están disponibles.".to_string(),
+            "configuracion" => {
+                "Los cobros con Mercado Pago todavía no están disponibles.".to_string()
+            }
             _ => "No pudimos vincular tu cuenta. Probá de nuevo en un rato.".to_string(),
         })
     }));

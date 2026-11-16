@@ -16,9 +16,9 @@ pub mod auth;
 mod checkout;
 mod dev;
 #[cfg(feature = "ssr")]
-pub mod media;
-#[cfg(feature = "ssr")]
 pub mod email;
+#[cfg(feature = "ssr")]
+pub mod media;
 #[cfg(feature = "ssr")]
 pub mod mp;
 mod orders;
@@ -140,7 +140,10 @@ fn EditorPage() -> impl IntoView {
     });
     let me = Resource::new(|| (), |_| who_am_i());
     if let domain::Site::Store(slug) = site::current_site() {
-        provide_context(editor::PanelLink(format!("{}/tienda/{slug}", site::platform_url())));
+        provide_context(editor::PanelLink(format!(
+            "{}/tienda/{slug}",
+            site::platform_url()
+        )));
     }
     if site::current_site() == domain::Site::Platform {
         // En la plataforma no hay editor: cada tienda tiene el suyo.

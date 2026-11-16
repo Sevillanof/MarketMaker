@@ -49,6 +49,11 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "Varias imágenes que pasan solas",
     ),
     ("Productos", "ProductGrid", "grid", "Tus productos en filas"),
+    ("Productos", "TagFilter", "tags", "Pastillas para filtrar"),
+    ("Productos", "TagList", "tags", "Casillas al costado"),
+    ("Productos", "TagCircles", "tags", "Círculos con foto"),
+    ("Productos", "TagSearch", "tags", "Buscar y filtrar"),
+    ("Productos", "TagTabs", "grid", "Productos por pestañas"),
     (
         "Productos",
         "FeaturedProduct",

@@ -203,6 +203,111 @@ pub fn clean_tags<'a>(tags: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     out
 }
 
+/// Las etiquetas de `products` con en cuántos están: la más usada primero
+/// y, a igual cantidad, en orden alfabético.
+pub fn count_tags(products: &[Product]) -> Vec<TagCount> {
+    let mut out: Vec<TagCount> = Vec::new();
+    for t in products.iter().flat_map(|p| &p.tags) {
+        match out.iter_mut().find(|c| &c.tag == t) {
+            Some(c) => c.products += 1,
+            None => out.push(TagCount {
+                tag: t.clone(),
+                products: 1,
+            }),
+        }
+    }
+    out.sort_by(|a, b| b.products.cmp(&a.products).then_with(|| a.tag.cmp(&b.tag)));
+    out
+}
+
+/// La etiqueta como se muestra en la tienda: con la primera letra en
+/// mayúscula (se guardan en minúsculas).
+pub fn tag_label(tag: &str) -> String {
+    let mut chars = tag.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// Las etiquetas de un producto después de guardar la etiqueta `old` con el
+/// nombre `new` (`old` vacío: es nueva). `has` dice si el producto la lleva.
+/// Si ya tenía `new`, no la repite; si ya tiene el máximo, no la agrega.
+pub fn retag(tags: &[String], old: &str, new: &str, has: bool) -> Vec<String> {
+    let mut out: Vec<String> = tags
+        .iter()
+        .filter(|t| t.as_str() != old && t.as_str() != new)
+        .cloned()
+        .collect();
+    if has && out.len() < PRODUCT_TAGS_MAX {
+        // En el mismo lugar que tenía la vieja (o la nueva), si estaba.
+        let anchor = tags
+            .iter()
+            .position(|t| !old.is_empty() && t == old)
+            .or_else(|| tags.iter().position(|t| t == new));
+        let at = anchor.map_or(out.len(), |i| {
+            tags[..i]
+                .iter()
+                .filter(|t| t.as_str() != old && t.as_str() != new)
+                .count()
+        });
+        out.insert(at, new.to_string());
+    }
+    out
+}
+
+/// ¿Se ve `p` con el filtro del comprador? Sin etiquetas elegidas pasan
+/// todos; con varias, alcanza con que tenga una. `query` busca como en
+/// [`product_matches`].
+pub fn passes_filter(p: &Product, tags: &[String], query: &str) -> bool {
+    (tags.is_empty() || tags.iter().any(|t| p.tags.contains(t))) && product_matches(p, query)
+}
+
+/// El aviso arriba de una cuadrícula filtrada: «3 productos con Hogar o
+/// Regalos». `None` si no hay filtro.
+pub fn filter_summary(n: usize, tags: &[String], query: &str) -> Option<String> {
+    let query = query.trim();
+    if tags.is_empty() && query.is_empty() {
+        return None;
+    }
+    let what = match n {
+        0 => "Ningún producto".to_string(),
+        1 => "1 producto".to_string(),
+        n => format!("{n} productos"),
+    };
+    let mut parts = Vec::new();
+    if !tags.is_empty() {
+        let names: Vec<String> = tags.iter().map(|t| tag_label(t)).collect();
+        let list = match names.split_last() {
+            Some((last, rest)) if !rest.is_empty() => format!("{} o {last}", rest.join(", ")),
+            _ => names.concat(),
+        };
+        parts.push(format!("con «{list}»"));
+    }
+    if !query.is_empty() {
+        parts.push(format!("que coinciden con «{query}»"));
+    }
+    Some(format!("{what} {}", parts.join(" y ")))
+}
+
+/// Resultado de guardar o borrar una etiqueta desde "Etiquetas".
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum TagSave {
+    /// Todos los productos de la tienda, ya con el cambio.
+    Saved {
+        products: Vec<Product>,
+    },
+    Invalid {
+        error: String,
+    },
+}
+
+/// Revisa el nombre de una etiqueta que se crea o renombra: `Ok` con el
+/// nombre limpio, o el problema en palabras simples.
+pub fn check_tag_name(name: &str) -> Result<String, String> {
+    clean_tag(name).ok_or_else(|| "Escribí un nombre para la etiqueta.".to_string())
+}
+
 /// Deja el producto prolijo antes de guardarlo y devuelve los problemas en
 /// palabras simples (vacío si está bien).
 pub fn tidy_product(p: &mut Product) -> Vec<String> {
@@ -303,6 +408,64 @@ pub fn fold(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counts_tags_most_used_first() {
+        let p = |tags: &[&str]| Product {
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            ..Product::default()
+        };
+        let c = count_tags(&[p(&["moda", "ofertas"]), p(&["ofertas"]), p(&["hogar"])]);
+        let got: Vec<_> = c.iter().map(|t| (t.tag.as_str(), t.products)).collect();
+        assert_eq!(got, [("ofertas", 2), ("hogar", 1), ("moda", 1)]);
+        assert_eq!(tag_label("ñandú"), "Ñandú");
+        assert_eq!(tag_label(""), "");
+    }
+
+    #[test]
+    fn filters_and_summarizes() {
+        let p = Product {
+            name: "Taza".into(),
+            tags: vec!["hogar".into(), "regalos".into()],
+            ..Product::default()
+        };
+        let t = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(passes_filter(&p, &[], ""));
+        assert!(passes_filter(&p, &t(&["moda", "hogar"]), ""));
+        assert!(!passes_filter(&p, &t(&["moda"]), ""));
+        assert!(!passes_filter(&p, &[], "mochila"));
+        assert_eq!(filter_summary(3, &[], " "), None);
+        assert_eq!(
+            filter_summary(1, &t(&["hogar"]), "").unwrap(),
+            "1 producto con «Hogar»"
+        );
+        assert_eq!(
+            filter_summary(3, &t(&["moda", "hogar", "regalos"]), "taza").unwrap(),
+            "3 productos con «Moda, Hogar o Regalos» y que coinciden con «taza»"
+        );
+    }
+
+    #[test]
+    fn retags_products() {
+        let v = |t: &[&str]| t.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // Nueva: se agrega al final, o no se agrega.
+        assert_eq!(retag(&v(&["a"]), "", "b", true), v(&["a", "b"]));
+        assert_eq!(retag(&v(&["a"]), "", "b", false), v(&["a"]));
+        // Renombrar: queda en el mismo lugar.
+        assert_eq!(
+            retag(&v(&["a", "b", "c"]), "b", "x", true),
+            v(&["a", "x", "c"])
+        );
+        // Renombrar a una que ya tenía: no se repite.
+        assert_eq!(retag(&v(&["a", "b", "c"]), "b", "c", true), v(&["a", "c"]));
+        // Sacarla.
+        assert_eq!(retag(&v(&["a", "b"]), "b", "b", false), v(&["a"]));
+        // Ya la tenía: queda igual.
+        assert_eq!(retag(&v(&["a", "b"]), "", "a", true), v(&["a", "b"]));
+        // Con el máximo, no se agrega una más.
+        let full: Vec<String> = (0..PRODUCT_TAGS_MAX).map(|i| i.to_string()).collect();
+        assert_eq!(retag(&full, "", "nueva", true), full);
+    }
 
     #[test]
     fn reads_argentine_prices() {
