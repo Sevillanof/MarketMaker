@@ -266,6 +266,23 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                         </section>
                     })
                 }}
+                {matches!(widget, Widget::ProductGrid(_)).then(|| {
+                    let state = expect_context::<EditorState>();
+                    let id = id.clone();
+                    // Los de ejemplo cuentan: en el editor se ven.
+                    let total = products.with_value(|p| p.iter().filter(|p| p.visible).count());
+                    move || {
+                        let limit = state.doc.with(|d| match d.node(&id).map(|n| &n.widget) {
+                            Some(Widget::ProductGrid(g)) => usize::try_from(g.limit).unwrap_or(0),
+                            _ => 0,
+                        });
+                        (total > limit).then(|| view! {
+                            <p role="status" class="rounded-box bg-warning/15 px-3 py-2 text-sm">
+                                {format!("Mostrás {limit} de tus {total} productos. Subí la cantidad o agregá otra cuadrícula para que se vean todos.")}
+                            </p>
+                        })
+                    }
+                })}
                 {opens_modal.then(|| view! {
                     <section class="flex flex-col gap-2 rounded-box border border-base-300 p-3" aria-labelledby="mk-modal-help-title">
                         <h3 id="mk-modal-help-title" class="text-sm font-semibold">"Ficha del producto"</h3>

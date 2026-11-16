@@ -937,6 +937,11 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         save_draft(true);
     };
 
+    // Antes de publicar: si quedan textos o productos de ejemplo, se avisa
+    // y la persona elige (ver `check_publish`).
+    let publish_check = RwSignal::new(None::<String>);
+    let examples = products.with_value(|p| p.iter().filter(|p| p.example).count());
+
     // Publicar: guarda lo que falte y después publica esa versión.
     let publish_now = move || {
         if publish.pending().get_untracked() || publish_after.get_untracked() {
@@ -948,6 +953,34 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
             publish_after.set(save_draft(true));
         } else if state.base_version.get_untracked() != state.published.get_untracked() {
             publish.dispatch(state.base_version.get_untracked());
+        }
+    };
+
+    let check_publish = move || {
+        let texts = state.doc.with_untracked(domain::placeholders_left);
+        let mut parts = Vec::new();
+        match texts {
+            0 => {}
+            1 => parts.push("1 texto de ejemplo sin cambiar".to_string()),
+            n => parts.push(format!("{n} textos de ejemplo sin cambiar")),
+        }
+        match examples {
+            0 => {}
+            1 => parts.push("1 producto de ejemplo, que tus clientes no van a ver".to_string()),
+            n => parts.push(format!("{n} productos de ejemplo, que tus clientes no van a ver")),
+        }
+        if parts.is_empty() {
+            publish_now();
+        } else {
+            publish_check.set(Some(format!("Antes de publicar: quedan {}.", parts.join(" y "))));
+            request_animation_frame(|| {
+                if let Some(el) = document()
+                    .get_element_by_id("mk-publish-anyway")
+                    .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
+                {
+                    _ = el.focus();
+                }
+            });
         }
     };
 
@@ -1250,12 +1283,20 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     class="btn btn-sm btn-primary"
                     title="Publicar: tus clientes ven estos cambios"
                     disabled=move || !state.unpublished() || publish.pending().get() || publish_after.get()
-                    on:click=move |_| publish_now()
+                    on:click=move |_| check_publish()
                 >
                     <Icon name="up"/>
                     {move || if publish.pending().get() || publish_after.get() { "Publicando…" } else { "Publicar" }}
                 </button>
             </header>
+            {move || publish_check.get().map(|text| view! {
+                <div class="flex flex-wrap items-center gap-3 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm" role="region" aria-label="Antes de publicar">
+                    <span class="grow">{text}</span>
+                    <button id="mk-publish-anyway" type="button" class="btn btn-xs btn-primary"
+                        on:click=move |_| { publish_check.set(None); publish_now(); }>"Publicar igual"</button>
+                    <button type="button" class="btn btn-xs btn-ghost" on:click=move |_| publish_check.set(None)>"Seguir editando"</button>
+                </div>
+            })}
             {move || recover.get().map(|doc| {
                 let doc = StoredValue::new(doc);
                 view! {

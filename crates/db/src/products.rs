@@ -24,6 +24,7 @@ struct Row {
     photos: Vec<String>,
     tags: Vec<String>,
     photo_fits: Json<BTreeMap<String, PhotoFit>>,
+    example: bool,
 }
 
 impl From<Row> for Product {
@@ -41,6 +42,7 @@ impl From<Row> for Product {
             photos: r.photos,
             tags: r.tags,
             photo_fits: r.photo_fits.0,
+            example: r.example,
         }
     }
 }
@@ -50,7 +52,7 @@ macro_rules! select {
     ($rest:literal) => {
         concat!(
             "SELECT id, name, price_cents, image_url, description, compare_at_cents, ",
-            "in_stock, stock, visible, photos, tags, photo_fits ",
+            "in_stock, stock, visible, photos, tags, photo_fits, example ",
             $rest
         )
     };
@@ -61,6 +63,19 @@ macro_rules! select {
 pub async fn list_visible(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Product>> {
     let rows = sqlx::query_as::<_, Row>(select!(
         "FROM products WHERE tenant_id = $1 AND visible ORDER BY created_at DESC, id"
+    ))
+    .bind(tenant)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+/// Lo que ven los compradores: los visibles que no son de ejemplo, el más
+/// nuevo primero.
+pub async fn list_for_buyers(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Product>> {
+    let rows = sqlx::query_as::<_, Row>(select!(
+        "FROM products WHERE tenant_id = $1 AND visible AND NOT example
+         ORDER BY created_at DESC, id"
     ))
     .bind(tenant)
     .fetch_all(pool)
@@ -108,6 +123,33 @@ pub async fn count(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
         .await
 }
 
+/// Productos propios (no de ejemplo) que se ven en la tienda.
+pub async fn count_real_visible(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM products WHERE tenant_id = $1 AND visible AND NOT example",
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await
+}
+
+/// Cuántos productos de ejemplo quedan.
+pub async fn count_examples(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
+    sqlx::query_scalar("SELECT count(*) FROM products WHERE tenant_id = $1 AND example")
+        .bind(tenant)
+        .fetch_one(pool)
+        .await
+}
+
+/// Borra los productos de ejemplo que quedan. Devuelve cuántos borró.
+pub async fn delete_examples(pool: &PgPool, tenant: Uuid) -> sqlx::Result<u64> {
+    let done = sqlx::query("DELETE FROM products WHERE tenant_id = $1 AND example")
+        .bind(tenant)
+        .execute(pool)
+        .await?;
+    Ok(done.rows_affected())
+}
+
 /// Crea un producto (ya validado con [`domain::tidy_product`]) y devuelve su id.
 pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uuid> {
     sqlx::query_scalar(
@@ -138,7 +180,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     let done = sqlx::query(
         "UPDATE products SET name = $3, price_cents = $4, image_url = $5, description = $6,
                 compare_at_cents = $7, in_stock = $8, visible = $9, photos = $10, tags = $11,
-                stock = $12, photo_fits = $13, updated_at = now()
+                stock = $12, photo_fits = $13, example = false, updated_at = now()
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(tenant)

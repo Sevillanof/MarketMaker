@@ -239,7 +239,11 @@ pub struct StoreOverview {
     /// Pedidos pagados (o ya enviados o entregados) de este mes, hora de Argentina.
     pub month_orders: i64,
     pub month_cents: i64,
+    /// Productos propios que se ven en la tienda (sin contar los de ejemplo).
     pub products: i64,
+    /// Productos de ejemplo que quedan de la tienda nueva.
+    #[serde(default)]
+    pub examples: i64,
     pub out_of_stock: i64,
     pub delivery_ready: bool,
     pub mp_linked: bool,

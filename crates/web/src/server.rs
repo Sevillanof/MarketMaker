@@ -19,6 +19,7 @@ pub(crate) fn internal(e: impl std::fmt::Display) -> ServerFnError {
 fn page_view(
     page: db::CurrentPage,
     products: Vec<domain::Product>,
+    store_name: String,
 ) -> Result<PageView, ServerFnError> {
     let doc = match page.doc {
         Some(v) => domain::parse_doc(v).map_err(internal)?,
@@ -29,11 +30,13 @@ fn page_view(
         version: u32::try_from(page.version).unwrap_or(0),
         published: u32::try_from(page.published).unwrap_or(0),
         products,
+        store_name,
     })
 }
 
 /// Lo que ven los visitantes: la versión publicada de la página `slug`, con
-/// sus productos. Los cambios guardados sin publicar no aparecen.
+/// sus productos (sin los de ejemplo). Los cambios guardados sin publicar no
+/// aparecen; si nunca se publicó, `published` es 0.
 #[server]
 pub async fn load_page(slug: String) -> Result<PageView, ServerFnError> {
     let pool = pool()?;
@@ -42,10 +45,10 @@ pub async fn load_page(slug: String) -> Result<PageView, ServerFnError> {
         .await
         .map_err(internal)?
         .ok_or_else(|| ServerFnError::new(format!("no existe la página {slug}")))?;
-    let products = db::list_products(&pool, tenant.id)
+    let products = db::products::list_for_buyers(&pool, tenant.id)
         .await
         .map_err(internal)?;
-    page_view(page, products)
+    page_view(page, products, tenant.name)
 }
 
 /// Para el editor: lo último guardado (el borrador), aunque no esté
@@ -62,7 +65,7 @@ pub async fn load_draft(slug: String) -> Result<PageView, ServerFnError> {
     let products = db::list_products(&pool, tenant.id)
         .await
         .map_err(internal)?;
-    page_view(page, products)
+    page_view(page, products, tenant.name)
 }
 
 /// Publica la versión `version` de la página: desde ahora la ven los

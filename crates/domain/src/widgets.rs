@@ -785,14 +785,14 @@ impl Widget {
         let widget = match type_name {
             "Banner" => Widget::Banner(BannerProps {
                 title: s("Bienvenidos a nuestra tienda"),
-                subtitle: s("Encontrá lo que buscás al mejor precio"),
+                subtitle: s("Escribí acá una frase sobre tu tienda"),
                 image_url: s("/img/banner.webp"),
                 button_label: String::new(),
                 button_href: String::new(),
             }),
             "Text" => Widget::Text(TextProps {
-                heading: s("Sobre nosotros"),
-                body: s("Somos una tienda local con envíos a todo el país."),
+                heading: s("Quiénes somos"),
+                body: s("Contá acá quiénes son, qué venden y cómo trabajan."),
                 align: s("left"),
             }),
             "ProductGrid" => Widget::ProductGrid(ProductGridProps {
@@ -828,14 +828,9 @@ impl Widget {
                 show_price: true,
             }),
             "Navbar" => Widget::Navbar(NavbarProps {
-                brand: s("Mi tienda"),
+                brand: s("Nombre de tu tienda"),
                 logo_url: s("/img/logo.svg"),
-                links: vec![
-                    link("Inicio", "/"),
-                    link("Ofertas", "/ofertas"),
-                    link("Categorías", "/categorias"),
-                    link("Contacto", "/contacto"),
-                ],
+                links: vec![link("Inicio", "/")],
                 button_label: String::new(),
                 button_href: String::new(),
             }),
@@ -843,11 +838,11 @@ impl Widget {
                 slides: (1..=3)
                     .map(|i| Slide {
                         image_url: format!("/img/slide-{i}.webp"),
-                        title: s(["Nueva temporada", "Hasta 30% off", "Envío gratis"][i - 1]),
+                        title: s(["Novedades", "Ofertas", "Envíos"][i - 1]),
                         subtitle: s([
-                            "Descubrí lo último en tecnología y hogar",
-                            "En productos seleccionados por tiempo limitado",
-                            "En compras desde $ 50.000 a todo el país",
+                            "Contá acá qué hay de nuevo",
+                            "Contá acá qué está en oferta",
+                            "Contá acá cómo y adónde enviás",
                         ][i - 1]),
                         button_label: s("Ver más"),
                         button_href: s("/"),
@@ -875,29 +870,29 @@ impl Widget {
                 items: vec![
                     BenefitItem {
                         icon: s("truck"),
-                        title: s("Envío gratis"),
-                        text: s("En compras desde $ 50.000"),
+                        title: s("Envíos"),
+                        text: s("Contá acá cómo y adónde enviás"),
                     },
                     BenefitItem {
                         icon: s("card"),
-                        title: s("Cuotas sin interés"),
-                        text: s("Con todas las tarjetas"),
+                        title: s("Medios de pago"),
+                        text: s("Contá acá cómo te pueden pagar"),
                     },
                     BenefitItem {
                         icon: s("refresh"),
-                        title: s("Devolución gratis"),
-                        text: s("Tenés 30 días para cambiarlo"),
+                        title: s("Cambios"),
+                        text: s("Contá acá cómo son los cambios"),
                     },
                     BenefitItem {
                         icon: s("shield"),
-                        title: s("Compra protegida"),
-                        text: s("Tus datos siempre seguros"),
+                        title: s("Atención"),
+                        text: s("Contá acá cómo te pueden contactar"),
                     },
                 ],
             }),
             "Countdown" => Widget::Countdown(CountdownProps {
                 title: s("Ofertas relámpago"),
-                subtitle: s("Aprovechá los descuentos antes de que terminen"),
+                subtitle: s("Contá acá qué está en oferta y hasta cuándo"),
                 ends_at: s("2026-12-31T23:59"),
                 ended_text: s("¡La oferta terminó!"),
                 button_label: s("Ver ofertas"),
@@ -906,7 +901,7 @@ impl Widget {
             "Card" => Widget::Card(CardProps {
                 image_url: s("/img/card.webp"),
                 title: s("Novedades de la semana"),
-                body: s("Conocé los productos que acaban de llegar."),
+                body: s("Contá acá qué hay de nuevo."),
                 button_label: s("Ver más"),
                 button_href: s("/"),
                 layout: s("vertical"),
@@ -915,15 +910,15 @@ impl Widget {
                 tabs: vec![
                     TabItem {
                         label: s("Envíos"),
-                        body: s("Enviamos a todo el país en 24 a 72 horas hábiles."),
+                        body: s("Contá acá cómo y adónde enviás, y cuánto tarda."),
                     },
                     TabItem {
                         label: s("Pagos"),
-                        body: s("Aceptamos tarjetas de crédito, débito y transferencias."),
+                        body: s("Contá acá cómo te pueden pagar."),
                     },
                     TabItem {
                         label: s("Cambios"),
-                        body: s("Tenés 30 días para cambiar o devolver tu compra."),
+                        body: s("Contá acá cómo son los cambios y las devoluciones."),
                     },
                 ],
             }),
@@ -932,15 +927,15 @@ impl Widget {
                 items: vec![
                     FaqItem {
                         question: s("¿Cuánto tarda el envío?"),
-                        answer: s("Entre 24 y 72 horas hábiles según tu zona."),
+                        answer: s("Escribí acá la respuesta."),
                     },
                     FaqItem {
-                        question: s("¿Puedo pagar en cuotas?"),
-                        answer: s("Sí, hasta 6 cuotas sin interés con tarjetas seleccionadas."),
+                        question: s("¿Cómo puedo pagar?"),
+                        answer: s("Escribí acá la respuesta."),
                     },
                     FaqItem {
                         question: s("¿Cómo hago un cambio?"),
-                        answer: s("Escribinos desde Contacto y te indicamos los pasos."),
+                        answer: s("Escribí acá la respuesta."),
                     },
                 ],
             }),
@@ -956,23 +951,14 @@ impl Widget {
             }),
             "Testimonials" => Widget::Testimonials(TestimonialsProps {
                 title: s("Lo que dicen nuestros clientes"),
-                items: vec![
-                    Testimonial {
-                        name: s("Lucía G."),
-                        text: s("Llegó rapidísimo y muy bien embalado. ¡Recomendable!"),
+                // Sin nombres inventados: se completan con opiniones reales.
+                items: (1..=3)
+                    .map(|i| Testimonial {
+                        name: format!("Cliente {i}"),
+                        text: s("Copiá acá lo que te dijo un cliente real."),
                         rating: 5,
-                    },
-                    Testimonial {
-                        name: s("Martín R."),
-                        text: s("Buena atención y precios competitivos."),
-                        rating: 4,
-                    },
-                    Testimonial {
-                        name: s("Sofía P."),
-                        text: s("Ya es mi tercera compra. Todo perfecto."),
-                        rating: 5,
-                    },
-                ],
+                    })
+                    .collect(),
             }),
             "Logos" => Widget::Logos(LogosProps {
                 title: s("Marcas que trabajamos"),
@@ -1000,15 +986,10 @@ impl Widget {
                 fit: s("cover"),
             }),
             "Footer" => Widget::Footer(FooterProps {
-                brand: s("Mi tienda"),
-                description: s("Productos seleccionados con envío a todo el país."),
-                links: vec![
-                    link("Quiénes somos", "/nosotros"),
-                    link("Envíos", "/envios"),
-                    link("Cambios y devoluciones", "/cambios"),
-                    link("Contacto", "/contacto"),
-                ],
-                legal: s("© 2026 Mi tienda. Todos los derechos reservados."),
+                brand: s("Nombre de tu tienda"),
+                description: s("Una frase corta sobre tu tienda."),
+                links: vec![link("Inicio", "/")],
+                legal: s("© Nombre de tu tienda"),
             }),
             "ProductImage" => Widget::ProductImage(ProductImageProps { fit: s("cover") }),
             "ProductName" => Widget::ProductName(ProductNameProps {}),

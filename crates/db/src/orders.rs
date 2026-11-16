@@ -67,10 +67,19 @@ pub async fn save_payment_options(
     Ok(())
 }
 
+/// Si el dueño ya guardó Entregas alguna vez (la tienda nueva no cuenta).
+pub async fn delivery_set(pool: &PgPool, tenant: Uuid) -> sqlx::Result<bool> {
+    sqlx::query_scalar("SELECT delivery_set FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .fetch_one(pool)
+        .await
+}
+
 pub async fn save_delivery(pool: &PgPool, tenant: Uuid, d: &DeliverySettings) -> sqlx::Result<()> {
     sqlx::query(
         "UPDATE tenants SET pickup_enabled = $2, pickup_address = $3, pickup_hours = $4,
-                shipping_enabled = $5, shipping_cents = $6, shipping_note = $7
+                shipping_enabled = $5, shipping_cents = $6, shipping_note = $7,
+                delivery_set = true
          WHERE id = $1",
     )
     .bind(tenant)

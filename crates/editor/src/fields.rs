@@ -68,7 +68,7 @@ fn help(key: &str) -> Option<&'static str> {
         "ended_text" => "Se muestra cuando termina la oferta.",
         "limit" => "Cuántos productos de tu catálogo se muestran.",
         "show_price" => "Mostrar u ocultar el precio debajo del nombre.",
-        "legal" => "Por ejemplo: © 2026 Mi tienda. Todos los derechos reservados.",
+        "legal" => "Por ejemplo: © 2026 La Huerta. Todos los derechos reservados.",
         _ => return None,
     })
 }
