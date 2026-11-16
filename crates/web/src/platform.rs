@@ -88,18 +88,59 @@ pub(crate) fn NewStore(
     let name = RwSignal::new(String::new());
     let slug = RwSignal::new(String::new());
     let slug_touched = RwSignal::new(false);
+    // Errores chicos debajo de cada campo; `problem` es para lo que no es de
+    // un campo (la conexión).
+    let name_error = RwSignal::new(None::<String>);
+    let slug_error = RwSignal::new(None::<String>);
     let problem = RwSignal::new(None::<String>);
     let suffix = format!(".{}", domain::platform_host(&crate::site::current_host()));
+
+    // Mientras se escribe la dirección: libre o tomada, un rato después de
+    // la última tecla.
+    let status = RwSignal::new(None::<domain::SlugStatus>);
+    let check = Action::new(|s: &String| crate::stores::slug_status(s.clone()));
+    Effect::new(move |_| {
+        let s = slug.get();
+        status.set(None);
+        if s.len() < 3 {
+            return;
+        }
+        set_timeout(
+            move || {
+                if slug.get_untracked() == s {
+                    check.dispatch(s);
+                }
+            },
+            std::time::Duration::from_millis(400),
+        );
+    });
+    Effect::new(move |_| {
+        if let Some(Ok(st)) = check.value().get() {
+            if check.input().get_untracked().is_none() {
+                status.set(Some(st));
+            }
+        }
+    });
+
     let create = Action::new(|(n, s): &(String, String)| create_store(n.clone(), s.clone()));
     Effect::new(move |_| match create.value().get() {
         Some(Ok(NewStoreOutcome::Created { open })) => go(&open),
-        Some(Ok(NewStoreOutcome::Problem(p))) => problem.set(Some(p)),
+        Some(Ok(NewStoreOutcome::Problem(p))) => {
+            if p.contains("nombre") {
+                name_error.set(Some(p));
+                focus_id("nueva-tienda-nombre");
+            } else {
+                slug_error.set(Some(p));
+                focus_id("nueva-tienda-direccion");
+            }
+        }
         Some(Ok(NewStoreOutcome::Taken { suggestion })) => {
-            problem.set(Some(format!(
+            slug_error.set(Some(format!(
                 "Esa dirección ya la usa otra tienda. Te sugerimos «{suggestion}», que está libre."
             )));
             slug.set(suggestion);
             slug_touched.set(true);
+            focus_id("nueva-tienda-direccion");
         }
         Some(Err(_)) => problem.set(Some(
             "No pudimos crear la tienda. Revisá tu conexión y probá de nuevo.".into(),
@@ -109,51 +150,115 @@ pub(crate) fn NewStore(
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         problem.set(None);
-        create.dispatch((name.get_untracked(), slug.get_untracked()));
+        let n = name.get_untracked().trim().to_string();
+        let s = slug.get_untracked().trim().to_lowercase();
+        let n_err = if n.is_empty() {
+            Some("Escribí el nombre de tu tienda.".to_string())
+        } else if n.chars().count() > 60 {
+            Some("El nombre puede tener hasta 60 letras.".to_string())
+        } else {
+            None
+        };
+        let s_err = domain::store_slug_problem(&s).map(str::to_string);
+        name_error.set(n_err.clone());
+        slug_error.set(s_err.clone());
+        if n_err.is_some() {
+            focus_id("nueva-tienda-nombre");
+        } else if s_err.is_some() {
+            focus_id("nueva-tienda-direccion");
+        } else {
+            create.dispatch((n, s));
+        }
+    };
+    let slug_note = move || {
+        if let Some(e) = slug_error.get() {
+            return Some(view! { <p id="nueva-tienda-direccion-error" class="text-sm text-error">{e}</p> }.into_any());
+        }
+        match status.get()? {
+            domain::SlugStatus::Free => Some(view! { <p class="text-sm text-success">"✓ Está libre"</p> }.into_any()),
+            domain::SlugStatus::Taken { suggestion } => Some(view! {
+                <p class="text-sm text-error">
+                    "Ya la usa otra tienda. "
+                    <button type="button" class="link link-primary" on:click=move |_| {
+                        slug.set(suggestion.clone());
+                        slug_touched.set(true);
+                    }>{format!("Usar «{suggestion}»")}</button>
+                </p>
+            }.into_any()),
+            domain::SlugStatus::Problem(p) => Some(view! { <p class="text-sm text-error">{p}</p> }.into_any()),
+        }
     };
     view! {
-        <form class="flex flex-col gap-4" on:submit=on_submit>
+        <form class="flex flex-col gap-4" novalidate on:submit=on_submit>
                 <div>
                     <h2 id="crear-tienda-titulo" class="text-xl font-bold">{if first { "Tu tienda" } else { "Crear tienda" }}</h2>
                     <p class="text-sm text-base-content/70">"Arrancás con un diseño de ejemplo y lo cambiás cuando quieras."</p>
                 </div>
-                <label class="flex flex-col gap-1">
-                    <span class="font-medium">"Nombre de la tienda"</span>
-                    <input class="input w-full" name="name" required maxlength="60" placeholder="La Casa de Ana"
+                <div class="flex flex-col gap-1">
+                    <label class="font-medium" for="nueva-tienda-nombre">"Nombre de la tienda"</label>
+                    <input id="nueva-tienda-nombre" class="input w-full" class:input-error=move || name_error.get().is_some()
+                        name="name" maxlength="60" placeholder="La Casa de Ana"
+                        aria-invalid=move || name_error.get().is_some().to_string()
+                        aria-describedby=move || name_error.get().is_some().then_some("nueva-tienda-nombre-error")
                         prop:value=move || name.get()
                         on:input=move |ev| {
                             let v = event_target_value(&ev);
                             if !slug_touched.get_untracked() {
                                 slug.set(domain::slug_from_name(&v));
+                                slug_error.set(None);
                             }
                             name.set(v);
+                            name_error.set(None);
                         }/>
-                </label>
-                <label class="flex flex-col gap-1">
-                    <span class="font-medium">"Dirección"</span>
-                    <span class="text-sm text-base-content/70">"Así la van a encontrar tus clientes. Letras sin tilde, números y guiones."</span>
+                    {move || name_error.get().map(|e| view! { <p id="nueva-tienda-nombre-error" class="text-sm text-error">{e}</p> })}
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="font-medium" for="nueva-tienda-direccion">"Dirección"</label>
+                    <span id="nueva-tienda-direccion-ayuda" class="text-sm text-base-content/70">"Así la van a encontrar tus clientes. Letras sin tilde, números y guiones."</span>
                     <div class="join w-full">
-                        <input class="input join-item w-full font-mono" name="slug" required maxlength="30" placeholder="lacasadeana"
+                        <input id="nueva-tienda-direccion" class="input join-item w-full font-mono" class:input-error=move || slug_error.get().is_some()
+                            name="slug" maxlength="30" placeholder="la-casa-de-ana"
                             autocapitalize="off" spellcheck="false"
+                            aria-invalid=move || slug_error.get().is_some().to_string()
+                            aria-describedby=move || if slug_error.get().is_some() {
+                                "nueva-tienda-direccion-ayuda nueva-tienda-direccion-error"
+                            } else {
+                                "nueva-tienda-direccion-ayuda"
+                            }
                             prop:value=move || slug.get()
                             on:input=move |ev| {
                                 slug_touched.set(true);
-                                slug.set(event_target_value(&ev).to_lowercase());
+                                slug.set(event_target_value(&ev).to_lowercase().replace(' ', "-"));
+                                slug_error.set(None);
                             }/>
                         <span class="join-item flex items-center border border-base-300 bg-base-200 px-3 font-mono text-sm">{suffix}</span>
                     </div>
-                </label>
-                {move || problem.get().map(|p| view! { <div role="alert" class="alert alert-error text-sm">{p}</div> })}
+                    <div aria-live="polite">{slug_note}</div>
+                </div>
+                {move || problem.get().map(|p| view! { <p role="alert" class="text-sm text-error">{p}</p> })}
                 <div class="flex flex-wrap justify-end gap-2">
                     {on_cancel.map(|cancel| view! {
                         <button class="btn btn-ghost" type="button" on:click=move |_| cancel.run(())>"Cancelar"</button>
                     })}
                     <button class="btn btn-primary" type="submit" disabled=move || create.pending().get()>
-                        {move || if create.pending().get() { "Creando…" } else { "Crear y empezar a editar" }}
+                        {move || if create.pending().get() { "Creando tu tienda…" } else { "Crear y empezar a editar" }}
                     </button>
                 </div>
         </form>
     }
+}
+
+/// Lleva el foco a un campo (después de que se dibuje su error).
+fn focus_id(id: &'static str) {
+    request_animation_frame(move || {
+        use leptos::wasm_bindgen::JsCast;
+        if let Some(el) = document()
+            .get_element_by_id(id)
+            .and_then(|e| e.dyn_into::<leptos::web_sys::HtmlElement>().ok())
+        {
+            _ = el.focus();
+        }
+    });
 }
 
 /// Una dirección de tienda en la plataforma (`localhost:3000/ofertas`).

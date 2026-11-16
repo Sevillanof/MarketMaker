@@ -259,10 +259,15 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
         ));
     }
     let digits = phone_digits(&f.phone).len();
-    if digits == 0 {
+    if f.phone.is_empty() {
         e.push(err(
             "phone",
             "Escribí un teléfono para coordinar la entrega.",
+        ));
+    } else if digits == 0 {
+        e.push(err(
+            "phone",
+            "Escribí solo números, por ejemplo 11 5555-1234.",
         ));
     } else if !(8..=15).contains(&digits) {
         e.push(err(

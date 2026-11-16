@@ -148,11 +148,9 @@ pub async fn product_to_edit(
     };
     let pool = pool()?;
     let product = if id == "nuevo" {
-        // Arranca oculto, así se puede preparar sin que lo vean.
-        Product {
-            visible: false,
-            ..Product::default()
-        }
+        // Arranca visible: lo normal es cargarlo para venderlo. Quien quiera
+        // prepararlo antes apaga "Mostrar en la tienda".
+        Product::default()
     } else {
         db::products::get(&pool, tenant.id, server::parse_id(&id)?)
             .await
@@ -806,6 +804,9 @@ impl Form {
     /// El producto tal como quedaría, o los problemas con los precios.
     fn product(&self, id: &str) -> Result<Product, Vec<String>> {
         let mut errors = Vec::new();
+        if self.name.with(|n| n.trim().is_empty()) {
+            errors.push("Poné un nombre al producto.".to_string());
+        }
         let price = self.price.get();
         let price_cents = if price.trim().is_empty() {
             errors.push("Poné el precio.".to_string());
@@ -879,6 +880,52 @@ impl Form {
     }
 }
 
+/// A qué campo del formulario de producto va un error (para mostrarlo
+/// debajo): `name`, `price`, `was`, `stock`, `description`, `photos` o
+/// `general`.
+fn error_field(e: &str) -> &'static str {
+    let e = e.to_lowercase();
+    if e.contains("precio anterior") {
+        "was"
+    } else if e.contains("precio") {
+        "price"
+    } else if e.contains("nombre") {
+        "name"
+    } else if e.contains("cantidad") || e.contains("stock") {
+        "stock"
+    } else if e.contains("descripción") {
+        "description"
+    } else if e.contains("foto") {
+        "photos"
+    } else {
+        "general"
+    }
+}
+
+/// Lleva la vista y el foco al campo del primer error.
+fn focus_first_error(errors: &[String]) {
+    let Some(first) = errors.first() else {
+        return;
+    };
+    let id = match error_field(first) {
+        "name" => "p-name",
+        "price" => "p-price",
+        "was" => "p-was",
+        "stock" => "p-stock",
+        "description" => "p-description",
+        _ => return,
+    };
+    request_animation_frame(move || {
+        use leptos::wasm_bindgen::JsCast;
+        if let Some(el) = document()
+            .get_element_by_id(id)
+            .and_then(|e| e.dyn_into::<leptos::web_sys::HtmlElement>().ok())
+        {
+            _ = el.focus();
+        }
+    });
+}
+
 #[component]
 fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     let form = Form::new(&edit.product);
@@ -936,7 +983,10 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         Some(Ok(SaveResult {
             outcome: ProductSave::Invalid { errors: e },
             ..
-        })) => errors.set(e),
+        })) => {
+            focus_first_error(&e);
+            errors.set(e);
+        }
         Some(Err(e)) => errors.set(vec![error_text(&e)]),
         None => {}
     });
@@ -945,7 +995,28 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             errors.set(Vec::new());
             save.dispatch(p);
         }
-        Err(e) => errors.set(e),
+        Err(e) => {
+            focus_first_error(&e);
+            errors.set(e);
+        }
+    };
+    // Los errores de un campo, para mostrarlos debajo de él.
+    let field_error = move |field: &'static str| {
+        move || {
+            errors.with(|es| {
+                es.iter()
+                    .filter(|e| error_field(e) == field)
+                    .map(|e| view! { <p class="label whitespace-normal text-error">{e.clone()}</p> })
+                    .collect_view()
+            })
+        }
+    };
+    let has_error = move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
+    let save_button = move || view! {
+        <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
+            on:click=move |_| on_save()>
+            {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
+        </button>
     };
 
     let confirm_delete = RwSignal::new(false);
@@ -995,10 +1066,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             {move || (!id.get().is_empty()).then(|| view! {
                 <button type="button" class="btn btn-ghost" on:click=move |_| confirm_delete.set(true)>"Borrar"</button>
             })}
-            <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
-                on:click=move |_| on_save()>
-                {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
-            </button>
+            {save_button()}
         </div>
         {move || confirm_delete.get().then(|| view! {
             <div role="alert" class="alert alert-warning flex flex-wrap">
@@ -1008,55 +1076,62 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                     on:click=move |_| { delete.dispatch(()); }>"Sí, borrar"</button>
             </div>
         })}
-        {move || {
-            let e = errors.get();
-            (!e.is_empty()).then(|| view! {
-                <ul role="alert" class="alert alert-error flex flex-col items-start text-sm">
-                    {e.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
-                </ul>
-            })
-        }}
+        // Solo lo que no es de un campo (la conexión, por ejemplo); lo demás
+        // va debajo de cada campo.
+        <div role="alert" class="text-sm text-error empty:hidden">
+            {move || errors.with(|es| es.iter().filter(|e| error_field(e) == "general").map(|e| view! { <p>{e.clone()}</p> }).collect_view())}
+        </div>
         <div class="grid items-start gap-6 lg:grid-cols-[1fr_340px]">
             <div class="card bg-base-100 shadow-sm"><div class="card-body gap-5">
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">"Nombre"</legend>
-                    <input class="input w-full" maxlength=domain::PRODUCT_NAME_MAX placeholder="Por ejemplo: Taza de cerámica"
+                    <input id="p-name" class="input w-full" class:input-error=move || has_error("name")
+                        aria-invalid=move || has_error("name").to_string()
+                        maxlength=domain::PRODUCT_NAME_MAX placeholder="Por ejemplo: Taza de cerámica"
                         prop:value=move || form.name.get()
                         on:input=move |ev| form.name.set(event_target_value(&ev))/>
+                    {field_error("name")}
                 </fieldset>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">"Precio"</legend>
-                        <label class="input w-full"><span>"$"</span>
-                            <input inputmode="decimal" placeholder="45.999,90" aria-label="Precio en pesos"
+                        <label class="input w-full" class:input-error=move || has_error("price")><span>"$"</span>
+                            <input id="p-price" inputmode="decimal" placeholder="45.999,90" aria-label="Precio en pesos"
+                                aria-invalid=move || has_error("price").to_string()
                                 prop:value=move || form.price.get()
                                 on:input=move |ev| form.price.set(event_target_value(&ev))/>
                         </label>
+                        {field_error("price")}
                     </fieldset>
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">"Precio anterior " <span class="font-normal text-base-content/60">"(opcional, se muestra tachado)"</span></legend>
-                        <label class="input w-full"><span>"$"</span>
-                            <input inputmode="decimal" placeholder="Vacío si no está en oferta" aria-label="Precio anterior en pesos"
+                        <label class="input w-full" class:input-error=move || has_error("was")><span>"$"</span>
+                            <input id="p-was" inputmode="decimal" placeholder="Vacío si no está en oferta" aria-label="Precio anterior en pesos"
+                                aria-invalid=move || has_error("was").to_string()
                                 prop:value=move || form.was.get()
                                 on:input=move |ev| form.was.set(event_target_value(&ev))/>
                         </label>
+                        {field_error("was")}
                     </fieldset>
                 </div>
                 <PhotosField photos=form.photos fits=form.fits adjusting/>
+                {field_error("photos")}
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">"Descripción"</legend>
-                    <textarea class="textarea h-28 w-full" maxlength=domain::PRODUCT_DESC_MAX
+                    <textarea id="p-description" class="textarea h-28 w-full" maxlength=domain::PRODUCT_DESC_MAX
                         placeholder="Qué es, de qué está hecho, medidas, cómo se usa…"
                         prop:value=move || form.description.get()
                         on:input=move |ev| form.description.set(event_target_value(&ev))></textarea>
                     <p class="label">{move || format!("{} de {} letras", form.description.with(|d| d.chars().count()), domain::PRODUCT_DESC_MAX)}</p>
+                    {field_error("description")}
                 </fieldset>
                 <TagsField form store_tags=store_tags.get_value()/>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">"Stock"</legend>
                         <label class="fieldset-label" for="p-stock">"Cantidad disponible " <span class="text-base-content/60">"(opcional)"</span></label>
-                        <input id="p-stock" class="input w-40" inputmode="numeric" placeholder="Sin contar"
+                        <input id="p-stock" class="input w-40" class:input-error=move || has_error("stock") inputmode="numeric" placeholder="Sin contar"
+                            aria-invalid=move || has_error("stock").to_string()
                             aria-describedby="p-stock-hint"
                             prop:value=move || form.stock.get()
                             on:input=move |ev| form.stock.set(event_target_value(&ev))/>
@@ -1077,6 +1152,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                                 "Cada venta descuenta. En 0 se ve \"Agotado\"; con 3 o menos, \"Quedan N\"."
                             }}
                         </p>
+                        {field_error("stock")}
                     </fieldset>
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend">"En la tienda"</legend>
@@ -1088,6 +1164,15 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                         </label>
                         <p class="label">"Apagalo para prepararlo sin que lo vean."</p>
                     </fieldset>
+                </div>
+                <div class="flex flex-wrap items-center justify-end gap-3 border-t border-base-200 pt-4">
+                    {move || {
+                        let n = errors.with(Vec::len);
+                        (n > 0).then(|| view! {
+                            <p class="text-sm text-error">{if n == 1 { "Revisá el campo marcado.".to_string() } else { format!("Revisá los {n} campos marcados.") }}</p>
+                        })
+                    }}
+                    {save_button()}
                 </div>
             </div></div>
             <aside class="flex flex-col gap-3 lg:sticky lg:top-4">
