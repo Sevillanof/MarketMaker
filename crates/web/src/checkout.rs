@@ -6,8 +6,8 @@
 //! (el dueño marca cuando cobró).
 
 use domain::{
-    CheckoutForm, CheckoutInfo, Delivery, DeliverySettings, FieldError, OrderReceipt, PageView,
-    PlaceOrder,
+    AndreaniBranch, AndreaniQuote, AndreaniService, CheckoutForm, CheckoutInfo, Delivery,
+    DeliverySettings, FieldError, OrderReceipt, PageView, PlaceOrder,
 };
 use leptos::prelude::*;
 use leptos::server_fn::codec::Json;
@@ -18,15 +18,190 @@ use widgets::Cart;
 /// Lo que necesita "Finalizar compra": nombre de la tienda y cómo entrega.
 #[server]
 pub async fn load_checkout() -> Result<CheckoutInfo, ServerFnError> {
-    use crate::server::{internal, pool};
+    use crate::server::pool;
     let tenant = crate::auth::current_tenant().await?;
     let pool = pool()?;
     Ok(CheckoutInfo {
-        delivery: db::orders::delivery(&pool, tenant.id)
-            .await
-            .map_err(internal)?,
+        delivery: delivery_with_andreani(&pool, tenant.id).await?,
         pay_methods: methods(&pool, tenant.id).await?,
         store_name: tenant.name,
+    })
+}
+
+/// Cómo entrega la tienda, con los servicios de Andreani que ofrece.
+#[cfg(feature = "ssr")]
+async fn delivery_with_andreani(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+) -> Result<DeliverySettings, ServerFnError> {
+    let mut d = db::orders::delivery(pool, tenant)
+        .await
+        .map_err(crate::server::internal)?;
+    if let Some((acc, s)) = andreani_ready(pool, tenant).await? {
+        d.andreani = s.services.clone();
+        // Los paquetes grandes van como Bigger, si la cuenta lo tiene.
+        if domain::contract_services(&acc.contracts.0).contains(&AndreaniService::Bigger) {
+            d.andreani.push(AndreaniService::Bigger);
+        }
+    }
+    Ok(d)
+}
+
+/// La cuenta de Andreani de la tienda, si está lista para ofrecerse.
+#[cfg(feature = "ssr")]
+async fn andreani_ready(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+) -> Result<Option<(db::andreani::Account, domain::AndreaniSettings)>, ServerFnError> {
+    let Some(acc) = db::andreani::account(pool, tenant)
+        .await
+        .map_err(crate::server::internal)?
+    else {
+        return Ok(None);
+    };
+    let Some(s) = acc.settings.clone().map(|j| j.0) else {
+        return Ok(None);
+    };
+    Ok((s.enabled && !s.services.is_empty()).then_some((acc, s)))
+}
+
+/// Cotizaciones recientes: el mismo carrito al mismo código postal no se
+/// vuelve a preguntar por 15 minutos (y el pedido se cobra con lo que vio
+/// el comprador).
+#[cfg(feature = "ssr")]
+fn quote_cache() -> &'static std::sync::Mutex<
+    std::collections::HashMap<String, (std::time::Instant, AndreaniQuote)>,
+> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, AndreaniQuote)>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Lo que cuesta mandar estos productos a `postal_code` con Andreani.
+#[cfg(feature = "ssr")]
+async fn andreani_quote(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+    postal_code: &str,
+    lines: &[(String, u32)],
+) -> Result<AndreaniQuote, ServerFnError> {
+    use crate::server::internal;
+    const TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+    let problem = |postal_code: String, m: &str| AndreaniQuote {
+        postal_code,
+        rates: Vec::new(),
+        problem: Some(m.to_string()),
+    };
+    let Some(cp) = domain::normalize_postal_code(postal_code) else {
+        return Ok(problem(
+            String::new(),
+            "Revisá el código postal: son 4 números, por ejemplo 1425.",
+        ));
+    };
+    let Some((acc, settings)) = andreani_ready(pool, tenant).await? else {
+        return Ok(problem(cp, "Esta tienda no envía con Andreani."));
+    };
+    let mut sorted: Vec<_> = lines
+        .iter()
+        .map(|(id, q)| (id.clone(), (*q).min(widgets::cart::MAX_QTY)))
+        .collect();
+    sorted.sort();
+    let key = format!("{tenant}|{cp}|{sorted:?}");
+    if let Some((at, q)) = quote_cache().lock().unwrap().get(&key) {
+        if at.elapsed() < TTL {
+            return Ok(q.clone());
+        }
+    }
+    let ids: Vec<uuid::Uuid> = sorted
+        .iter()
+        .filter_map(|(id, _)| uuid::Uuid::parse_str(id).ok())
+        .collect();
+    let products = db::products::by_ids(pool, tenant, &ids)
+        .await
+        .map_err(internal)?;
+    let mut items = Vec::new();
+    for (id, qty) in &sorted {
+        if let Some(p) = products.iter().find(|p| p.id == *id && p.visible && !p.example) {
+            items.push(crate::andreani::Line {
+                parcel: p.parcel.unwrap_or(settings.parcel),
+                unit_cents: p.price_cents,
+                qty: *qty,
+            });
+        }
+    }
+    if items.is_empty() {
+        return Ok(problem(cp, "Tu carrito está vacío."));
+    }
+    let available = domain::contract_services(&acc.contracts.0);
+    let bigger = items.iter().any(|l| l.parcel.is_bigger());
+    if bigger && !available.contains(&AndreaniService::Bigger) {
+        return Ok(problem(
+            cp,
+            "Este pedido es muy grande para enviarlo con Andreani. Elegí otra forma de entrega.",
+        ));
+    }
+    let origin = settings.origin.postal_code.clone();
+    let rates = match crate::andreani::rates(tenant, &acc.client_type, &origin, &cp, &items, bigger)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            leptos::logging::warn!("Andreani: no se pudo cotizar a {cp}: {e}");
+            // No se guarda: el próximo intento vuelve a preguntar.
+            return Ok(problem(
+                cp,
+                "No pudimos calcular el envío con Andreani. Probá de nuevo en un momento.",
+            ));
+        }
+    };
+    let rates: Vec<_> = rates
+        .into_iter()
+        .filter(|r| {
+            if bigger {
+                r.service == AndreaniService::Bigger
+            } else {
+                settings.services.contains(&r.service)
+            }
+        })
+        .collect();
+    let q = AndreaniQuote {
+        problem: rates
+            .is_empty()
+            .then(|| "Andreani no llega a ese código postal.".to_string()),
+        postal_code: cp,
+        rates,
+    };
+    let mut cache = quote_cache().lock().unwrap();
+    cache.retain(|_, (at, _)| at.elapsed() < TTL);
+    cache.insert(key, (std::time::Instant::now(), q.clone()));
+    Ok(q)
+}
+
+/// "Finalizar compra": lo que cuesta el envío con Andreani a `postal_code`.
+#[server(input = Json)]
+pub async fn quote_shipping(
+    postal_code: String,
+    lines: Vec<(String, u32)>,
+) -> Result<AndreaniQuote, ServerFnError> {
+    let tenant = crate::auth::current_tenant().await?;
+    let lines: Vec<_> = lines.into_iter().take(domain::MAX_ORDER_LINES).collect();
+    andreani_quote(&crate::server::pool()?, tenant.id, &postal_code, &lines).await
+}
+
+/// "Finalizar compra": las sucursales de Andreani cerca de `postal_code`.
+#[server]
+pub async fn find_branches(postal_code: String) -> Result<Vec<AndreaniBranch>, ServerFnError> {
+    let tenant = crate::auth::current_tenant().await?;
+    let Some(cp) = domain::normalize_postal_code(&postal_code) else {
+        return Ok(Vec::new());
+    };
+    if andreani_ready(&crate::server::pool()?, tenant.id).await?.is_none() {
+        return Ok(Vec::new());
+    }
+    crate::andreani::branches(tenant.id, &cp).await.map_err(|e| {
+        leptos::logging::warn!("Andreani: sucursales de {cp}: {e}");
+        ServerFnError::new("No pudimos traer las sucursales de Andreani. Probá de nuevo en un momento.")
     })
 }
 
@@ -68,9 +243,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     use crate::server::{internal, pool};
     let tenant = crate::auth::current_tenant().await?;
     let pool = pool()?;
-    let delivery = db::orders::delivery(&pool, tenant.id)
-        .await
-        .map_err(internal)?;
+    let delivery = delivery_with_andreani(&pool, tenant.id).await?;
     let mut form = form;
     let errors = domain::tidy_checkout(&mut form, &delivery);
     if !errors.is_empty() {
@@ -141,6 +314,55 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             qty: (*qty).min(widgets::cart::MAX_QTY),
         });
     }
+    // Con Andreani: el envío se cobra con la cotización de recién (la misma
+    // que vio el comprador) y la sucursal tiene que existir.
+    let invalid = |field: &str, message: &str| {
+        Ok(PlaceOrder::Invalid {
+            errors: vec![FieldError {
+                field: field.into(),
+                message: message.into(),
+            }],
+        })
+    };
+    let mut shipment = None;
+    let mut shipping_cents = domain::shipping_for(form.delivery, &delivery);
+    if let Some(svc) = form.delivery.andreani() {
+        let q = andreani_quote(&pool, tenant.id, &form.postal_code, &form.lines).await?;
+        let Some(cents) = q.cents(svc) else {
+            return invalid(
+                "delivery",
+                q.problem
+                    .as_deref()
+                    .unwrap_or("Ese envío ya no está disponible. Elegí otra forma de entrega."),
+            );
+        };
+        let mut s = domain::Shipment {
+            service: svc,
+            quote_cents: cents,
+            dni: form.dni.clone(),
+            branch_code: String::new(),
+            branch_name: String::new(),
+            branch_address: String::new(),
+            state: domain::ShipmentState::Waiting,
+            pedido_id: String::new(),
+            tracking: String::new(),
+            status: String::new(),
+            error: String::new(),
+        };
+        if svc.needs_branch() {
+            let branches = crate::andreani::branches(tenant.id, &form.postal_code)
+                .await
+                .unwrap_or_default();
+            let Some(b) = branches.into_iter().find(|b| b.code == form.branch) else {
+                return invalid("branch", "Elegí la sucursal donde lo retirás.");
+            };
+            s.branch_code = b.code;
+            s.branch_name = b.name;
+            s.branch_address = b.address;
+        }
+        shipping_cents = cents;
+        shipment = Some(s);
+    }
     let pay_online = form.pay == domain::PayMethod::MercadoPago;
     let new = db::orders::NewOrder {
         status: if pay_online {
@@ -157,8 +379,9 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         city: &form.city,
         notes: &form.notes,
         items: &items,
-        shipping_cents: domain::shipping_for(form.delivery, &delivery),
+        shipping_cents,
         pay: form.pay,
+        shipment: shipment.as_ref(),
     };
     let (id, number) = match db::orders::create(&pool, tenant.id, &new)
         .await
@@ -350,13 +573,43 @@ struct Fields {
     city: RwSignal<String>,
     notes: RwSignal<String>,
     pay: RwSignal<domain::PayMethod>,
+    /// Con Andreani: código postal, sucursal y DNI.
+    postal: RwSignal<String>,
+    branch: RwSignal<String>,
+    dni: RwSignal<String>,
+    /// La última cotización de Andreani para `postal`.
+    quote: RwSignal<Option<AndreaniQuote>>,
+}
+
+/// Lo que cuesta el envío elegido (con Andreani, según la cotización).
+fn ship_cents(f: Fields, d: &DeliverySettings) -> i64 {
+    match f.delivery.get() {
+        Delivery::Andreani(s) => f
+            .quote
+            .with(|q| q.as_ref().and_then(|q| q.cents(s)))
+            .unwrap_or(0),
+        x => domain::shipping_for(x, d),
+    }
+}
+
+/// Cómo se muestra el costo del envío elegido.
+fn ship_text(f: Fields, d: &DeliverySettings) -> String {
+    match f.delivery.get() {
+        Delivery::Pickup => "Gratis".to_string(),
+        Delivery::Shipping => domain::shipping_label(d, format_price),
+        Delivery::Andreani(s) => f
+            .quote
+            .with(|q| q.as_ref().and_then(|q| q.cents(s)))
+            .map(format_price)
+            .unwrap_or_else(|| "A calcular".to_string()),
+    }
 }
 
 /// En qué paso está cada campo: 1 tus datos, 2 entrega, 3 pago.
 fn step_of(field: &str) -> u8 {
     match field {
         "name" | "email" | "phone" => 1,
-        "delivery" | "address" | "postal_code" | "city" | "notes" => 2,
+        "delivery" | "address" | "postal_code" | "city" | "notes" | "dni" | "branch" => 2,
         _ => 3,
     }
 }
@@ -379,7 +632,63 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         city: RwSignal::new(String::new()),
         notes: RwSignal::new(String::new()),
         pay: RwSignal::new(info.pay_methods.first().copied().unwrap_or_default()),
+        postal: RwSignal::new(String::new()),
+        branch: RwSignal::new(String::new()),
+        dni: RwSignal::new(String::new()),
+        quote: RwSignal::new(None),
     };
+    let has_andreani = d.with_value(|d| !d.andreani.is_empty());
+    let lines_now = move || -> Vec<(String, u32)> {
+        cart.items()
+            .into_iter()
+            .filter(|i| i.product.in_stock)
+            .map(|i| (i.product.id, i.qty))
+            .collect()
+    };
+    // Cotiza con Andreani cuando el código postal tiene forma de uno.
+    let quoting = Action::new(|(cp, lines): &(String, Vec<(String, u32)>)| {
+        quote_shipping(cp.clone(), lines.clone())
+    });
+    Effect::new(move |_| {
+        if !has_andreani || !cart.ready.get() {
+            return;
+        }
+        let Some(cp) = domain::normalize_postal_code(&f.postal.get()) else {
+            f.quote.set(None);
+            return;
+        };
+        if f.quote.with_untracked(|q| q.as_ref().is_some_and(|q| q.postal_code == cp)) {
+            return;
+        }
+        quoting.dispatch((cp, lines_now()));
+    });
+    Effect::new(move |_| {
+        let Some(r) = quoting.value().get() else {
+            return;
+        };
+        let q = r.unwrap_or_else(|e| AndreaniQuote {
+            postal_code: String::new(),
+            rates: Vec::new(),
+            problem: Some(error_text(&e)),
+        });
+        // Llegó tarde: el comprador ya cambió el código postal.
+        let now = domain::normalize_postal_code(&f.postal.get_untracked()).unwrap_or_default();
+        if !q.postal_code.is_empty() && q.postal_code != now {
+            return;
+        }
+        // Si lo elegido ya no está, pasa a lo primero que haya.
+        let offered = |x: Delivery| match x {
+            Delivery::Andreani(s) => q.cents(s).is_some(),
+            Delivery::Shipping => d.with_value(|d| d.shipping_enabled),
+            Delivery::Pickup => d.with_value(|d| d.pickup_enabled),
+        };
+        if !offered(f.delivery.get_untracked()) {
+            if let Some(r) = q.rates.first() {
+                f.delivery.set(Delivery::Andreani(r.service));
+            }
+        }
+        f.quote.set(Some(q));
+    });
     let methods = StoredValue::new(info.pay_methods.clone());
     let step = RwSignal::new(1u8);
     let errors = RwSignal::new(Vec::<FieldError>::new());
@@ -414,16 +723,13 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         phone: f.phone.get_untracked(),
         delivery: f.delivery.get_untracked(),
         address: f.address.get_untracked(),
-        postal_code: String::new(),
+        postal_code: f.postal.get_untracked(),
         city: f.city.get_untracked(),
         notes: f.notes.get_untracked(),
         pay: f.pay.get_untracked(),
-        lines: cart
-            .items()
-            .into_iter()
-            .filter(|i| i.product.in_stock)
-            .map(|i| (i.product.id, i.qty))
-            .collect(),
+        lines: lines_now(),
+        branch: f.branch.get_untracked(),
+        dni: f.dni.get_untracked(),
     };
     // "Seguir": revisa solo los campos de este paso y abre el siguiente.
     let next = move |from: u8| {
@@ -469,7 +775,23 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             .collect::<Vec<_>>()
             .join(" · ")
     };
+    let branches = RwSignal::new(Vec::<AndreaniBranch>::new());
     let delivery_line = move || match f.delivery.get() {
+        Delivery::Andreani(s) if s.needs_branch() => {
+            let b = f.branch.get();
+            let name = branches.with(|v| {
+                v.iter()
+                    .find(|x| x.code == b)
+                    .map(|x| x.name.clone())
+                    .unwrap_or_default()
+            });
+            format!("{} · {name}", s.label())
+        }
+        Delivery::Andreani(s) => format!(
+            "{} · {}",
+            s.label(),
+            domain::ship_address(f.address.get().trim(), f.city.get().trim(), "")
+        ),
         Delivery::Shipping => format!(
             "Envío · {}",
             domain::ship_address(f.address.get().trim(), f.city.get().trim(), "")
@@ -521,11 +843,37 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                                 <button type="button" class="btn btn-primary mt-3 self-start" on:click=move |_| next(1)>"Seguir"</button>
                             </Step>
                             <Step n=2 title="Entrega" step done_line=Signal::derive(delivery_line)>
+                                {has_andreani.then(|| view! {
+                                    <div class="mb-2 sm:max-w-xs">
+                                        <TextField id="postal_code" label="Código postal" value=f.postal errors autocomplete="postal-code" placeholder="1425" max=10/>
+                                        <p role="status" class="-mt-1 text-sm"
+                                            class:opacity-70=move || f.quote.with(|q| q.as_ref().is_none_or(|q| q.problem.is_none()))>
+                                            {move || if quoting.pending().get() {
+                                                "Calculando el envío…".to_string()
+                                            } else if let Some(p) = f.quote.with(|q| q.as_ref().and_then(|q| q.problem.clone())) {
+                                                p
+                                            } else if f.quote.with(Option::is_none) {
+                                                "Escribilo para ver el costo del envío con Andreani.".to_string()
+                                            } else {
+                                                String::new()
+                                            }}
+                                        </p>
+                                    </div>
+                                })}
                                 <DeliveryChoice f d=d.get_value() errors/>
-                                {move || (f.delivery.get() == Delivery::Shipping).then(|| view! {
+                                {move || (f.delivery.get() == Delivery::Andreani(AndreaniService::Branch)).then(|| view! {
+                                    <BranchPicker f errors branches/>
+                                })}
+                                {move || f.delivery.get().needs_address().then(|| view! {
                                     <div class="mt-1 grid gap-x-4 sm:grid-cols-[2fr_1fr]">
                                         <TextField id="address" label="Dirección" value=f.address errors autocomplete="street-address" placeholder="Calle, número, piso y depto." max=domain::ADDRESS_MAX/>
                                         <TextField id="city" label="Localidad" value=f.city errors autocomplete="address-level2" placeholder="CABA" max=domain::CITY_MAX/>
+                                    </div>
+                                })}
+                                {move || f.delivery.get().andreani().is_some().then(|| view! {
+                                    <div class="sm:max-w-xs">
+                                        <TextField id="dni" label="DNI de quien recibe" value=f.dni errors inputmode="numeric" placeholder="30123456" max=12/>
+                                        <p class="-mt-1 text-sm text-base-content/70">"Andreani lo pide para entregar el paquete."</p>
                                     </div>
                                 })}
                                 <Note f/>
@@ -671,9 +1019,11 @@ pub(crate) fn TextField(
     #[prop(optional)] autocomplete: &'static str,
     #[prop(optional)] kind: &'static str,
     #[prop(optional)] placeholder: &'static str,
+    #[prop(optional)] inputmode: &'static str,
     max: usize,
 ) -> impl IntoView {
     let error = move || error_for(errors, id);
+    let inputmode = (!inputmode.is_empty()).then_some(inputmode);
     let input_id = format!("f-{id}");
     let error_id = format!("f-{id}-error");
     let kind = if kind.is_empty() { "text" } else { kind };
@@ -681,7 +1031,7 @@ pub(crate) fn TextField(
         <fieldset class="fieldset">
             <label class="fieldset-legend" for=input_id.clone()>{label}</label>
             <input id=input_id class="input w-full" class:input-error=move || error().is_some()
-                type=kind autocomplete=autocomplete placeholder=placeholder maxlength=max required
+                type=kind autocomplete=autocomplete placeholder=placeholder maxlength=max required inputmode=inputmode
                 aria-invalid=move || error().is_some().to_string()
                 aria-describedby=move || error().is_some().then(|| error_id.clone())
                 prop:value=move || value.get()
@@ -697,17 +1047,18 @@ pub(crate) fn TextField(
     }
 }
 
-/// Envío o retiro, lado a lado (solo los que ofrece la tienda).
+/// Cómo lo recibe: Andreani (cuando ya hay cotización), envío propio o
+/// retiro, lado a lado (solo los que ofrece la tienda).
 #[component]
 fn DeliveryChoice(
     f: Fields,
     d: DeliverySettings,
     errors: RwSignal<Vec<FieldError>>,
 ) -> impl IntoView {
-    let mut options = Vec::new();
+    let mut own = Vec::new();
     if d.shipping_enabled {
         let price = domain::shipping_label(&d, format_price);
-        options.push((Delivery::Shipping, price));
+        own.push((Delivery::Shipping, price));
     }
     if d.pickup_enabled {
         let detail = if d.pickup_address.is_empty() {
@@ -715,12 +1066,30 @@ fn DeliveryChoice(
         } else {
             format!("Gratis · {}", d.pickup_address)
         };
-        options.push((Delivery::Pickup, detail));
+        own.push((Delivery::Pickup, detail));
     }
+    let options = move || {
+        let mut v: Vec<(Delivery, String)> = f.quote.with(|q| {
+            q.iter()
+                .flat_map(|q| q.rates.iter())
+                .map(|r| {
+                    let price = format_price(r.cents);
+                    let detail = if r.service.needs_branch() {
+                        format!("{price} · retirás en una sucursal")
+                    } else {
+                        price
+                    };
+                    (Delivery::Andreani(r.service), detail)
+                })
+                .collect()
+        });
+        v.extend(own.iter().cloned());
+        v
+    };
     let error = move || error_for(errors, "delivery");
     view! {
         <div role="radiogroup" aria-label="Cómo lo recibís" class="grid gap-2 sm:grid-cols-2">
-            {options.into_iter().enumerate().map(|(i, (kind, detail))| {
+            {move || options().into_iter().enumerate().map(|(i, (kind, detail))| {
                 let free = detail.starts_with("Gratis");
                 view! {
                     <label class="flex cursor-pointer items-center gap-3 rounded-box border border-base-300 px-4 py-3 has-checked:border-primary has-checked:bg-primary/8 has-checked:outline has-checked:outline-primary">
@@ -739,6 +1108,78 @@ fn DeliveryChoice(
             }).collect_view()}
             {move || error().map(|m| view! { <p class="text-sm text-error sm:col-span-2">{m}</p> })}
         </div>
+    }
+}
+
+/// La sucursal de Andreani donde retira, entre las cercanas a su código postal.
+#[component]
+fn BranchPicker(
+    f: Fields,
+    errors: RwSignal<Vec<FieldError>>,
+    branches: RwSignal<Vec<AndreaniBranch>>,
+) -> impl IntoView {
+    let load = Action::new(|cp: &String| find_branches(cp.clone()));
+    let loaded = RwSignal::new(String::new());
+    let problem = RwSignal::new(None::<String>);
+    Effect::new(move |_| {
+        let cp = f
+            .quote
+            .with(|q| q.as_ref().map(|q| q.postal_code.clone()))
+            .unwrap_or_default();
+        if cp.is_empty() || loaded.get_untracked() == cp {
+            return;
+        }
+        loaded.set(cp.clone());
+        load.dispatch(cp);
+    });
+    Effect::new(move |_| match load.value().get() {
+        Some(Ok(list)) => {
+            problem.set(list.is_empty().then(|| {
+                "No hay sucursales de Andreani cerca de ese código postal. Elegí envío a domicilio.".to_string()
+            }));
+            let code = f.branch.get_untracked();
+            if !list.iter().any(|b| b.code == code) {
+                f.branch.set(if list.len() == 1 { list[0].code.clone() } else { String::new() });
+            }
+            branches.set(list);
+        }
+        Some(Err(e)) => problem.set(Some(error_text(&e))),
+        None => {}
+    });
+    let error = move || error_for(errors, "branch");
+    let chosen = move || {
+        let code = f.branch.get();
+        branches.with(|v| v.iter().find(|b| b.code == code).cloned())
+    };
+    view! {
+        <fieldset class="fieldset mt-1">
+            <label class="fieldset-legend" for="f-branch">"Sucursal donde lo retirás"</label>
+            <select id="f-branch" class="select w-full" class:select-error=move || error().is_some() required
+                aria-invalid=move || error().is_some().to_string()
+                aria-describedby=move || error().is_some().then_some("f-branch-error")
+                disabled=move || load.pending().get()
+                on:change=move |ev| {
+                    f.branch.set(event_target_value(&ev));
+                    errors.update(|e| e.retain(|e| e.field != "branch"));
+                }>
+                <option value="" disabled selected=move || f.branch.get().is_empty()>
+                    {move || if load.pending().get() { "Buscando sucursales…" } else { "Elegí una sucursal" }}
+                </option>
+                {move || branches.get().into_iter().map(|b| {
+                    let code = b.code.clone();
+                    view! {
+                        <option value=b.code.clone() selected=move || f.branch.get() == code>
+                            {format!("{} · {}", b.name, b.address)}
+                        </option>
+                    }
+                }).collect_view()}
+            </select>
+            {move || chosen().filter(|b| !b.hours.is_empty()).map(|b| view! {
+                <p class="label whitespace-normal">{format!("Horario: {}", b.hours)}</p>
+            })}
+            {move || problem.get().map(|m| view! { <p role="status" class="label whitespace-normal text-base-content">{m}</p> })}
+            {move || error().map(|m| view! { <p id="f-branch-error" class="label text-error">{m}</p> })}
+        </fieldset>
     }
 }
 
@@ -863,11 +1304,8 @@ fn OrderLines(cart: Cart) -> impl IntoView {
 fn Totals(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
     let d = StoredValue::new(d);
     let subtotal = move || cart.total_cents();
-    let shipping = move || d.with_value(|d| domain::shipping_for(f.delivery.get(), d));
-    let shipping_text = move || match f.delivery.get() {
-        Delivery::Pickup => "Gratis".to_string(),
-        Delivery::Shipping => d.with_value(|d| domain::shipping_label(d, format_price)),
-    };
+    let shipping = move || d.with_value(|d| ship_cents(f, d));
+    let shipping_text = move || d.with_value(|d| ship_text(f, d));
     view! {
         <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span class="tabular-nums">{move || format_price(subtotal())}</span></div>
         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
@@ -879,7 +1317,7 @@ fn Totals(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
 #[component]
 fn MobileSummary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
     let d2 = d.clone();
-    let total = move || cart.total_cents() + domain::shipping_for(f.delivery.get(), &d2);
+    let total = move || cart.total_cents() + ship_cents(f, &d2);
     view! {
         <details class="group rounded-box bg-base-100 shadow-sm lg:hidden">
             <summary class="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm [&::-webkit-details-marker]:hidden">
@@ -987,7 +1425,7 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" · "),
-        Delivery::Shipping => domain::ship_address(&order.address, &order.city, &order.postal_code),
+        _ => order.destination().unwrap_or_default(),
     };
     let shipping_text = match order.delivery {
         Delivery::Pickup => "Gratis".to_string(),
@@ -995,7 +1433,7 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
             "A coordinar".to_string()
         }
         Delivery::Shipping if order.shipping_cents == 0 => "Gratis".to_string(),
-        Delivery::Shipping => format_price(order.shipping_cents),
+        Delivery::Shipping | Delivery::Andreani(_) => format_price(order.shipping_cents),
     };
     view! {
         <StoreFrame view>

@@ -302,6 +302,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             shipping_enabled: shipping.get_untracked(),
             shipping_cents,
             shipping_note: note.get_untracked(),
+            andreani: Vec::new(),
         });
     };
     let cost_hint = move || {

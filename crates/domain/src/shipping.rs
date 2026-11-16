@@ -307,6 +307,84 @@ pub struct AndreaniSaved {
     pub warning: Option<String>,
 }
 
+/// Lo que cuesta cada servicio para un código postal y un carrito.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AndreaniQuote {
+    /// El código postal cotizado (4 números).
+    pub postal_code: String,
+    pub rates: Vec<AndreaniRate>,
+    /// Por qué no hay tarifas, en palabras para el comprador.
+    pub problem: Option<String>,
+}
+
+impl AndreaniQuote {
+    pub fn cents(&self, service: AndreaniService) -> Option<i64> {
+        self.rates.iter().find(|r| r.service == service).map(|r| r.cents)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct AndreaniRate {
+    pub service: AndreaniService,
+    pub cents: i64,
+}
+
+/// Una sucursal de Andreani donde retirar.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AndreaniBranch {
+    pub code: String,
+    pub name: String,
+    /// "Av. Santa Fe 3200, CABA".
+    pub address: String,
+    /// Horario, si Andreani lo informa.
+    #[serde(default)]
+    pub hours: String,
+}
+
+/// En qué está el alta del envío en Andreani.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ShipmentState {
+    /// Todavía no se creó (el pedido no está pagado).
+    #[default]
+    Waiting,
+    /// Se está creando ahora.
+    Creating,
+    /// Andreani lo tiene. Falta que el dueño lo pague en Andreani.
+    Created,
+    /// No se pudo crear: se ve el error y "Reintentar".
+    Failed,
+}
+
+/// El envío con Andreani de un pedido.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Shipment {
+    pub service: AndreaniService,
+    /// Lo que se le cobró al comprador por el envío.
+    pub quote_cents: i64,
+    pub dni: String,
+    /// Con retiro en sucursal.
+    #[serde(default)]
+    pub branch_code: String,
+    #[serde(default)]
+    pub branch_name: String,
+    #[serde(default)]
+    pub branch_address: String,
+    #[serde(default)]
+    pub state: ShipmentState,
+    /// El número que da Andreani al crear el envío.
+    #[serde(default)]
+    pub pedido_id: String,
+    /// El número de seguimiento (aparece cuando el dueño paga el envío).
+    #[serde(default)]
+    pub tracking: String,
+    /// Estado según Andreani ("en camino", "entregado"…).
+    #[serde(default)]
+    pub status: String,
+    /// Por qué falló el alta.
+    #[serde(default)]
+    pub error: String,
+}
+
 /// Las provincias, como las escribe Andreani.
 pub const PROVINCES: [&str; 24] = [
     "Buenos Aires",
