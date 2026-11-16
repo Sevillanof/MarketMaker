@@ -87,6 +87,8 @@ pub struct AccountInfo {
     pub email: String,
     pub name: String,
     pub has_password: bool,
+    /// En cuántas tiendas es dueña.
+    pub stores: u32,
 }
 
 /// Resultado de cambiar la contraseña desde "Mi cuenta".

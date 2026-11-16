@@ -227,6 +227,10 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "chevron-down" => "M6 9l6 6 6-6",
         "external" => "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
         "log-out" => "M9 21H4V3h5M16 17l5-5-5-5M21 12H9",
+        // Mi cuenta.
+        "user" => "M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21c1-4 4-6 8-6s7 2 8 6",
+        "mail" => "M3 5h18v14H3zM3 7l9 6 9-6",
+        "key" => "M8 11a4 4 0 1 0 0 8 4 4 0 0 0 0-8M10.8 12.2L20 3M17 6l3 3M14 9l2 2",
         _ => "M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
     };
     let class = format!("inline-block {class}");

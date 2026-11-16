@@ -525,84 +525,84 @@ fn SignInForm(next: String) -> impl IntoView {
     }
 }
 
-/// `/cuenta`: nombre, email, contraseña y salir.
+/// `/cuenta`: nombre, email, contraseña y salir, dentro del panel. Se abre
+/// desde el menú de tu nombre (abajo a la izquierda); no está en el menú.
 #[component]
 pub fn AccountPage() -> impl IntoView {
+    let store = use_query_map()
+        .read_untracked()
+        .get("tienda")
+        .unwrap_or_default();
     let account = Resource::new(|| (), |_| load_account());
     view! {
         <leptos_meta::Title text="Mi cuenta · MarketMaker"/>
-        <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">
-            <header class="flex items-center gap-4 border-b border-base-300 bg-base-100 px-6 py-3">
-                <a href="/" class="text-lg"><Logo/></a>
-                <a href="/" class="ml-auto text-sm font-medium text-base-content/70 hover:text-base-content">"Mis tiendas"</a>
-            </header>
-            <main class="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-10">
-                <h1 class="text-3xl font-extrabold tracking-tight">"Mi cuenta"</h1>
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-72 w-full"/> }>
+        <crate::panel::StoreShell slug=store section=crate::panel::Section::Account>
+            <div class="mx-auto flex max-w-3xl flex-col gap-4 px-8 py-10">
+                <div>
+                    <h1 class="text-3xl font-extrabold tracking-tight">"Mi cuenta"</h1>
+                    <p class="mt-1 text-base-content/70">"Tus datos para entrar a MarketMaker. Valen para todas tus tiendas."</p>
+                </div>
+                <Suspense fallback=|| view! { <ui::Skeleton class="h-80 w-full"/> }>
                     {move || Suspend::new(async move {
                         match account.await {
-                            Ok(Some(a)) => view! { <AccountForms account=a/> }.into_any(),
+                            Ok(Some(a)) => view! { <AccountRows account=a/> }.into_any(),
                             Ok(None) => view! { <leptos_router::components::Redirect path="/entrar?volver=/cuenta"/> }.into_any(),
-                            Err(_) => view! { <div role="alert" class="alert alert-error">{CONNECTION}</div> }.into_any(),
+                            Err(_) => view! { <FieldNote ok=false text=CONNECTION/> }.into_any(),
                         }
                     })}
                 </Suspense>
-            </main>
+            </div>
+        </crate::panel::StoreShell>
+    }
+}
+
+/// Una fila de Mi cuenta: ícono, qué es, el valor y una acción.
+#[component]
+fn AccountRow(
+    icon: &'static str,
+    label: &'static str,
+    children: Children,
+    #[prop(optional)] action: Option<AnyView>,
+) -> impl IntoView {
+    view! {
+        <div class="flex items-center gap-4 border-t border-base-300 px-6 py-4">
+            <ui::Icon class="size-[18px] shrink-0 text-base-content/60" name=icon/>
+            <div class="w-32 shrink-0 text-sm font-semibold">{label}</div>
+            <div class="min-w-0 grow">{children()}</div>
+            {action}
         </div>
     }
 }
 
+fn open_modal(d: NodeRef<leptos::html::Dialog>) {
+    if let Some(d) = d.get() {
+        _ = d.show_modal();
+    }
+}
+
+fn close_modal(d: NodeRef<leptos::html::Dialog>) {
+    if let Some(d) = d.get() {
+        d.close();
+    }
+}
+
 #[component]
-fn AccountForms(account: domain::AccountInfo) -> impl IntoView {
-    let name = RwSignal::new(account.name.clone());
+fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
     let saved_name = RwSignal::new(account.name.clone());
     let has_password = RwSignal::new(account.has_password);
-    let current = RwSignal::new(String::new());
-    let new = RwSignal::new(String::new());
-    let pw_msg = RwSignal::new(None::<(bool, String)>);
-    let name_msg = RwSignal::new(None::<(bool, String)>);
-
-    let save = Action::new(|n: &String| save_name(n.clone()));
-    let change = Action::new(|(c, n): &(String, String)| change_password(c.clone(), n.clone()));
+    let notice = RwSignal::new(None::<String>);
+    let name_dialog = NodeRef::<leptos::html::Dialog>::new();
+    let pw_dialog = NodeRef::<leptos::html::Dialog>::new();
     let out = Action::new(|_: &()| sign_out());
     Effect::new(move |_| {
         if let Some(Ok(())) = out.value().get() {
             go("/");
         }
     });
-    Effect::new(move |_| match save.value().get() {
-        Some(Ok(n)) => {
-            name.set(n.clone());
-            saved_name.set(n);
-            name_msg.set(Some((true, "Guardado.".into())));
-        }
-        Some(Err(_)) => name_msg.set(Some((false, CONNECTION.into()))),
-        None => {}
-    });
-    Effect::new(move |_| match change.value().get() {
-        Some(Ok(PasswordChange::Done)) => {
-            has_password.set(true);
-            current.set(String::new());
-            new.set(String::new());
-            pw_msg.set(Some((
-                true,
-                "Listo, tu contraseña cambió. Cerramos tu cuenta en las otras compus y celulares."
-                    .into(),
-            )));
-        }
-        Some(Ok(PasswordChange::WrongCurrent)) => {
-            pw_msg.set(Some((false, "La contraseña actual no es esa.".into())))
-        }
-        Some(Ok(PasswordChange::Weak { reason })) => pw_msg.set(Some((false, reason))),
-        Some(Err(_)) => pw_msg.set(Some((false, CONNECTION.into()))),
-        None => {}
-    });
-    let msg = |m: RwSignal<Option<(bool, String)>>| {
-        move || m.get().map(|(ok, text)| view! { <FieldNote ok text/> })
-    };
     let first_of_email = account.email.chars().next();
     let initial = move || {
-        name.get()
+        saved_name
+            .get()
             .chars()
             .next()
             .or(first_of_email)
@@ -610,70 +610,178 @@ fn AccountForms(account: domain::AccountInfo) -> impl IntoView {
             .to_uppercase()
             .to_string()
     };
+    let stores = match account.stores {
+        0 => "Todavía sin tiendas".to_string(),
+        1 => "1 tienda".to_string(),
+        n => format!("{n} tiendas"),
+    };
+    let change_btn = |label: Signal<&'static str>, dialog: NodeRef<leptos::html::Dialog>| {
+        view! {
+            <button type="button" class="btn btn-outline btn-sm border-base-300 bg-base-100"
+                on:click=move |_| { notice.set(None); open_modal(dialog) }>{label}</button>
+        }
+        .into_any()
+    };
     view! {
-        <section class="card bg-base-100 shadow-sm" aria-labelledby="datos">
-            <form class="card-body gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
-                ev.prevent_default();
-                name_msg.set(None);
-                save.dispatch(name.get_untracked());
-            }>
-                <div class="flex items-center gap-4">
-                    <span class="grid size-14 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] text-xl font-bold text-white" aria-hidden="true">{initial}</span>
-                    <div class="min-w-0">
-                        <h2 id="datos" class="truncate text-lg font-bold">{move || if saved_name.get().is_empty() { "Sin nombre".to_string() } else { saved_name.get() }}</h2>
-                        <p class="truncate text-sm text-base-content/70">{account.email.clone()}</p>
-                    </div>
+        <section class="overflow-hidden rounded-2xl border border-base-300 bg-base-100">
+            <div class="flex items-center gap-4 px-6 py-5">
+                <span aria-hidden="true" class="grid size-13 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] text-xl font-bold text-white">{initial}</span>
+                <div class="min-w-0">
+                    <div class="truncate text-lg font-bold">{move || if saved_name.get().is_empty() { "Sin nombre".to_string() } else { saved_name.get() }}</div>
+                    <div class="text-sm text-base-content/70">{stores}</div>
                 </div>
-                <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold">"Tu nombre"</span>
-                    <input type="text" class="input w-full" autocomplete="given-name"
-                        maxlength=domain::ACCOUNT_NAME_MAX.to_string()
-                        prop:value=move || name.get()
-                        on:input=move |ev| { name_msg.set(None); name.set(event_target_value(&ev)) }/>
-                </label>
-                <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold">"Email"</span>
-                    <input type="email" class="input w-full" value=account.email.clone() disabled/>
-                    <span class="text-xs text-base-content/60">"Con este email entrás. Por ahora no se puede cambiar."</span>
-                </label>
-                {msg(name_msg)}
-                <div><button class="btn btn-primary" type="submit"
-                    disabled=move || save.pending().get() || domain::clean_name(&name.get()) == saved_name.get()>
-                    {move || if save.pending().get() { "Guardando…" } else { "Guardar nombre" }}
-                </button></div>
-            </form>
-        </section>
-        <section class="card bg-base-100 shadow-sm" aria-labelledby="clave">
-            <form class="card-body gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
-                ev.prevent_default();
-                pw_msg.set(None);
-                change.dispatch((current.get_untracked(), new.get_untracked()));
-            }>
-                <h2 id="clave" class="text-lg font-bold">"Contraseña"</h2>
-                {move || (!has_password.get()).then(|| view! {
-                    <p class="text-sm text-base-content/70">"Tu cuenta todavía no tiene contraseña: hoy entrás con un código por email. Elegí una y la próxima vez entrás directo."</p>
-                })}
-                {move || has_password.get().then(|| view! {
-                    <PasswordField value=current label="Contraseña actual" autocomplete="current-password"/>
-                })}
-                <PasswordField value=new label="Contraseña nueva" autocomplete="new-password" meter=true/>
-                {msg(pw_msg)}
-                <div><button class="btn btn-primary" type="submit" disabled=move || change.pending().get()>
-                    {move || if change.pending().get() { "Guardando…" } else if has_password.get() { "Cambiar contraseña" } else { "Elegir contraseña" }}
-                </button></div>
-            </form>
-        </section>
-        <section class="card bg-base-100 shadow-sm">
-            <div class="card-body flex-row flex-wrap items-center gap-4">
-                <div class="grow">
-                    <h2 class="font-bold">"Salir"</h2>
-                    <p class="text-sm text-base-content/70">"Cierra tu cuenta en esta compu."</p>
-                </div>
-                <button class="btn btn-outline" on:click=move |_| { out.dispatch(()); }>
-                    <ui::Icon class="size-[18px]" name="log-out"/>"Salir"
-                </button>
             </div>
+            <AccountRow icon="user" label="Nombre" action=change_btn(Signal::stored("Cambiar"), name_dialog)>
+                <span class=move || if saved_name.get().is_empty() { "text-base-content/50" } else { "" }>
+                    {move || if saved_name.get().is_empty() { "Sin nombre".to_string() } else { saved_name.get() }}
+                </span>
+            </AccountRow>
+            <AccountRow icon="mail" label="Email"
+                action=view! { <span class="text-xs text-base-content/60">"No se puede cambiar"</span> }.into_any()>
+                <div class="truncate">{account.email.clone()}</div>
+                <div class="text-xs text-base-content/60">"Con este email entrás."</div>
+            </AccountRow>
+            <AccountRow icon="key" label="Contraseña"
+                action=change_btn(Signal::derive(move || if has_password.get() { "Cambiar" } else { "Elegir" }), pw_dialog)>
+                {move || if has_password.get() {
+                    view! {
+                        <div class="tracking-widest">"••••••••"</div>
+                        <div class="text-xs text-base-content/60">"Si te la olvidás, te mandamos un código por email."</div>
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="text-base-content/50">"Sin contraseña"</div>
+                        <div class="text-xs text-base-content/60">"Hoy entrás con un código por email. Elegí una y entrás directo."</div>
+                    }.into_any()
+                }}
+            </AccountRow>
         </section>
+        {move || notice.get().map(|n| view! { <div class="pl-1"><FieldNote ok=true text=n/></div> })}
+        <section class="rounded-2xl border border-base-300 bg-base-100">
+            <AccountRow icon="log-out" label="Salir"
+                action=view! {
+                    <button type="button" class="btn btn-outline btn-sm border-red-200 bg-base-100 text-red-700 hover:border-red-300 hover:bg-red-50"
+                        on:click=move |_| { out.dispatch(()); }>"Salir"</button>
+                }.into_any()>
+                "Cerrar tu cuenta en esta compu"
+            </AccountRow>
+        </section>
+        <NameDialog dialog=name_dialog saved_name/>
+        <PasswordDialog dialog=pw_dialog has_password notice/>
+    }
+}
+
+#[component]
+fn NameDialog(
+    dialog: NodeRef<leptos::html::Dialog>,
+    saved_name: RwSignal<String>,
+) -> impl IntoView {
+    let name = RwSignal::new(saved_name.get_untracked());
+    let problem = RwSignal::new(None::<String>);
+    let save = Action::new(|n: &String| save_name(n.clone()));
+    Effect::new(move |_| match save.value().get() {
+        Some(Ok(n)) => {
+            saved_name.set(n.clone());
+            name.set(n);
+            close_modal(dialog);
+            // Recarga para que el nombre nuevo se vea también en el menú del costado.
+            let _ = window().location().reload();
+        }
+        Some(Err(_)) => problem.set(Some(CONNECTION.into())),
+        None => {}
+    });
+    view! {
+        <dialog node_ref=dialog class="modal" aria-labelledby="nombre-titulo"
+            on:close=move |_| { problem.set(None); name.set(saved_name.get_untracked()); }>
+            <div class="modal-box max-w-md">
+                <form class="flex flex-col gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
+                    ev.prevent_default();
+                    problem.set(None);
+                    save.dispatch(name.get_untracked());
+                }>
+                    <h2 id="nombre-titulo" class="text-xl font-extrabold">"Cambiar tu nombre"</h2>
+                    <label class="flex flex-col gap-1.5">
+                        <span class="text-sm font-semibold">"¿Cómo te llamás?"</span>
+                        <input type="text" class="input w-full" autocomplete="given-name"
+                            maxlength=domain::ACCOUNT_NAME_MAX.to_string()
+                            prop:value=move || name.get()
+                            on:input=move |ev| name.set(event_target_value(&ev))/>
+                    </label>
+                    {move || problem.get().map(|p| view! { <FieldNote ok=false text=p/> })}
+                    <div class="flex justify-end gap-2">
+                        <button type="button" class="btn btn-ghost" on:click=move |_| close_modal(dialog)>"Cancelar"</button>
+                        <button type="submit" class="btn btn-primary" disabled=move || save.pending().get()>
+                            {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
+    }
+}
+
+#[component]
+fn PasswordDialog(
+    dialog: NodeRef<leptos::html::Dialog>,
+    has_password: RwSignal<bool>,
+    notice: RwSignal<Option<String>>,
+) -> impl IntoView {
+    let current = RwSignal::new(String::new());
+    let new = RwSignal::new(String::new());
+    let problem = RwSignal::new(None::<String>);
+    let change = Action::new(|(c, n): &(String, String)| change_password(c.clone(), n.clone()));
+    Effect::new(move |prev: Option<()>| {
+        current.track();
+        new.track();
+        if prev.is_some() {
+            problem.set(None);
+        }
+    });
+    Effect::new(move |_| match change.value().get() {
+        Some(Ok(PasswordChange::Done)) => {
+            has_password.set(true);
+            notice.set(Some(
+                "Listo, tu contraseña cambió. Cerramos tu cuenta en las otras compus y celulares."
+                    .into(),
+            ));
+            close_modal(dialog);
+        }
+        Some(Ok(PasswordChange::WrongCurrent)) => {
+            problem.set(Some("La contraseña actual no es esa.".into()))
+        }
+        Some(Ok(PasswordChange::Weak { reason })) => problem.set(Some(reason)),
+        Some(Err(_)) => problem.set(Some(CONNECTION.into())),
+        None => {}
+    });
+    view! {
+        <dialog node_ref=dialog class="modal" aria-labelledby="clave-titulo"
+            on:close=move |_| { current.set(String::new()); new.set(String::new()); problem.set(None); }>
+            <div class="modal-box max-w-md">
+                <form class="flex flex-col gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
+                    ev.prevent_default();
+                    problem.set(None);
+                    change.dispatch((current.get_untracked(), new.get_untracked()));
+                }>
+                    <h2 id="clave-titulo" class="text-xl font-extrabold">
+                        {move || if has_password.get() { "Cambiar contraseña" } else { "Elegir contraseña" }}
+                    </h2>
+                    {move || has_password.get().then(|| view! {
+                        <PasswordField value=current label="Contraseña actual" autocomplete="current-password"/>
+                    })}
+                    <PasswordField value=new label="Contraseña nueva" autocomplete="new-password" meter=true/>
+                    {move || problem.get().map(|p| view! { <FieldNote ok=false text=p/> })}
+                    <p class="text-sm text-base-content/60">"Al cambiarla, cerramos tu cuenta en las otras compus y celulares."</p>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" class="btn btn-ghost" on:click=move |_| close_modal(dialog)>"Cancelar"</button>
+                        <button type="submit" class="btn btn-primary" disabled=move || change.pending().get()>
+                            {move || if change.pending().get() { "Guardando…" } else { "Guardar" }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
     }
 }
 
