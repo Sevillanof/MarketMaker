@@ -8,7 +8,8 @@
 //!   igual a la que está cargada en la aplicación.
 //! - `MP_PUBLIC_URL` (opcional): dirección pública `https://…` de este
 //!   servidor (por ejemplo un túnel de cloudflared) para los avisos de pago.
-//!   Sin ella, el pago se confirma cuando el comprador vuelve a la tienda.
+//!   Sin ella se usa la de `MP_REDIRECT_URL` si es https (producción); si
+//!   tampoco, el pago se confirma cuando el comprador vuelve a la tienda.
 //! - `MP_TEST=1`: pide credenciales de prueba al vincular.
 
 use axum::extract::{Path, Query, State};
@@ -41,14 +42,25 @@ fn env(name: &str) -> Option<String> {
 
 /// La configuración, si está completa.
 pub fn config() -> Option<Config> {
+    let redirect_url =
+        env("MP_REDIRECT_URL").unwrap_or_else(|| "http://localhost:3000/mp/vincular".into());
+    // Sin MP_PUBLIC_URL, si la plataforma ya está en https (producción) los
+    // avisos van a esa misma dirección. Sin avisos, un pago que se aprueba
+    // después (efectivo, revisión) o un comprador que cierra la pestaña antes
+    // de volver dejaría el pedido sin entrar nunca.
+    let public_url = env("MP_PUBLIC_URL")
+        .or_else(|| {
+            reqwest::Url::parse(&redirect_url)
+                .ok()
+                .map(|u| u.origin().ascii_serialization())
+        })
+        .filter(|u| u.starts_with("https://"))
+        .map(|u| u.trim_end_matches('/').to_string());
     Some(Config {
         client_id: env("MP_CLIENT_ID")?,
         client_secret: env("MP_CLIENT_SECRET")?,
-        redirect_url: env("MP_REDIRECT_URL")
-            .unwrap_or_else(|| "http://localhost:3000/mp/vincular".into()),
-        public_url: env("MP_PUBLIC_URL")
-            .filter(|u| u.starts_with("https://"))
-            .map(|u| u.trim_end_matches('/').to_string()),
+        redirect_url,
+        public_url,
         test: env("MP_TEST").as_deref() == Some("1"),
         // Se pueden cambiar para probar sin el Mercado Pago real.
         auth_url: env("MP_AUTH_URL").unwrap_or_else(|| "https://auth.mercadopago.com.ar".into()),
