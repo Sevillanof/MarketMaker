@@ -235,7 +235,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                     <fieldset class="fieldset">
                         <label class="fieldset-legend" for="s-instagram">"Instagram " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
                         <label class="input w-full"><span class="text-base-content/60">"@"</span>
-                            <input id="s-instagram" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="lahuerta"
+                            <input id="s-instagram" autocapitalize="none" spellcheck="false" placeholder="lahuerta"
                                 aria-invalid=move || invalid("instagram")().to_string()
                                 prop:value=move || instagram.get()
                                 on:input=move |ev| { instagram.set(event_target_value(&ev)); dirty(); }/>
