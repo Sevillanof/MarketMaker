@@ -123,8 +123,14 @@ pub(crate) fn NewStore(
     });
 
     let create = Action::new(|(n, s): &(String, String)| create_store(n.clone(), s.clone()));
+    let opening = RwSignal::new(false);
+    let busy = move || create.pending().get() || opening.get();
     Effect::new(move |_| match create.value().get() {
-        Some(Ok(NewStoreOutcome::Created { open })) => go(&open),
+        Some(Ok(NewStoreOutcome::Created { open })) => {
+            // Sigue diciendo "Creando tu tienda…" hasta que abre el editor.
+            opening.set(true);
+            go(&open)
+        }
         Some(Ok(NewStoreOutcome::Problem(p))) => {
             if p.contains("nombre") {
                 name_error.set(Some(p));
@@ -240,10 +246,17 @@ pub(crate) fn NewStore(
                     {on_cancel.map(|cancel| view! {
                         <button class="btn btn-ghost" type="button" on:click=move |_| cancel.run(())>"Cancelar"</button>
                     })}
-                    <button class="btn btn-primary" type="submit" disabled=move || create.pending().get()>
-                        {move || if create.pending().get() { "Creando tu tienda…" } else { "Crear y empezar a editar" }}
+                    <button class="btn btn-primary" type="submit" disabled=busy>
+                        {move || if busy() {
+                            view! { <span class="loading loading-spinner loading-sm"></span>"Creando tu tienda…" }.into_any()
+                        } else {
+                            view! { "Crear y empezar a editar" }.into_any()
+                        }}
                     </button>
                 </div>
+                {move || busy().then(|| view! {
+                    <p role="status" class="text-sm text-base-content/70">"Estamos preparando tu tienda y su dirección segura. Puede tardar unos segundos."</p>
+                })}
         </form>
     }
 }
