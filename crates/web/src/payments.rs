@@ -25,7 +25,7 @@ pub async fn mp_connect(slug: String) -> Result<String, ServerFnError> {
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
     let c = crate::mp::config()
-        .ok_or_else(|| ServerFnError::new("Falta configurar Mercado Pago en MarketMaker."))?;
+        .ok_or_else(|| ServerFnError::new("Los cobros con Mercado Pago todavía no están disponibles."))?;
     let state = crate::mp::new_state();
     db::mp::save_state(&pool()?, tenant.id, &state)
         .await
@@ -85,7 +85,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     let problem = RwSignal::new(query.with_untracked(|q| {
         q.get("error").map(|e| match e.as_str() {
             "cancelado" => "No se vinculó: cancelaste en Mercado Pago.".to_string(),
-            "configuracion" => "Falta configurar Mercado Pago en MarketMaker.".to_string(),
+            "configuracion" => "Los cobros con Mercado Pago todavía no están disponibles.".to_string(),
             _ => "No pudimos vincular tu cuenta. Probá de nuevo en un rato.".to_string(),
         })
     }));
@@ -142,7 +142,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                 }.into_any(),
                 None if !info.configured => view! {
                     <h2 class="card-title">"Cobrá tus ventas con Mercado Pago"</h2>
-                    <p class="text-sm text-base-content/75">"Falta configurar la aplicación de Mercado Pago de MarketMaker (MP_CLIENT_ID y MP_CLIENT_SECRET en .env.local). Mientras tanto, los pedidos se pagan coordinando con el comprador."</p>
+                    <p class="text-sm text-base-content/75">"Los cobros con Mercado Pago todavía no están disponibles. Mientras tanto, los pedidos se pagan coordinando con el comprador."</p>
                 }.into_any(),
                 None => view! {
                     <h2 class="card-title">"Cobrá tus ventas con Mercado Pago"</h2>
