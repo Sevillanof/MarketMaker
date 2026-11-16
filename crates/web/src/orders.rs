@@ -377,7 +377,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
     };
     let where_ = match order.delivery {
         Delivery::Pickup => "Lo retira en el local".to_string(),
-        Delivery::Shipping => format!("{}, {} ({})", order.address, order.city, order.postal_code),
+        Delivery::Shipping => domain::ship_address(&order.address, &order.city, &order.postal_code),
     };
     let shipping_text = match order.delivery {
         Delivery::Pickup => "Gratis".to_string(),

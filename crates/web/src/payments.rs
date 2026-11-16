@@ -34,7 +34,7 @@ pub async fn save_payment_options(
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
     let mut options = options;
-    if let Some(problem) = domain::tidy_payment_options(&mut options).into_iter().next() {
+    if let Some(problem) = domain::tidy_payment_options(&mut options) {
         return Ok(Some(problem));
     }
     db::orders::save_payment_options(&pool()?, tenant.id, &options)
@@ -76,7 +76,7 @@ pub fn PaymentsPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Cobros · MarketMaker"/>
         <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Payments>
-            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
+            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-10">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-72 w-full"/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -92,22 +92,43 @@ pub fn PaymentsPage() -> impl IntoView {
     .into_any()
 }
 
-fn mp_logo() -> impl IntoView {
+/// Ícono redondo de una forma de cobro.
+fn method_icon(kind: &'static str) -> impl IntoView {
+    let (bg, path) = match kind {
+        "mp" => (
+            "bg-[#009ee3] text-white rounded-full",
+            "M4 13c2.5 2 5 2 8 0s5.5-2 8 0",
+        ),
+        "transfer" => (
+            "bg-base-200 rounded-field",
+            "M3 10h18M5 10v8m4-8v8m6-8v8m4-8v8M3 21h18M12 3l9 5H3z",
+        ),
+        _ => (
+            "bg-base-200 rounded-field",
+            "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
+        ),
+    };
+    let width = if kind == "mp" { "2.6" } else { "2" };
     view! {
-        <span class="inline-flex items-center gap-2 font-bold text-[#009ee3]">
-            <span class="grid h-8 w-8 place-items-center rounded-full bg-[#009ee3] text-white" aria-hidden="true">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13c2.5 2 5 2 8 0s5.5-2 8 0"/></svg>
-            </span>
-            "Mercado Pago"
+        <span class=format!("grid h-10 w-10 shrink-0 place-items-center {bg}") aria-hidden="true">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=width stroke-linecap="round" stroke-linejoin="round"><path d=path/></svg>
         </span>
     }
+}
+
+/// Cómo se guardan las otras formas de cobro (se guardan solas al tocar).
+#[derive(Clone, Copy, PartialEq)]
+enum Saving {
+    Idle,
+    Busy,
+    Done,
 }
 
 #[component]
 fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     let query = use_query_map();
     let link = RwSignal::new(info.link);
-    let problem = RwSignal::new(query.with_untracked(|q| {
+    let mp_problem = RwSignal::new(query.with_untracked(|q| {
         q.get("error").map(|e| match e.as_str() {
             "cancelado" => "No se vinculó: cancelaste en Mercado Pago.".to_string(),
             "configuracion" => {
@@ -121,7 +142,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     let connect = Action::new(move |_: &()| mp_connect(slug.get_value()));
     Effect::new(move |_| match connect.value().get() {
         Some(Ok(url)) => _ = window().location().set_href(&url),
-        Some(Err(e)) => problem.set(Some(error_text(&e))),
+        Some(Err(e)) => mp_problem.set(Some(error_text(&e))),
         None => {}
     });
     let confirm = RwSignal::new(false);
@@ -131,127 +152,197 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
             link.set(None);
             confirm.set(false);
         }
-        Some(Err(e)) => problem.set(Some(error_text(&e))),
+        Some(Err(e)) => mp_problem.set(Some(error_text(&e))),
         None => {}
     });
     let busy =
         move || connect.pending().get() || connect.value().with(|v| matches!(v, Some(Ok(_))));
-    view! {
-        <div class="flex flex-wrap items-center gap-3">
-            <div class="grow">
-                <h1 class="text-3xl font-bold">"Cobros"</h1>
-                <p class="text-sm text-base-content/70">{info.store_name}</p>
-            </div>
-        </div>
-        {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
-        <div class="card bg-base-100 shadow-sm"><div class="card-body items-start gap-3">
-            {mp_logo()}
-            {move || match link.get() {
-                Some(l) => view! {
-                    {just_linked.then(|| view! { <div role="status" class="alert alert-success alert-soft w-full text-sm">"¡Listo! Tu tienda ya cobra con Mercado Pago."</div> })}
-                    <h2 class="card-title text-success">"✓ Cuenta vinculada"</h2>
-                    <p class="text-sm text-base-content/75">
-                        {format!("Cuenta de Mercado Pago n.º {} · desde el {}", l.user_id, domain::order_time_ar(&l.linked_at).split(' ').next().unwrap_or(""))}
-                        {(!l.live).then(|| view! { <span class="badge badge-warning badge-sm ml-2">"de prueba"</span> })}
-                    </p>
-                    <p class="text-sm text-base-content/75">"Tus compradores pagan en Mercado Pago y la plata va directo a tu cuenta. Cuando un pago se aprueba, el pedido pasa solo a \"Para preparar\"."</p>
-                    {move || if confirm.get() {
-                        view! {
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="text-sm">"¿Desvincular? Tu tienda deja de cobrar online."</span>
-                                <button class="btn btn-error btn-sm" disabled=move || unlink.pending().get() on:click=move |_| { unlink.dispatch(()); }>"Sí, desvincular"</button>
-                                <button class="btn btn-ghost btn-sm" on:click=move |_| confirm.set(false)>"No"</button>
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! { <button class="btn btn-ghost btn-sm" on:click=move |_| confirm.set(true)>"Desvincular"</button> }.into_any()
-                    }}
-                }.into_any(),
-                None if !info.configured => view! {
-                    <h2 class="card-title">"Cobrá tus ventas con Mercado Pago"</h2>
-                    <p class="text-sm text-base-content/75">"Los cobros con Mercado Pago todavía no están disponibles. Mientras tanto, podés cobrar con transferencia o coordinando con el comprador."</p>
-                }.into_any(),
-                None => view! {
-                    <h2 class="card-title">"Cobrá tus ventas con Mercado Pago"</h2>
-                    <p class="text-sm text-base-content/75">"La plata va directo a tu cuenta. Mercado Pago te cobra una comisión por cada venta; MarketMaker no cobra nada."</p>
-                    <button class="btn btn-primary mt-1" disabled=busy on:click=move |_| { problem.set(None); connect.dispatch(()); }>
-                        {move || if busy() { "Abriendo Mercado Pago…" } else { "Vincular mi cuenta" }}
-                    </button>
-                    <p class="text-xs text-base-content/60">"Te lleva a Mercado Pago para iniciar sesión y aceptar. Tarda un minuto."</p>
-                }.into_any(),
-            }}
-        </div></div>
-        <OtherMethods slug=slug.get_value() options=info.options/>
-    }
-}
 
-/// Transferencia y coordinar con el comprador: el pedido espera en "Esperando
-/// pago" hasta que el dueño toca "Ya me pagó".
-#[component]
-fn OtherMethods(slug: String, options: PaymentOptions) -> impl IntoView {
-    let transfer = RwSignal::new(options.transfer);
-    let info = RwSignal::new(options.transfer_info);
-    let coordinate = RwSignal::new(options.coordinate);
-    let saved = RwSignal::new(false);
-    let problem = RwSignal::new(None::<String>);
-    let slug = StoredValue::new(slug);
-    let save = Action::new(move |o: &PaymentOptions| save_payment_options(slug.get_value(), o.clone()));
+    // Transferencia y coordinar: se guardan solas al tocar el interruptor o
+    // al salir de un campo.
+    let o = info.options;
+    let transfer = RwSignal::new(o.transfer);
+    let alias = RwSignal::new(o.transfer_alias);
+    let holder = RwSignal::new(o.transfer_holder);
+    let coordinate = RwSignal::new(o.coordinate);
+    let saving = RwSignal::new(Saving::Idle);
+    let alias_problem = RwSignal::new(None::<String>);
+    let save_problem = RwSignal::new(None::<String>);
+    let save =
+        Action::new(move |o: &PaymentOptions| save_payment_options(slug.get_value(), o.clone()));
     Effect::new(move |_| match save.value().get() {
-        Some(Ok(None)) => saved.set(true),
-        Some(Ok(Some(p))) => problem.set(Some(p)),
-        Some(Err(e)) => problem.set(Some(error_text(&e))),
+        Some(Ok(None)) => saving.set(Saving::Done),
+        Some(Ok(Some(p))) => {
+            saving.set(Saving::Idle);
+            alias_problem.set(Some(p));
+        }
+        Some(Err(e)) => {
+            saving.set(Saving::Idle);
+            save_problem.set(Some(error_text(&e)));
+        }
         None => {}
     });
-    let changed = move || {
-        saved.set(false);
-        problem.set(None);
+    let save_now = move || {
+        save_problem.set(None);
+        let options = PaymentOptions {
+            transfer: transfer.get_untracked(),
+            transfer_alias: alias.get_untracked(),
+            transfer_holder: holder.get_untracked(),
+            coordinate: coordinate.get_untracked(),
+        };
+        // Transferencia sin alias: espera a que lo escriba (no se guarda a medias).
+        if options.transfer && options.transfer_alias.trim().is_empty() {
+            saving.set(Saving::Idle);
+            return false;
+        }
+        alias_problem.set(None);
+        saving.set(Saving::Busy);
+        save.dispatch(options);
+        true
     };
+    let none_active = move || link.with(|l| l.is_none()) && !transfer.get() && !coordinate.get();
+
     view! {
-        <form class="card bg-base-100 shadow-sm" on:submit=move |ev| {
-            ev.prevent_default();
-            save.dispatch(PaymentOptions {
-                transfer: transfer.get_untracked(),
-                transfer_info: info.get_untracked(),
-                coordinate: coordinate.get_untracked(),
-            });
-        }>
-            <div class="card-body items-start gap-3">
-                <h2 class="card-title">"Otras formas de cobro"</h2>
-                <p class="text-sm text-base-content/75">"El pedido queda en \"Esperando pago\" y guarda las unidades. Cuando cobres, tocá \"Ya me pagó\" y pasa a \"Para preparar\". Si no lo marcás en 48 horas, se cancela solo y el stock vuelve."</p>
-                <label class="flex cursor-pointer items-center gap-3">
-                    <input type="checkbox" class="toggle toggle-primary" prop:checked=move || transfer.get()
-                        on:change=move |ev| { transfer.set(event_target_checked(&ev)); changed(); }/>
-                    <span class="font-semibold">"Transferencia"</span>
-                </label>
-                {move || transfer.get().then(|| view! {
-                    <fieldset class="fieldset w-full max-w-md">
-                        <label class="fieldset-legend" for="pay-transfer-info">"Adónde te transfieren"</label>
-                        <textarea id="pay-transfer-info" class="textarea w-full" rows="3" maxlength=domain::TRANSFER_INFO_MAX
-                            placeholder="Alias: mi.tienda.mp\nCBU o CVU: 0000003100000000000000\nTitular: Nombre Apellido"
-                            aria-invalid=move || problem.get().is_some().to_string()
-                            aria-describedby=move || problem.get().is_some().then_some("pay-transfer-error")
-                            prop:value=move || info.get()
-                            on:input=move |ev| { info.set(event_target_value(&ev)); changed(); }></textarea>
-                        <p class="label">"Lo ve el comprador al confirmar el pedido y en el email."</p>
-                        {move || problem.get().map(|p| view! { <p id="pay-transfer-error" class="label text-error">{p}</p> })}
-                    </fieldset>
-                })}
-                <label class="flex cursor-pointer items-center gap-3">
-                    <input type="checkbox" class="toggle toggle-primary" prop:checked=move || coordinate.get()
-                        on:change=move |ev| { coordinate.set(event_target_checked(&ev)); changed(); }/>
-                    <span class="font-semibold">"Coordinar el pago con el comprador"</span>
-                </label>
-                <p class="text-sm text-base-content/60">"Le escribís por WhatsApp y acuerdan cómo paga (efectivo al retirar, por ejemplo)."</p>
-                {move || (!transfer.get() && problem.get().is_some()).then(|| view! {
-                    <p class="text-sm text-error">{problem.get()}</p>
-                })}
-                <div class="flex items-center gap-3">
-                    <button type="submit" class="btn btn-primary" disabled=move || save.pending().get()>
-                        {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
-                    </button>
-                    <span role="status" class="text-sm text-success">{move || saved.get().then_some("Guardado")}</span>
-                </div>
+        <div class="flex flex-wrap items-end gap-3">
+            <div class="grow">
+                <h1 class="text-3xl font-bold">"Cobros"</h1>
+                <p class="text-base-content/70">"Elegí cómo te pueden pagar. Podés tener más de una."</p>
             </div>
-        </form>
+            <span role="status" class="text-sm font-semibold text-success">
+                {move || match saving.get() {
+                    Saving::Busy => view! { <span class="text-base-content/60">"Guardando…"</span> }.into_any(),
+                    Saving::Done => view! { <span>"✓ Guardado"</span> }.into_any(),
+                    Saving::Idle => ().into_any(),
+                }}
+            </span>
+        </div>
+        {move || none_active().then(|| view! {
+            <p class="-mt-2 text-sm text-warning-content/90"><span class="font-semibold text-warning">"●"</span>" Activá al menos una forma de cobro para que tu tienda pueda vender."</p>
+        })}
+        {move || save_problem.get().map(|p| view! { <p class="-mt-2 text-sm text-error">{p}</p> })}
+        <div class="card divide-y divide-base-200 bg-base-100 shadow-sm">
+            // Mercado Pago
+            <div class="flex items-start gap-4 px-6 py-5">
+                {method_icon("mp")}
+                <div class="min-w-0 flex-1">
+                    <h2 class="font-bold" id="pay-mp">"Mercado Pago"</h2>
+                    {move || match link.get() {
+                        Some(l) => view! {
+                            <p class="text-sm text-base-content/70">
+                                {format!("Cuenta n.º {} · vinculada el {}", l.user_id, domain::order_time_ar(&l.linked_at).split(' ').next().unwrap_or(""))}
+                                {(!l.live).then(|| view! { <span class="badge badge-warning badge-sm ml-2">"de prueba"</span> })}
+                            </p>
+                            {just_linked.then(|| view! { <p class="mt-1 text-sm text-success">"Tu tienda ya cobra con Mercado Pago."</p> })}
+                        }.into_any(),
+                        None => view! {
+                            <p class="text-sm text-base-content/70">"Tarjeta, débito o dinero en cuenta. La plata va directo a tu cuenta."</p>
+                        }.into_any(),
+                    }}
+                    {move || (link.with(|l| l.is_some()) && confirm.get()).then(|| view! {
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            <span class="text-sm">"¿Desvincular? Tu tienda deja de cobrar con Mercado Pago."</span>
+                            <button class="btn btn-error btn-sm" disabled=move || unlink.pending().get() on:click=move |_| { unlink.dispatch(()); }>"Sí, desvincular"</button>
+                            <button class="btn btn-ghost btn-sm" on:click=move |_| confirm.set(false)>"No"</button>
+                        </div>
+                    })}
+                    {move || mp_problem.get().map(|e| view! { <p class="mt-1 text-sm text-error">{e}</p> })}
+                </div>
+                {move || match link.get() {
+                    Some(_) => view! {
+                        <div class="flex shrink-0 items-center gap-2">
+                            <span class="badge badge-success badge-soft">"Vinculada"</span>
+                            {move || (!confirm.get()).then(|| view! {
+                                <button class="btn btn-ghost btn-sm" on:click=move |_| confirm.set(true)>"Desvincular"</button>
+                            })}
+                        </div>
+                    }.into_any(),
+                    None if !info.configured => view! {
+                        <span class="badge badge-ghost shrink-0">"Próximamente"</span>
+                    }.into_any(),
+                    None => view! {
+                        <button class="btn btn-sm shrink-0 border-0 bg-[#009ee3] text-white hover:bg-[#008ac6]" disabled=busy
+                            on:click=move |_| { mp_problem.set(None); connect.dispatch(()); }>
+                            {move || if busy() { "Abriendo…" } else { "Vincular cuenta" }}
+                        </button>
+                    }.into_any(),
+                }}
+            </div>
+            // Transferencia
+            <div class="flex items-start gap-4 px-6 py-5">
+                {method_icon("transfer")}
+                <div class="min-w-0 flex-1">
+                    <h2 class="font-bold" id="pay-transfer">"Transferencia"</h2>
+                    <p class="text-sm text-base-content/70" id="pay-transfer-desc">"Te transfieren a tu cuenta bancaria o virtual."</p>
+                    {move || transfer.get().then(|| view! {
+                        <div class="mt-3 grid max-w-xl gap-x-3 sm:grid-cols-2">
+                            <fieldset class="fieldset py-0">
+                                <label class="fieldset-legend" for="pay-alias">"Alias, CBU o CVU"</label>
+                                <input id="pay-alias" class="input w-full" class:input-error=move || alias_problem.get().is_some()
+                                    autocomplete="off" spellcheck="false" maxlength=domain::TRANSFER_ALIAS_MAX
+                                    placeholder="mi.tienda.mp"
+                                    aria-invalid=move || alias_problem.get().is_some().to_string()
+                                    aria-describedby=move || alias_problem.get().is_some().then_some("pay-alias-error")
+                                    prop:value=move || alias.get()
+                                    on:input=move |ev| { alias.set(event_target_value(&ev)); alias_problem.set(None); }
+                                    on:change=move |_| {
+                                        if !save_now() {
+                                            alias_problem.set(Some("Escribí tu alias, CBU o CVU para activar la transferencia.".into()));
+                                        }
+                                    }/>
+                                {move || alias_problem.get().map(|p| view! { <p id="pay-alias-error" class="label text-error">{p}</p> })}
+                            </fieldset>
+                            <fieldset class="fieldset py-0">
+                                <label class="fieldset-legend" for="pay-holder">"Titular de la cuenta "<span class="font-normal text-base-content/60">"(opcional)"</span></label>
+                                <input id="pay-holder" class="input w-full" autocomplete="off" maxlength=domain::TRANSFER_HOLDER_MAX
+                                    placeholder="Nombre y apellido"
+                                    prop:value=move || holder.get()
+                                    on:input=move |ev| holder.set(event_target_value(&ev))
+                                    on:change=move |_| { save_now(); }/>
+                            </fieldset>
+                        </div>
+                        <p class="mt-1 text-xs text-base-content/60">
+                            {move || if alias.with(|a| a.trim().is_empty()) && alias_problem.get().is_none() {
+                                "Escribí tu alias, CBU o CVU para activar la transferencia."
+                            } else {
+                                "El comprador los ve al confirmar el pedido."
+                            }}
+                        </p>
+                    })}
+                </div>
+                <input type="checkbox" role="switch" class="toggle toggle-primary mt-1 shrink-0"
+                    aria-labelledby="pay-transfer" aria-describedby="pay-transfer-desc"
+                    prop:checked=move || transfer.get()
+                    on:change=move |ev| {
+                        let on = event_target_checked(&ev);
+                        transfer.set(on);
+                        if !save_now() && on {
+                            // Falta el alias: se guarda cuando lo escriba.
+                            request_animation_frame(|| {
+                                use leptos::wasm_bindgen::JsCast;
+                                if let Some(el) = document().get_element_by_id("pay-alias")
+                                    .and_then(|e| e.dyn_into::<leptos::web_sys::HtmlElement>().ok()) {
+                                    _ = el.focus();
+                                }
+                            });
+                        }
+                    }/>
+            </div>
+            // Coordinar
+            <div class="flex items-start gap-4 px-6 py-5">
+                {method_icon("coordinate")}
+                <div class="min-w-0 flex-1">
+                    <h2 class="font-bold" id="pay-coordinate">"Acordar con el comprador"</h2>
+                    <p class="text-sm text-base-content/70" id="pay-coordinate-desc">"Le escribís por WhatsApp y arreglan cómo paga, por ejemplo efectivo al retirar."</p>
+                </div>
+                <input type="checkbox" role="switch" class="toggle toggle-primary mt-1 shrink-0"
+                    aria-labelledby="pay-coordinate" aria-describedby="pay-coordinate-desc"
+                    prop:checked=move || coordinate.get()
+                    on:change=move |ev| { coordinate.set(event_target_checked(&ev)); save_now(); }/>
+            </div>
+        </div>
+        <p class="flex gap-2 rounded-box border border-base-200 bg-base-100/60 px-4 py-3 text-sm text-base-content/70">
+            <span aria-hidden="true">"ⓘ"</span>
+            <span>"Con transferencia o acordado, el pedido espera en "<b>"Pedidos"</b>" hasta que toques "<b>"\"Ya me pagó\""</b>". Si pasan 48 horas sin pago, se cancela solo."</span>
+        </p>
     }
 }
