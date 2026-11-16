@@ -79,11 +79,11 @@ async fn never_goes_into_the_local_network() {
     let f = media::Fetcher::new(false).unwrap();
     let err = f.fetch(&format!("{base}/foto.png")).await.unwrap_err();
     assert!(
-        err.contains("puerto") || err.contains("red privada"),
+        err.contains("no se puede usar") || err.contains("red privada"),
         "{err}"
     );
     let err = f.fetch("https://x.com:8080/foto.png").await.unwrap_err();
-    assert!(err.contains("puerto"), "{err}");
+    assert!(err.contains("no se puede usar"), "{err}");
     let err = f.fetch("http://127.0.0.1/foto.png").await.unwrap_err();
     assert!(err.contains("red privada"), "{err}");
     let err = f.fetch("http://localhost/foto.png").await.unwrap_err();
