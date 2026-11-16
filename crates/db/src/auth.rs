@@ -1,7 +1,8 @@
 //! Cuentas de dueño: códigos para entrar, sesiones y roles por tienda.
 //!
 //! Nada sensible se guarda en claro: de los códigos y de los tokens de sesión
-//! la base guarda solo el hash SHA-256.
+//! la base guarda solo el hash SHA-256, y de las contraseñas un hash Argon2id
+//! con sal propia.
 
 use rand::{Rng, RngCore};
 use sha2::{Digest, Sha256};
@@ -157,6 +158,8 @@ pub async fn create_session(pool: &PgPool, user_id: Uuid) -> sqlx::Result<String
 pub struct SessionUser {
     pub id: Uuid,
     pub email: String,
+    /// Cómo quiere que la llamemos ("" si no lo dijo).
+    pub name: String,
 }
 
 /// La cuenta de la sesión `token`, si sigue vigente. Usarla la extiende
@@ -166,7 +169,7 @@ pub async fn session_user(pool: &PgPool, token: &str) -> sqlx::Result<Option<Ses
         "UPDATE sessions s SET expires_at = now() + make_interval(days => $2)
          FROM users u
          WHERE s.token_hash = $1 AND s.expires_at > now() AND u.id = s.user_id
-         RETURNING u.id, u.email",
+         RETURNING u.id, u.email, u.name",
     )
     .bind(token_hash(token))
     .bind(SESSION_DAYS)
@@ -350,4 +353,136 @@ pub async fn redeem_handoff(
     .bind(tenant_id)
     .fetch_optional(pool)
     .await
+}
+
+// ---------------------------------------------------------------------------
+// Contraseñas
+
+/// Intentos fallidos seguidos antes de que la cuenta espere.
+pub const PASSWORD_ATTEMPTS: i32 = 8;
+/// Cuánto espera la cuenta después de [`PASSWORD_ATTEMPTS`] fallos.
+pub const LOCK_MINUTES: i32 = 15;
+
+/// Hash Argon2id de `password` con una sal al azar, en formato PHC
+/// (`$argon2id$v=19$...`). Tarda unas decenas de milisegundos a propósito:
+/// llamarlo fuera del hilo del servidor (`spawn_blocking`).
+pub fn hash_password(password: &str) -> String {
+    use argon2::password_hash::{PasswordHasher, SaltString};
+    let mut salt = [0u8; 16];
+    rand::rng().fill_bytes(&mut salt);
+    let salt = SaltString::encode_b64(&salt).expect("16 bytes es una sal válida");
+    argon2::Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .expect("Argon2 con parámetros por defecto no falla")
+        .to_string()
+}
+
+/// `password` corresponde a `hash` (hecho con [`hash_password`]).
+pub fn verify_password(password: &str, hash: &str) -> bool {
+    use argon2::password_hash::{PasswordHash, PasswordVerifier};
+    PasswordHash::new(hash).is_ok_and(|parsed| {
+        argon2::Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok()
+    })
+}
+
+/// Una cuenta buscada por email.
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+pub struct Account {
+    pub id: Uuid,
+    pub email: String,
+    pub name: String,
+    pub password_hash: Option<String>,
+    /// Minutos que faltan para poder volver a probar la contraseña (0 si puede).
+    pub locked_minutes: i32,
+}
+
+/// La cuenta de `email` (ya normalizado), si existe.
+pub async fn account_by_email(pool: &PgPool, email: &str) -> sqlx::Result<Option<Account>> {
+    sqlx::query_as::<_, Account>(
+        "SELECT id, email, name, password_hash,
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60))::int AS locked_minutes
+         FROM users WHERE email = $1",
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+}
+
+/// La cuenta `id`.
+pub async fn account_by_id(pool: &PgPool, id: Uuid) -> sqlx::Result<Option<Account>> {
+    sqlx::query_as::<_, Account>(
+        "SELECT id, email, name, password_hash,
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60))::int AS locked_minutes
+         FROM users WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Anota un intento fallido. Al llegar a [`PASSWORD_ATTEMPTS`] la cuenta
+/// espera [`LOCK_MINUTES`] y el contador vuelve a cero. Devuelve `true` si
+/// este intento la dejó esperando.
+pub async fn record_failed_login(pool: &PgPool, id: Uuid) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "UPDATE users SET
+           failed_logins = CASE WHEN failed_logins + 1 >= $2 THEN 0 ELSE failed_logins + 1 END,
+           locked_until  = CASE WHEN failed_logins + 1 >= $2
+                                THEN now() + make_interval(mins => $3) ELSE locked_until END
+         WHERE id = $1
+         RETURNING locked_until IS NOT NULL AND locked_until > now()",
+    )
+    .bind(id)
+    .bind(PASSWORD_ATTEMPTS)
+    .bind(LOCK_MINUTES)
+    .fetch_one(pool)
+    .await
+}
+
+/// Entró bien: se olvidan los intentos fallidos.
+pub async fn clear_failed_logins(pool: &PgPool, id: Uuid) -> sqlx::Result<()> {
+    sqlx::query("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Guarda la contraseña nueva (ya en hash) y destraba la cuenta.
+pub async fn set_password_hash(pool: &PgPool, id: Uuid, hash: &str) -> sqlx::Result<()> {
+    sqlx::query(
+        "UPDATE users SET password_hash = $2, failed_logins = 0, locked_until = NULL WHERE id = $1",
+    )
+    .bind(id)
+    .bind(hash)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Cambia el nombre de la cuenta.
+pub async fn set_name(pool: &PgPool, id: Uuid, name: &str) -> sqlx::Result<()> {
+    sqlx::query("UPDATE users SET name = $2 WHERE id = $1")
+        .bind(id)
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Cierra todas las sesiones de la cuenta menos la de `keep` (si hay).
+/// Se usa al cambiar la contraseña: quien la tenía robada queda afuera.
+pub async fn delete_other_sessions(
+    pool: &PgPool,
+    user_id: Uuid,
+    keep: Option<&str>,
+) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND token_hash IS DISTINCT FROM $2")
+        .bind(user_id)
+        .bind(keep.map(token_hash))
+        .execute(pool)
+        .await?;
+    Ok(())
 }

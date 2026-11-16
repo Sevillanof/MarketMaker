@@ -46,6 +46,7 @@ pub async fn load_panel_nav() -> Result<Option<PanelNav>, ServerFnError> {
         .collect();
     Ok(Some(PanelNav {
         email: user.email,
+        name: user.name,
         stores,
     }))
 }
@@ -285,10 +286,15 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
             </ul>
         </nav>
         <div class="flex items-center gap-2 border-t border-base-300 pt-3">
-            <span class="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-bold text-primary" aria-hidden="true">
-                {nav.email.chars().next().unwrap_or('?').to_uppercase().to_string()}
-            </span>
-            <span class="min-w-0 grow truncate text-sm text-base-content/70" title=nav.email.clone()>{nav.email.clone()}</span>
+            <a href="/cuenta" class="flex min-w-0 grow items-center gap-2 rounded-lg p-1 hover:bg-base-200" title="Mi cuenta">
+                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] text-sm font-bold text-white" aria-hidden="true">
+                    {nav.name.chars().next().or(nav.email.chars().next()).unwrap_or('?').to_uppercase().to_string()}
+                </span>
+                <span class="flex min-w-0 flex-col leading-tight">
+                    <span class="truncate text-sm font-semibold">{if nav.name.is_empty() { "Mi cuenta".to_string() } else { nav.name.clone() }}</span>
+                    <span class="truncate text-xs text-base-content/60">{nav.email.clone()}</span>
+                </span>
+            </a>
             <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Salir" title="Salir"
                 on:click=move |_| { out.dispatch(()); }>
                 <ui::Icon class="size-[18px]" name="log-out"/>

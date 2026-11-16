@@ -51,12 +51,14 @@ La primera compilación tarda unos minutos. Al arrancar, el servidor aplica las 
 
 ### Entrar y crear tiendas
 
-Por ahora solo pueden entrar los emails de una lista. Creá el archivo `.env.local` en la carpeta del proyecto (git lo ignora, así tu email no se sube a GitHub) con una línea `ALLOWED_EMAILS=tu@email.com` (varios, separados por comas). Desde la terminal: `echo 'ALLOWED_EMAILS=tu@email.com' >> .env.local`. El archivo se relee en cada intento, no hace falta reiniciar.
+Por ahora solo pueden crear cuenta los emails de una lista. Creá el archivo `.env.local` en la carpeta del proyecto (git lo ignora, así tu email no se sube a GitHub) con una línea `ALLOWED_EMAILS=tu@email.com` (varios, separados por comas). Desde la terminal: `echo 'ALLOWED_EMAILS=tu@email.com' >> .env.local`. El archivo se relee en cada intento, no hace falta reiniciar. Para abrir el registro a cualquiera, agregá `REGISTRO_ABIERTO=true`.
 
-1. Abrí <http://localhost:3000>, tocá **Entrar** y escribí tu email.
-2. Todavía no se mandan emails: el código de 6 números aparece en la terminal donde corre `cargo leptos watch` ("Código para entrar de …").
-3. En **Tus tiendas** ves las tuyas y podés crear otra: nombre y dirección (se sugiere sola). La tienda nueva arranca como copia de la de ejemplo y te lleva directo a su editor.
-4. **Editar** abre el editor de esa tienda sin pedir otro código. La sesión dura 30 días en ese navegador.
+1. Abrí <http://localhost:3000>: sin cuenta ves la página de inicio. Tocá **Entrar** o **Crear cuenta** y escribí tu email.
+2. Si ya tenés cuenta con contraseña, te la pide. Si sos nuevo, elegís tu nombre y una contraseña y te mandamos un código de 6 números para confirmar el email (solo esa vez). Las cuentas de antes, sin contraseña, eligen una con un código. En desarrollo, sin `RESEND_API_KEY`, el código aparece en la terminal donde corre `cargo leptos watch`.
+3. "¿Te la olvidaste?" manda un código para elegir otra contraseña. Después de 8 contraseñas mal seguidas la cuenta espera 15 minutos (o entrás con un código).
+4. En **Mi cuenta** (`/cuenta`, tocando tu nombre abajo a la izquierda del panel) cambiás tu nombre y tu contraseña, o salís.
+5. En **Tus tiendas** ves las tuyas y podés crear otra: nombre y dirección (se sugiere sola). La tienda nueva arranca como copia de la de ejemplo y te lleva directo a su editor.
+6. **Editar** abre el editor de esa tienda sin pedir otro código. La sesión dura 30 días en ese navegador.
 
 La primera persona habilitada que entra en `demo.localhost:3000` queda como dueña de la demo. En cada tienda, el dueño ve arriba la barra **Editar mi tienda** con **Tus tiendas** y **Salir**; los visitantes no ven nada de eso.
 

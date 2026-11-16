@@ -17,59 +17,41 @@ fn Shell(children: Children) -> impl IntoView {
     view! {
         <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">
             <header class="flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-3">
-                <a href="/" class="text-lg font-bold">"MarketMaker"</a>
+                <a href="/" class="text-lg"><crate::account::Logo/></a>
             </header>
             <div class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">{children()}</div>
         </div>
     }
 }
 
-/// `localhost:3000/`: sin cuenta, una invitación a entrar; con cuenta, tus
-/// tiendas y el formulario para crear una.
+/// `localhost:3000/`: sin cuenta, la página de inicio de MarketMaker; con
+/// cuenta, el panel de su tienda más nueva (o crear la primera).
 #[component]
 pub fn PlatformHome() -> impl IntoView {
     let me = Resource::new(|| (), |_| who_am_i());
     let stores = Resource::new(|| (), |_| my_stores());
     view! {
-        <leptos_meta::Title text="Tus tiendas · MarketMaker"/>
-        <Shell>
-            <Suspense fallback=|| view! { <ui::Skeleton class="h-48 w-full"/> }>
-                {move || Suspend::new(async move {
-                    match me.await.ok().flatten() {
-                        None => view! { <Welcome/> }.into_any(),
-                        Some(me) => {
-                            let stores = stores.await.unwrap_or_default();
-                            match stores.first() {
-                                // Con tiendas, el panel arranca en la más nueva.
-                                Some(s) => view! { <Redirect path=format!("/tienda/{}", s.slug)/> }.into_any(),
-                                None => view! { <FirstStore email=me.email/> }.into_any(),
-                            }
+        <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
+            {move || Suspend::new(async move {
+                match me.await.ok().flatten() {
+                    None => view! {
+                        <leptos_meta::Title text="MarketMaker · Armá tu tienda online"/>
+                        <crate::landing::Landing/>
+                    }.into_any(),
+                    Some(me) => {
+                        let stores = stores.await.unwrap_or_default();
+                        match stores.first() {
+                            // Con tiendas, el panel arranca en la más nueva.
+                            Some(s) => view! { <Redirect path=format!("/tienda/{}", s.slug)/> }.into_any(),
+                            None => view! {
+                                <leptos_meta::Title text="Tu primera tienda · MarketMaker"/>
+                                <Shell><FirstStore email=me.email/></Shell>
+                            }.into_any(),
                         }
                     }
-                })}
-            </Suspense>
-        </Shell>
-    }
-}
-
-#[component]
-fn Welcome() -> impl IntoView {
-    let demo = format!(
-        "{}://{}",
-        crate::site::scheme(),
-        domain::store_host(&crate::site::current_host(), "demo")
-    );
-    view! {
-        <div class="card bg-base-100 shadow-sm">
-            <div class="card-body gap-4">
-                <h1 class="card-title text-3xl">"Armá tu tienda online"</h1>
-                <p class="text-base-content/80">"Entrá con tu email para ver tus tiendas o crear una nueva. Por ahora MarketMaker es solo por invitación."</p>
-                <div class="flex flex-wrap gap-2">
-                    <a class="btn btn-primary" href="/entrar?volver=/">"Entrar"</a>
-                    <a class="btn btn-ghost" href=demo>"Ver una tienda de ejemplo"</a>
-                </div>
-            </div>
-        </div>
+                }
+            })}
+        </Suspense>
     }
 }
 
@@ -85,7 +67,7 @@ fn FirstStore(email: String) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <h1 class="grow text-3xl font-bold">"Creá tu primera tienda"</h1>
-            <span class="text-sm text-base-content/70">{email}</span>
+            <a class="text-sm text-base-content/70 hover:text-base-content" href="/cuenta" title="Mi cuenta">{email}</a>
             <button class="btn btn-ghost btn-sm" on:click=move |_| { out.dispatch(()); }>"Salir"</button>
         </div>
         <div class="card bg-base-100 shadow-sm"><div class="card-body">

@@ -186,6 +186,8 @@ pub struct NavStore {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PanelNav {
     pub email: String,
+    /// Cómo quiere que la llamemos ("" si no lo dijo).
+    pub name: String,
     pub stores: Vec<NavStore>,
 }
 

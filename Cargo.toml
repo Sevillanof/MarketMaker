@@ -47,6 +47,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 sha2 = "0.10"
 rand = "0.9"
 hex = "0.4"
+argon2 = "0.5"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "json", "uuid"] }
 
 # See https://github.com/leptos-rs/cargo-leptos for documentation of all the parameters.

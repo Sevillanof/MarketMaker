@@ -130,3 +130,84 @@ async fn first_person_owns_the_store_and_nobody_else(pool: PgPool) {
     );
     assert_eq!(role_in(&pool, tenant.id, ids[1]).await.unwrap(), None);
 }
+
+async fn new_account(pool: &PgPool, email: &str) -> uuid::Uuid {
+    let code = known_code(pool, email).await;
+    let CodeResult::Ok { user_id } = check_login_code(pool, email, &code).await.unwrap() else {
+        panic!("debía crear la cuenta");
+    };
+    user_id
+}
+
+#[test]
+fn passwords_are_hashed_with_salt() {
+    let a = hash_password("mate con facturas");
+    let b = hash_password("mate con facturas");
+    assert!(a.starts_with("$argon2id$"));
+    assert_ne!(a, b, "cada hash lleva su propia sal");
+    assert!(verify_password("mate con facturas", &a));
+    assert!(!verify_password("mate sin facturas", &a));
+    assert!(!verify_password("mate con facturas", "no es un hash"));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn accounts_start_without_password_and_get_one(pool: PgPool) {
+    let id = new_account(&pool, "ana@correo.com").await;
+    let acc = account_by_email(&pool, "ana@correo.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (acc.id, acc.password_hash.clone(), acc.locked_minutes),
+        (id, None, 0)
+    );
+    set_name(&pool, id, "Ana").await.unwrap();
+    set_password_hash(&pool, id, &hash_password("mate con facturas"))
+        .await
+        .unwrap();
+    let acc = account_by_id(&pool, id).await.unwrap().unwrap();
+    assert_eq!(acc.name, "Ana");
+    assert!(verify_password(
+        "mate con facturas",
+        acc.password_hash.as_deref().unwrap()
+    ));
+    assert_eq!(
+        account_by_email(&pool, "otro@correo.com").await.unwrap(),
+        None
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn too_many_wrong_passwords_lock_the_account(pool: PgPool) {
+    let id = new_account(&pool, "ana@correo.com").await;
+    for _ in 1..PASSWORD_ATTEMPTS {
+        assert!(!record_failed_login(&pool, id).await.unwrap());
+    }
+    assert!(record_failed_login(&pool, id).await.unwrap());
+    let acc = account_by_id(&pool, id).await.unwrap().unwrap();
+    assert!(acc.locked_minutes > 0 && acc.locked_minutes <= LOCK_MINUTES);
+    // Elegir contraseña nueva (con el código) la destraba.
+    set_password_hash(&pool, id, &hash_password("otra contraseña"))
+        .await
+        .unwrap();
+    assert_eq!(
+        account_by_id(&pool, id)
+            .await
+            .unwrap()
+            .unwrap()
+            .locked_minutes,
+        0
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn changing_password_closes_other_sessions(pool: PgPool) {
+    let id = new_account(&pool, "ana@correo.com").await;
+    let mine = create_session(&pool, id).await.unwrap();
+    let other = create_session(&pool, id).await.unwrap();
+    delete_other_sessions(&pool, id, Some(&mine)).await.unwrap();
+    assert!(session_user(&pool, &mine).await.unwrap().is_some());
+    assert!(session_user(&pool, &other).await.unwrap().is_none());
+    delete_other_sessions(&pool, id, None).await.unwrap();
+    assert!(session_user(&pool, &mine).await.unwrap().is_none());
+}

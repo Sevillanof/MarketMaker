@@ -334,7 +334,7 @@ pub fn login_code(to: &str, code: &str) -> Email {
     let html = frame(
         "MarketMaker",
         &format!(
-            r#"<h1 style="font-size:20px;margin:0 0 8px">Tu código para entrar</h1>
+            r#"<h1 style="font-size:20px;margin:0 0 8px">Tu código de MarketMaker</h1>
 <p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:12px 0">{}</p>
 <p style="margin:0;color:#52525b">Vence en {} minutos. Si no lo pediste, ignorá este email.</p>"#,
             esc(code),
@@ -343,10 +343,10 @@ pub fn login_code(to: &str, code: &str) -> Email {
     );
     Email {
         to: vec![to.to_string()],
-        subject: format!("{code} es tu código para entrar a MarketMaker"),
+        subject: format!("{code} es tu código de MarketMaker"),
         html,
         text: format!(
-            "Tu código para entrar a MarketMaker: {code}\nVence en {} minutos. Si no lo pediste, ignorá este email.\n",
+            "Tu código de MarketMaker: {code}\nVence en {} minutos. Si no lo pediste, ignorá este email.\n",
             db::auth::CODE_MINUTES
         ),
     }
