@@ -400,6 +400,11 @@ fn CartQty(
     } else {
         "min-w-8 border-x border-base-300 px-1 text-center font-semibold tabular-nums"
     };
+    // Llegó al stock: cuántas quedan (solo si la tienda cuenta el stock).
+    let at_stock = move || {
+        let max = id.with_value(|id| cart.limit(id));
+        (max < MAX_QTY && qty() >= max).then_some(max)
+    };
     let minus_label = {
         let name = name.clone();
         move || {
@@ -426,9 +431,19 @@ fn CartQty(
             </output>
             <button type="button" class=btn aria-label="Uno más"
                 disabled=move || { let max = id.with_value(|id| cart.limit(id)); qty() >= max }
-                title=move || { let max = id.with_value(|id| cart.limit(id)); (max < MAX_QTY && qty() >= max).then(|| format!("No quedan más (hay {max})")) }
+                title=move || at_stock().map(|max| format!("Quedan {max}, no podés agregar más"))
                 on:click=move |_| id.with_value(|id| cart.add(id, 1))>"+"</button>
         </div>
+        // En el carrito hay lugar para decirlo; en la tarjeta, solo el título.
+        {(!card).then(|| view! {
+            <p class="mk-stock-note order-last basis-full text-xs opacity-75 empty:hidden" aria-live="polite">
+                {move || at_stock().map(|max| if max == 1 {
+                    "Queda 1, no podés agregar más.".to_string()
+                } else {
+                    format!("Quedan {max}, no podés agregar más.")
+                })}
+            </p>
+        })}
     }
 }
 
@@ -701,7 +716,7 @@ fn CartRow(item: CartItem, cart: Cart) -> impl IntoView {
                             {unit}
                             {product.few_left().map(|t| view! { <span class="ml-2 font-semibold text-warning">{t}</span> })}
                         </p>
-                        <div class="mt-2 flex items-center gap-2">
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
                             <CartQty id name=name.clone() cart/>
                             <button type="button" class="btn btn-ghost btn-sm gap-1 text-base-content/70"
                                 aria-label=format!("Quitar {name} del carrito")

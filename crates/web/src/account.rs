@@ -428,11 +428,20 @@ fn SignInForm(next: String) -> impl IntoView {
     move || {
         match step.get() {
         Step::Email => view! {
-            <form class="flex flex-col gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
+            <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                 ev.prevent_default();
-                problem.set(None);
                 info.set(None);
-                lookup.dispatch(email.get_untracked());
+                let e = email.get_untracked();
+                if e.trim().is_empty() {
+                    problem.set(Some("Escribí tu email.".into()));
+                    return;
+                }
+                if !domain::looks_like_email(e.trim()) {
+                    problem.set(Some("El email no es válido. Revisalo (por ejemplo, ana@correo.com).".into()));
+                    return;
+                }
+                problem.set(None);
+                lookup.dispatch(e);
             }>
                 <h1 class="text-3xl font-extrabold tracking-tight">"Entrá o creá tu cuenta"</h1>
                 <p class="-mt-2 text-base-content/70">"Con el mismo email para las dos cosas."</p>
@@ -449,8 +458,12 @@ fn SignInForm(next: String) -> impl IntoView {
             </form>
         }.into_any(),
         Step::Password => view! {
-            <form class="flex flex-col gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
+            <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                 ev.prevent_default();
+                if password.get_untracked().is_empty() {
+                    problem.set(Some("Escribí tu contraseña.".into()));
+                    return;
+                }
                 problem.set(None);
                 login.dispatch((email.get_untracked(), password.get_untracked(), next.get_value()));
             }>
@@ -471,7 +484,7 @@ fn SignInForm(next: String) -> impl IntoView {
             </form>
         }.into_any(),
         Step::Create => view! {
-            <form class="flex flex-col gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
+            <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                 ev.prevent_default();
                 if let Some(reason) = domain::password_problem(&password.get_untracked()) {
                     problem.set(Some(reason));
@@ -503,8 +516,12 @@ fn SignInForm(next: String) -> impl IntoView {
                 CodeFor::Login => ("Revisá tu email", "Entrar"),
             };
             view! {
-                <form class="flex flex-col gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
+                <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                     ev.prevent_default();
+                    if code.get_untracked().trim().is_empty() {
+                        problem.set(Some("Escribí el código que te mandamos.".into()));
+                        return;
+                    }
                     problem.set(None);
                     let (e, c, n) = (email.get_untracked(), code.get_untracked(), next.get_value());
                     match purpose {

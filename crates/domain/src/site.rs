@@ -114,7 +114,8 @@ pub fn store_host(platform_host: &str, slug: &str) -> String {
 }
 
 /// La dirección de una tienda a partir de su nombre ("La Casa de Ana" →
-/// `lacasadeana`): sin tildes, solo letras, números y guiones, hasta 30.
+/// `la-casa-de-ana`): sin tildes, solo letras, números y guiones (los
+/// espacios y signos se vuelven un guion), hasta 30.
 pub fn slug_from_name(name: &str) -> String {
     let mut out = String::new();
     for c in name.trim().to_lowercase().chars() {
@@ -130,7 +131,7 @@ pub fn slug_from_name(name: &str) -> String {
         };
         if c.is_ascii_alphanumeric() {
             out.push(c);
-        } else if c == '-' && !out.ends_with('-') && !out.is_empty() {
+        } else if !out.ends_with('-') && !out.is_empty() {
             out.push('-');
         }
     }
@@ -254,6 +255,16 @@ pub struct StoreOverview {
     pub recent: Vec<crate::Order>,
 }
 
+/// Si una dirección de tienda está libre, mientras se escribe.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum SlugStatus {
+    Free,
+    /// La usa otra tienda; `suggestion` está libre.
+    Taken { suggestion: String },
+    /// No sirve como dirección: el motivo.
+    Problem(String),
+}
+
 /// Resultado de crear una tienda.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum NewStoreOutcome {
@@ -338,8 +349,8 @@ mod tests {
 
     #[test]
     fn slugs_from_names() {
-        assert_eq!(slug_from_name("La Casa de Ana"), "lacasadeana");
-        assert_eq!(slug_from_name("  Ñandú & Café "), "nanducafe");
+        assert_eq!(slug_from_name("La Casa de Ana"), "la-casa-de-ana");
+        assert_eq!(slug_from_name("  Ñandú & Café "), "nandu-cafe");
         assert_eq!(slug_from_name("mi-tienda--2"), "mi-tienda-2");
         assert_eq!(slug_from_name("¡¡!!"), "");
         assert_eq!(slug_from_name(&"a".repeat(40)).len(), 30);

@@ -46,19 +46,19 @@ pub async fn my_stores() -> Result<Vec<StoreCard>, ServerFnError> {
         .collect())
 }
 
-/// Una dirección libre parecida a `slug` (`ana`, `ana2`, `ana3`…).
+/// Una dirección libre parecida a `slug` (`ana`, `ana-2`, `ana-3`…).
 #[cfg(feature = "ssr")]
 async fn free_slug(pool: &db::Pool, slug: &str) -> Result<String, ServerFnError> {
     let base: String = if slug.len() < 3 {
         format!("{slug}tienda")
     } else {
-        slug.chars().take(27).collect()
+        slug.chars().take(26).collect::<String>().trim_end_matches('-').to_string()
     };
     for n in 1..1000 {
         let candidate = if n == 1 {
             base.clone()
         } else {
-            format!("{base}{n}")
+            format!("{base}-{n}")
         };
         if domain::store_slug_problem(&candidate).is_none()
             && !db::auth::slug_taken(pool, &candidate)
@@ -106,6 +106,37 @@ pub async fn create_store(name: String, slug: String) -> Result<NewStoreOutcome,
     Ok(NewStoreOutcome::Created {
         open: pass_url(&pool, user.id, &slug).await?,
     })
+}
+
+/// ¿Está libre la dirección `slug`? Para avisar mientras se escribe.
+#[server]
+pub async fn slug_status(slug: String) -> Result<domain::SlugStatus, ServerFnError> {
+    use domain::SlugStatus;
+    if crate::auth::current_user().await?.is_none() {
+        return Err(ServerFnError::new("Tenés que entrar con tu cuenta."));
+    }
+    // Cada tecla pregunta: 60 por minuto por conexión alcanza de sobra.
+    if !crate::limits::allow(
+        &format!("slug|{}", crate::limits::client_ip()),
+        60,
+        std::time::Duration::from_secs(60),
+    ) {
+        return Err(ServerFnError::new("Esperá un momento."));
+    }
+    let slug = slug.trim().to_lowercase();
+    if let Some(problem) = domain::store_slug_problem(&slug) {
+        return Ok(SlugStatus::Problem(problem.into()));
+    }
+    let pool = crate::server::pool()?;
+    if db::auth::slug_taken(&pool, &slug)
+        .await
+        .map_err(crate::server::internal)?
+    {
+        return Ok(SlugStatus::Taken {
+            suggestion: free_slug(&pool, &slug).await?,
+        });
+    }
+    Ok(SlugStatus::Free)
 }
 
 /// Enlace para abrir el editor de una tienda propia desde la plataforma.
