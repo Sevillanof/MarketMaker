@@ -45,7 +45,7 @@ pub fn config() -> Option<Config> {
         client_id: env("MP_CLIENT_ID")?,
         client_secret: env("MP_CLIENT_SECRET")?,
         redirect_url: env("MP_REDIRECT_URL")
-            .unwrap_or_else(|| "http://localhost:3000/mp/vuelta".into()),
+            .unwrap_or_else(|| "http://localhost:3000/mp/vincular".into()),
         public_url: env("MP_PUBLIC_URL")
             .filter(|u| u.starts_with("https://"))
             .map(|u| u.trim_end_matches('/').to_string()),
@@ -297,11 +297,11 @@ pub async fn check_payment(
     Ok(status)
 }
 
-/// `GET /mp/vuelta` (vuelve de vincular) y `POST /mp/aviso/{tienda}` (avisos
+/// `GET /mp/vincular` (vuelve de vincular) y `POST /mp/aviso/{tienda}` (avisos
 /// de pago de Mercado Pago).
 pub fn routes<S: Clone + Send + Sync + 'static>(pool: db::Pool) -> Router<S> {
     Router::new()
-        .route("/mp/vuelta", get(linked))
+        .route("/mp/vincular", get(linked))
         .route("/mp/aviso/{tenant}", post(notice))
         .with_state(pool)
 }
