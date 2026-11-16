@@ -433,7 +433,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
         <Card>
-            <div class="relative min-h-0 flex-1">
+            <div class="mk-card-img relative min-h-0 flex-1">
                 <div class="absolute inset-0">
                     <Image src=product.image_url.clone() alt=product.name.clone() fit/>
                 </div>

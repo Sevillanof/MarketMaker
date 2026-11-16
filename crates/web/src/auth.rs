@@ -288,13 +288,22 @@ pub async fn check_code(
     }
 }
 
-/// Cierra la sesión en este navegador.
+/// Sale de la cuenta: cierra todas sus sesiones, la de la plataforma y las
+/// de cada tienda (cada dirección tiene su propia cookie). Así, en una
+/// computadora compartida, nadie queda con el editor abierto.
 #[server]
 pub async fn sign_out() -> Result<(), ServerFnError> {
+    use crate::server::internal;
     if let Some(token) = session_token() {
-        db::auth::delete_session(&crate::server::pool()?, &token)
-            .await
-            .map_err(crate::server::internal)?;
+        let pool = crate::server::pool()?;
+        match db::auth::session_user(&pool, &token).await.map_err(internal)? {
+            Some(user) => db::auth::delete_other_sessions(&pool, user.id, None)
+                .await
+                .map_err(internal)?,
+            None => db::auth::delete_session(&pool, &token)
+                .await
+                .map_err(internal)?,
+        }
     }
     clear_session_cookie();
     Ok(())
@@ -303,6 +312,12 @@ pub async fn sign_out() -> Result<(), ServerFnError> {
 /// Paso 1 de Entrar: ¿este email ya tiene cuenta?
 #[server]
 pub async fn lookup_email(email: String) -> Result<EmailLookup, ServerFnError> {
+    use std::time::Duration;
+    // Probar emails en serie para ver quién tiene cuenta: 10 por minuto.
+    let ip = crate::limits::client_ip();
+    if !crate::limits::allow(&format!("lookup|{ip}"), 10, Duration::from_secs(60)) {
+        return Ok(EmailLookup::TooMany);
+    }
     let Some(email) = domain::normalize_email(&email) else {
         return Ok(EmailLookup::BadEmail);
     };
@@ -319,13 +334,15 @@ pub async fn lookup_email(email: String) -> Result<EmailLookup, ServerFnError> {
         return Ok(EmailLookup::NotAllowed);
     }
     Ok(match account {
-        Some(a) => EmailLookup::Existing {
-            name: a.name,
-            has_password: a.password_hash.is_some(),
-        },
+        Some(_) => EmailLookup::Existing,
         None => EmailLookup::New,
     })
 }
+
+/// Contraseñas equivocadas seguidas, desde una misma conexión y para un
+/// mismo email, antes de esperar [`db::auth::LOCK_MINUTES`].
+#[cfg(feature = "ssr")]
+const IP_PASSWORD_ATTEMPTS: usize = 8;
 
 /// Entrar con email y contraseña.
 #[server]
@@ -341,11 +358,24 @@ pub async fn sign_in(
     if !is_allowed(&email) || password.chars().count() > domain::PASSWORD_MAX {
         return Ok(PasswordSignIn::Wrong);
     }
+    // Las contraseñas equivocadas se cuentan por conexión y email: quien
+    // prueba desde su casa se frena, sin bloquear al dueño en la suya.
+    let ip = crate::limits::client_ip();
+    let tries = format!("pw|{ip}|{email}");
+    let lock = std::time::Duration::from_secs(db::auth::LOCK_MINUTES as u64 * 60);
+    if crate::limits::count(&tries, lock) >= IP_PASSWORD_ATTEMPTS
+        || !crate::limits::allow(&format!("pw|{ip}"), 30, lock)
+    {
+        return Ok(PasswordSignIn::Locked {
+            minutes: db::auth::LOCK_MINUTES as u32,
+        });
+    }
     let pool = crate::server::pool()?;
     let Some(account) = db::auth::account_by_email(&pool, &email)
         .await
         .map_err(internal)?
     else {
+        crate::limits::hit(&tries);
         return Ok(PasswordSignIn::Wrong);
     };
     if account.locked_minutes > 0 {
@@ -358,6 +388,12 @@ pub async fn sign_in(
     };
     let ok = blocking(move || db::auth::verify_password(&password, &hash)).await?;
     if !ok {
+        crate::limits::hit(&tries);
+        if crate::limits::count(&tries, lock) >= IP_PASSWORD_ATTEMPTS {
+            return Ok(PasswordSignIn::Locked {
+                minutes: db::auth::LOCK_MINUTES as u32,
+            });
+        }
         let locked = db::auth::record_failed_login(&pool, account.id)
             .await
             .map_err(internal)?;
@@ -372,6 +408,7 @@ pub async fn sign_in(
     db::auth::clear_failed_logins(&pool, account.id)
         .await
         .map_err(internal)?;
+    crate::limits::clear(&tries);
     open_session(account.id).await?;
     Ok(PasswordSignIn::In {
         next: domain::safe_next(&next),

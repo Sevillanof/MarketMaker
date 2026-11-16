@@ -55,7 +55,7 @@ Por ahora solo pueden crear cuenta los emails de una lista. Creá el archivo `.e
 
 1. Abrí <http://localhost:3000>: sin cuenta ves la página de inicio. Tocá **Entrar** o **Crear cuenta** y escribí tu email.
 2. Si ya tenés cuenta con contraseña, te la pide. Si sos nuevo, elegís tu nombre y una contraseña y te mandamos un código de 6 números para confirmar el email (solo esa vez). Las cuentas de antes, sin contraseña, eligen una con un código. En desarrollo, sin `RESEND_API_KEY`, el código aparece en la terminal donde corre `cargo leptos watch`.
-3. "¿Te la olvidaste?" manda un código para elegir otra contraseña. Después de 8 contraseñas mal seguidas la cuenta espera 15 minutos (o entrás con un código).
+3. "¿Te la olvidaste?" manda un código para elegir otra contraseña. Después de 8 contraseñas mal seguidas desde la misma conexión hay que esperar 15 minutos (o entrar con un código); así nadie puede dejar afuera al dueño desde otra casa. Las contraseñas muy comunes ("password", "12345678") no se aceptan.
 4. En **Mi cuenta** (`/cuenta`, tocando tu nombre abajo a la izquierda del panel) cambiás tu nombre y tu contraseña, o salís.
 5. En **Tus tiendas** ves las tuyas y podés crear otra: nombre y dirección (se sugiere sola). La tienda nueva arranca como copia de la de ejemplo y te lleva directo a su editor.
 6. **Editar** abre el editor de esa tienda sin pedir otro código. La sesión dura 30 días en ese navegador.

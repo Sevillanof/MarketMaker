@@ -360,8 +360,11 @@ pub async fn redeem_handoff(
 // ---------------------------------------------------------------------------
 // Contraseñas
 
-/// Intentos fallidos seguidos antes de que la cuenta espere.
-pub const PASSWORD_ATTEMPTS: i32 = 8;
+/// Intentos fallidos seguidos, sumando todas las conexiones, antes de que la
+/// cuenta espere. Es alto a propósito: el freno común es por conexión (ver
+/// `web::limits`), así nadie puede dejar afuera al dueño desde otra casa;
+/// este solo frena un ataque repartido entre muchas conexiones.
+pub const PASSWORD_ATTEMPTS: i32 = 40;
 /// Cuánto espera la cuenta después de [`PASSWORD_ATTEMPTS`] fallos.
 pub const LOCK_MINUTES: i32 = 15;
 

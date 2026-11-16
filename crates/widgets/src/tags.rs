@@ -131,7 +131,7 @@ pub fn FilteredProducts(
     view! {
         <div class="contents" aria-live="polite">{notice}</div>
         {empty.then(|| view! { <div class="alert">"Todavía no hay productos."</div> })}
-        <div class="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 @lg:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">
+        <div class="mk-pgrid grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 @lg:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">
             {move || shown().into_iter().map(|p| view! { <ProductCard product=p show_price=true/> }).collect_view()}
         </div>
     }
