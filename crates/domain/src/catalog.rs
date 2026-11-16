@@ -14,6 +14,60 @@ pub const TAG_MAX: usize = 30;
 /// $ 1.000.000.000,00: más que eso es seguro un error de tipeo.
 pub const PRICE_MAX_CENTS: i64 = 100_000_000_000;
 
+/// Cómo se encuadra una foto dentro de su lugar en la tienda (tarjeta,
+/// ficha, carrito), sin tocar la foto guardada: qué punto queda a la vista y
+/// cuánto se acerca. La tienda decide la forma del lugar; este encuadre vale
+/// para todas.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PhotoFit {
+    /// Punto que queda a la vista, en % del ancho (0 izquierda, 100 derecha).
+    pub x: u8,
+    /// Punto que queda a la vista, en % del alto (0 arriba, 100 abajo).
+    pub y: u8,
+    /// Zoom en %: 100 es la foto entera llenando el lugar.
+    pub zoom: u16,
+}
+
+pub const ZOOM_MIN: u16 = 100;
+pub const ZOOM_MAX: u16 = 300;
+
+impl Default for PhotoFit {
+    fn default() -> Self {
+        Self {
+            x: 50,
+            y: 50,
+            zoom: ZOOM_MIN,
+        }
+    }
+}
+
+impl PhotoFit {
+    /// El mismo encuadre dentro de los límites.
+    pub fn clamped(self) -> Self {
+        Self {
+            x: self.x.min(100),
+            y: self.y.min(100),
+            zoom: self.zoom.clamp(ZOOM_MIN, ZOOM_MAX),
+        }
+    }
+
+    /// ¿Es como si no se hubiera ajustado?
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Estilo para el `<img>` (con `object-fit: cover` o `contain`).
+    pub fn css(&self) -> String {
+        let Self { x, y, zoom } = self.clamped();
+        let mut css = format!("object-position:{x}% {y}%");
+        if zoom != ZOOM_MIN {
+            let z = f32::from(zoom) / 100.0;
+            css.push_str(&format!(";transform:scale({z});transform-origin:{x}% {y}%"));
+        }
+        css
+    }
+}
+
 /// Lo que ve el dueño en la pantalla Productos de una tienda.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct StoreProducts {
@@ -263,6 +317,13 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     p.photos.retain(|u| !u.trim().is_empty());
     p.photos.dedup();
     p.image_url = p.photos.first().cloned().unwrap_or_default();
+    // Solo los encuadres de fotos que el producto tiene, y que cambian algo.
+    let photos = &p.photos;
+    p.photo_fits.retain(|url, _| photos.contains(url));
+    for fit in p.photo_fits.values_mut() {
+        *fit = fit.clamped();
+    }
+    p.photo_fits.retain(|_, fit| !fit.is_default());
     let mut errors = Vec::new();
     if p.name.is_empty() {
         errors.push("Poné un nombre al producto.".to_string());
@@ -417,6 +478,32 @@ mod tests {
         assert_eq!(parse_price("doce"), None);
         assert_eq!(price_input(4_599_990), "45.999,90");
         assert_eq!(price_input(4_599_900), "45.999");
+    }
+
+    #[test]
+    fn photo_fits_keep_only_real_adjustments() {
+        let fit = |x, y, zoom| PhotoFit { x, y, zoom };
+        let mut p = Product {
+            name: "Taza".into(),
+            photos: vec!["/media/a/960.webp".into(), "/media/b/960.webp".into()],
+            photo_fits: [
+                ("/media/a/960.webp".to_string(), fit(80, 120, 900)),
+                ("/media/b/960.webp".to_string(), fit(50, 50, 100)),
+                ("/media/viejo/960.webp".to_string(), fit(10, 10, 150)),
+            ]
+            .into(),
+            ..Product::default()
+        };
+        assert!(tidy_product(&mut p).is_empty());
+        assert_eq!(
+            p.photo_fits.into_iter().collect::<Vec<_>>(),
+            [("/media/a/960.webp".to_string(), fit(80, 100, ZOOM_MAX))]
+        );
+        assert_eq!(PhotoFit::default().css(), "object-position:50% 50%");
+        assert_eq!(
+            fit(80, 30, 135).css(),
+            "object-position:80% 30%;transform:scale(1.35);transform-origin:80% 30%"
+        );
     }
 
     #[test]

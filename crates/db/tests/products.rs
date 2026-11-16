@@ -23,6 +23,15 @@ fn taza() -> Product {
         image_url: "/media/a/960.webp".into(),
         tags: vec!["cocina".into(), "regalo".into()],
         visible: false,
+        photo_fits: [(
+            "/media/b/960.webp".to_string(),
+            domain::PhotoFit {
+                x: 80,
+                y: 40,
+                zoom: 135,
+            },
+        )]
+        .into(),
         ..Product::default()
     }
 }

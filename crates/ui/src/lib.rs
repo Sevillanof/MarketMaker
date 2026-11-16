@@ -55,6 +55,9 @@ pub fn Image(
     /// `object-fit`: `"cover"` (por defecto) o `"contain"`.
     #[prop(optional)]
     contain: bool,
+    /// Encuadre de la foto en este producto (punto a la vista y zoom).
+    #[prop(optional_no_strip)]
+    fit: Option<domain::PhotoFit>,
 ) -> impl IntoView {
     if src.is_empty() {
         return view! {
@@ -68,8 +71,8 @@ pub fn Image(
         "block h-full w-full object-cover"
     };
     view! {
-        <div class="mk-img skeleton h-full w-full rounded-none">
-            <Picture src alt class/>
+        <div class="mk-img skeleton h-full w-full overflow-hidden rounded-none">
+            <Picture src alt class style=fit.map(|f| f.css())/>
         </div>
     }
     .into_any()
@@ -83,6 +86,9 @@ pub fn Picture(
     #[prop(into)] src: String,
     #[prop(into)] alt: String,
     #[prop(into)] class: String,
+    /// Estilo en línea del `<img>` (por ejemplo, el encuadre de la foto).
+    #[prop(optional_no_strip)]
+    style: Option<String>,
 ) -> impl IntoView {
     // Las fotos de Mis fotos vienen en tres anchos: el navegador elige.
     let (avif, webp) = match srcsets(&src) {
@@ -95,6 +101,7 @@ pub fn Picture(
             {avif.map(|a| view! { <source type="image/avif" srcset=a sizes=sizes/> })}
             <img
                 class=class
+                style=style
                 src=src
                 srcset=webp
                 sizes=sizes
