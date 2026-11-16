@@ -219,3 +219,13 @@ pub async fn by_ids(pool: &PgPool, tenant: Uuid, ids: &[Uuid]) -> sqlx::Result<V
     .await?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
+
+/// Productos sin stock: marcados "Sin stock" o con 0 unidades.
+pub async fn out_of_stock(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM products WHERE tenant_id = $1 AND (NOT in_stock OR stock = 0)",
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await
+}

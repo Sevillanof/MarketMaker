@@ -1,7 +1,7 @@
 //! Cobros de una tienda, en la plataforma (`/tienda/:slug/cobros`):
 //! vincular la cuenta de Mercado Pago para cobrar las ventas.
 
-use crate::products::{error_text, slug_param, Shell, SignInFirst};
+use crate::products::{error_text, slug_param, SignInFirst};
 use domain::PaymentsInfo;
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
@@ -50,7 +50,7 @@ pub fn PaymentsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_payments);
     view! {
         <leptos_meta::Title text="Cobros · MarketMaker"/>
-        <Shell>
+        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Payments>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-72 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -62,7 +62,7 @@ pub fn PaymentsPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </Shell>
+        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -107,10 +107,10 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
         Some(Err(e)) => problem.set(Some(error_text(&e))),
         None => {}
     });
-    let busy = move || connect.pending().get() || connect.value().with(|v| matches!(v, Some(Ok(_))));
+    let busy =
+        move || connect.pending().get() || connect.value().with(|v| matches!(v, Some(Ok(_))));
     view! {
         <div class="flex flex-wrap items-center gap-3">
-            <a href="/" class="btn btn-ghost btn-sm">"← Tus tiendas"</a>
             <div class="grow">
                 <h1 class="text-3xl font-bold">"Cobros"</h1>
                 <p class="text-sm text-base-content/70">{info.store_name}</p>

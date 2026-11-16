@@ -5,7 +5,7 @@ use domain::{NewStoreOutcome, StoreCard};
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
-fn store_url(slug: &str) -> String {
+pub(crate) fn store_url(slug: &str) -> String {
     let platform = domain::platform_host(&crate::site::current_host());
     format!(
         "{}://{}",

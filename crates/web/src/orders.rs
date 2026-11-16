@@ -2,7 +2,7 @@
 //! tablero con una columna por estado. Se mueven arrastrando o con "Mover a…"
 //! (que también anda con teclado), y al tocar uno se abre su detalle.
 
-use crate::products::{error_text, slug_param, Shell, SignInFirst};
+use crate::products::{error_text, slug_param, SignInFirst};
 use domain::{Delivery, Order, OrderColumn, OrderStatus};
 use leptos::prelude::*;
 use ui::{format_price, Image};
@@ -21,7 +21,11 @@ pub async fn store_orders(slug: String) -> Result<Option<(String, Vec<Order>)>, 
 }
 
 #[server(input = leptos::server_fn::codec::Json)]
-pub async fn move_order(slug: String, id: String, status: OrderStatus) -> Result<(), ServerFnError> {
+pub async fn move_order(
+    slug: String,
+    id: String,
+    status: OrderStatus,
+) -> Result<(), ServerFnError> {
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
@@ -45,19 +49,19 @@ pub fn OrdersPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_orders);
     view! {
         <leptos_meta::Title text="Pedidos · MarketMaker"/>
-        <Shell>
+        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Orders>
             <div class="mx-auto flex max-w-[1280px] flex-col gap-5 px-6 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
                         match data.await {
-                            Ok(Some((name, orders))) => view! { <Board slug=slug.get_untracked() name orders/> }.into_any(),
+                            Ok(Some((_, orders))) => view! { <Board slug=slug.get_untracked() orders/> }.into_any(),
                             Ok(None) => view! { <SignInFirst back=format!("/tienda/{}/pedidos", slug.get_untracked())/> }.into_any(),
                             Err(e) => view! { <div role="alert" class="alert alert-error">{error_text(&e)}</div> }.into_any(),
                         }
                     })}
                 </Suspense>
             </div>
-        </Shell>
+        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -88,7 +92,8 @@ impl BoardCtx {
             return;
         };
         if before == status
-            || (OrderColumn::of(before).is_some() && OrderColumn::of(before) == OrderColumn::of(status))
+            || (OrderColumn::of(before).is_some()
+                && OrderColumn::of(before) == OrderColumn::of(status))
         {
             return;
         }
@@ -110,7 +115,8 @@ impl BoardCtx {
             Some(c) => c.title().to_string(),
             None => "Cancelados".to_string(),
         };
-        self.notice.set(format!("Pedido #{number} movido a {place}."));
+        self.notice
+            .set(format!("Pedido #{number} movido a {place}."));
         let id2 = id.clone();
         let slug = self.slug.get_value();
         leptos::task::spawn_local(async move {
@@ -127,7 +133,7 @@ impl BoardCtx {
 }
 
 #[component]
-fn Board(slug: String, name: String, orders: Vec<Order>) -> impl IntoView {
+fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
     let ctx = BoardCtx {
         orders: RwSignal::new(orders),
         open: RwSignal::new(None),
@@ -148,12 +154,10 @@ fn Board(slug: String, name: String, orders: Vec<Order>) -> impl IntoView {
     let empty = ctx.orders.with_untracked(Vec::is_empty);
     view! {
         <div class="flex flex-wrap items-center gap-3">
-            <a href="/" class="btn btn-ghost btn-sm">"← Tus tiendas"</a>
             <div class="grow">
                 <h1 class="text-3xl font-bold">"Pedidos"</h1>
-                <p class="text-sm text-base-content/70">{name} " · arrastrá un pedido a otra columna, o usá \"Mover a…\""</p>
+                <p class="text-sm text-base-content/70">"Arrastrá un pedido a otra columna o usá \"Mover a…\"."</p>
             </div>
-            <a class="btn btn-ghost btn-sm" href=format!("/tienda/{slug}/ventas")>"Entregas"</a>
         </div>
         {move || ctx.problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
         <p class="sr-only" role="status">{move || ctx.notice.get()}</p>
@@ -248,7 +252,12 @@ fn OrderCard(ctx: BoardCtx, order: Order) -> impl IntoView {
     let id_open = id.clone();
     let is_open = Memo::new(move |_| ctx.open.with(|o| o.as_deref() == Some(id_open.as_str())));
     let id_click = id.clone();
-    let thumbs = order.items.iter().take(4).map(|i| i.image_url.clone()).collect::<Vec<_>>();
+    let thumbs = order
+        .items
+        .iter()
+        .take(4)
+        .map(|i| i.image_url.clone())
+        .collect::<Vec<_>>();
     let units: u32 = order.items.iter().map(|i| i.qty).sum();
     view! {
         <div class="group relative rounded-field bg-base-100 shadow-sm transition-shadow hover:shadow-md"
@@ -322,7 +331,8 @@ fn OrderDrawer(ctx: BoardCtx) -> impl IntoView {
     let dialog = NodeRef::<leptos::html::Dialog>::new();
     let order = Memo::new(move |_| {
         let id = ctx.open.get()?;
-        ctx.orders.with(|os| os.iter().find(|o| o.id == id).cloned())
+        ctx.orders
+            .with(|os| os.iter().find(|o| o.id == id).cloned())
     });
     let confirm_cancel = RwSignal::new(false);
     Effect::new(move |_| {
@@ -360,7 +370,11 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
     let column = OrderColumn::of(order.status);
     let digits = domain::phone_digits(&order.phone);
     // Números argentinos: 54 9 + área + número para WhatsApp.
-    let wa = if digits.starts_with("54") { digits.clone() } else { format!("549{}", digits.trim_start_matches('0')) };
+    let wa = if digits.starts_with("54") {
+        digits.clone()
+    } else {
+        format!("549{}", digits.trim_start_matches('0'))
+    };
     let where_ = match order.delivery {
         Delivery::Pickup => "Lo retira en el local".to_string(),
         Delivery::Shipping => format!("{}, {} ({})", order.address, order.city, order.postal_code),
@@ -459,7 +473,9 @@ fn urlencode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

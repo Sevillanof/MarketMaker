@@ -69,9 +69,15 @@ pub struct NewOrder<'a> {
 
 /// Cómo salió guardar un pedido.
 pub enum Created {
-    Saved { id: Uuid, number: i32 },
+    Saved {
+        id: Uuid,
+        number: i32,
+    },
     /// No alcanzan las unidades de un producto (quedan `left`).
-    Short { name: String, left: u32 },
+    Short {
+        name: String,
+        left: u32,
+    },
 }
 
 /// Guarda el pedido con el próximo número de la tienda y descuenta el stock
@@ -265,12 +271,73 @@ pub async fn set_status(
             .await?;
         }
     }
-    sqlx::query("UPDATE orders SET status = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2")
-        .bind(tenant)
-        .bind(id)
-        .bind(status.as_str())
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE orders SET status = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant)
+    .bind(id)
+    .bind(status.as_str())
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(true)
+}
+
+/// Números de la tienda para su Inicio en el panel.
+#[derive(Debug, Clone, Default, PartialEq, FromRow)]
+pub struct Summary {
+    /// Nuevos o esperando el pago.
+    pub awaiting_payment: i64,
+    /// Pagados, falta prepararlos.
+    pub to_prepare: i64,
+    /// Pagados, enviados o entregados este mes (hora de Argentina).
+    pub month_orders: i64,
+    pub month_cents: i64,
+}
+
+pub async fn summary(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Summary> {
+    sqlx::query_as::<_, Summary>(
+        "WITH month AS (
+            SELECT date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                   AT TIME ZONE 'America/Argentina/Buenos_Aires' AS start
+         )
+         SELECT
+            count(*) FILTER (WHERE status IN ('new', 'pending_payment')) AS awaiting_payment,
+            count(*) FILTER (WHERE status = 'paid') AS to_prepare,
+            count(*) FILTER (WHERE status IN ('paid', 'shipped', 'delivered')
+                             AND created_at >= (SELECT start FROM month)) AS month_orders,
+            COALESCE(sum(total_cents) FILTER (WHERE status IN ('paid', 'shipped', 'delivered')
+                             AND created_at >= (SELECT start FROM month)), 0)::bigint AS month_cents
+         FROM orders WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await
+}
+
+/// Los últimos `n` pedidos de la tienda, el más nuevo primero.
+pub async fn recent(pool: &PgPool, tenant: Uuid, n: i64) -> sqlx::Result<Vec<Order>> {
+    let rows = sqlx::query_as::<_, OrderRow>(select!(
+        "WHERE tenant_id = $1 ORDER BY created_at DESC, number DESC LIMIT $2"
+    ))
+    .bind(tenant)
+    .bind(n)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+/// Cuántos pedidos falta preparar en cada tienda de la persona, por dirección.
+pub async fn to_prepare_by_store(pool: &PgPool, user: Uuid) -> sqlx::Result<Vec<(String, i64)>> {
+    sqlx::query_as(
+        "SELECT t.slug, count(o.id)
+         FROM memberships m
+         JOIN tenants t ON t.id = m.tenant_id
+         LEFT JOIN orders o ON o.tenant_id = t.id AND o.status = 'paid'
+         WHERE m.user_id = $1
+         GROUP BY t.slug",
+    )
+    .bind(user)
+    .fetch_all(pool)
+    .await
 }

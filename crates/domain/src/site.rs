@@ -153,6 +153,78 @@ pub struct StoreCard {
     pub url: String,
 }
 
+/// Una tienda en el selector del panel.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct NavStore {
+    pub name: String,
+    pub slug: String,
+    /// Dirección de la tienda, con `http://` o `https://`.
+    pub url: String,
+    /// Pedidos pagados que falta preparar.
+    pub to_prepare: i64,
+}
+
+/// Lo que muestra el menú del panel: quién entró y sus tiendas.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PanelNav {
+    pub email: String,
+    pub stores: Vec<NavStore>,
+}
+
+/// Si lo que ven los visitantes es lo último que guardó el dueño.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum PublishState {
+    /// Nunca se publicó: los visitantes no ven nada todavía.
+    Never,
+    /// Hay cambios guardados que todavía no se publicaron.
+    Changes,
+    /// Los visitantes ven lo último.
+    Published,
+}
+
+impl PublishState {
+    /// `version` es la última guardada y `published` la publicada (0 = nunca).
+    pub fn of(version: i32, published: i32) -> Self {
+        if published == 0 {
+            PublishState::Never
+        } else if version > published {
+            PublishState::Changes
+        } else {
+            PublishState::Published
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PublishState::Never => "Sin publicar",
+            PublishState::Changes => "Cambios sin publicar",
+            PublishState::Published => "Publicada",
+        }
+    }
+}
+
+/// Inicio de una tienda en el panel: números, últimos pedidos y pendientes.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StoreOverview {
+    pub name: String,
+    pub slug: String,
+    pub url: String,
+    pub publish: PublishState,
+    /// Pedidos nuevos o esperando el pago.
+    pub awaiting_payment: i64,
+    /// Pedidos pagados que falta preparar.
+    pub to_prepare: i64,
+    /// Pedidos pagados (o ya enviados o entregados) de este mes, hora de Argentina.
+    pub month_orders: i64,
+    pub month_cents: i64,
+    pub products: i64,
+    pub out_of_stock: i64,
+    pub delivery_ready: bool,
+    pub mp_linked: bool,
+    /// Los últimos pedidos, el más nuevo primero.
+    pub recent: Vec<crate::Order>,
+}
+
 /// Resultado de crear una tienda.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum NewStoreOutcome {
@@ -180,6 +252,14 @@ pub fn platform_host(store_host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn publish_state_compares_saved_and_published() {
+        assert_eq!(PublishState::of(0, 0), PublishState::Never);
+        assert_eq!(PublishState::of(3, 0), PublishState::Never);
+        assert_eq!(PublishState::of(4, 3), PublishState::Changes);
+        assert_eq!(PublishState::of(3, 3), PublishState::Published);
+    }
 
     #[test]
     fn hosts_map_to_sites() {
