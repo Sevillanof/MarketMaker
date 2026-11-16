@@ -164,7 +164,7 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         {empty.then(|| view! {
             <div class="card bg-base-100 shadow-sm"><div class="card-body items-start">
                 <h2 class="card-title">"Todavía no tenés pedidos"</h2>
-                <p>"Cuando alguien compre en tu tienda, el pedido aparece acá, en \"Esperando pago\"."</p>
+                <p>"Con Mercado Pago, el pedido aparece acá, en \"Para preparar\", cuando se aprueba el pago. Con transferencia o a coordinar, aparece en \"Esperando pago\" hasta que toques \"Ya me pagó\"."</p>
             </div></div>
         })}
         <div class="grid grid-cols-4 items-start gap-4">
@@ -390,7 +390,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
             <header class="flex items-start gap-3 border-b border-base-200 p-6">
                 <div class="grow">
                     <h2 id="order-title" class="text-2xl font-bold">{format!("Pedido #{}", order.number)}</h2>
-                    <p class="text-sm text-base-content/70">{format!("{} · {}", order.status.label(), domain::order_time_ar(&order.created_at))}</p>
+                    <p class="text-sm text-base-content/70">{format!("{} · {} · {}", order.status.label(), order.pay.label(), domain::order_time_ar(&order.created_at))}</p>
                 </div>
                 <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=move |_| ctx.open.set(None)>"✕"</button>
             </header>

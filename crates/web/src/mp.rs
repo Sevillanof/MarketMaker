@@ -219,8 +219,16 @@ pub async fn create_preference(
         "external_reference": order.id,
         "statement_descriptor": store_name.chars().take(22).collect::<String>(),
         "back_urls": { "success": back, "pending": back, "failure": back },
-        "metadata": { "order_number": order.number },
     });
+    // El intento de compra se descarta a las 48 h: después de 24 h Mercado
+    // Pago ya no acepta pagarlo (tampoco en efectivo), así nunca llega un
+    // pago de un pedido que ya no existe.
+    let until = db::mp::utc_in_hours(pool, 24)
+        .await
+        .map_err(|e| e.to_string())?;
+    body["expires"] = json!(true);
+    body["expiration_date_to"] = json!(until);
+    body["date_of_expiration"] = json!(until);
     // Mercado Pago solo vuelve solo a direcciones https.
     if back.starts_with("https://") {
         body["auto_return"] = json!("approved");
@@ -285,7 +293,7 @@ pub async fn check_payment(
         let paid = v["transaction_amount"].as_f64().unwrap_or(0.0);
         if let Some(order) = order {
             let cents = (paid * 100.0).round() as i64;
-            if db::mp::mark_paid(pool, tenant, order, payment_id, cents)
+            if db::orders::mark_paid(pool, tenant, order, payment_id, cents)
                 .await
                 .map_err(|e| e.to_string())?
             {

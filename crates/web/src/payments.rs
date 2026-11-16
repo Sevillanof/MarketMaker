@@ -1,8 +1,9 @@
 //! Cobros de una tienda, en la plataforma (`/tienda/:slug/cobros`):
-//! vincular la cuenta de Mercado Pago para cobrar las ventas.
+//! vincular la cuenta de Mercado Pago y elegir las otras formas de cobro
+//! (transferencia, coordinar con el comprador).
 
 use crate::products::{error_text, slug_param, SignInFirst};
-use domain::PaymentsInfo;
+use domain::{PaymentOptions, PaymentsInfo};
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
 
@@ -12,11 +13,34 @@ pub async fn store_payments(slug: String) -> Result<Option<PaymentsInfo>, Server
     let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
         return Ok(None);
     };
+    let pool = pool()?;
     Ok(Some(PaymentsInfo {
         configured: crate::mp::config().is_some(),
-        link: db::mp::link(&pool()?, tenant.id).await.map_err(internal)?,
+        link: db::mp::link(&pool, tenant.id).await.map_err(internal)?,
+        options: db::orders::payment_options(&pool, tenant.id)
+            .await
+            .map_err(internal)?,
         store_name: tenant.name,
     }))
+}
+
+/// Guarda las formas de cobro además de Mercado Pago. Devuelve el problema
+/// para mostrar, si hay.
+#[server]
+pub async fn save_payment_options(
+    slug: String,
+    options: PaymentOptions,
+) -> Result<Option<String>, ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = crate::products::server::require_store(&slug).await?;
+    let mut options = options;
+    if let Some(problem) = domain::tidy_payment_options(&mut options).into_iter().next() {
+        return Ok(Some(problem));
+    }
+    db::orders::save_payment_options(&pool()?, tenant.id, &options)
+        .await
+        .map_err(internal)?;
+    Ok(None)
 }
 
 /// Empieza "Vincular mi cuenta": devuelve la página de Mercado Pago.
@@ -145,7 +169,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                 }.into_any(),
                 None if !info.configured => view! {
                     <h2 class="card-title">"Cobrá tus ventas con Mercado Pago"</h2>
-                    <p class="text-sm text-base-content/75">"Los cobros con Mercado Pago todavía no están disponibles. Mientras tanto, los pedidos se pagan coordinando con el comprador."</p>
+                    <p class="text-sm text-base-content/75">"Los cobros con Mercado Pago todavía no están disponibles. Mientras tanto, podés cobrar con transferencia o coordinando con el comprador."</p>
                 }.into_any(),
                 None => view! {
                     <h2 class="card-title">"Cobrá tus ventas con Mercado Pago"</h2>
@@ -154,9 +178,80 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                         {move || if busy() { "Abriendo Mercado Pago…" } else { "Vincular mi cuenta" }}
                     </button>
                     <p class="text-xs text-base-content/60">"Te lleva a Mercado Pago para iniciar sesión y aceptar. Tarda un minuto."</p>
-                    <p class="text-sm text-base-content/75">"Mientras no la vincules, los pedidos se pagan coordinando con el comprador."</p>
                 }.into_any(),
             }}
         </div></div>
+        <OtherMethods slug=slug.get_value() options=info.options/>
+    }
+}
+
+/// Transferencia y coordinar con el comprador: el pedido espera en "Esperando
+/// pago" hasta que el dueño toca "Ya me pagó".
+#[component]
+fn OtherMethods(slug: String, options: PaymentOptions) -> impl IntoView {
+    let transfer = RwSignal::new(options.transfer);
+    let info = RwSignal::new(options.transfer_info);
+    let coordinate = RwSignal::new(options.coordinate);
+    let saved = RwSignal::new(false);
+    let problem = RwSignal::new(None::<String>);
+    let slug = StoredValue::new(slug);
+    let save = Action::new(move |o: &PaymentOptions| save_payment_options(slug.get_value(), o.clone()));
+    Effect::new(move |_| match save.value().get() {
+        Some(Ok(None)) => saved.set(true),
+        Some(Ok(Some(p))) => problem.set(Some(p)),
+        Some(Err(e)) => problem.set(Some(error_text(&e))),
+        None => {}
+    });
+    let changed = move || {
+        saved.set(false);
+        problem.set(None);
+    };
+    view! {
+        <form class="card bg-base-100 shadow-sm" on:submit=move |ev| {
+            ev.prevent_default();
+            save.dispatch(PaymentOptions {
+                transfer: transfer.get_untracked(),
+                transfer_info: info.get_untracked(),
+                coordinate: coordinate.get_untracked(),
+            });
+        }>
+            <div class="card-body items-start gap-3">
+                <h2 class="card-title">"Otras formas de cobro"</h2>
+                <p class="text-sm text-base-content/75">"El pedido queda en \"Esperando pago\" y guarda las unidades. Cuando cobres, tocá \"Ya me pagó\" y pasa a \"Para preparar\". Si no lo marcás en 48 horas, se cancela solo y el stock vuelve."</p>
+                <label class="flex cursor-pointer items-center gap-3">
+                    <input type="checkbox" class="toggle toggle-primary" prop:checked=move || transfer.get()
+                        on:change=move |ev| { transfer.set(event_target_checked(&ev)); changed(); }/>
+                    <span class="font-semibold">"Transferencia"</span>
+                </label>
+                {move || transfer.get().then(|| view! {
+                    <fieldset class="fieldset w-full max-w-md">
+                        <label class="fieldset-legend" for="pay-transfer-info">"Adónde te transfieren"</label>
+                        <textarea id="pay-transfer-info" class="textarea w-full" rows="3" maxlength=domain::TRANSFER_INFO_MAX
+                            placeholder="Alias: mi.tienda.mp\nCBU o CVU: 0000003100000000000000\nTitular: Nombre Apellido"
+                            aria-invalid=move || problem.get().is_some().to_string()
+                            aria-describedby=move || problem.get().is_some().then_some("pay-transfer-error")
+                            prop:value=move || info.get()
+                            on:input=move |ev| { info.set(event_target_value(&ev)); changed(); }></textarea>
+                        <p class="label">"Lo ve el comprador al confirmar el pedido y en el email."</p>
+                        {move || problem.get().map(|p| view! { <p id="pay-transfer-error" class="label text-error">{p}</p> })}
+                    </fieldset>
+                })}
+                <label class="flex cursor-pointer items-center gap-3">
+                    <input type="checkbox" class="toggle toggle-primary" prop:checked=move || coordinate.get()
+                        on:change=move |ev| { coordinate.set(event_target_checked(&ev)); changed(); }/>
+                    <span class="font-semibold">"Coordinar el pago con el comprador"</span>
+                </label>
+                <p class="text-sm text-base-content/60">"Le escribís por WhatsApp y acuerdan cómo paga (efectivo al retirar, por ejemplo)."</p>
+                {move || (!transfer.get() && problem.get().is_some()).then(|| view! {
+                    <p class="text-sm text-error">{problem.get()}</p>
+                })}
+                <div class="flex items-center gap-3">
+                    <button type="submit" class="btn btn-primary" disabled=move || save.pending().get()>
+                        {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
+                    </button>
+                    <span role="status" class="text-sm text-success">{move || saved.get().then_some("Guardado")}</span>
+                </div>
+            </div>
+        </form>
     }
 }

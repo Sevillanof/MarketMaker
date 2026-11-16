@@ -34,6 +34,39 @@ pub async fn delivery(pool: &PgPool, tenant: Uuid) -> sqlx::Result<DeliverySetti
     })
 }
 
+/// Formas de cobro de la tienda además de Mercado Pago.
+pub async fn payment_options(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::PaymentOptions> {
+    let (transfer, transfer_info, coordinate): (bool, String, bool) = sqlx::query_as(
+        "SELECT pay_transfer, transfer_info, pay_coordinate FROM tenants WHERE id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await?;
+    Ok(domain::PaymentOptions {
+        transfer,
+        transfer_info,
+        coordinate,
+    })
+}
+
+pub async fn save_payment_options(
+    pool: &PgPool,
+    tenant: Uuid,
+    p: &domain::PaymentOptions,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "UPDATE tenants SET pay_transfer = $2, transfer_info = $3, pay_coordinate = $4
+         WHERE id = $1",
+    )
+    .bind(tenant)
+    .bind(p.transfer)
+    .bind(&p.transfer_info)
+    .bind(p.coordinate)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn save_delivery(pool: &PgPool, tenant: Uuid, d: &DeliverySettings) -> sqlx::Result<()> {
     sqlx::query(
         "UPDATE tenants SET pickup_enabled = $2, pickup_address = $3, pickup_hours = $4,
@@ -65,6 +98,7 @@ pub struct NewOrder<'a> {
     pub notes: &'a str,
     pub items: &'a [OrderItem],
     pub shipping_cents: i64,
+    pub pay: domain::PayMethod,
 }
 
 /// Cómo salió guardar un pedido.
@@ -86,21 +120,36 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     let subtotal: i64 = o.items.iter().map(OrderItem::total_cents).sum();
     let items = serde_json::to_value(o.items).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
     let mut tx = pool.begin().await?;
+    // Esperando el pago online es solo un intento: se revisa que alcance,
+    // pero el stock se descuenta recién cuando se aprueba el pago.
+    let attempt = o.status == OrderStatus::PendingPayment;
     for item in o.items {
         let Ok(product) = Uuid::parse_str(&item.product_id) else {
             continue;
         };
         // Solo baja si alcanza; la fila queda bloqueada hasta el final, así
         // dos compras a la vez no se llevan la misma unidad.
-        let done = sqlx::query(
-            "UPDATE products SET stock = stock - $3
-             WHERE tenant_id = $1 AND id = $2 AND stock IS NOT NULL AND stock >= $3",
-        )
-        .bind(tenant)
-        .bind(product)
-        .bind(item.qty as i32)
-        .execute(&mut *tx)
-        .await?;
+        let done = if attempt {
+            sqlx::query(
+                "SELECT 1 FROM products
+                 WHERE tenant_id = $1 AND id = $2 AND (stock IS NULL OR stock >= $3)",
+            )
+            .bind(tenant)
+            .bind(product)
+            .bind(item.qty as i32)
+            .execute(&mut *tx)
+            .await?
+        } else {
+            sqlx::query(
+                "UPDATE products SET stock = stock - $3
+                 WHERE tenant_id = $1 AND id = $2 AND stock IS NOT NULL AND stock >= $3",
+            )
+            .bind(tenant)
+            .bind(product)
+            .bind(item.qty as i32)
+            .execute(&mut *tx)
+            .await?
+        };
         if done.rows_affected() == 0 {
             let left: Option<Option<i32>> =
                 sqlx::query_scalar("SELECT stock FROM products WHERE tenant_id = $1 AND id = $2")
@@ -118,19 +167,17 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
         }
     }
     // El UPDATE bloquea la fila de la tienda: dos compras a la vez no
-    // pueden llevarse el mismo número.
-    let (number,): (i32,) = sqlx::query_as(
-        "UPDATE tenants SET next_order_number = next_order_number + 1
-         WHERE id = $1 RETURNING next_order_number - 1",
-    )
-    .bind(tenant)
-    .fetch_one(&mut *tx)
-    .await?;
+    // pueden llevarse el mismo número. Un intento todavía no lleva número.
+    let number: Option<i32> = if attempt {
+        None
+    } else {
+        Some(next_number(&mut tx, tenant).await?)
+    };
     let (id,): (Uuid,) = sqlx::query_as(
         "INSERT INTO orders (tenant_id, number, status, customer_name, email, phone, delivery,
                              address, postal_code, city, notes, items,
-                             subtotal_cents, shipping_cents, total_cents)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                             subtotal_cents, shipping_cents, total_cents, payment)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING id",
     )
     .bind(tenant)
@@ -148,10 +195,88 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     .bind(subtotal)
     .bind(o.shipping_cents)
     .bind(subtotal + o.shipping_cents)
+    .bind(o.pay.as_str())
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Created::Saved { id, number })
+    Ok(Created::Saved {
+        id,
+        number: number.unwrap_or(0),
+    })
+}
+
+/// El próximo número de pedido de la tienda (bloquea su fila hasta el final).
+async fn next_number(tx: &mut sqlx::PgConnection, tenant: Uuid) -> sqlx::Result<i32> {
+    sqlx::query_scalar(
+        "UPDATE tenants SET next_order_number = next_order_number + 1
+         WHERE id = $1 RETURNING next_order_number - 1",
+    )
+    .bind(tenant)
+    .fetch_one(tx)
+    .await
+}
+
+/// Se aprobó el pago online del pedido: entra al proceso. Recibe su número,
+/// descuenta el stock (sin bajar de 0: el pago ya está hecho) y queda
+/// pagado. `false` si ya estaba pagado, no existe o se pagó menos.
+pub async fn mark_paid(
+    pool: &PgPool,
+    tenant: Uuid,
+    order: Uuid,
+    payment_id: &str,
+    paid_cents: i64,
+) -> sqlx::Result<bool> {
+    let mut tx = pool.begin().await?;
+    let row: Option<(Option<i32>, serde_json::Value)> = sqlx::query_as(
+        "SELECT number, items FROM orders
+         WHERE tenant_id = $1 AND id = $2 AND status IN ('new', 'pending_payment')
+           AND total_cents <= $3
+         FOR UPDATE",
+    )
+    .bind(tenant)
+    .bind(order)
+    .bind(paid_cents)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((number, items)) = row else {
+        return Ok(false);
+    };
+    // Los pedidos con número ya descontaron su stock al crearse.
+    if number.is_none() {
+        let items: Vec<OrderItem> = serde_json::from_value(items).unwrap_or_default();
+        for item in items {
+            let Ok(product) = Uuid::parse_str(&item.product_id) else {
+                continue;
+            };
+            sqlx::query(
+                "UPDATE products SET stock = GREATEST(stock - $3, 0)
+                 WHERE tenant_id = $1 AND id = $2 AND stock IS NOT NULL",
+            )
+            .bind(tenant)
+            .bind(product)
+            .bind(item.qty as i32)
+            .execute(&mut *tx)
+            .await?;
+        }
+        let n = next_number(&mut tx, tenant).await?;
+        sqlx::query("UPDATE orders SET number = $3 WHERE tenant_id = $1 AND id = $2")
+            .bind(tenant)
+            .bind(order)
+            .bind(n)
+            .execute(&mut *tx)
+            .await?;
+    }
+    sqlx::query(
+        "UPDATE orders SET status = 'paid', mp_payment_id = $3, paid_at = now(), updated_at = now()
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant)
+    .bind(order)
+    .bind(payment_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 #[derive(FromRow)]
@@ -172,6 +297,7 @@ struct OrderRow {
     shipping_cents: i64,
     total_cents: i64,
     created_at: String,
+    payment: String,
 }
 
 impl From<OrderRow> for Order {
@@ -193,6 +319,7 @@ impl From<OrderRow> for Order {
             shipping_cents: r.shipping_cents,
             total_cents: r.total_cents,
             created_at: r.created_at,
+            pay: domain::PayMethod::from_str(&r.payment),
         }
     }
 }
@@ -201,9 +328,9 @@ impl From<OrderRow> for Order {
 macro_rules! select {
     ($rest:literal) => {
         concat!(
-            "SELECT id, number, status, customer_name, email, phone, delivery, address, ",
+            "SELECT id, COALESCE(number, 0) AS number, status, customer_name, email, phone, delivery, address, ",
             "postal_code, city, notes, items, subtotal_cents, shipping_cents, total_cents, ",
-            "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at ",
+            "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, payment ",
             "FROM orders ",
             $rest
         )
@@ -223,7 +350,8 @@ pub async fn get(pool: &PgPool, tenant: Uuid, id: Uuid) -> sqlx::Result<Option<O
 /// Los pedidos de la tienda, el más nuevo primero.
 pub async fn list(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Order>> {
     let rows = sqlx::query_as::<_, OrderRow>(select!(
-        "WHERE tenant_id = $1 ORDER BY created_at DESC, number DESC LIMIT 500"
+        "WHERE tenant_id = $1 AND number IS NOT NULL
+         ORDER BY created_at DESC, number DESC LIMIT 500"
     ))
     .bind(tenant)
     .fetch_all(pool)
@@ -283,21 +411,29 @@ pub async fn set_status(
     Ok(true)
 }
 
-/// Cancela los pedidos que esperan el pago online (Mercado Pago) hace más de
-/// `hours` horas sin que nadie los toque, y devuelve sus unidades al stock.
-/// Así un pedido abandonado (o falso) no deja productos "Agotado" para
-/// siempre. Los pedidos que se pagan coordinando con la tienda no se tocan:
-/// esos los maneja el dueño. Devuelve cuántos canceló.
+/// Descarta los intentos de compra que no se pagaron en `hours` horas (no
+/// tienen número ni descontaron stock: el dueño nunca los vio). Los pedidos
+/// por transferencia o a coordinar que el dueño no marcó como pagados en ese
+/// tiempo se cancelan, y sus unidades vuelven al stock. Devuelve cuántos sacó.
 pub async fn expire_unpaid(pool: &PgPool, hours: i32) -> sqlx::Result<usize> {
+    let dropped = sqlx::query(
+        "DELETE FROM orders
+         WHERE status = 'pending_payment' AND number IS NULL
+           AND updated_at < now() - make_interval(hours => $1)",
+    )
+    .bind(hours)
+    .execute(pool)
+    .await?
+    .rows_affected() as usize;
     let stale: Vec<(Uuid, Uuid)> = sqlx::query_as(
         "SELECT tenant_id, id FROM orders
-         WHERE status = 'pending_payment'
+         WHERE status IN ('new', 'pending_payment') AND number IS NOT NULL
            AND updated_at < now() - make_interval(hours => $1)",
     )
     .bind(hours)
     .fetch_all(pool)
     .await?;
-    let mut done = 0;
+    let mut done = dropped;
     for (tenant, id) in stale {
         if set_status(pool, tenant, id, OrderStatus::Cancelled).await? {
             done += 1;
@@ -325,7 +461,8 @@ pub async fn summary(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Summary> {
                    AT TIME ZONE 'America/Argentina/Buenos_Aires' AS start
          )
          SELECT
-            count(*) FILTER (WHERE status IN ('new', 'pending_payment')) AS awaiting_payment,
+            count(*) FILTER (WHERE status IN ('new', 'pending_payment')
+                             AND number IS NOT NULL) AS awaiting_payment,
             count(*) FILTER (WHERE status = 'paid') AS to_prepare,
             count(*) FILTER (WHERE status IN ('paid', 'shipped', 'delivered')
                              AND created_at >= (SELECT start FROM month)) AS month_orders,
@@ -341,7 +478,8 @@ pub async fn summary(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Summary> {
 /// Los últimos `n` pedidos de la tienda, el más nuevo primero.
 pub async fn recent(pool: &PgPool, tenant: Uuid, n: i64) -> sqlx::Result<Vec<Order>> {
     let rows = sqlx::query_as::<_, OrderRow>(select!(
-        "WHERE tenant_id = $1 ORDER BY created_at DESC, number DESC LIMIT $2"
+        "WHERE tenant_id = $1 AND number IS NOT NULL
+         ORDER BY created_at DESC, number DESC LIMIT $2"
     ))
     .bind(tenant)
     .bind(n)

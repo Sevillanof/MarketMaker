@@ -151,27 +151,16 @@ pub async fn init_point(pool: &PgPool, tenant: Uuid, order: Uuid) -> sqlx::Resul
     .map(Option::flatten)
 }
 
-/// Marca pagado un pedido que esperaba el pago, si el monto alcanza. `true`
-/// si cambió.
-pub async fn mark_paid(
-    pool: &PgPool,
-    tenant: Uuid,
-    order: Uuid,
-    payment_id: &str,
-    paid_cents: i64,
-) -> sqlx::Result<bool> {
-    let r = sqlx::query(
-        "UPDATE orders SET status = 'paid', mp_payment_id = $3, paid_at = now(), updated_at = now()
-         WHERE tenant_id = $1 AND id = $2 AND status IN ('new', 'pending_payment')
-           AND total_cents <= $4",
+/// La hora UTC dentro de `hours` horas, como la pide Mercado Pago
+/// (`2026-11-17T20:30:00.000+00:00`).
+pub async fn utc_in_hours(pool: &PgPool, hours: i32) -> sqlx::Result<String> {
+    sqlx::query_scalar(
+        "SELECT to_char((now() + make_interval(hours => $1)) AT TIME ZONE 'UTC',
+                        'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"+00:00\"')",
     )
-    .bind(tenant)
-    .bind(order)
-    .bind(payment_id)
-    .bind(paid_cents)
-    .execute(pool)
-    .await?;
-    Ok(r.rows_affected() == 1)
+    .bind(hours)
+    .fetch_one(pool)
+    .await
 }
 
 /// La dirección corta (`slug`) de una tienda.

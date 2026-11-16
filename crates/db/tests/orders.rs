@@ -28,6 +28,7 @@ fn order<'a>(items: &'a [OrderItem]) -> NewOrder<'a> {
         notes: "",
         items,
         shipping_cents: 0,
+        pay: domain::PayMethod::Coordinate,
     }
 }
 
@@ -152,4 +153,83 @@ async fn summary_counts_by_column_and_month(pool: PgPool) {
     assert_eq!((s.awaiting_payment, s.to_prepare), (1, 1));
     assert_eq!((s.month_orders, s.month_cents), (1, 1000));
     assert_eq!(orders::recent(&pool, t, 2).await.unwrap().len(), 2);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_online_order_enters_only_when_paid(pool: PgPool) {
+    let t = tenant(&pool, "ana").await;
+    let counted = Product {
+        name: "Taza".into(),
+        stock: Some(3),
+        ..Product::default()
+    };
+    let id = products::create(&pool, t, &counted).await.unwrap();
+    let items = [item(id, 2)];
+    let attempt = NewOrder {
+        status: OrderStatus::PendingPayment,
+        pay: domain::PayMethod::MercadoPago,
+        ..order(&items)
+    };
+    let Created::Saved { id: o, number } = orders::create(&pool, t, &attempt).await.unwrap() else {
+        panic!("alcanza el stock");
+    };
+    // Mientras no se paga: sin número, sin descontar y el dueño no lo ve.
+    assert_eq!(number, 0);
+    assert_eq!(stock(&pool, t, id).await, Some(3));
+    assert!(orders::list(&pool, t).await.unwrap().is_empty());
+    assert_eq!(orders::summary(&pool, t).await.unwrap().awaiting_payment, 0);
+    // Pide más de lo que hay: no deja.
+    let too_many = [item(id, 4)];
+    assert!(matches!(
+        orders::create(&pool, t, &NewOrder { status: OrderStatus::PendingPayment, ..order(&too_many) })
+            .await
+            .unwrap(),
+        Created::Short { left: 3, .. }
+    ));
+
+    // Se paga de menos: no entra.
+    assert!(!orders::mark_paid(&pool, t, o, "1", 100).await.unwrap());
+    // Se aprueba el pago: número, stock y aparece para preparar.
+    assert!(orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap());
+    assert!(!orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap(), "una sola vez");
+    assert_eq!(stock(&pool, t, id).await, Some(1));
+    let listed = orders::list(&pool, t).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].number, 1001);
+    assert_eq!(listed[0].status, OrderStatus::Paid);
+    assert_eq!(listed[0].pay, domain::PayMethod::MercadoPago);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn unpaid_attempts_are_dropped_and_manual_orders_cancelled(pool: PgPool) {
+    let t = tenant(&pool, "ana").await;
+    let counted = Product {
+        name: "Taza".into(),
+        stock: Some(3),
+        ..Product::default()
+    };
+    let id = products::create(&pool, t, &counted).await.unwrap();
+    let items = [item(id, 1)];
+    let attempt = NewOrder {
+        status: OrderStatus::PendingPayment,
+        pay: domain::PayMethod::MercadoPago,
+        ..order(&items)
+    };
+    orders::create(&pool, t, &attempt).await.unwrap();
+    orders::create(&pool, t, &order(&items)).await.unwrap();
+    assert_eq!(stock(&pool, t, id).await, Some(2), "la transferencia guarda la unidad");
+    assert_eq!(orders::expire_unpaid(&pool, 48).await.unwrap(), 0, "todavía no");
+    sqlx::query("UPDATE orders SET updated_at = now() - interval '49 hours'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(orders::expire_unpaid(&pool, 48).await.unwrap(), 2);
+    let all: i64 = sqlx::query_scalar("SELECT count(*) FROM orders")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(all, 1, "el intento sin pagar se borra");
+    let listed = orders::list(&pool, t).await.unwrap();
+    assert_eq!(listed[0].status, OrderStatus::Cancelled);
+    assert_eq!(stock(&pool, t, id).await, Some(3));
 }

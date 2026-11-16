@@ -57,6 +57,82 @@ pub fn tidy_delivery(d: &mut DeliverySettings) -> Vec<String> {
     errors
 }
 
+/// Cómo paga el comprador.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum PayMethod {
+    /// En Mercado Pago, al confirmar: el pedido entra recién con el pago aprobado.
+    #[default]
+    MercadoPago,
+    /// Transferencia a la cuenta de la tienda; el dueño marca cuando la recibe.
+    Transfer,
+    /// La tienda le escribe al comprador para coordinar el pago.
+    Coordinate,
+}
+
+impl PayMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PayMethod::MercadoPago => "mp",
+            PayMethod::Transfer => "transfer",
+            PayMethod::Coordinate => "coordinate",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "mp" => PayMethod::MercadoPago,
+            "transfer" => PayMethod::Transfer,
+            _ => PayMethod::Coordinate,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PayMethod::MercadoPago => "Mercado Pago",
+            PayMethod::Transfer => "Transferencia",
+            PayMethod::Coordinate => "Coordinar con la tienda",
+        }
+    }
+}
+
+/// Las formas de cobro de una tienda además de Mercado Pago (que depende de
+/// tener la cuenta vinculada).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct PaymentOptions {
+    pub transfer: bool,
+    /// Alias, CBU o CVU y titular, como lo ve el comprador.
+    pub transfer_info: String,
+    pub coordinate: bool,
+}
+
+pub const TRANSFER_INFO_MAX: usize = 300;
+
+/// Limpia las formas de cobro y devuelve los problemas (vacío si están bien).
+pub fn tidy_payment_options(p: &mut PaymentOptions) -> Vec<String> {
+    p.transfer_info = clip(p.transfer_info.trim(), TRANSFER_INFO_MAX);
+    let mut errors = Vec::new();
+    if p.transfer && p.transfer_info.is_empty() {
+        errors.push("Poné tu alias o CBU para que te puedan transferir.".to_string());
+    }
+    errors
+}
+
+/// Las formas de pago que puede elegir el comprador, en orden. Vacío: la
+/// tienda todavía no puede vender.
+pub fn pay_methods(mp_linked: bool, p: &PaymentOptions) -> Vec<PayMethod> {
+    let mut v = Vec::new();
+    if mp_linked {
+        v.push(PayMethod::MercadoPago);
+    }
+    if p.transfer {
+        v.push(PayMethod::Transfer);
+    }
+    if p.coordinate {
+        v.push(PayMethod::Coordinate);
+    }
+    v
+}
+
 /// Cómo recibe el pedido el comprador.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Delivery {
@@ -102,6 +178,9 @@ pub struct CheckoutForm {
     pub notes: String,
     /// Producto y cantidad, como están en el carrito.
     pub lines: Vec<(String, u32)>,
+    /// Cómo paga (una de las que ofrece la tienda).
+    #[serde(default)]
+    pub pay: PayMethod,
 }
 
 /// Un campo del formulario con problema, para mostrarlo al lado del campo.
@@ -254,9 +333,9 @@ pub fn shipping_label(d: &DeliverySettings, format_price: impl Fn(i64) -> String
 pub struct CheckoutInfo {
     pub store_name: String,
     pub delivery: DeliverySettings,
-    /// La tienda vinculó Mercado Pago: se paga al confirmar.
+    /// Las formas de pago que ofrece la tienda (vacío: todavía no vende).
     #[serde(default)]
-    pub online_payments: bool,
+    pub pay_methods: Vec<PayMethod>,
 }
 
 /// Un producto dentro de un pedido, como estaba al comprarlo.
@@ -312,7 +391,7 @@ impl OrderStatus {
 
     pub fn label(self) -> &'static str {
         match self {
-            OrderStatus::New => "Recibido",
+            OrderStatus::New => "Esperando pago",
             OrderStatus::PendingPayment => "Esperando pago",
             OrderStatus::Paid => "Pagado",
             OrderStatus::Shipped => "Enviado",
@@ -342,6 +421,8 @@ pub struct Order {
     pub total_cents: i64,
     /// Cuándo se hizo, RFC 3339.
     pub created_at: String,
+    #[serde(default)]
+    pub pay: PayMethod,
 }
 
 /// La página de un pedido ya hecho, en la tienda.
@@ -353,6 +434,9 @@ pub struct OrderReceipt {
     /// Se puede pagar con Mercado Pago (la tienda lo vinculó y falta pagar).
     #[serde(default)]
     pub can_pay: bool,
+    /// Adónde transferir, si el pedido se paga con transferencia.
+    #[serde(default)]
+    pub transfer_info: String,
 }
 
 /// Qué pasó al tocar "Confirmar pedido".
@@ -375,6 +459,8 @@ pub struct PaymentsInfo {
     /// MarketMaker tiene su aplicación de Mercado Pago configurada.
     pub configured: bool,
     pub link: Option<MpLink>,
+    #[serde(default)]
+    pub options: PaymentOptions,
 }
 
 /// La cuenta de Mercado Pago vinculada a una tienda.
@@ -419,7 +505,7 @@ impl OrderColumn {
     /// El estado que toma un pedido al llevarlo a esta columna.
     pub fn status(self) -> OrderStatus {
         match self {
-            OrderColumn::AwaitingPayment => OrderStatus::PendingPayment,
+            OrderColumn::AwaitingPayment => OrderStatus::New,
             OrderColumn::ToPrepare => OrderStatus::Paid,
             OrderColumn::Shipped => OrderStatus::Shipped,
             OrderColumn::Delivered => OrderStatus::Delivered,
@@ -449,7 +535,7 @@ impl OrderColumn {
     pub fn action(self, delivery: Delivery) -> &'static str {
         match (self, delivery) {
             (OrderColumn::AwaitingPayment, _) => "Volver a esperando pago",
-            (OrderColumn::ToPrepare, _) => "Marcar como pagado",
+            (OrderColumn::ToPrepare, _) => "Ya me pagó",
             (OrderColumn::Shipped, Delivery::Pickup) => "Marcar listo para retirar",
             (OrderColumn::Shipped, Delivery::Shipping) => "Marcar como enviado",
             (OrderColumn::Delivered, _) => "Marcar como entregado",
@@ -514,6 +600,7 @@ mod tests {
             city: "CABA".into(),
             notes: String::new(),
             lines: vec![("a".into(), 2), ("b".into(), 0)],
+            pay: PayMethod::default(),
         }
     }
 
