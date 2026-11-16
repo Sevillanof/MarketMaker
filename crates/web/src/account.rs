@@ -317,7 +317,7 @@ fn SignInForm(next: String) -> impl IntoView {
         };
         match result {
             Ok(PasswordSignIn::In { next }) => go(&next),
-            Ok(PasswordSignIn::Wrong) => problem.set(Some("La contraseña no es correcta. Probá de nuevo o tocá \"¿Te la olvidaste?\".".into())),
+            Ok(PasswordSignIn::Wrong) => problem.set(Some("La contraseña no es correcta. Probá de nuevo o recuperala con \"¿Olvidaste tu contraseña?\".".into())),
             Ok(PasswordSignIn::Locked { minutes }) => problem.set(Some(format!(
                 "Hubo demasiados intentos seguidos. Esperá {minutes} minutos o entrá con un código por email."
             ))),
@@ -443,12 +443,12 @@ fn SignInForm(next: String) -> impl IntoView {
                 <PasswordField value=password label="Contraseña" autocomplete="current-password" autofocus=true
                     extra=view! {
                         <button type="button" class="link link-primary text-sm font-semibold no-underline" disabled=busy
-                            on:click=move |_| send_code(CodeFor::Reset)>"¿Te la olvidaste?"</button>
+                            on:click=move |_| send_code(CodeFor::Reset)>"¿Olvidaste tu contraseña?"</button>
                     }.into_any()/>
                 {alert}
                 {submit_btn("Entrar", "Entrando…")}
                 <button type="button" class="link text-center text-sm text-base-content/70 no-underline hover:text-base-content" disabled=busy
-                    on:click=move |_| send_code(CodeFor::Login)>"Prefiero que me manden un código por email"</button>
+                    on:click=move |_| send_code(CodeFor::Login)>"Iniciar sesión con un código por email"</button>
             </form>
         }.into_any(),
         Step::Create => view! {
@@ -601,7 +601,6 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
         }
     });
     let avatar = account.avatar.clone();
-    let has_photo = avatar.is_some();
     let first_of_email = account.email.chars().next();
     let initial = move || {
         saved_name
@@ -628,12 +627,12 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
     view! {
         <section class="overflow-hidden rounded-2xl border border-base-300 bg-base-100">
             <div class="flex items-center gap-4 px-6 py-5">
-                {move || view! { <crate::panel::Avatar letter=initial() size="size-13 text-xl" photo=avatar.clone()/> }}
-                <div class="min-w-0 grow">
-                    <div class="truncate text-lg font-bold">{move || if saved_name.get().is_empty() { "Sin nombre".to_string() } else { saved_name.get() }}</div>
-                    <div class="text-sm text-base-content/70">{stores}</div>
-                </div>
-                <ProfilePhoto has_photo=has_photo/>
+                <ProfilePhoto letter=Signal::derive(initial) photo=avatar.clone()>
+                    <div class="min-w-0 grow">
+                        <div class="truncate text-lg font-bold">{move || if saved_name.get().is_empty() { "Sin nombre".to_string() } else { saved_name.get() }}</div>
+                        <div class="text-sm text-base-content/70">{stores}</div>
+                    </div>
+                </ProfilePhoto>
             </div>
             <AccountRow icon="user" label="Nombre" action=change_btn(Signal::stored("Cambiar"), name_dialog)>
                 <span class=move || if saved_name.get().is_empty() { "text-base-content/50" } else { "" }>
@@ -650,12 +649,11 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
                 {move || if has_password.get() {
                     view! {
                         <div class="tracking-widest">"••••••••"</div>
-                        <div class="text-xs text-base-content/60">"Si te la olvidás, te mandamos un código por email."</div>
                     }.into_any()
                 } else {
                     view! {
                         <div class="text-base-content/50">"Sin contraseña"</div>
-                        <div class="text-xs text-base-content/60">"Hoy entrás con un código por email. Elegí una y entrás directo."</div>
+                        <div class="text-xs text-base-content/60">"Elegí una para iniciar sesión sin esperar un código por email."</div>
                     }.into_any()
                 }}
             </AccountRow>
@@ -675,11 +673,17 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
     }
 }
 
-/// "Cambiar foto" / "Quitar" de la foto de perfil. La foto nueva se sube a
-/// Mis fotos (así se convierte y se achica como las demás) y queda como foto
-/// de perfil. Después recarga, para que el menú del costado la muestre.
+/// La foto de perfil: se toca para elegir otra (o subir la primera) y
+/// "Quitar" vuelve a la inicial. La foto nueva se sube a Mis fotos (así se
+/// convierte y se achica como las demás). Después recarga, para que el menú
+/// del costado la muestre. `children` va entre la foto y "Quitar".
 #[component]
-fn ProfilePhoto(has_photo: bool) -> impl IntoView {
+fn ProfilePhoto(
+    letter: Signal<String>,
+    photo: Option<String>,
+    children: Children,
+) -> impl IntoView {
+    let has_photo = photo.is_some();
     let photos = editor::MyPhotos::new();
     let problem = RwSignal::new(None::<String>);
     let saving = RwSignal::new(false);
@@ -699,27 +703,44 @@ fn ProfilePhoto(has_photo: bool) -> impl IntoView {
         });
     };
     let busy = move || saving.get() || photos.progress.get().is_some();
+    let hint = if has_photo {
+        "Cambiar foto de perfil"
+    } else {
+        "Subir foto de perfil"
+    };
     view! {
+        <label for="foto-perfil" title=hint
+            class="group relative shrink-0 cursor-pointer rounded-full has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary">
+            {move || view! { <crate::panel::Avatar letter=letter.get() size="size-13 text-xl" photo=photo.clone()/> }}
+            <span aria-hidden="true" class=move || format!(
+                "absolute inset-0 grid place-items-center rounded-full bg-black/45 text-white transition-opacity {}",
+                if busy() { "opacity-100" } else { "opacity-0 group-hover:opacity-100" }
+            )>
+                {move || if busy() {
+                    view! { <span class="loading loading-spinner loading-sm"></span> }.into_any()
+                } else {
+                    view! { <ui::Icon class="size-5" name="camera"/> }.into_any()
+                }}
+            </span>
+            <span aria-hidden="true" class="absolute -right-0.5 -bottom-0.5 grid size-6 place-items-center rounded-full border-2 border-base-100 bg-base-content text-base-100">
+                <ui::Icon class="size-3" name="camera"/>
+            </span>
+            <input id="foto-perfil" type="file" class="sr-only" aria-label=hint disabled=busy
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                on:change=move |ev| {
+                    problem.set(None);
+                    photos.upload(
+                        editor::take_files(&ev).into_iter().take(1).collect(),
+                        Callback::new(move |item: domain::MediaItem| apply(Some(item.id))),
+                    )
+                }/>
+        </label>
+        {children()}
         <div class="flex shrink-0 flex-col items-end gap-1">
-            <div class="flex items-center gap-2">
-                {has_photo.then(|| view! {
-                    <button type="button" class="btn btn-ghost btn-sm text-base-content/70" disabled=busy
-                        on:click=move |_| apply(None)>"Quitar"</button>
-                })}
-                <label for="foto-perfil" class="btn btn-outline btn-sm border-base-300 bg-base-100"
-                    class:btn-disabled=busy>
-                    {move || if busy() { "Subiendo…" } else if has_photo { "Cambiar foto" } else { "Subir foto" }}
-                </label>
-                <input id="foto-perfil" type="file" class="hidden"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    on:change=move |ev| {
-                        problem.set(None);
-                        photos.upload(
-                            editor::take_files(&ev).into_iter().take(1).collect(),
-                            Callback::new(move |item: domain::MediaItem| apply(Some(item.id))),
-                        )
-                    }/>
-            </div>
+            {has_photo.then(|| view! {
+                <button type="button" class="btn btn-ghost btn-sm text-base-content/70" disabled=busy
+                    on:click=move |_| apply(None)>"Quitar foto"</button>
+            })}
             {move || {
                 let errors = photos.upload_errors.get();
                 problem.get().or_else(|| errors.into_iter().next())

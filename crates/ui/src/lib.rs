@@ -222,6 +222,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "box" => "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",
         "bag" => "M6 3L3 7v13h18V7l-3-4zM3 7h18M16 11a4 4 0 0 1-8 0",
         "photo" => "M3 3h18v18H3zM9 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4M21 15l-5-5L5 21",
+        "camera" => "M3 8h4l2-3h6l2 3h4v12H3zM12 10a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7",
         "plus" => "M12 5v14M5 12h14",
         "check" => "M5 12l5 5 9-10",
         "chevron-down" => "M6 9l6 6 6-6",
