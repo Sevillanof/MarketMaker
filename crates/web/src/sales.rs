@@ -231,19 +231,20 @@ pub fn SalesPage() -> impl IntoView {
     }
     let slug = slug_param();
     let data = Resource::new(move || slug.get(), store_delivery);
+    let andreani = Resource::new(move || slug.get(), load_andreani);
     view! {
         <leptos_meta::Title text="Entregas · MarketMaker"/>
         <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Delivery>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
-                        match data.await {
-                            Ok(Some((_, d))) => view! {
+                        match (data.await, andreani.await) {
+                            (Ok(Some((_, d))), Ok(Some(panel))) => view! {
                                 <DeliveryForm slug=slug.get_untracked() d/>
-                                <AndreaniCard slug=slug.get_untracked()/>
+                                <AndreaniCard slug=slug.get_untracked() panel/>
                             }.into_any(),
-                            Ok(None) => view! { <SignInFirst back=format!("/tienda/{}/ventas", slug.get_untracked())/> }.into_any(),
-                            Err(e) => view! { <div role="alert" class="alert alert-error">{error_text(&e)}</div> }.into_any(),
+                            (Ok(None), _) | (_, Ok(None)) => view! { <SignInFirst back=format!("/tienda/{}/ventas", slug.get_untracked())/> }.into_any(),
+                            (Err(e), _) | (_, Err(e)) => view! { <div role="alert" class="alert alert-error">{error_text(&e)}</div> }.into_any(),
                         }
                     })}
                 </Suspense>
@@ -398,11 +399,10 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
 
 /// Envíos con Andreani: conectar la cuenta y elegir qué ofrecer.
 #[component]
-fn AndreaniCard(slug: String) -> impl IntoView {
+fn AndreaniCard(slug: String, panel: AndreaniPanel) -> impl IntoView {
     let slug = StoredValue::new(slug);
-    let data = Resource::new(move || slug.get_value(), load_andreani);
     // Lo que se ve ahora: se cambia al conectar o desconectar sin recargar.
-    let account = RwSignal::new(None::<Option<AndreaniAccount>>);
+    let account = RwSignal::new(panel.account);
     view! {
         <section class="card bg-base-100 shadow-sm" aria-labelledby="a-title">
             <div class="card-body gap-4">
@@ -412,33 +412,16 @@ fn AndreaniCard(slug: String) -> impl IntoView {
                         "Tus compradores ven el costo real del envío y eligen domicilio o sucursal. Vos imprimís la etiqueta y despachás."
                     </p>
                 </div>
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-40 w-full"/> }>
-                    {move || Suspend::new(async move {
-                        match data.await {
-                            Ok(Some(p)) => {
-                                if account.get_untracked().is_none() {
-                                    account.set(Some(p.account.clone()));
-                                }
-                                let store = StoredValue::new(p);
-                                (move || match account.get().flatten() {
-                                    Some(acc) => view! {
-                                        <AndreaniConnected slug=slug.get_value() acc
-                                            on_disconnect=Callback::new(move |_| account.set(Some(None)))/>
-                                    }.into_any(),
-                                    None => {
-                                        let _ = store;
-                                        view! {
-                                            <AndreaniConnectSteps slug=slug.get_value()
-                                                on_connect=Callback::new(move |a| account.set(Some(Some(a))))/>
-                                        }.into_any()
-                                    }
-                                }).into_any()
-                            }
-                            Ok(None) => ().into_any(),
-                            Err(e) => view! { <p role="alert" class="text-sm text-error">{error_text(&e)}</p> }.into_any(),
-                        }
-                    })}
-                </Suspense>
+                {move || match account.get() {
+                    Some(acc) => view! {
+                        <AndreaniConnected slug=slug.get_value() acc
+                            on_disconnect=Callback::new(move |_| account.set(None))/>
+                    }.into_any(),
+                    None => view! {
+                        <AndreaniConnectSteps slug=slug.get_value()
+                            on_connect=Callback::new(move |a| account.set(Some(a)))/>
+                    }.into_any(),
+                }}
             </div>
         </section>
     }
