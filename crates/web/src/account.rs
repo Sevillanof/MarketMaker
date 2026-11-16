@@ -218,6 +218,7 @@ fn PasswordField(
                 <p class="text-xs text-base-content/70" aria-live="polite">
                     {move || match score() {
                         0 => format!("{} caracteres o más.", domain::PASSWORD_MIN),
+                        1 if domain::is_common_password(&value.get()) => "Muy común: se adivina fácil. Elegí otra.".to_string(),
                         1 => format!("Muy corta: {} caracteres o más.", domain::PASSWORD_MIN),
                         2 => "Aceptable. Con mayúsculas, números o símbolos es más segura.".to_string(),
                         3 => "Buena.".to_string(),
@@ -290,22 +291,14 @@ fn SignInForm(next: String) -> impl IntoView {
             return;
         };
         match result {
-            Ok(EmailLookup::Existing {
-                name: n,
-                has_password: true,
-            }) => {
-                name.set(n);
+            Ok(EmailLookup::Existing) => {
+                name.set(String::new());
                 password.set(String::new());
                 goto(Step::Password);
             }
-            Ok(EmailLookup::Existing {
-                name: n,
-                has_password: false,
-            }) => {
-                name.set(n);
-                info.set(Some("Tu cuenta todavía no tiene contraseña. Te mandamos un código para que elijas una; después entrás siempre con ella.".into()));
-                send_code(CodeFor::Reset);
-            }
+            Ok(EmailLookup::TooMany) => problem.set(Some(
+                "Hiciste muchas consultas seguidas. Esperá un minuto y probá de nuevo.".into(),
+            )),
             Ok(EmailLookup::New) => {
                 password.set(String::new());
                 goto(Step::Create);

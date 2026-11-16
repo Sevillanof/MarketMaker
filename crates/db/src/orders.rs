@@ -283,6 +283,29 @@ pub async fn set_status(
     Ok(true)
 }
 
+/// Cancela los pedidos que esperan el pago online (Mercado Pago) hace más de
+/// `hours` horas sin que nadie los toque, y devuelve sus unidades al stock.
+/// Así un pedido abandonado (o falso) no deja productos "Agotado" para
+/// siempre. Los pedidos que se pagan coordinando con la tienda no se tocan:
+/// esos los maneja el dueño. Devuelve cuántos canceló.
+pub async fn expire_unpaid(pool: &PgPool, hours: i32) -> sqlx::Result<usize> {
+    let stale: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT tenant_id, id FROM orders
+         WHERE status = 'pending_payment'
+           AND updated_at < now() - make_interval(hours => $1)",
+    )
+    .bind(hours)
+    .fetch_all(pool)
+    .await?;
+    let mut done = 0;
+    for (tenant, id) in stale {
+        if set_status(pool, tenant, id, OrderStatus::Cancelled).await? {
+            done += 1;
+        }
+    }
+    Ok(done)
+}
+
 /// Números de la tienda para su Inicio en el panel.
 #[derive(Debug, Clone, Default, PartialEq, FromRow)]
 pub struct Summary {

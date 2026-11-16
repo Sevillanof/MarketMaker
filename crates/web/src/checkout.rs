@@ -63,6 +63,18 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     if !errors.is_empty() {
         return Ok(PlaceOrder::Invalid { errors });
     }
+    // Frena los pedidos falsos en serie: cada uno descuenta stock y manda
+    // emails. 5 cada 10 minutos por conexión y tienda alcanza para un comprador.
+    let ip = crate::limits::client_ip();
+    if !crate::limits::allow(
+        &format!("order|{}|{ip}", tenant.id),
+        5,
+        std::time::Duration::from_secs(10 * 60),
+    ) {
+        return Ok(PlaceOrder::CartChanged {
+            message: "Recibimos varios pedidos seguidos desde tu conexión. Esperá unos minutos y probá de nuevo.".into(),
+        });
+    }
     let changed = |message: String| Ok(PlaceOrder::CartChanged { message });
     let mut ids = Vec::new();
     for (id, _) in &form.lines {

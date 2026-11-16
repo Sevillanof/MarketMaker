@@ -72,6 +72,7 @@ async fn main() {
     log!("Mis fotos se guardan en {}", store.describe());
     tokio::spawn(move_old_photos(pool.clone(), store.clone()));
     tokio::spawn(sweep_loose_files(pool.clone(), store.clone()));
+    tokio::spawn(expire_unpaid_orders(pool.clone()));
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
         store: store.clone(),
@@ -135,6 +136,34 @@ async fn main() {
         .layer(SetResponseHeaderLayer::if_not_present(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache"),
+        ))
+        // Protecciones estándar del navegador para todas las respuestas:
+        // solo https (HSTS), no adivinar tipos de archivo, no mandar la
+        // dirección completa a otros sitios, y que ningún sitio ajeno pueda
+        // meter la tienda o el editor dentro de un marco (clickjacking).
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static("frame-ancestors 'none'; base-uri 'self'; object-src 'none'"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::HeaderName::from_static("permissions-policy"),
+            HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
         ))
         .with_state(leptos_options);
 
@@ -238,6 +267,20 @@ async fn move_old_photos(pool: db::Pool, store: ::media::Store) {
         }
     }
     log!("Fotos ordenadas por usuario: {moved}");
+}
+
+/// Cada hora cancela los pedidos que esperan el pago online hace más de 48
+/// horas sin cambios, y devuelve su stock (ver `db::orders::expire_unpaid`).
+async fn expire_unpaid_orders(pool: db::Pool) {
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+    loop {
+        match db::orders::expire_unpaid(&pool, 48).await {
+            Ok(0) => {}
+            Ok(n) => log!("Pedidos: se cancelaron {n} que esperaban el pago hace más de 48 horas"),
+            Err(e) => log!("Pedidos: no pudimos revisar los pedidos sin pagar: {e}"),
+        }
+        tokio::time::sleep(EVERY).await;
+    }
 }
 
 /// Cada tanto borra del almacén las carpetas de fotos que no son de ninguna

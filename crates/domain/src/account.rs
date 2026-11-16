@@ -44,9 +44,12 @@ pub enum EmailLookup {
     BadEmail,
     /// No está en la lista de personas habilitadas (registro por invitación).
     NotAllowed,
-    /// Ya tiene cuenta. Sin contraseña (cuentas de antes) entra con un código
-    /// y elige una.
-    Existing { name: String, has_password: bool },
+    /// Ya tiene cuenta: pide la contraseña. No se dice el nombre ni si tiene
+    /// contraseña, para no contarle nada a quien prueba emails ajenos. Las
+    /// cuentas de antes, sin contraseña, eligen una con un código.
+    Existing,
+    /// Demasiadas consultas seguidas desde la misma conexión.
+    TooMany,
     /// Es nuevo: crea su cuenta.
     New,
 }
@@ -145,9 +148,37 @@ pub fn password_problem(password: &str) -> Option<String> {
         ))
     } else if password.trim().is_empty() {
         Some("La contraseña no puede ser solo espacios.".into())
+    } else if is_common_password(password) {
+        Some("Esa contraseña es muy común y se adivina fácil. Elegí otra.".into())
     } else {
         None
     }
+}
+
+/// Las contraseñas que más se prueban al intentar entrar en cuentas ajenas.
+const COMMON_PASSWORDS: &[&str] = &[
+    "password", "password1", "password12", "password123", "passw0rd", "contraseña",
+    "contrasena", "contraseña1", "contrasena1", "micontraseña", "micontrasena",
+    "qwerty12", "qwerty123", "qwertyui", "qwertyuiop", "asdfghjk", "asdfghjkl",
+    "zxcvbnm1", "abcd1234", "abc12345", "a1b2c3d4", "iloveyou",
+    "teamo123", "tequiero", "hola1234", "holahola", "bienvenido", "argentina",
+    "argentina1", "argentina10", "bocajuniors", "riverplate", "messi1010",
+    "maradona10", "futbol10", "dragon12", "superman", "batman123", "football",
+    "baseball", "sunshine", "princess", "starwars", "welcome1", "letmein1",
+    "trustno1", "admin123", "administrador", "marketmaker", "mkr12345",
+    "12341234", "11223344", "12121212", "12344321", "1q2w3e4r", "1qaz2wsx",
+];
+
+/// Una contraseña común, una sola letra repetida o números seguidos.
+pub fn is_common_password(password: &str) -> bool {
+    let p = password.trim().to_lowercase();
+    let chars: Vec<char> = p.chars().collect();
+    let repeated = chars.windows(2).all(|w| w[0] == w[1]);
+    let digits: Vec<u32> = chars.iter().filter_map(|c| c.to_digit(10)).collect();
+    let sequence = digits.len() == chars.len()
+        && (digits.windows(2).all(|w| (w[0] + 1) % 10 == w[1])
+            || digits.windows(2).all(|w| (w[1] + 1) % 10 == w[0]));
+    repeated || sequence || COMMON_PASSWORDS.contains(&p.as_str())
 }
 
 /// Qué tan buena es una contraseña, de 0 a 4, para la barrita de colores.
@@ -157,7 +188,7 @@ pub fn password_score(password: &str) -> u8 {
     if n == 0 {
         return 0;
     }
-    if n < PASSWORD_MIN {
+    if n < PASSWORD_MIN || is_common_password(password) {
         return 1;
     }
     let kinds = [
@@ -227,6 +258,16 @@ pub fn safe_next(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn common_passwords_are_rejected() {
+        for p in ["password", "12345678", "aaaaaaaa", "87654321", "Argentina", "1234567890"] {
+            assert!(password_problem(p).is_some(), "{p}");
+            assert_eq!(password_score(p), 1, "{p}");
+        }
+        assert!(password_problem("Huerta-2026-lindo").is_none());
+    }
+
     use super::*;
 
     #[test]
@@ -257,7 +298,7 @@ mod tests {
         assert!(password_problem(&"x".repeat(129)).is_some());
         assert_eq!(password_score(""), 0);
         assert_eq!(password_score("abc"), 1);
-        assert_eq!(password_score("abcdefgh"), 2);
+        assert_eq!(password_score("mate dulce"), 2);
         assert_eq!(password_score("Abcdefg1"), 3);
         assert_eq!(password_score("Abcdefgh1234!"), 4);
     }

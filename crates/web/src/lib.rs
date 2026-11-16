@@ -19,6 +19,8 @@ mod dev;
 pub mod email;
 mod landing;
 #[cfg(feature = "ssr")]
+pub mod limits;
+#[cfg(feature = "ssr")]
 pub mod media;
 #[cfg(feature = "ssr")]
 pub mod mp;
