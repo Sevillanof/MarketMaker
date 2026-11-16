@@ -277,6 +277,9 @@ fn OrderCard(ctx: BoardCtx, order: Order) -> impl IntoView {
                 on:click=move |_| ctx.open.set(Some(id_click.clone()))>
                 <span class="block truncate"><b>{format!("#{}", order.number)}</b>" · "{order.customer_name.clone()}</span>
                 <span class="block text-sm text-base-content/70">{format!("{} · {}", format_price(order.total_cents), where_short(&order))}</span>
+                {(!order.regret_code.is_empty()).then(|| view! {
+                    <span class="mt-1 block text-sm font-semibold text-red-700">"Pidió arrepentirse de la compra"</span>
+                })}
                 <span class="mt-2 flex items-center gap-1">
                     {thumbs.into_iter().map(|src| view! {
                         <span class="block h-7 w-7 overflow-hidden rounded-sm"><Image src alt=""/></span>
@@ -391,6 +394,12 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                 <div class="grow">
                     <h2 id="order-title" class="text-2xl font-bold">{format!("Pedido #{}", order.number)}</h2>
                     <p class="text-sm text-base-content/70">{format!("{} · {} · {}", order.status.label(), order.pay.label(), domain::order_time_ar(&order.created_at))}</p>
+                    {(!order.regret_code.is_empty()).then(|| view! {
+                        <p class="mt-1 text-sm text-red-700">{format!(
+                            "Usó el botón de arrepentimiento (código {}). Comunicate para coordinar la devolución y el reintegro.",
+                            order.regret_code
+                        )}</p>
+                    })}
                 </div>
                 <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=move |_| ctx.open.set(None)>"✕"</button>
             </header>

@@ -37,7 +37,11 @@ pub fn Landing() -> impl IntoView {
             <footer class="bg-[#110e1c] py-14 text-sm text-white/60">
                 <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 lg:px-10">
                     <Logo class="text-white"/>
-                    <a href="mailto:hola@mkr.com.ar" class="hover:text-white">"hola@mkr.com.ar"</a>
+                    <nav class="flex flex-wrap gap-x-6 gap-y-2" aria-label="Legales">
+                        <a href="/terminos" class="hover:text-white">"Términos"</a>
+                        <a href="/privacidad" class="hover:text-white">"Privacidad"</a>
+                        <a href="mailto:hola@mkr.com.ar" class="hover:text-white">"hola@mkr.com.ar"</a>
+                    </nav>
                 </div>
             </footer>
         </div>
@@ -78,6 +82,7 @@ fn Hero(demo: String) -> impl IntoView {
                 <div class="mt-9 mb-16 flex flex-wrap justify-center gap-3">
                     <a href="/entrar" class="btn btn-primary btn-lg h-[52px] rounded-xl px-7">"Crear mi tienda"</a>
                     <a href=demo class="btn btn-lg h-[52px] rounded-xl border-white/20 bg-transparent px-7 text-white hover:bg-white/10">"Ver una tienda de ejemplo"</a>
+                    <p class="w-full text-sm text-white/60">"Por ahora, solo con invitación."</p>
                 </div>
             </div>
             <EditorPreview/>
@@ -183,7 +188,7 @@ fn Stores(demo: String) -> impl IntoView {
             banner: "Volvé a clases",
             look: "Claro",
             bg: "bg-[#eef3ff]",
-            banner_class: "border-2 border-dashed border-[#c9c1ff] bg-white text-[#4330d6]",
+            banner_class: "bg-gradient-to-r from-[#4330d6] to-[#8f7dff] text-white",
             pics: [7, 2, 5],
         },
     ];
@@ -193,7 +198,7 @@ fn Stores(demo: String) -> impl IntoView {
                 <div class="mb-11 flex flex-wrap items-end justify-between gap-6">
                     <div>
                         <h2 class="text-4xl leading-tight font-extrabold tracking-[-0.035em] lg:text-[44px]">"Una tienda, mil estilos"</h2>
-                        <p class="mt-2.5 text-lg text-[#5d5a6e]">"Mismo editor, tres tiendas que no se parecen en nada."</p>
+                        <p class="mt-2.5 text-lg text-[#5d5a6e]">"Mismo editor, tres estilos que no se parecen en nada. Así pueden verse las tiendas."</p>
                     </div>
                     <a href=demo class="btn h-11 rounded-[10px] border-[#e7e4ee] bg-white px-5">"Ver la tienda de ejemplo →"</a>
                 </div>
@@ -222,7 +227,7 @@ fn Stores(demo: String) -> impl IntoView {
 fn Included() -> impl IntoView {
     let items = [
         "Editor de arrastrar y soltar",
-        "Tu dirección .mkr.com.ar",
+        "Tu dirección tunombre.mkr.com.ar",
         "Cobros con Mercado Pago",
         "Envíos y retiro en tu local",
         "Stock que se descuenta solo",

@@ -461,6 +461,9 @@ pub struct Order {
     pub created_at: String,
     #[serde(default)]
     pub pay: PayMethod,
+    /// Código del pedido de arrepentimiento, si el comprador lo pidió.
+    #[serde(default)]
+    pub regret_code: String,
 }
 
 /// La página de un pedido ya hecho, en la tienda.
@@ -725,5 +728,80 @@ mod tests {
         assert_eq!(order_time_ar("2028-03-01T02:00:00Z"), "29/02 23:00");
         assert_eq!(order_time_ar("2027-01-01T00:00:00Z"), "31/12 21:00");
         assert_eq!(order_time_ar("roto"), "");
+    }
+}
+
+/// Botón de arrepentimiento: lo que escribe el comprador.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct RegretForm {
+    pub name: String,
+    pub email: String,
+    /// El número del pedido, como lo escribió ("#1001" o "1001").
+    pub number: String,
+    pub reason: String,
+}
+
+/// Qué pasó al mandar el pedido de arrepentimiento.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum RegretOutcome {
+    /// Quedó registrado; `code` es el código para el comprador.
+    Sent { code: String, number: i32 },
+    Invalid { errors: Vec<FieldError> },
+    /// Mensaje general (por ejemplo, demasiados intentos).
+    Problem(String),
+}
+
+/// Limpia el formulario de arrepentimiento y devuelve el número del pedido o
+/// los problemas por campo (`name`, `email`, `number`).
+pub fn tidy_regret(f: &mut RegretForm) -> Result<i32, Vec<FieldError>> {
+    f.name = f.name.split_whitespace().collect::<Vec<_>>().join(" ");
+    f.name = f.name.chars().take(80).collect();
+    f.email = f.email.trim().to_lowercase().chars().take(120).collect();
+    f.reason = f.reason.trim().chars().take(500).collect();
+    let digits: String = f.number.chars().filter(char::is_ascii_digit).collect();
+    let mut e = Vec::new();
+    let err = |field: &str, message: &str| FieldError {
+        field: field.into(),
+        message: message.into(),
+    };
+    if f.name.is_empty() {
+        e.push(err("name", "Escribí tu nombre."));
+    }
+    if !looks_like_email(&f.email) {
+        e.push(err(
+            "email",
+            "Escribí el email con el que hiciste la compra (por ejemplo, ana@correo.com).",
+        ));
+    }
+    let number = digits.parse::<i32>().ok().filter(|n| *n > 0);
+    if number.is_none() {
+        e.push(err(
+            "number",
+            "Escribí el número de pedido que te llegó por email, por ejemplo 1001.",
+        ));
+    }
+    match number {
+        Some(n) if e.is_empty() => Ok(n),
+        _ => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod regret_tests {
+    use super::*;
+
+    #[test]
+    fn the_regret_form_takes_the_number_with_or_without_hash() {
+        let mut f = RegretForm {
+            name: "  Ana   Pérez ".into(),
+            email: " Ana@Correo.com ".into(),
+            number: "#1001".into(),
+            reason: String::new(),
+        };
+        assert_eq!(tidy_regret(&mut f), Ok(1001));
+        assert_eq!((f.name.as_str(), f.email.as_str()), ("Ana Pérez", "ana@correo.com"));
+        let mut bad = RegretForm::default();
+        let fields: Vec<_> = tidy_regret(&mut bad).unwrap_err().into_iter().map(|e| e.field).collect();
+        assert_eq!(fields, ["name", "email", "number"]);
     }
 }

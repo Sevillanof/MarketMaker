@@ -377,3 +377,76 @@ pub fn login_code(to: &str, code: &str) -> Email {
         ),
     }
 }
+
+/// Botón de arrepentimiento, al comprador: recibimos tu pedido, con el código.
+pub fn regret_to_buyer(to: &str, store_name: &str, number: i32, code: &str) -> Email {
+    let what = format!(
+        "Recibimos tu pedido para arrepentirte de la compra #{number} en {store_name}. Tu código es {code}. La tienda se va a comunicar con vos para coordinar la devolución y el reintegro."
+    );
+    let html = frame(
+        store_name,
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">Pedido de arrepentimiento recibido</h1>
+<p style="margin:0;color:#52525b">{}</p>
+<p style="margin:16px 0 0;font-size:22px;font-weight:700;letter-spacing:1px">{}</p>"#,
+            esc(&what),
+            esc(code)
+        ),
+    );
+    Email {
+        to: vec![to.to_string()],
+        subject: format!("Arrepentimiento de la compra #{number}: código {code}"),
+        html,
+        text: format!("{what}\n"),
+    }
+}
+
+/// Botón de arrepentimiento, a los dueños: un comprador quiere revocar la compra.
+pub fn regret_to_owner(
+    owners: Vec<String>,
+    store_name: &str,
+    slug: &str,
+    o: &Order,
+    code: &str,
+    reason: &str,
+) -> Email {
+    let url = format!("{}/tienda/{slug}/pedidos", app_url());
+    let what = format!(
+        "{} usó el botón de arrepentimiento para el pedido #{} ({}). Tiene derecho a revocar la compra dentro de los 10 días de recibirla: comunicate con {} · {} para coordinar la devolución y el reintegro. Código: {code}.",
+        o.customer_name,
+        o.number,
+        ui::format_price(o.total_cents),
+        o.email,
+        o.phone
+    );
+    let reason_line = if reason.is_empty() {
+        String::new()
+    } else {
+        format!("Motivo: {reason}")
+    };
+    let html = frame(
+        "MarketMaker",
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">Arrepentimiento en {}: pedido #{}</h1>
+<p style="margin:0;color:#52525b">{}</p>{}{}"#,
+            esc(store_name),
+            o.number,
+            esc(&what),
+            if reason_line.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    r#"<p style="margin:12px 0 0;background:#f4f4f5;padding:10px;border-radius:8px">{}</p>"#,
+                    esc(&reason_line)
+                )
+            },
+            button(&url, "Ver pedidos")
+        ),
+    );
+    Email {
+        to: owners,
+        subject: format!("Arrepentimiento: pedido #{} · {store_name}", o.number),
+        html,
+        text: format!("{what}\n{reason_line}\n\nPedidos: {url}\n"),
+    }
+}

@@ -506,7 +506,7 @@ fn SignInForm(next: String) -> impl IntoView {
                 <PasswordField value=password label="Elegí una contraseña" autocomplete="new-password" meter=true/>
                 {alert}
                 {submit_btn("Crear cuenta", "Creando cuenta…")}
-                <p class="text-xs text-base-content/60">"Al crear la cuenta aceptás los términos y la privacidad."</p>
+                <p class="text-xs text-base-content/60">"Al crear la cuenta aceptás los "<a class="link" href="/terminos" target="_blank">"términos"</a>" y la "<a class="link" href="/privacidad" target="_blank">"política de privacidad"</a>"."</p>
             </form>
         }.into_any(),
         Step::Code(purpose) => {

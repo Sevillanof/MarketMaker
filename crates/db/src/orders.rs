@@ -312,6 +312,7 @@ struct OrderRow {
     total_cents: i64,
     created_at: String,
     payment: String,
+    regret_code: String,
 }
 
 impl From<OrderRow> for Order {
@@ -334,6 +335,7 @@ impl From<OrderRow> for Order {
             total_cents: r.total_cents,
             created_at: r.created_at,
             pay: domain::PayMethod::from_str(&r.payment),
+            regret_code: r.regret_code,
         }
     }
 }
@@ -344,7 +346,7 @@ macro_rules! select {
         concat!(
             "SELECT id, COALESCE(number, 0) AS number, status, customer_name, email, phone, delivery, address, ",
             "postal_code, city, notes, items, subtotal_cents, shipping_cents, total_cents, ",
-            "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, payment ",
+            "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, payment, regret_code ",
             "FROM orders ",
             $rest
         )
@@ -514,5 +516,40 @@ pub async fn to_prepare_by_store(pool: &PgPool, user: Uuid) -> sqlx::Result<Vec<
     )
     .bind(user)
     .fetch_all(pool)
+    .await
+}
+
+/// Botón de arrepentimiento: el comprador del pedido `number` (con ese
+/// email) pide revocar la compra. Devuelve el id del pedido, el código del
+/// pedido de arrepentimiento y si es la primera vez. `None` si no hay un
+/// pedido con ese número y email.
+pub async fn request_regret(
+    pool: &PgPool,
+    tenant: Uuid,
+    number: i32,
+    email: &str,
+) -> sqlx::Result<Option<(Uuid, String, bool)>> {
+    use rand::Rng;
+    const LETTERS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code: String = {
+        let mut rng = rand::rng();
+        (0..6)
+            .map(|_| LETTERS[rng.random_range(0..LETTERS.len())] as char)
+            .collect()
+    };
+    let code = format!("ARR-{code}");
+    sqlx::query_as(
+        "UPDATE orders
+         SET regret_code = CASE WHEN regret_code = '' THEN $4 ELSE regret_code END,
+             regret_at = COALESCE(regret_at, now()),
+             updated_at = now()
+         WHERE tenant_id = $1 AND number = $2 AND lower(email) = lower($3)
+         RETURNING id, regret_code, regret_code = $4",
+    )
+    .bind(tenant)
+    .bind(number)
+    .bind(email.trim())
+    .bind(&code)
+    .fetch_optional(pool)
     .await
 }
