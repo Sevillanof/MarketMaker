@@ -84,6 +84,7 @@ async fn main() {
     tokio::spawn(move_old_photos(pool.clone(), store.clone()));
     tokio::spawn(sweep_loose_files(pool.clone(), store.clone()));
     tokio::spawn(expire_unpaid_orders(pool.clone()));
+    tokio::spawn(web::shipments::track_loop(pool.clone()));
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
         store: store.clone(),

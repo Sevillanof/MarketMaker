@@ -455,3 +455,43 @@ pub fn regret_to_owner(
         text: format!("{what}\n{reason_line}\n\nPedidos: {url}\n"),
     }
 }
+
+/// Al comprador: su pedido salió con Andreani, con el número de seguimiento.
+pub fn shipped_to_buyer(store_name: &str, slug: &str, o: &Order, tracking: &str) -> Email {
+    let first = o.customer_name.split_whitespace().next().unwrap_or("");
+    let track = domain::tracking_url(tracking);
+    let url = format!("{}/pedido/{}", store_url(slug), o.id);
+    let what = match &o.shipment {
+        Some(s) if s.service.needs_branch() => format!(
+            "Tu pedido #{} ya está en manos de Andreani. Te avisan cuando esté listo para retirar en la sucursal {} ({}). Llevá tu DNI.",
+            o.number, s.branch_name, s.branch_address
+        ),
+        _ => format!(
+            "Tu pedido #{} ya está en manos de Andreani y va camino a {}.",
+            o.number,
+            o.destination().unwrap_or_default()
+        ),
+    };
+    let html = frame(
+        store_name,
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">¡{}, tu pedido está en camino!</h1>
+<p style="margin:0;color:#52525b">{}</p>
+<p style="margin:16px 0 0">Número de seguimiento: <b>{}</b></p>{}
+<p style="margin:16px 0 0;font-size:14px"><a href="{}" style="color:#4f46e5">Ver mi pedido</a></p>"#,
+            esc(first),
+            esc(&what),
+            esc(tracking),
+            button(&track, "Seguir mi envío"),
+            esc(&url)
+        ),
+    );
+    Email {
+        to: vec![o.email.clone()],
+        subject: format!("Tu pedido #{} está en camino", o.number),
+        html,
+        text: format!(
+            "¡{first}, tu pedido está en camino!\n{what}\nNúmero de seguimiento: {tracking}\nSeguilo en {track}\nTu pedido: {url}\n"
+        ),
+    }
+}

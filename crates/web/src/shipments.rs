@@ -132,8 +132,11 @@ async fn create(
 }
 
 /// Pregunta a Andreani por los envíos creados de `orders` (hasta 100) y
-/// guarda número de seguimiento y estado. Devuelve los que cambiaron.
-pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> Vec<(Order, Shipment)> {
+/// guarda número de seguimiento y estado. Cuando Andreani lo tiene en
+/// camino, el pedido pasa a Enviados y el comprador recibe el seguimiento;
+/// cuando lo entrega, pasa a Entregados. Devuelve cuántos cambiaron.
+pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> usize {
+    use domain::OrderStatus;
     let ids: Vec<String> = orders
         .iter()
         .filter_map(|o| o.shipment.as_ref())
@@ -142,16 +145,16 @@ pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> Vec<(Or
         .take(100)
         .collect();
     if ids.is_empty() {
-        return Vec::new();
+        return 0;
     }
     let found = match crate::andreani::track(pool, tenant, &ids).await {
         Ok(f) => f,
         Err(e) => {
             leptos::logging::warn!("Andreani: seguimiento: {e}");
-            return Vec::new();
+            return 0;
         }
     };
-    let mut changed = Vec::new();
+    let mut changed = 0;
     for o in orders {
         let Some(sh) = &o.shipment else { continue };
         let Some(t) = found.iter().find(|t| t.pedido_id == sh.pedido_id) else {
@@ -166,11 +169,57 @@ pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> Vec<(Or
         }
         new.status = t.status.clone();
         let Ok(id) = Uuid::parse_str(&o.id) else { continue };
-        if db::orders::save_shipment(pool, tenant, id, &new).await.is_ok() {
-            changed.push((o.clone(), new));
+        if db::orders::save_shipment(pool, tenant, id, &new).await.is_err() {
+            continue;
+        }
+        changed += 1;
+        let moving = !new.tracking.is_empty()
+            && !new.status.is_empty()
+            && new.status != "pendiente de ingreso";
+        let delivered = domain::tracking_is_delivered(&new.status);
+        // Solo hacia adelante: un pedido que el dueño movió a mano no vuelve atrás.
+        if delivered && matches!(o.status, OrderStatus::Paid | OrderStatus::Shipped) {
+            let _ = db::orders::set_status(pool, tenant, id, OrderStatus::Delivered).await;
+        } else if moving && o.status == OrderStatus::Paid {
+            let _ = db::orders::set_status(pool, tenant, id, OrderStatus::Shipped).await;
+        }
+        // El seguimiento le llega al comprador una vez: cuando aparece.
+        if sh.tracking.is_empty() && !new.tracking.is_empty() {
+            if let Ok(Some((name, slug))) = db::mp::name_and_slug(pool, tenant).await {
+                let mut o = o.clone();
+                o.shipment = Some(new.clone());
+                crate::email::send(crate::email::shipped_to_buyer(&name, &slug, &o, &new.tracking));
+            }
         }
     }
     changed
+}
+
+/// Cada 15 minutos sigue los envíos de Andreani de todas las tiendas (los
+/// creados en los últimos 30 días que todavía no se entregaron).
+pub async fn track_loop(pool: db::Pool) {
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+    loop {
+        tokio::time::sleep(EVERY).await;
+        let pending = match db::orders::shipments_to_track(&pool).await {
+            Ok(p) => p,
+            Err(e) => {
+                leptos::logging::warn!("Andreani: no pudimos buscar envíos para seguir: {e}");
+                continue;
+            }
+        };
+        let mut by_tenant: std::collections::BTreeMap<Uuid, Vec<Order>> = Default::default();
+        for (tenant, order) in pending {
+            if let Ok(Some(o)) = db::orders::get(&pool, tenant, order).await {
+                by_tenant.entry(tenant).or_default().push(o);
+            }
+        }
+        for (tenant, orders) in by_tenant {
+            for chunk in orders.chunks(100) {
+                refresh(&pool, tenant, chunk).await;
+            }
+        }
+    }
 }
 
 /// `GET /andreani/etiqueta/{pedido}`: la etiqueta en PDF, para el dueño.

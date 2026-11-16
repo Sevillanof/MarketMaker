@@ -1460,6 +1460,11 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
                     <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span>{format_price(order.total_cents)}</span></div>
                     <h3 class="mt-5 font-semibold">{order.delivery.label()}</h3>
                     <p class="text-sm text-base-content/75">{where_}</p>
+                    {order.shipment.as_ref().filter(|s| !s.tracking.is_empty()).map(|s| view! {
+                        <p class="mt-1 text-sm">"Seguimiento de Andreani: "
+                            <a class="link link-primary" href=domain::tracking_url(&s.tracking) target="_blank" rel="noopener noreferrer">{s.tracking.clone()}</a>
+                        </p>
+                    })}
                     <h3 class="mt-4 font-semibold">"Tus datos"</h3>
                     <p class="text-sm text-base-content/75">{format!("{} · {} · {}", order.customer_name, order.email, order.phone)}</p>
                     <p class="mt-4 text-xs text-base-content/60">"Guardá esta página: es la de tu pedido."</p>

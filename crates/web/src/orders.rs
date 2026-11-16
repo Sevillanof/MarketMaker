@@ -62,10 +62,7 @@ pub async fn refresh_shipment(slug: String, id: String) -> Result<Option<Order>,
     let Some(o) = db::orders::get(&pool, tenant.id, id).await.map_err(internal)? else {
         return Ok(None);
     };
-    if crate::shipments::refresh(&pool, tenant.id, std::slice::from_ref(&o))
-        .await
-        .is_empty()
-    {
+    if crate::shipments::refresh(&pool, tenant.id, std::slice::from_ref(&o)).await == 0 {
         return Ok(None);
     }
     db::orders::get(&pool, tenant.id, id).await.map_err(internal)
