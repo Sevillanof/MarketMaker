@@ -31,6 +31,7 @@ pub async fn delivery(pool: &PgPool, tenant: Uuid) -> sqlx::Result<DeliverySetti
         shipping_enabled: r.shipping_enabled,
         shipping_cents: r.shipping_cents,
         shipping_note: r.shipping_note,
+        andreani: Vec::new(),
     })
 }
 
@@ -113,6 +114,8 @@ pub struct NewOrder<'a> {
     pub items: &'a [OrderItem],
     pub shipping_cents: i64,
     pub pay: domain::PayMethod,
+    /// Con Andreani: sucursal, DNI y cotización.
+    pub shipment: Option<&'a domain::Shipment>,
 }
 
 /// Cómo salió guardar un pedido.
@@ -190,8 +193,8 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     let (id,): (Uuid,) = sqlx::query_as(
         "INSERT INTO orders (tenant_id, number, status, customer_name, email, phone, delivery,
                              address, postal_code, city, notes, items,
-                             subtotal_cents, shipping_cents, total_cents, payment)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                             subtotal_cents, shipping_cents, total_cents, payment, shipment)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          RETURNING id",
     )
     .bind(tenant)
@@ -210,6 +213,7 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     .bind(o.shipping_cents)
     .bind(subtotal + o.shipping_cents)
     .bind(o.pay.as_str())
+    .bind(o.shipment.map(sqlx::types::Json))
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -313,6 +317,7 @@ struct OrderRow {
     created_at: String,
     payment: String,
     regret_code: String,
+    shipment: Option<sqlx::types::Json<domain::Shipment>>,
 }
 
 impl From<OrderRow> for Order {
@@ -336,6 +341,7 @@ impl From<OrderRow> for Order {
             created_at: r.created_at,
             pay: domain::PayMethod::from_str(&r.payment),
             regret_code: r.regret_code,
+            shipment: r.shipment.map(|j| j.0),
         }
     }
 }
@@ -346,7 +352,7 @@ macro_rules! select {
         concat!(
             "SELECT id, COALESCE(number, 0) AS number, status, customer_name, email, phone, delivery, address, ",
             "postal_code, city, notes, items, subtotal_cents, shipping_cents, total_cents, ",
-            "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, payment, regret_code ",
+            "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, payment, regret_code, shipment ",
             "FROM orders ",
             $rest
         )

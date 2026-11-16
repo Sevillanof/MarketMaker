@@ -16,6 +16,11 @@ pub struct DeliverySettings {
     pub shipping_cents: Option<i64>,
     /// Lo que se le dice al comprador, por ejemplo "Lo coordinamos por WhatsApp".
     pub shipping_note: String,
+    /// Los servicios de Andreani que se ofrecen (vacío: Andreani no está
+    /// conectado o apagado). Se completa al cargar "Finalizar compra"; no se
+    /// guarda con el resto.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub andreani: Vec<crate::AndreaniService>,
 }
 
 impl Default for DeliverySettings {
@@ -27,6 +32,7 @@ impl Default for DeliverySettings {
             shipping_enabled: true,
             shipping_cents: None,
             shipping_note: "Lo coordinamos por WhatsApp".to_string(),
+            andreani: Vec::new(),
         }
     }
 }
@@ -157,21 +163,34 @@ pub fn pay_methods(mp_linked: bool, p: &PaymentOptions) -> Vec<PayMethod> {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Delivery {
     Pickup,
+    /// El envío propio de la tienda (costo fijo o a coordinar).
     #[default]
     Shipping,
+    /// Con Andreani, cotizado al comprar.
+    Andreani(crate::AndreaniService),
 }
 
 impl Delivery {
     pub fn as_str(self) -> &'static str {
+        use crate::AndreaniService as A;
         match self {
             Delivery::Pickup => "pickup",
             Delivery::Shipping => "shipping",
+            Delivery::Andreani(A::Home) => "andreani:home",
+            Delivery::Andreani(A::Branch) => "andreani:branch",
+            Delivery::Andreani(A::SameDay) => "andreani:same_day",
+            Delivery::Andreani(A::Bigger) => "andreani:bigger",
         }
     }
 
     pub fn from_str(s: &str) -> Self {
         if s == "pickup" {
             Delivery::Pickup
+        } else if let Some(svc) = s
+            .strip_prefix("andreani:")
+            .and_then(crate::AndreaniService::from_str)
+        {
+            Delivery::Andreani(svc)
         } else {
             Delivery::Shipping
         }
@@ -181,6 +200,23 @@ impl Delivery {
         match self {
             Delivery::Pickup => "Retiro en el local",
             Delivery::Shipping => "Envío a domicilio",
+            Delivery::Andreani(s) => s.label(),
+        }
+    }
+
+    /// Hace falta la dirección del comprador.
+    pub fn needs_address(self) -> bool {
+        match self {
+            Delivery::Pickup => false,
+            Delivery::Shipping => true,
+            Delivery::Andreani(s) => !s.needs_branch(),
+        }
+    }
+
+    pub fn andreani(self) -> Option<crate::AndreaniService> {
+        match self {
+            Delivery::Andreani(s) => Some(s),
+            _ => None,
         }
     }
 }
@@ -201,6 +237,12 @@ pub struct CheckoutForm {
     /// Cómo paga (una de las que ofrece la tienda).
     #[serde(default)]
     pub pay: PayMethod,
+    /// Con Andreani a sucursal: el código de la sucursal elegida.
+    #[serde(default)]
+    pub branch: String,
+    /// Con Andreani: el DNI de quien recibe (lo pide Andreani).
+    #[serde(default)]
+    pub dni: String,
 }
 
 /// Un campo del formulario con problema, para mostrarlo al lado del campo.
@@ -298,21 +340,18 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
     let allowed = match f.delivery {
         Delivery::Pickup => d.pickup_enabled,
         Delivery::Shipping => d.shipping_enabled,
+        Delivery::Andreani(s) => d.andreani.contains(&s),
     };
     if !allowed {
         e.push(err("delivery", "Elegí cómo querés recibir tu pedido."));
     }
-    if f.delivery == Delivery::Shipping {
+    if f.delivery.needs_address() {
         if f.address.is_empty() {
             e.push(err("address", "Escribí la calle y el número."));
-        }
-        // El código postal ya no se pide; si llega, tiene que tener forma de uno.
-        let pc_ok = (4..=8).contains(&f.postal_code.len())
-            && f.postal_code.chars().all(|c| c.is_ascii_alphanumeric());
-        if !f.postal_code.is_empty() && !pc_ok {
+        } else if f.delivery.andreani().is_some() && crate::split_street(&f.address).is_none() {
             e.push(err(
-                "postal_code",
-                "Revisá el código postal, por ejemplo 1123.",
+                "address",
+                "Escribí la calle y el número, por ejemplo Av. Corrientes 1234.",
             ));
         }
         if f.city.is_empty() {
@@ -320,8 +359,51 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
         }
     } else {
         f.address.clear();
-        f.postal_code.clear();
         f.city.clear();
+    }
+    match f.delivery {
+        Delivery::Andreani(svc) => {
+            match crate::normalize_postal_code(&f.postal_code) {
+                Some(cp) => f.postal_code = cp,
+                None if f.postal_code.is_empty() => {
+                    e.push(err("postal_code", "Escribí tu código postal, por ejemplo 1425."))
+                }
+                None => e.push(err(
+                    "postal_code",
+                    "Revisá el código postal: son 4 números, por ejemplo 1425.",
+                )),
+            }
+            f.dni = f.dni.chars().filter(char::is_ascii_digit).collect();
+            if !(7..=8).contains(&f.dni.len()) {
+                e.push(err("dni", "Escribí tu DNI, solo los números."));
+            }
+            f.branch = clip(f.branch.trim(), 20);
+            if svc.needs_branch() {
+                if f.branch.is_empty() {
+                    e.push(err("branch", "Elegí la sucursal donde lo retirás."));
+                }
+            } else {
+                f.branch.clear();
+            }
+        }
+        Delivery::Shipping => {
+            // El código postal ya no se pide; si llega, tiene que tener forma de uno.
+            let pc_ok = (4..=8).contains(&f.postal_code.len())
+                && f.postal_code.chars().all(|c| c.is_ascii_alphanumeric());
+            if !f.postal_code.is_empty() && !pc_ok {
+                e.push(err(
+                    "postal_code",
+                    "Revisá el código postal, por ejemplo 1123.",
+                ));
+            }
+            f.dni.clear();
+            f.branch.clear();
+        }
+        Delivery::Pickup => {
+            f.postal_code.clear();
+            f.dni.clear();
+            f.branch.clear();
+        }
     }
     if f.lines.is_empty() {
         e.push(err("cart", "Tu carrito está vacío."));
@@ -336,9 +418,10 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
 
 /// Costo del envío para esta forma de entrega (lo que se suma al total; si
 /// se coordina después, 0).
+/// Con Andreani, la cotización va aparte (ver [`crate::AndreaniQuote`]).
 pub fn shipping_for(delivery: Delivery, d: &DeliverySettings) -> i64 {
     match delivery {
-        Delivery::Pickup => 0,
+        Delivery::Pickup | Delivery::Andreani(_) => 0,
         Delivery::Shipping => d.shipping_cents.unwrap_or(0),
     }
 }
@@ -464,6 +547,34 @@ pub struct Order {
     /// Código del pedido de arrepentimiento, si el comprador lo pidió.
     #[serde(default)]
     pub regret_code: String,
+    /// El envío con Andreani, si va por Andreani.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shipment: Option<crate::Shipment>,
+}
+
+impl Order {
+    /// Adónde va el pedido, en una línea: la dirección, o la sucursal de
+    /// Andreani. `None` si lo retira en el local.
+    pub fn destination(&self) -> Option<String> {
+        match (self.delivery, &self.shipment) {
+            (Delivery::Pickup, _) => None,
+            (Delivery::Andreani(s), Some(sh)) if s.needs_branch() => Some(format!(
+                "Sucursal {} · {}",
+                sh.branch_name, sh.branch_address
+            )),
+            _ => Some(ship_address(&self.address, &self.city, &self.postal_code)),
+        }
+    }
+
+    /// El costo del envío como se muestra: "$ 4.500,00", "Gratis" o "Gratis o a coordinar".
+    pub fn shipping_text(&self, format_price: impl Fn(i64) -> String) -> String {
+        match self.delivery {
+            Delivery::Pickup => "Gratis".to_string(),
+            Delivery::Andreani(_) => format_price(self.shipping_cents),
+            Delivery::Shipping if self.shipping_cents == 0 => "Gratis o a coordinar".to_string(),
+            Delivery::Shipping => format_price(self.shipping_cents),
+        }
+    }
 }
 
 /// La página de un pedido ya hecho, en la tienda.
@@ -578,7 +689,7 @@ impl OrderColumn {
             (OrderColumn::AwaitingPayment, _) => "Volver a esperando pago",
             (OrderColumn::ToPrepare, _) => "Ya me pagó",
             (OrderColumn::Shipped, Delivery::Pickup) => "Marcar listo para retirar",
-            (OrderColumn::Shipped, Delivery::Shipping) => "Marcar como enviado",
+            (OrderColumn::Shipped, Delivery::Shipping | Delivery::Andreani(_)) => "Marcar como enviado",
             (OrderColumn::Delivered, _) => "Marcar como entregado",
         }
     }
@@ -642,6 +753,45 @@ mod tests {
             notes: String::new(),
             lines: vec![("a".into(), 2), ("b".into(), 0)],
             pay: PayMethod::default(),
+            branch: String::new(),
+            dni: String::new(),
+        }
+    }
+
+    #[test]
+    fn andreani_needs_postal_code_dni_and_branch() {
+        use crate::AndreaniService as A;
+        let d = DeliverySettings {
+            andreani: vec![A::Home, A::Branch],
+            ..DeliverySettings::default()
+        };
+        let mut f = good();
+        f.delivery = Delivery::Andreani(A::Home);
+        f.dni = "30.123.456".into();
+        assert!(tidy_checkout(&mut f, &d).is_empty());
+        assert_eq!(f.postal_code, "1123");
+        assert_eq!(f.dni, "30123456");
+
+        let mut f = good();
+        f.delivery = Delivery::Andreani(A::Branch);
+        f.postal_code = String::new();
+        let fields: Vec<_> = tidy_checkout(&mut f, &d).into_iter().map(|e| e.field).collect();
+        assert_eq!(fields, ["postal_code", "dni", "branch"]);
+        assert!(f.address.is_empty());
+
+        let mut f = good();
+        f.delivery = Delivery::Andreani(A::Home);
+        f.address = "Corrientes".into();
+        f.dni = "30123456".into();
+        let fields: Vec<_> = tidy_checkout(&mut f, &d).into_iter().map(|e| e.field).collect();
+        assert_eq!(fields, ["address"]);
+
+        let mut f = good();
+        f.delivery = Delivery::Andreani(A::SameDay);
+        assert_eq!(tidy_checkout(&mut f, &d)[0].field, "delivery");
+
+        for x in [Delivery::Pickup, Delivery::Shipping, Delivery::Andreani(A::Branch)] {
+            assert_eq!(Delivery::from_str(x.as_str()), x);
         }
     }
 

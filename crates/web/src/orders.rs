@@ -242,6 +242,8 @@ fn where_short(o: &Order) -> String {
         Delivery::Pickup => "Retiro".to_string(),
         Delivery::Shipping if o.city.is_empty() => "Envío".to_string(),
         Delivery::Shipping => format!("Envío {}", o.city),
+        Delivery::Andreani(_) if o.city.is_empty() => "Andreani".to_string(),
+        Delivery::Andreani(_) => format!("Andreani {}", o.city),
     }
 }
 
@@ -378,15 +380,10 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
     } else {
         format!("549{}", digits.trim_start_matches('0'))
     };
-    let where_ = match order.delivery {
-        Delivery::Pickup => "Lo retira en el local".to_string(),
-        Delivery::Shipping => domain::ship_address(&order.address, &order.city, &order.postal_code),
-    };
-    let shipping_text = match order.delivery {
-        Delivery::Pickup => "Gratis".to_string(),
-        Delivery::Shipping if order.shipping_cents == 0 => "Gratis o a coordinar".to_string(),
-        Delivery::Shipping => format_price(order.shipping_cents),
-    };
+    let where_ = order
+        .destination()
+        .unwrap_or_else(|| "Lo retira en el local".to_string());
+    let shipping_text = order.shipping_text(format_price);
     let delivery = order.delivery;
     view! {
         <div class="flex h-full flex-col">

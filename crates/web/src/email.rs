@@ -159,8 +159,7 @@ fn order_lines(o: &Order) -> (String, String) {
     }
     let shipping = match o.delivery {
         Delivery::Pickup => "Retiro".to_string(),
-        Delivery::Shipping if o.shipping_cents == 0 => "Gratis o a coordinar".to_string(),
-        Delivery::Shipping => ui::format_price(o.shipping_cents),
+        _ => o.shipping_text(ui::format_price),
     };
     html.push_str(&format!(
         r#"<tr><td style="padding:6px 0;color:#52525b">Envío</td><td style="padding:6px 0;text-align:right;color:#52525b">{}</td></tr>
@@ -182,6 +181,11 @@ fn where_(o: &Order, pickup_address: &str) -> String {
         Delivery::Shipping => format!(
             "Envío a {}",
             domain::ship_address(&o.address, &o.city, &o.postal_code)
+        ),
+        Delivery::Andreani(s) => format!(
+            "{} · {}",
+            s.label(),
+            o.destination().unwrap_or_default()
         ),
     }
 }
@@ -262,6 +266,7 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
     let place = match o.delivery {
         Delivery::Pickup => "Retira en el local".to_string(),
         Delivery::Shipping => format!("Envío a domicilio · {}", o.city),
+        Delivery::Andreani(s) => format!("{} · {}", s.label(), o.destination().unwrap_or_default()),
     };
     let notes = if o.notes.is_empty() {
         String::new()

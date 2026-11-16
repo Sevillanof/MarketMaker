@@ -5,7 +5,7 @@
 //! - `ANDREANI_API_URL`: para probar con un Andreani de mentira
 //!   (`scripts/fake-andreani.js`). Sin ella, el real.
 
-use domain::{AndreaniContract, AndreaniOrigin, AndreaniService};
+use domain::{AndreaniBranch, AndreaniContract, AndreaniOrigin, AndreaniRate, AndreaniService, Parcel};
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 use uuid::Uuid;
@@ -223,6 +223,114 @@ pub async fn save_origin(tenant: Uuid, o: &AndreaniOrigin) -> Result<(), Error> 
     .map(|_| ())
 }
 
+/// La parte de la dirección según el tipo de cliente ("Pyme" o "Corporative").
+fn kind_path(client_type: &str) -> &'static str {
+    if client_type.starts_with("corpo") {
+        "Corporative"
+    } else {
+        "Pyme"
+    }
+}
+
+/// Un renglón del carrito para cotizar: el paquete, el precio unitario y la cantidad.
+pub struct Line {
+    pub parcel: Parcel,
+    pub unit_cents: i64,
+    pub qty: u32,
+}
+
+/// Lo que cuesta mandar `lines` de `from` a `to` con cada servicio.
+pub async fn rates(
+    tenant: Uuid,
+    client_type: &str,
+    from: &str,
+    to: &str,
+    lines: &[Line],
+    bigger: bool,
+) -> Result<Vec<AndreaniRate>, Error> {
+    let cm = |mm: u32| f64::from(mm) / 10.0;
+    let products: Vec<Value> = lines
+        .iter()
+        .map(|l| {
+            json!({
+                "quantity": l.qty,
+                "price": (l.unit_cents / 100).max(1),
+                "dimensions": {
+                    "width": cm(l.parcel.width_mm),
+                    "height": cm(l.parcel.height_mm),
+                    "depth": cm(l.parcel.length_mm),
+                    "grams": l.parcel.weight_g,
+                },
+            })
+        })
+        .collect();
+    let r = with_account(
+        tenant,
+        reqwest::Method::POST,
+        &format!("/api/v1/{}/rates", kind_path(client_type)),
+        Some(json!({
+            "postal_code_origin": from,
+            "postal_code_destination": to,
+            "products": products,
+            "force_bigger": bigger,
+        })),
+    )
+    .await?;
+    let list = r["rates"].as_array().or(r.as_array()).cloned().unwrap_or_default();
+    Ok(list
+        .iter()
+        .filter_map(|x| {
+            let service = AndreaniService::from_api(&text(x, &["code"]))?;
+            let total = match &x["total"] {
+                Value::Number(n) => n.as_f64()?,
+                Value::String(s) => s.replace(',', ".").parse().ok()?,
+                _ => return None,
+            };
+            (total > 0.0).then(|| AndreaniRate {
+                service,
+                cents: (total * 100.0).round() as i64,
+            })
+        })
+        .collect())
+}
+
+/// Las sucursales de Andreani cerca de un código postal.
+pub async fn branches(tenant: Uuid, postal_code: &str) -> Result<Vec<AndreaniBranch>, Error> {
+    let r = with_account(
+        tenant,
+        reqwest::Method::GET,
+        &format!("/api/v1/Branch?postalCode={postal_code}"),
+        None,
+    )
+    .await?;
+    let list = r["data"].as_array().or(r.as_array()).cloned().unwrap_or_default();
+    Ok(list.iter().filter_map(branch_of).collect())
+}
+
+fn branch_of(b: &Value) -> Option<AndreaniBranch> {
+    let code = text(b, &["Codigo", "codigo"]);
+    if code.is_empty() {
+        return None;
+    }
+    let d = &b["Direccion"];
+    let street = [text(d, &["Calle"]), text(d, &["Numero"])]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let address = [street, text(d, &["Localidad"])]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(AndreaniBranch {
+        code,
+        name: text(b, &["Descripcion", "descripcion"]),
+        address,
+        hours: text(b, &["horarioDeAtencion"]),
+    })
+}
+
 /// Decodificador base64 mínimo (solo para leer el tipo de cliente del código).
 mod base64_lite {
     pub fn decode(s: &str) -> Option<Vec<u8>> {
@@ -274,5 +382,16 @@ mod tests {
         let c = json!({"id": "9", "modoDeEntregaNombre": "A domicilio", "tipoDeEnvioNombre": "Bigger"});
         assert_eq!(contract_of(&c).unwrap().service, AndreaniService::Bigger);
         assert!(contract_of(&json!({"id": "1", "modoDeEntregaNombre": "raro"})).is_none());
+    }
+
+    #[test]
+    fn sucursales() {
+        let b = json!({"Codigo": "S01", "Descripcion": "Andreani Palermo",
+            "Direccion": {"Calle": "Av. Santa Fe", "Numero": "3200", "Localidad": "CABA"},
+            "horarioDeAtencion": "Lun a Vie 9 a 18 h"});
+        let got = branch_of(&b).unwrap();
+        assert_eq!(got.address, "Av. Santa Fe 3200, CABA");
+        assert_eq!(got.hours, "Lun a Vie 9 a 18 h");
+        assert!(branch_of(&json!({"Descripcion": "sin código"})).is_none());
     }
 }

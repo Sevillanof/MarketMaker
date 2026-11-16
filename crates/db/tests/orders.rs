@@ -29,6 +29,7 @@ fn order<'a>(items: &'a [OrderItem]) -> NewOrder<'a> {
         items,
         shipping_cents: 0,
         pay: domain::PayMethod::Coordinate,
+        shipment: None,
     }
 }
 
@@ -232,4 +233,41 @@ async fn unpaid_attempts_are_dropped_and_manual_orders_cancelled(pool: PgPool) {
     let listed = orders::list(&pool, t).await.unwrap();
     assert_eq!(listed[0].status, OrderStatus::Cancelled);
     assert_eq!(stock(&pool, t, id).await, Some(3));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn andreani_orders_keep_their_shipment(pool: PgPool) {
+    use domain::{AndreaniService, Shipment, ShipmentState};
+    let t = tenant(&pool, "ana").await;
+    let id = products::create(&pool, t, &Product { name: "Taza".into(), ..Product::default() })
+        .await
+        .unwrap();
+    let items = [item(id, 1)];
+    let shipment = Shipment {
+        service: AndreaniService::Branch,
+        quote_cents: 450_000,
+        dni: "30123456".into(),
+        branch_code: "S01".into(),
+        branch_name: "Andreani Palermo".into(),
+        branch_address: "Av. Santa Fe 3200, CABA".into(),
+        state: ShipmentState::Waiting,
+        pedido_id: String::new(),
+        tracking: String::new(),
+        status: String::new(),
+        error: String::new(),
+    };
+    let new = NewOrder {
+        delivery: Delivery::Andreani(AndreaniService::Branch),
+        postal_code: "1425",
+        shipping_cents: 450_000,
+        shipment: Some(&shipment),
+        ..order(&items)
+    };
+    let Created::Saved { id: o, .. } = orders::create(&pool, t, &new).await.unwrap() else {
+        panic!("guardado");
+    };
+    let got = orders::get(&pool, t, o).await.unwrap().unwrap();
+    assert_eq!(got.delivery, Delivery::Andreani(AndreaniService::Branch));
+    assert_eq!(got.shipment, Some(shipment));
+    assert_eq!(got.total_cents, 1000 + 450_000);
 }
