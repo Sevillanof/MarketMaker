@@ -35,7 +35,7 @@ pub fn template_blocks(path: &str) -> Vec<Widget> {
     };
     match path {
         "/quienes-somos" => vec![text("Quiénes somos", STARTER_PLACEHOLDERS[1])],
-        "/contacto" => vec![text("Contacto", STARTER_PLACEHOLDERS[3])],
+        "/contacto" => Widget::defaults("Contact").into_iter().collect(),
         "/preguntas-frecuentes" => Widget::defaults("Faq").into_iter().collect(),
         _ => Vec::new(),
     }
@@ -149,6 +149,8 @@ mod tests {
             assert!(crate::validate(&d).is_ok(), "{path}: {:?}", crate::validate(&d));
             assert!(placeholders_left(&d) > placeholders_left(&doc), "{path}");
         }
+        // Contacto usa el bloque que toma los datos de la tienda.
+        assert_eq!(template_blocks("/contacto")[0].type_name(), "Contact");
         // Nada se pisa: cada bloque empieza donde termina el anterior.
         for pair in doc.nodes.windows(2) {
             assert_eq!(pair[0].pos.y + u16::from(pair[0].size.h), pair[1].pos.y);

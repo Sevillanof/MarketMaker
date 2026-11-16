@@ -7,7 +7,7 @@
 //! Los textos se muestran siempre como texto, nunca como HTML.
 
 use domain::{
-    BannerProps, BenefitsProps, CardProps, CarouselProps, CategoriesProps, CountdownProps,
+    BannerProps, BenefitsProps, CardProps, ContactProps, CarouselProps, CategoriesProps, CountdownProps,
     FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps, ImageProps, LogosProps,
     NavbarProps, Node, Product, ProductButtonProps, ProductGridProps, ProductImageProps,
     ProductModal, TabsProps, TestimonialsProps, TextProps, Widget,
@@ -98,6 +98,7 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::Testimonials(p) => view! { <TestimonialsWidget props=p.clone()/> }.into_any(),
         Widget::Logos(p) => view! { <LogosWidget props=p.clone() editing/> }.into_any(),
         Widget::Image(p) => view! { <ImageWidget props=p.clone() editing/> }.into_any(),
+        Widget::Contact(p) => view! { <ContactWidget props=p.clone() editing/> }.into_any(),
         Widget::Footer(p) => view! { <FooterWidget props=p.clone() editing/> }.into_any(),
         Widget::ProductImage(p) => {
             view! { <ProductImageWidget props=p.clone() product=ctx.product.clone()/> }.into_any()
@@ -960,6 +961,164 @@ pub fn ImageWidget(props: ImageProps, editing: bool) -> impl IntoView {
     }
 }
 
+/// Un medio de contacto de la tienda: ícono, nombre, lo que se ve
+/// (número, usuario o email) y el enlace.
+struct Channel {
+    icon: &'static str,
+    label: &'static str,
+    value: String,
+    href: String,
+    /// WhatsApp e Instagram abren en otra pestaña; el email, en el programa
+    /// de correo.
+    external: bool,
+}
+
+/// Los medios de contacto que el dueño cargó en "Datos de la tienda", en
+/// este orden: WhatsApp, Instagram, email.
+fn store_channels(store: &domain::StoreInfo) -> Vec<Channel> {
+    let mut out = Vec::new();
+    if let Some(href) = store.whatsapp_url() {
+        out.push(Channel {
+            icon: "whatsapp",
+            label: "WhatsApp",
+            value: store.whatsapp.clone(),
+            href,
+            external: true,
+        });
+    }
+    if let Some(href) = store.instagram_url() {
+        out.push(Channel {
+            icon: "instagram",
+            label: "Instagram",
+            value: format!("@{}", store.instagram),
+            href,
+            external: true,
+        });
+    }
+    if !store.email.is_empty() {
+        out.push(Channel {
+            icon: "mail",
+            label: "Email",
+            value: store.email.clone(),
+            href: format!("mailto:{}", store.email),
+            external: false,
+        });
+    }
+    out
+}
+
+/// Enlace a un medio de contacto. Mientras se edita es un `div` sin
+/// `data-href`: son direcciones de afuera, no páginas de la tienda.
+#[component]
+fn ChannelLink(
+    href: String,
+    external: bool,
+    editing: bool,
+    #[prop(into)] class: String,
+    #[prop(into, optional)] label: Option<String>,
+    children: Children,
+) -> impl IntoView {
+    if editing {
+        view! { <div class=class aria-label=label>{children()}</div> }.into_any()
+    } else {
+        let (target, rel) = if external {
+            (Some("_blank"), Some("noopener"))
+        } else {
+            (None, None)
+        };
+        view! { <a class=class href=href target=target rel=rel aria-label=label>{children()}</a> }
+            .into_any()
+    }
+}
+
+#[component]
+pub fn ContactWidget(props: ContactProps, editing: bool) -> impl IntoView {
+    let store = use_context::<domain::StoreInfo>().unwrap_or_default();
+    let mut channels = store_channels(&store);
+    // WhatsApp va como botón principal; el resto, como filas.
+    let whatsapp = (channels.first().is_some_and(|c| c.icon == "whatsapp")).then(|| channels.remove(0));
+    let has_channels = whatsapp.is_some() || !channels.is_empty();
+    let others_title = if whatsapp.is_some() { "También podés" } else { "Escribinos" };
+    let hours = props.hours.trim().to_string();
+    let address = props.address.trim().to_string();
+    let root = if has_channels || editing {
+        "mk-box mk-contact @container h-full overflow-hidden rounded-box bg-base-100"
+    } else {
+        "mk-box mk-contact mk-contact-solo @container h-full overflow-hidden rounded-box bg-base-100"
+    };
+    view! {
+        <section class=root>
+            <div class="mk-contact-grid grid h-full">
+                <div class="mk-contact-side flex flex-col justify-center gap-6 p-6 @3xl:p-10">
+                    <div>
+                        <h2 class="mk-contact-title mk-h text-3xl font-bold leading-tight text-balance @3xl:text-4xl">{props.title.clone()}</h2>
+                        {(!props.text.trim().is_empty()).then(|| view! {
+                            <p class="mt-3 max-w-md text-pretty opacity-90">{props.text.clone()}</p>
+                        })}
+                    </div>
+                    {(!hours.is_empty() || !address.is_empty()).then(|| view! {
+                        <dl class="grid gap-4">
+                            {(!hours.is_empty()).then(|| view! {
+                                <div class="flex gap-3">
+                                    <Icon name="clock" class="mt-0.5 h-5 w-5 shrink-0"/>
+                                    <div>
+                                        <dt class="font-semibold">"Horario de atención"</dt>
+                                        <dd class="whitespace-pre-line opacity-85">{hours.clone()}</dd>
+                                    </div>
+                                </div>
+                            })}
+                            {(!address.is_empty()).then(|| view! {
+                                <div class="flex gap-3">
+                                    <Icon name="pin" class="mt-0.5 h-5 w-5 shrink-0"/>
+                                    <div>
+                                        <dt class="font-semibold">"Dónde estamos"</dt>
+                                        <dd class="opacity-85">{address.clone()}</dd>
+                                    </div>
+                                </div>
+                            })}
+                        </dl>
+                    })}
+                </div>
+                {(has_channels || editing).then(|| view! {
+                    <div class="mk-contact-ways flex flex-col justify-center gap-3 p-6 @3xl:p-10">
+                        {whatsapp.map(|c| view! {
+                            <p class="text-sm font-semibold opacity-70">"La forma más rápida"</p>
+                            <ChannelLink href=c.href external=c.external editing class="mk-wa flex min-h-12 items-center gap-3 rounded-field px-4 py-3 font-semibold">
+                                <Icon name="whatsapp" class="h-5 w-5 shrink-0"/>
+                                <span class="min-w-0 flex-1">"Escribinos por WhatsApp"</span>
+                                <Icon name="arrow-right" class="h-5 w-5 shrink-0"/>
+                            </ChannelLink>
+                        })}
+                        {(!channels.is_empty()).then(|| view! {
+                            <p class="mt-2 text-sm font-semibold opacity-70">{others_title}</p>
+                            {channels
+                                .into_iter()
+                                .map(|c| view! {
+                                    <ChannelLink href=c.href external=c.external editing class="mk-item mk-contact-way flex min-h-12 items-center gap-3 rounded-field border border-base-content/15 px-3 py-2.5">
+                                        <span class="mk-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+                                            <Icon name=c.icon class="h-5 w-5"/>
+                                        </span>
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block font-semibold">{c.label}</span>
+                                            <span class="block truncate text-sm opacity-70">{c.value}</span>
+                                        </span>
+                                        <Icon name="arrow-right" class="h-4 w-4 shrink-0 opacity-50"/>
+                                    </ChannelLink>
+                                })
+                                .collect_view()}
+                        })}
+                        {(!has_channels).then(|| view! {
+                            <p class="rounded-field border border-dashed border-base-content/30 p-4 text-sm opacity-80">
+                                "Cargá tu WhatsApp, Instagram o email en Datos de la tienda y aparecen acá."
+                            </p>
+                        })}
+                    </div>
+                })}
+            </div>
+        </section>
+    }
+}
+
 #[component]
 pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
@@ -969,44 +1128,50 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     } else {
         props.legal.clone()
     };
-    // Cómo contactar a la tienda, si el dueño lo cargó.
-    let contact: Vec<(&'static str, String)> = [
-        store.whatsapp_url().map(|u| ("WhatsApp", u)),
-        store.instagram_url().map(|u| ("Instagram", u)),
-        (!store.email.is_empty()).then(|| ("Email", format!("mailto:{}", store.email))),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    // Abajo, el texto legal y la frase de la tienda en una sola línea.
+    let bottom: Vec<String> = [legal, props.description.trim().to_string()]
+        .into_iter()
+        .filter(|t| !t.is_empty())
+        .collect();
+    let bottom = bottom.join(" · ");
+    let logo = store.logo_url.clone();
+    let channels = store_channels(&store);
+    let has_links = !props.links.is_empty();
     view! {
-        <footer class="mk-box mk-footer @container flex h-full flex-col justify-between gap-3 overflow-hidden rounded-box px-6 py-4">
-            <div class="flex flex-col gap-4 @2xl:flex-row @2xl:justify-between">
-                <aside class="max-w-sm">
-                    <p class="mk-brand mk-h text-lg font-bold">{brand}</p>
-                    <p class="text-sm opacity-80 line-clamp-2">{props.description.clone()}</p>
-                    {(!contact.is_empty()).then(|| view! {
-                        <div class="mt-1 flex flex-wrap gap-x-4 text-sm">
-                            {contact
-                                .into_iter()
-                                .map(|(label, href)| view! {
-                                    <MaybeLink href editing class="mk-link link link-hover">{label}</MaybeLink>
-                                })
-                                .collect_view()}
-                        </div>
+        <footer class="mk-box mk-footer @container flex h-full flex-col justify-center gap-4 overflow-hidden rounded-box px-6 py-5">
+            <div class="mk-foot-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-8 gap-y-3 @3xl:grid-cols-[auto_minmax(0,1fr)_auto]">
+                <div class="flex min-w-0 items-center gap-3">
+                    {(!logo.is_empty()).then(|| view! {
+                        <img src=logo.clone() alt="" class="h-9 w-9 shrink-0 rounded-full object-cover"/>
                     })}
-                </aside>
-                <nav class="flex flex-wrap content-start gap-x-6 gap-y-1 text-sm @2xl:max-w-md @2xl:justify-end">
-                    {props
-                        .links
-                        .into_iter()
-                        .map(|l| view! {
-                            <MaybeLink href=l.href editing class="mk-link link link-hover truncate">{l.label}</MaybeLink>
-                        })
-                        .collect_view()}
-                </nav>
+                    <p class="mk-brand mk-h truncate text-lg font-bold">{brand}</p>
+                </div>
+                {has_links.then(|| view! {
+                    <nav aria-label="Pie de página" class="col-span-2 row-start-2 flex flex-wrap gap-x-6 gap-y-1 text-sm @3xl:col-span-1 @3xl:col-start-2 @3xl:row-start-1">
+                        {props
+                            .links
+                            .into_iter()
+                            .map(|l| view! {
+                                <MaybeLink href=l.href editing class="mk-link link link-hover">{l.label}</MaybeLink>
+                            })
+                            .collect_view()}
+                    </nav>
+                })}
+                {(!channels.is_empty()).then(|| view! {
+                    <div class="flex gap-2 justify-self-end @3xl:col-start-3 @3xl:row-start-1">
+                        {channels
+                            .into_iter()
+                            .map(|c| view! {
+                                <ChannelLink href=c.href external=c.external editing label=c.label class="mk-social grid size-10 place-items-center rounded-full border border-current/25 pointer-coarse:size-11">
+                                    <Icon name=c.icon class="h-[18px] w-[18px]"/>
+                                </ChannelLink>
+                            })
+                            .collect_view()}
+                    </div>
+                })}
             </div>
-            {(!legal.is_empty()).then(|| view! {
-                <p class="border-t border-current/20 pt-3 text-xs opacity-70 truncate">{legal}</p>
+            {(!bottom.is_empty()).then(|| view! {
+                <p class="border-t border-current/20 pt-3 text-xs opacity-70">{bottom}</p>
             })}
         </footer>
     }

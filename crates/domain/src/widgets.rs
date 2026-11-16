@@ -29,6 +29,7 @@ pub enum Widget {
     Testimonials(TestimonialsProps),
     Logos(LogosProps),
     Image(ImageProps),
+    Contact(ContactProps),
     Footer(FooterProps),
     // Bloques de la ficha del producto: muestran el producto que se abrió.
     ProductImage(ProductImageProps),
@@ -275,6 +276,18 @@ pub struct FooterProps {
     pub legal: String,
 }
 
+/// Página de contacto: un lado con el título, el texto, el horario y la
+/// dirección; el otro con los medios de contacto de "Datos de la tienda".
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ContactProps {
+    pub title: String,
+    pub text: String,
+    /// Días y horarios, uno por línea. Vacío: no se muestra.
+    pub hours: String,
+    /// Dónde retirar o visitar la tienda. Vacío: no se muestra.
+    pub address: String,
+}
+
 /// Tipos de widget disponibles, con su nombre para mostrar, en el orden de la paleta.
 pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Navbar", "Menú superior"),
@@ -298,6 +311,7 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Testimonials", "Testimonios"),
     ("Logos", "Logos de marcas"),
     ("Image", "Imagen"),
+    ("Contact", "Contacto"),
     ("Footer", "Pie de página"),
     ("ProductImage", "Foto del producto"),
     ("ProductName", "Nombre del producto"),
@@ -640,6 +654,13 @@ const PRODUCT_IMAGE_FIELDS: &[Field] = &[field(
 /// queda solo para leer fichas viejas).
 const PRODUCT_BUTTON_FIELDS: &[Field] = &[field("label", "Texto del botón", text(30))];
 
+const CONTACT_FIELDS: &[Field] = &[
+    field("title", "Título", text(60)),
+    field("text", "Texto", long(300)),
+    field("hours", "Horario de atención", long(200)),
+    field("address", "Dirección (opcional)", text(120)),
+];
+
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
     field("description", "Descripción", text(200)),
@@ -693,6 +714,7 @@ impl Widget {
             Widget::Testimonials(_) => "Testimonials",
             Widget::Logos(_) => "Logos",
             Widget::Image(_) => "Image",
+            Widget::Contact(_) => "Contact",
             Widget::Footer(_) => "Footer",
             Widget::ProductImage(_) => "ProductImage",
             Widget::ProductName(_) => "ProductName",
@@ -737,7 +759,8 @@ impl Widget {
             Widget::Testimonials(_) => limits(16, 48, 36, 72, 48, 36),
             Widget::Logos(_) => limits(12, 48, 12, 36, 48, 24),
             Widget::Image(_) => limits(4, 48, 12, 120, 16, 36),
-            Widget::Footer(_) => limits(24, 48, 24, 60, 48, 24),
+            Widget::Contact(_) => limits(24, 48, 36, 96, 48, 52),
+            Widget::Footer(_) => limits(24, 48, 14, 60, 48, 18),
             Widget::ProductImage(_) => limits(8, 48, 12, 120, 24, 52),
             Widget::ProductName(_) => limits(8, 48, 5, 24, 24, 9),
             Widget::ProductPrice(_) => limits(6, 48, 4, 16, 24, 6),
@@ -767,6 +790,7 @@ impl Widget {
             Widget::Testimonials(_) => TESTIMONIALS_FIELDS,
             Widget::Logos(_) => LOGOS_FIELDS,
             Widget::Image(_) => IMAGE_FIELDS,
+            Widget::Contact(_) => CONTACT_FIELDS,
             Widget::Footer(_) => FOOTER_FIELDS,
             Widget::ProductImage(_) => PRODUCT_IMAGE_FIELDS,
             Widget::ProductName(_) | Widget::ProductPrice(_) | Widget::ProductDescription(_) => &[],
@@ -984,6 +1008,12 @@ impl Widget {
                 alt: s("Imagen de ejemplo"),
                 href: String::new(),
                 fit: s("cover"),
+            }),
+            "Contact" => Widget::Contact(ContactProps {
+                title: s("Hablemos"),
+                text: s("¿Tenés dudas sobre un producto, un envío o tu pedido? Escribinos y te respondemos a la brevedad."),
+                hours: s("Contá acá tus días y horarios de atención."),
+                address: String::new(),
             }),
             "Footer" => Widget::Footer(FooterProps {
                 brand: s("Nombre de tu tienda"),

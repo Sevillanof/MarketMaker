@@ -252,6 +252,10 @@
   .mk-node:has(.mk-pgrid) {
     height: auto;
   }
+  /* Contacto y pie se apilan en el celular: crecen lo que necesiten. */
+  .mk-node:has(.mk-contact, .mk-footer) {
+    height: auto;
+  }
   .mk-pgrid {
     flex: none;
     grid-auto-rows: auto;
@@ -888,6 +892,31 @@ dialog.mk-cart::backdrop {
 .mk-d1 .mk-footer { background: var(--color-neutral); color: var(--color-neutral-content); border-top: 4px solid var(--mk-c); }
 .mk-d2 .mk-footer, .mk-d5 .mk-footer { background: var(--color-base-100); color: var(--color-base-content); }
 .mk-d5 .mk-footer { background: transparent; border-top: 2px solid var(--mk-c); }
+
+/* Pie: íconos de contacto redondos */
+.mk-footer .mk-social { transition: background-color 0.15s; }
+.mk-footer .mk-social:hover { background: color-mix(in oklab, currentColor 12%, transparent); }
+.mk-footer .mk-social:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Contacto: un lado del color con título, horario y dirección; el otro con
+   WhatsApp como botón principal y el resto como filas. En un bloque angosto
+   (o en el celular) los dos lados se apilan. */
+.mk-contact-grid { grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 48rem) {
+  .mk-contact:not(.mk-contact-solo) .mk-contact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.mk-contact-side { background: var(--mk-c); color: var(--mk-cc); }
+.mk-contact .mk-wa { background: #15803d; color: #fff; transition: background-color 0.15s; }
+.mk-contact .mk-wa:hover { background: #166534; }
+.mk-contact-way { transition: border-color 0.15s; }
+.mk-contact-way:hover { border-color: var(--mk-c); }
+.mk-contact :is(.mk-wa, .mk-contact-way):focus-visible { outline: 2px solid var(--mk-ct); outline-offset: 2px; }
+.mk-d2 .mk-contact-side { background: var(--mk-soft); color: var(--color-base-content); }
+.mk-d2 .mk-contact-title { color: var(--mk-ct); }
+.mk-d4 .mk-contact-side { background: transparent; color: inherit; }
+.mk-d4 .mk-contact .mk-item .mk-icon { background: var(--mk-soft); color: var(--mk-ct); }
+.mk-d4 .mk-contact .mk-contact-ways > p { color: var(--mk-cc); }
+.mk-d5 .mk-contact-side { background: transparent; color: inherit; border-left: 4px solid var(--mk-c); }
 
 /* Ficha del producto */
 .mk-d2 .mk-pname { box-shadow: none; border: 0; }

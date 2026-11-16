@@ -53,6 +53,7 @@ fn path(name: &str) -> &'static str {
         "tags" => "M3 12V4h8l10 10-8 8L3 12zM7.5 8.5h.01",
         "logos" => "M4 8h4v8H4zM10 6h4v12h-4zM16 9h4v6h-4z",
         "footer" => "M3 4h18v16H3zM3 14h18M6 17h4M13 17h5",
+        "contact" => "M3 5h18v14H3zM3 7l9 6 9-6",
         _ => "M4 4h16v16H4z",
     }
 }
