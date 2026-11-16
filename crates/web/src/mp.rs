@@ -33,7 +33,10 @@ pub struct Config {
 }
 
 fn env(name: &str) -> Option<String> {
-    std::env::var(name).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    std::env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// La configuración, si está completa.
@@ -81,7 +84,10 @@ async fn call(
     }
     let res = req.send().await.map_err(|e| format!("sin conexión: {e}"))?;
     let status = res.status();
-    let bytes = res.bytes().await.map_err(|e| format!("respuesta cortada: {e}"))?;
+    let bytes = res
+        .bytes()
+        .await
+        .map_err(|e| format!("respuesta cortada: {e}"))?;
     let v: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     if status.is_success() {
         Ok(v)
@@ -133,7 +139,10 @@ async fn save_tokens(pool: &db::Pool, tenant: Uuid, v: &Value) -> Result<(), Str
 
 /// Una llave vigente de la cuenta de la tienda (la renueva si está por vencer).
 pub async fn token(pool: &db::Pool, tenant: Uuid) -> Result<Option<String>, String> {
-    let Some(creds) = db::mp::credentials(pool, tenant).await.map_err(|e| e.to_string())? else {
+    let Some(creds) = db::mp::credentials(pool, tenant)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
         return Ok(None);
     };
     if creds.expiring && !creds.refresh_token.is_empty() {
@@ -217,7 +226,8 @@ pub async fn create_preference(
         body["auto_return"] = json!("approved");
     }
     if let Some(public) = &c.public_url {
-        body["notification_url"] = json!(format!("{public}/mp/aviso/{tenant}?source_news=webhooks"));
+        body["notification_url"] =
+            json!(format!("{public}/mp/aviso/{tenant}?source_news=webhooks"));
     }
     let v = call(
         reqwest::Method::POST,
@@ -248,7 +258,11 @@ fn absolute(base: &str, url: &str) -> String {
 /// Pregunta a Mercado Pago por un pago y, si está aprobado, marca pagado su
 /// pedido. Nunca se confía en lo que dice el navegador: el estado sale de la
 /// API con la llave de la tienda. Devuelve el estado del pago.
-pub async fn check_payment(pool: &db::Pool, tenant: Uuid, payment_id: &str) -> Result<String, String> {
+pub async fn check_payment(
+    pool: &db::Pool,
+    tenant: Uuid,
+    payment_id: &str,
+) -> Result<String, String> {
     if payment_id.is_empty() || !payment_id.chars().all(|c| c.is_ascii_digit()) {
         return Err("número de pago inválido".into());
     }
@@ -293,7 +307,10 @@ pub fn routes<S: Clone + Send + Sync + 'static>(pool: db::Pool) -> Router<S> {
 }
 
 /// Vuelve de Mercado Pago después de aceptar (o no) vincular la cuenta.
-async fn linked(State(pool): State<db::Pool>, Query(q): Query<HashMap<String, String>>) -> Response {
+async fn linked(
+    State(pool): State<db::Pool>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Response {
     let platform = config()
         .and_then(|c| {
             reqwest::Url::parse(&c.redirect_url)
@@ -315,7 +332,11 @@ async fn linked(State(pool): State<db::Pool>, Query(q): Query<HashMap<String, St
         Ok(Some(t)) => t,
         _ => return fail(None, ""),
     };
-    let slug = db::mp::slug_of(&pool, tenant).await.ok().flatten().unwrap_or_default();
+    let slug = db::mp::slug_of(&pool, tenant)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     let Some(code) = q.get("code") else {
         // Tocó "Cancelar" en Mercado Pago.
         return fail(Some(&slug), "cancelado");
@@ -333,10 +354,17 @@ async fn linked(State(pool): State<db::Pool>, Query(q): Query<HashMap<String, St
     if c.test {
         body["test_token"] = json!(true);
     }
-    let r = call(reqwest::Method::POST, &format!("{}/oauth/token", c.api_url), None, Some(body)).await;
+    let r = call(
+        reqwest::Method::POST,
+        &format!("{}/oauth/token", c.api_url),
+        None,
+        Some(body),
+    )
+    .await;
     match r {
         Ok(v) => match save_tokens(&pool, tenant, &v).await {
-            Ok(()) => Redirect::to(&format!("{platform}/tienda/{slug}/cobros?vinculada=1")).into_response(),
+            Ok(()) => Redirect::to(&format!("{platform}/tienda/{slug}/cobros?vinculada=1"))
+                .into_response(),
             Err(e) => {
                 leptos::logging::log!("Mercado Pago: no pudimos guardar la cuenta: {e}");
                 fail(Some(&slug), "guardar")

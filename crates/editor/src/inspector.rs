@@ -163,7 +163,10 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     } = group_fields(widget.fields());
     let has_advanced = !advanced.is_empty();
     let no_fields = basic.is_empty() && button.is_none() && !has_advanced;
-    let opens_modal = matches!(widget, Widget::ProductGrid(_) | Widget::FeaturedProduct(_));
+    let opens_modal = matches!(
+        widget,
+        Widget::ProductGrid(_) | Widget::TagTabs(_) | Widget::FeaturedProduct(_)
+    );
     let (basic_id, advanced_id, button_id) = (id.clone(), id.clone(), id.clone());
 
     // Pestañas con el patrón de ARIA: flechas, Inicio y Fin cambian de

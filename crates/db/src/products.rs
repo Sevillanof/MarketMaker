@@ -178,6 +178,25 @@ pub async fn delete(pool: &PgPool, tenant: Uuid, id: Uuid) -> sqlx::Result<bool>
     Ok(done.rows_affected() == 1)
 }
 
+/// Cambia las etiquetas de varios productos de una vez (desde "Etiquetas").
+/// No toca `updated_at`, así la lista no se reordena.
+pub async fn set_tags(
+    pool: &PgPool,
+    tenant: Uuid,
+    changes: &[(Uuid, Vec<String>)],
+) -> sqlx::Result<()> {
+    let mut tx = pool.begin().await?;
+    for (id, tags) in changes {
+        sqlx::query("UPDATE products SET tags = $3 WHERE tenant_id = $1 AND id = $2")
+            .bind(tenant)
+            .bind(id)
+            .bind(tags)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await
+}
+
 /// Todas las etiquetas de la tienda, de la más usada a la menos usada.
 pub async fn tags(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<String>> {
     sqlx::query_scalar(

@@ -20,7 +20,10 @@ pub struct Email {
 }
 
 fn env(name: &str) -> Option<String> {
-    std::env::var(name).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    std::env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// La plataforma (`http://localhost:3000`), para los enlaces.
@@ -53,7 +56,11 @@ fn http() -> &'static reqwest::Client {
 pub fn send(email: Email) {
     tokio::spawn(async move {
         if let Err(e) = deliver(&email).await {
-            leptos::logging::log!("Email \"{}\" a {}: no se pudo mandar: {e}", email.subject, email.to.join(", "));
+            leptos::logging::log!(
+                "Email \"{}\" a {}: no se pudo mandar: {e}",
+                email.subject,
+                email.to.join(", ")
+            );
         }
     });
 }
@@ -94,7 +101,10 @@ pub async fn deliver(email: &Email) -> Result<(), String> {
     } else {
         let status = res.status();
         let text = res.text().await.unwrap_or_default();
-        Err(format!("{status} {}", text.chars().take(300).collect::<String>()))
+        Err(format!(
+            "{status} {}",
+            text.chars().take(300).collect::<String>()
+        ))
     }
 }
 
@@ -129,7 +139,9 @@ fn button(href: &str, label: &str) -> String {
 
 /// Los productos y los totales, en HTML y en texto.
 fn order_lines(o: &Order) -> (String, String) {
-    let mut html = String::from(r#"<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px">"#);
+    let mut html = String::from(
+        r#"<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px">"#,
+    );
     let mut text = String::new();
     for i in &o.items {
         html.push_str(&format!(
@@ -138,7 +150,12 @@ fn order_lines(o: &Order) -> (String, String) {
             esc(&i.name),
             ui::format_price(i.total_cents())
         ));
-        text.push_str(&format!("{} × {}  {}\n", i.qty, i.name, ui::format_price(i.total_cents())));
+        text.push_str(&format!(
+            "{} × {}  {}\n",
+            i.qty,
+            i.name,
+            ui::format_price(i.total_cents())
+        ));
     }
     let shipping = match o.delivery {
         Delivery::Pickup => "Retiro".to_string(),
@@ -151,7 +168,10 @@ fn order_lines(o: &Order) -> (String, String) {
         esc(&shipping),
         ui::format_price(o.total_cents)
     ));
-    text.push_str(&format!("Envío  {shipping}\nTotal  {}\n", ui::format_price(o.total_cents)));
+    text.push_str(&format!(
+        "Envío  {shipping}\nTotal  {}\n",
+        ui::format_price(o.total_cents)
+    ));
     (html, text)
 }
 
@@ -165,14 +185,23 @@ fn where_(o: &Order, pickup_address: &str) -> String {
 
 /// Al comprador: su compra, con el enlace a la página del pedido. `paid`:
 /// ya pagó en Mercado Pago (si no, la tienda coordina el pago).
-pub fn to_buyer(store_name: &str, slug: &str, o: &Order, pickup_address: &str, paid: bool) -> Email {
+pub fn to_buyer(
+    store_name: &str,
+    slug: &str,
+    o: &Order,
+    pickup_address: &str,
+    paid: bool,
+) -> Email {
     let first = o.customer_name.split_whitespace().next().unwrap_or("");
     let url = format!("{}/pedido/{}", store_url(slug), o.id);
     let (lines_html, lines_text) = order_lines(o);
     let next = if paid {
         "Tu pago está aprobado. La tienda ya está preparando tu pedido.".to_string()
     } else {
-        format!("La tienda te va a escribir al {} para coordinar el pago y la entrega.", o.phone)
+        format!(
+            "La tienda te va a escribir al {} para coordinar el pago y la entrega.",
+            o.phone
+        )
     };
     let place = where_(o, pickup_address);
     let html = frame(
@@ -205,7 +234,10 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
     let url = format!("{}/tienda/{slug}/pedidos", app_url());
     let (lines_html, lines_text) = order_lines(o);
     let what = if paid {
-        format!("{} pagó el pedido #{} con Mercado Pago.", o.customer_name, o.number)
+        format!(
+            "{} pagó el pedido #{} con Mercado Pago.",
+            o.customer_name, o.number
+        )
     } else {
         format!(
             "{} hizo el pedido #{}. Escribile al {} para coordinar el pago.",
@@ -233,7 +265,14 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
             esc(&place),
             esc(&o.email),
             esc(&o.phone),
-            if notes.is_empty() { String::new() } else { format!(r#"<p style="margin:12px 0 0;background:#f4f4f5;padding:10px;border-radius:8px">{}</p>"#, esc(&notes)) },
+            if notes.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    r#"<p style="margin:12px 0 0;background:#f4f4f5;padding:10px;border-radius:8px">{}</p>"#,
+                    esc(&notes)
+                )
+            },
             button(&url, "Ver pedidos")
         ),
     );
@@ -246,7 +285,11 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
     Email {
         to: owners,
         subject: if paid {
-            format!("Nueva venta: {} · pedido #{}", ui::format_price(o.total_cents), o.number)
+            format!(
+                "Nueva venta: {} · pedido #{}",
+                ui::format_price(o.total_cents),
+                o.number
+            )
         } else {
             format!(
                 "Nuevo pedido: {} · #{} (coordiná el pago)",
@@ -262,10 +305,20 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
 /// Manda los dos emails de una venta: al comprador y a los dueños.
 pub async fn order_emails(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid, paid: bool) {
     let r = async {
-        let o = db::orders::get(pool, tenant, order).await.map_err(|e| e.to_string())?.ok_or("no está el pedido")?;
-        let (name, slug) = db::mp::name_and_slug(pool, tenant).await.map_err(|e| e.to_string())?.ok_or("no está la tienda")?;
-        let d = db::orders::delivery(pool, tenant).await.map_err(|e| e.to_string())?;
-        let owners = db::mp::owner_emails(pool, tenant).await.map_err(|e| e.to_string())?;
+        let o = db::orders::get(pool, tenant, order)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("no está el pedido")?;
+        let (name, slug) = db::mp::name_and_slug(pool, tenant)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("no está la tienda")?;
+        let d = db::orders::delivery(pool, tenant)
+            .await
+            .map_err(|e| e.to_string())?;
+        let owners = db::mp::owner_emails(pool, tenant)
+            .await
+            .map_err(|e| e.to_string())?;
         send(to_buyer(&name, &slug, &o, &d.pickup_address, paid));
         send(to_owner(owners, &name, &slug, &o, paid));
         Ok::<_, String>(())
@@ -275,7 +328,6 @@ pub async fn order_emails(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid
         leptos::logging::log!("Emails del pedido {order}: {e}");
     }
 }
-
 
 /// El código para entrar.
 pub fn login_code(to: &str, code: &str) -> Email {
