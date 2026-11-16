@@ -11,6 +11,11 @@ pub enum Widget {
     Banner(BannerProps),
     Text(TextProps),
     ProductGrid(ProductGridProps),
+    TagFilter(TagFilterProps),
+    TagList(TagFilterProps),
+    TagCircles(TagFilterProps),
+    TagSearch(TagSearchProps),
+    TagTabs(TagTabsProps),
     FeaturedProduct(FeaturedProductProps),
     Navbar(NavbarProps),
     Carousel(CarouselProps),
@@ -77,6 +82,34 @@ pub struct TextProps {
 pub struct ProductGridProps {
     pub title: String,
     pub limit: i64,
+}
+
+/// Las etiquetas de los productos, para que el comprador filtre las
+/// cuadrículas de la misma página.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TagFilterProps {
+    pub title: String,
+    /// Texto del botón que muestra todos los productos.
+    pub all_label: String,
+    /// Mostrar cuántos productos tiene cada etiqueta.
+    #[serde(default)]
+    pub show_counts: bool,
+}
+
+/// Buscador con un menú para filtrar por etiquetas.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TagSearchProps {
+    pub placeholder: String,
+    #[serde(default)]
+    pub show_counts: bool,
+}
+
+/// Cuadrícula de productos con las etiquetas como pestañas arriba.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TagTabsProps {
+    pub title: String,
+    pub limit: i64,
+    pub all_label: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -249,6 +282,11 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Carousel", "Carrusel"),
     ("Categories", "Categorías"),
     ("ProductGrid", "Cuadrícula de productos"),
+    ("TagFilter", "Etiquetas en fila"),
+    ("TagList", "Etiquetas en columna"),
+    ("TagCircles", "Etiquetas con foto"),
+    ("TagSearch", "Buscador con filtros"),
+    ("TagTabs", "Productos con pestañas"),
     ("FeaturedProduct", "Producto destacado"),
     ("Benefits", "Beneficios"),
     ("Countdown", "Oferta con cuenta regresiva"),
@@ -356,6 +394,32 @@ const PRODUCT_GRID_FIELDS: &[Field] = &[
         "Cantidad de productos",
         FieldKind::Number { min: 1, max: 12 },
     ),
+];
+const TAG_FILTER_FIELDS: &[Field] = &[
+    field("title", "Título (opcional)", text(60)),
+    adv("all_label", "Texto del botón de todos", text(20)),
+    adv(
+        "show_counts",
+        "Mostrar cuántos productos hay",
+        FieldKind::Bool,
+    ),
+];
+const TAG_SEARCH_FIELDS: &[Field] = &[
+    field("placeholder", "Texto del buscador", text(40)),
+    adv(
+        "show_counts",
+        "Mostrar cuántos productos hay",
+        FieldKind::Bool,
+    ),
+];
+const TAG_TABS_FIELDS: &[Field] = &[
+    field("title", "Título", text(80)),
+    field(
+        "limit",
+        "Cantidad de productos",
+        FieldKind::Number { min: 1, max: 12 },
+    ),
+    adv("all_label", "Texto de la pestaña de todos", text(20)),
 ];
 const FEATURED_PRODUCT_FIELDS: &[Field] = &[
     field("product_id", "Producto", FieldKind::ProductRef),
@@ -611,6 +675,11 @@ impl Widget {
             Widget::Banner(_) => "Banner",
             Widget::Text(_) => "Text",
             Widget::ProductGrid(_) => "ProductGrid",
+            Widget::TagFilter(_) => "TagFilter",
+            Widget::TagList(_) => "TagList",
+            Widget::TagCircles(_) => "TagCircles",
+            Widget::TagSearch(_) => "TagSearch",
+            Widget::TagTabs(_) => "TagTabs",
             Widget::FeaturedProduct(_) => "FeaturedProduct",
             Widget::Navbar(_) => "Navbar",
             Widget::Carousel(_) => "Carousel",
@@ -650,6 +719,11 @@ impl Widget {
             Widget::Banner(_) => limits(16, 48, 24, 96, 48, 48),
             Widget::Text(_) => limits(8, 48, 12, 96, 24, 24),
             Widget::ProductGrid(_) => limits(12, 48, 36, 144, 48, 60),
+            Widget::TagFilter(_) => limits(12, 48, 7, 24, 48, 9),
+            Widget::TagList(_) => limits(8, 24, 20, 144, 12, 44),
+            Widget::TagCircles(_) => limits(12, 48, 15, 36, 48, 19),
+            Widget::TagSearch(_) => limits(16, 48, 7, 16, 48, 9),
+            Widget::TagTabs(_) => limits(12, 48, 36, 144, 48, 64),
             Widget::FeaturedProduct(_) => limits(8, 24, 36, 96, 12, 48),
             Widget::Navbar(_) => limits(24, 48, 12, 24, 48, 12),
             Widget::Carousel(_) => limits(24, 48, 36, 96, 48, 48),
@@ -677,6 +751,9 @@ impl Widget {
             Widget::Banner(_) => BANNER_FIELDS,
             Widget::Text(_) => TEXT_FIELDS,
             Widget::ProductGrid(_) => PRODUCT_GRID_FIELDS,
+            Widget::TagFilter(_) | Widget::TagList(_) | Widget::TagCircles(_) => TAG_FILTER_FIELDS,
+            Widget::TagSearch(_) => TAG_SEARCH_FIELDS,
+            Widget::TagTabs(_) => TAG_TABS_FIELDS,
             Widget::FeaturedProduct(_) => FEATURED_PRODUCT_FIELDS,
             Widget::Navbar(_) => NAVBAR_FIELDS,
             Widget::Carousel(_) => CAROUSEL_FIELDS,
@@ -721,6 +798,30 @@ impl Widget {
             "ProductGrid" => Widget::ProductGrid(ProductGridProps {
                 title: s("Productos"),
                 limit: 4,
+            }),
+            "TagFilter" => Widget::TagFilter(TagFilterProps {
+                title: String::new(),
+                all_label: s("Todos"),
+                show_counts: true,
+            }),
+            "TagList" => Widget::TagList(TagFilterProps {
+                title: s("Filtrar"),
+                all_label: s("Limpiar filtros"),
+                show_counts: true,
+            }),
+            "TagCircles" => Widget::TagCircles(TagFilterProps {
+                title: String::new(),
+                all_label: s("Todos"),
+                show_counts: false,
+            }),
+            "TagSearch" => Widget::TagSearch(TagSearchProps {
+                placeholder: s("Buscar productos"),
+                show_counts: true,
+            }),
+            "TagTabs" => Widget::TagTabs(TagTabsProps {
+                title: s("Productos"),
+                limit: 8,
+                all_label: s("Todos"),
             }),
             "FeaturedProduct" => Widget::FeaturedProduct(FeaturedProductProps {
                 product_id: String::new(),

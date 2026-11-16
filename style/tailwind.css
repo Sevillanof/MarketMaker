@@ -793,6 +793,71 @@ dialog.mk-cart::backdrop {
 /* Opiniones */
 .mk-d5 .mk-testi .mk-item { border: 0; border-left: 3px solid var(--mk-c); }
 
+/* Filtro por etiquetas */
+.mk-chip {
+  display: inline-flex; align-items: center; gap: 0.4rem; flex-shrink: 0; white-space: nowrap;
+  border-radius: 999px; padding: 0.4rem 0.95rem; font-size: 0.9em; cursor: pointer;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  background: var(--color-base-100); color: var(--color-base-content);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.mk-chip:hover { border-color: var(--mk-c); }
+.mk-chip:focus-visible { outline: 2px solid var(--mk-c); outline-offset: 2px; }
+.mk-chip[aria-pressed="true"] { background: var(--mk-c); border-color: var(--mk-c); color: var(--mk-cc); }
+.mk-chip .mk-chip-n { opacity: 0.65; font-size: 0.85em; }
+.mk-d2 .mk-chip { border: 1.5px solid var(--mk-line); }
+.mk-d3 .mk-chip { border-color: transparent; }
+.mk-d4 .mk-chip { background: color-mix(in oklab, var(--mk-cc) 16%, transparent); color: var(--mk-cc); border-color: transparent; }
+.mk-d4 .mk-chip[aria-pressed="true"] { background: var(--mk-cc); color: var(--mk-c); }
+.mk-d5 .mk-chip { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding-inline: 0.5rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.mk-d5 .mk-chip[aria-pressed="true"] { background: transparent; color: var(--mk-ct); border-bottom-color: var(--mk-c); }
+
+/* Etiquetas en columna y casillas de los filtros */
+.mk-check { --input-color: var(--mk-c); }
+.mk-d4 .mk-box .mk-check { --input-color: var(--mk-cc); }
+.mk-tagcheck .mk-chip-n, .mk-tagmenu .mk-chip-n { opacity: 0.6; font-size: 0.85em; }
+.mk-d5 .mk-tagcol .mk-tagcheck { border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent); }
+
+/* Etiquetas con foto (círculos) */
+.mk-circles-row { justify-content: safe center; }
+.mk-circle { display: flex; flex-direction: column; align-items: center; gap: 0.45rem; flex-shrink: 0; width: 6.5rem; cursor: pointer; background: none; border: 0; color: inherit; }
+.mk-circle-ring { display: block; width: 5.5rem; height: 5.5rem; border-radius: 999px; padding: 3px; background: color-mix(in oklab, var(--color-base-content) 14%, transparent); transition: background 0.15s; }
+.mk-circle-img { display: block; position: relative; width: 100%; height: 100%; border-radius: 999px; overflow: hidden; border: 3px solid var(--color-base-100); background: var(--color-base-200); }
+.mk-circle:hover .mk-circle-ring { background: var(--mk-line); }
+.mk-circle[aria-pressed="true"] .mk-circle-ring { background: linear-gradient(135deg, var(--mk-c), color-mix(in oklab, var(--mk-c) 55%, var(--color-accent))); }
+.mk-circle[aria-pressed="true"] .mk-circle-label { font-weight: 700; }
+.mk-circle-label { font-size: 0.85em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; gap: 0.3rem; }
+.mk-circle-label .mk-chip-n { opacity: 0.6; }
+.mk-circle:focus-visible { outline: none; }
+.mk-circle:focus-visible .mk-circle-ring { outline: 2px solid var(--mk-c); outline-offset: 2px; }
+.mk-d4 .mk-circle-ring { background: color-mix(in oklab, var(--mk-cc) 25%, transparent); }
+.mk-d4 .mk-circle[aria-pressed="true"] .mk-circle-ring { background: var(--mk-cc); }
+.mk-d4 .mk-circle-img { border-color: var(--mk-c); }
+.mk-d5 .mk-circle-ring, .mk-d5 .mk-circle-img { border-radius: 0; }
+.mk-d5 .mk-circle-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.75em; }
+
+/* Buscador con filtros */
+.mk-filterbtn { display: inline-flex; align-items: center; gap: 0.4rem; border-radius: var(--radius-field); padding: 0.55rem 0.9rem; font-size: 0.9em; font-weight: 600; cursor: pointer; border: 1.5px solid var(--mk-c); color: var(--mk-ct); background: var(--color-base-100); }
+.mk-filterbtn:focus-visible, .mk-pill:focus-visible { outline: 2px solid var(--mk-c); outline-offset: 2px; }
+.mk-pill { display: inline-flex; align-items: center; gap: 0.45rem; flex-shrink: 0; white-space: nowrap; border-radius: 999px; padding: 0.35rem 0.8rem; font-size: 0.85em; background: var(--mk-soft); color: var(--mk-ct); cursor: pointer; }
+.mk-pill span { opacity: 0.6; }
+.mk-tagmenu { position: fixed; inset: auto; margin: 0; min-width: 15rem; max-height: 22rem; overflow-y: auto; padding: 0.4rem 0; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); color: var(--color-base-content); box-shadow: 0 12px 30px rgb(0 0 0 / 0.16); font-size: 0.9rem; }
+.mk-d4 .mk-filterbtn { background: var(--mk-cc); color: var(--mk-c); border-color: var(--mk-cc); }
+.mk-d4 .mk-pill { background: color-mix(in oklab, var(--mk-cc) 18%, transparent); color: var(--mk-cc); }
+.mk-d4 .mk-tagsearch .mk-search { color: var(--color-base-content); }
+.mk-d5 .mk-filterbtn, .mk-d5 .mk-pill { border-radius: 0; }
+
+/* Productos con pestañas */
+.mk-tabs-head { border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 14%, transparent); }
+.mk-tab { flex-shrink: 0; white-space: nowrap; padding: 0.55rem 0.1rem; margin-bottom: -1px; border-bottom: 3px solid transparent; font-size: 0.95em; opacity: 0.75; cursor: pointer; background: none; color: inherit; }
+.mk-tab:hover { opacity: 1; }
+.mk-tab[aria-pressed="true"] { opacity: 1; font-weight: 600; color: var(--mk-ct); border-bottom-color: var(--mk-c); }
+.mk-tab:focus-visible { outline: 2px solid var(--mk-c); outline-offset: 2px; }
+.mk-d3 .mk-tab[aria-pressed="true"] { background: var(--color-base-100); border-radius: var(--radius-field) var(--radius-field) 0 0; padding-inline: 0.8rem; }
+.mk-d4 .mk-tabs-head { border-color: color-mix(in oklab, var(--mk-cc) 30%, transparent); }
+.mk-d4 .mk-tab[aria-pressed="true"] { color: var(--mk-cc); border-bottom-color: var(--mk-cc); }
+.mk-d5 .mk-tab { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.8em; }
+
 /* Logos */
 .mk-d2 .mk-logos .mk-logo { border: 1.5px solid var(--mk-line); border-radius: 999px; padding: 0.4rem 1rem; }
 .mk-d4 .mk-logos .mk-logo { background: var(--color-base-100); border-radius: var(--radius-field); padding: 0.4rem 0.9rem; }

@@ -61,6 +61,80 @@ pub async fn list_store_products(slug: String) -> Result<Option<StoreProducts>, 
     }))
 }
 
+/// Guarda una etiqueta desde "Etiquetas": la crea (`old` vacío) o la
+/// renombra, y queda puesta justo en los productos `ids`.
+#[server]
+pub async fn save_tag(
+    slug: String,
+    old: String,
+    name: String,
+    ids: Vec<String>,
+) -> Result<domain::TagSave, ServerFnError> {
+    use domain::TagSave;
+    let name = match domain::check_tag_name(&name) {
+        Ok(n) => n,
+        Err(error) => return Ok(TagSave::Invalid { error }),
+    };
+    retag_products(&slug, |all| {
+        if name != old && all.iter().any(|p| p.tags.contains(&name)) {
+            return Err(format!(
+                "Ya hay una etiqueta «{name}». Elegí otro nombre o editá esa."
+            ));
+        }
+        Ok(all
+            .iter()
+            .map(|p| {
+                let tags = domain::retag(&p.tags, &old, &name, ids.contains(&p.id));
+                (p.id.clone(), tags)
+            })
+            .collect())
+    })
+    .await
+}
+
+/// Saca la etiqueta `tag` de todos los productos.
+#[server]
+pub async fn delete_tag(slug: String, tag: String) -> Result<domain::TagSave, ServerFnError> {
+    retag_products(&slug, |all| {
+        Ok(all
+            .iter()
+            .map(|p| (p.id.clone(), domain::retag(&p.tags, &tag, &tag, false)))
+            .collect())
+    })
+    .await
+}
+
+/// Aplica `change` (las etiquetas nuevas de cada producto, o un problema)
+/// a los productos de la tienda y devuelve cómo quedaron.
+#[cfg(feature = "ssr")]
+async fn retag_products(
+    slug: &str,
+    change: impl FnOnce(&[Product]) -> Result<Vec<(String, Vec<String>)>, String>,
+) -> Result<domain::TagSave, ServerFnError> {
+    use crate::server::{internal, pool};
+    use domain::TagSave;
+    let tenant = server::require_store(slug).await?;
+    let pool = pool()?;
+    let mut all = db::products::list_all(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
+    let new = match change(&all) {
+        Ok(n) => n,
+        Err(error) => return Ok(TagSave::Invalid { error }),
+    };
+    let mut changes = Vec::new();
+    for (p, (id, tags)) in all.iter_mut().zip(new) {
+        if p.tags != tags {
+            changes.push((server::parse_id(&id)?, tags.clone()));
+            p.tags = tags;
+        }
+    }
+    db::products::set_tags(&pool, tenant.id, &changes)
+        .await
+        .map_err(internal)?;
+    Ok(TagSave::Saved { products: all })
+}
+
 /// El producto `id` para editarlo (o uno vacío si `id` es `nuevo`).
 #[server]
 pub async fn product_to_edit(
@@ -233,7 +307,17 @@ pub fn ProductsPage() -> impl IntoView {
 #[component]
 fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     let products = RwSignal::new(data.products);
-    let tags = StoredValue::new(data.tags);
+    // Las etiquetas salen de los productos, así se actualizan al cambiarlas
+    // desde "Etiquetas".
+    let tags = Memo::new(move |_| {
+        products.with(|ps| {
+            let mut t: Vec<String> = domain::count_tags(ps).into_iter().map(|c| c.tag).collect();
+            t.sort();
+            t
+        })
+    });
+    let _ = data.tags;
+    let manage = NodeRef::<leptos::html::Dialog>::new();
     let query = RwSignal::new(String::new());
     let tag = RwSignal::new(None::<String>);
     let problem = RwSignal::new(None::<String>);
@@ -289,8 +373,17 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                 <h1 class="text-3xl font-bold">"Productos"</h1>
                 <p class="text-sm text-base-content/70">{data.store_name} " · " {summary}</p>
             </div>
+            <button type="button" class="btn" on:click=move |_| {
+                if let Some(d) = manage.get() { _ = d.show_modal(); }
+            }>"Etiquetas"</button>
             <a class="btn btn-primary" href=new_href.clone()>"+ Nuevo producto"</a>
         </div>
+        <dialog node_ref=manage class="modal" aria-labelledby="etiquetas-titulo">
+            <div class="modal-box max-w-3xl">
+                <TagManager slug=slug.get_value() products tag dialog=manage/>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
         {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
         {if empty {
             view! {
@@ -310,7 +403,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                             prop:value=move || query.get()
                             on:input=move |ev| query.set(event_target_value(&ev))/>
                     </label>
-                    {(!tags.with_value(Vec::is_empty)).then(|| view! {
+                    {move || (!tags.with(Vec::is_empty)).then(|| view! {
                         <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por etiqueta">
                             <span class="text-sm text-base-content/70">"Etiquetas:"</span>
                             <button type="button" class="badge badge-lg cursor-pointer"
@@ -318,7 +411,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                 class:badge-outline=move || tag.get().is_some()
                                 aria-pressed=move || tag.get().is_none().to_string()
                                 on:click=move |_| tag.set(None)>"Todas"</button>
-                            {tags.get_value().into_iter().map(|t| {
+                            {tags.get().into_iter().map(|t| {
                                 let t2 = t.clone();
                                 let t3 = t.clone();
                                 let on = Memo::new(move |_| tag.get().as_deref() == Some(t2.as_str()));
@@ -398,6 +491,221 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                 </div>
             }.into_any()
         }}
+    }
+}
+
+/// "Etiquetas": crear una etiqueta y elegir sus productos, cambiarle el
+/// nombre o borrarla. A la izquierda las etiquetas; a la derecha la elegida.
+#[component]
+fn TagManager(
+    slug: String,
+    products: RwSignal<Vec<Product>>,
+    /// El filtro de la lista: se limpia si se borra o renombra su etiqueta.
+    tag: RwSignal<Option<String>>,
+    dialog: NodeRef<leptos::html::Dialog>,
+) -> impl IntoView {
+    let slug = StoredValue::new(slug);
+    let counts = Memo::new(move |_| products.with(|ps| domain::count_tags(ps)));
+    // La etiqueta que se está editando: `Some("")` es una nueva.
+    let editing = RwSignal::new(None::<String>);
+    let name = RwSignal::new(String::new());
+    let picked = RwSignal::new(Vec::<String>::new());
+    let search = RwSignal::new(String::new());
+    let problem = RwSignal::new(None::<String>);
+    let saved = RwSignal::new(false);
+    let confirm = RwSignal::new(false);
+    let name_ref = NodeRef::<leptos::html::Input>::new();
+
+    let open = move |t: String| {
+        picked.set(products.with_untracked(|ps| {
+            ps.iter()
+                .filter(|p| !t.is_empty() && p.tags.contains(&t))
+                .map(|p| p.id.clone())
+                .collect()
+        }));
+        name.set(t.clone());
+        editing.set(Some(t));
+        search.set(String::new());
+        problem.set(None);
+        saved.set(false);
+        confirm.set(false);
+        if let Some(i) = name_ref.get_untracked() {
+            _ = i.focus();
+        }
+    };
+    let done = move |r: Result<domain::TagSave, ServerFnError>, now: Option<String>| match r {
+        Ok(domain::TagSave::Saved { products: ps }) => {
+            let old = editing.get_untracked().unwrap_or_default();
+            if !old.is_empty() && tag.get_untracked().as_deref() == Some(old.as_str()) {
+                tag.set(None);
+            }
+            products.set(ps);
+            problem.set(None);
+            confirm.set(false);
+            saved.set(now.is_some());
+            match now {
+                Some(n) => {
+                    name.set(n.clone());
+                    editing.set(Some(n));
+                }
+                None => editing.set(None),
+            }
+        }
+        Ok(domain::TagSave::Invalid { error }) => problem.set(Some(error)),
+        Err(e) => problem.set(Some(error_text(&e))),
+    };
+    let save = Action::new(move |_: &()| {
+        let old = editing.get_untracked().unwrap_or_default();
+        let n = name.get_untracked();
+        let ids = picked.get_untracked();
+        async move {
+            let clean = domain::clean_tag(&n);
+            let r = save_tag(slug.get_value(), old, n, ids).await;
+            done(r, clean);
+        }
+    });
+    let remove = Action::new(move |_: &()| {
+        let t = editing.get_untracked().unwrap_or_default();
+        async move {
+            let r = delete_tag(slug.get_value(), t).await;
+            done(r, None);
+        }
+    });
+    let busy = move || save.pending().get() || remove.pending().get();
+    let shown = Memo::new(move |_| {
+        let q = search.get();
+        products.with(|ps| {
+            ps.iter()
+                .filter(|p| domain::product_matches(p, &q))
+                .map(|p| (p.id.clone(), p.name.clone(), p.image_url.clone()))
+                .collect::<Vec<_>>()
+        })
+    });
+    let close = move |_| {
+        if let Some(d) = dialog.get() {
+            d.close();
+        }
+    };
+
+    view! {
+        <div class="flex items-start gap-3">
+            <div class="grow">
+                <h2 id="etiquetas-titulo" class="text-xl font-bold">"Etiquetas"</h2>
+                <p class="text-sm text-base-content/70">"Sirven para agrupar productos. Si ponés el bloque «Filtro por etiquetas» en tu tienda, tus clientes las tocan para ver solo esos productos."</p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=close>"✕"</button>
+        </div>
+        <div class="mt-4 grid min-h-[26rem] grid-cols-[14rem_1fr] gap-5">
+            <div class="flex flex-col gap-1 border-r border-base-300 pr-4">
+                <button type="button" class="btn btn-primary btn-sm mb-2 justify-start" on:click=move |_| open(String::new())>"+ Nueva etiqueta"</button>
+                <ul class="flex flex-col gap-0.5 overflow-y-auto" aria-label="Etiquetas de la tienda">
+                    {move || counts.get().into_iter().map(|c| {
+                        let t = c.tag.clone();
+                        let t2 = c.tag.clone();
+                        let on = move || editing.get().as_deref() == Some(t.as_str());
+                        view! {
+                            <li>
+                                <button type="button" class="flex w-full items-center justify-between gap-2 rounded-field px-3 py-2 text-left text-sm hover:bg-base-200"
+                                    class:bg-primary=on.clone()
+                                    class:text-primary-content=on.clone()
+                                    class:hover:bg-primary=on.clone()
+                                    aria-current=move || on().then_some("true")
+                                    on:click=move |_| open(t2.clone())>
+                                    <span class="truncate">{c.tag.clone()}</span>
+                                    <span class="opacity-70">{c.products}</span>
+                                </button>
+                            </li>
+                        }
+                    }).collect_view()}
+                </ul>
+                {move || counts.with(Vec::is_empty).then(|| view! {
+                    <p class="px-1 text-sm text-base-content/60">"Todavía no hay etiquetas."</p>
+                })}
+            </div>
+            <div class="flex min-w-0 flex-col gap-3">
+                {move || match editing.get() {
+                    None => view! {
+                        <div class="flex h-full flex-col items-center justify-center gap-2 text-center text-base-content/70">
+                            <p>"Elegí una etiqueta de la izquierda para cambiarle el nombre o sus productos, o creá una nueva."</p>
+                        </div>
+                    }.into_any(),
+                    Some(t) => {
+                        let is_new = t.is_empty();
+                        view! {
+                            <form class="flex min-h-0 flex-1 flex-col gap-3" on:submit=move |ev| { ev.prevent_default(); save.dispatch(()); }>
+                                <label class="flex flex-col gap-1">
+                                    <span class="text-sm font-medium">{if is_new { "Nombre de la etiqueta nueva" } else { "Nombre" }}</span>
+                                    <input node_ref=name_ref class="input w-full" maxlength="30" required=true
+                                        placeholder="Por ejemplo: ofertas, verano, regalos"
+                                        prop:value=move || name.get()
+                                        on:input=move |ev| { name.set(event_target_value(&ev)); saved.set(false); }/>
+                                </label>
+                                <fieldset class="flex min-h-0 flex-1 flex-col gap-2">
+                                    <legend class="mb-1 text-sm font-medium">
+                                        "Productos con esta etiqueta "
+                                        <span class="font-normal text-base-content/60">{move || format!("({} elegidos)", picked.with(Vec::len))}</span>
+                                    </legend>
+                                    <input type="search" class="input input-sm w-full" placeholder="Buscar producto" aria-label="Buscar producto"
+                                        prop:value=move || search.get()
+                                        on:input=move |ev| search.set(event_target_value(&ev))/>
+                                    <ul class="max-h-64 min-h-0 overflow-y-auto rounded-field border border-base-300">
+                                        <For each=move || shown.get() key=|p| p.0.clone() let:p>
+                                            {
+                                                let (id, pname, img) = p;
+                                                let id2 = id.clone();
+                                                let checked = move || picked.with(|l| l.contains(&id));
+                                                view! {
+                                                    <li class="border-b border-base-200 last:border-0">
+                                                        <label class="flex cursor-pointer items-center gap-3 px-3 py-1.5 hover:bg-base-200">
+                                                            <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
+                                                                prop:checked=checked
+                                                                on:change=move |ev| {
+                                                                    let on = event_target_checked(&ev);
+                                                                    saved.set(false);
+                                                                    picked.update(|l| {
+                                                                        l.retain(|x| x != &id2);
+                                                                        if on { l.push(id2.clone()); }
+                                                                    });
+                                                                }/>
+                                                            <span class="h-8 w-10 shrink-0 overflow-hidden rounded bg-base-200"><ui::Image src=img alt=""/></span>
+                                                            <span class="truncate text-sm">{pname}</span>
+                                                        </label>
+                                                    </li>
+                                                }
+                                            }
+                                        </For>
+                                    </ul>
+                                </fieldset>
+                                {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
+                                {move || if confirm.get() {
+                                    let n = picked.with(Vec::len);
+                                    view! {
+                                        <div role="alert" class="alert alert-warning flex flex-wrap text-sm">
+                                            <span class="grow">{format!("¿Borrar «{}»? Se va a sacar de {n} producto{}. Los productos no se borran.", editing.get_untracked().unwrap_or_default(), if n == 1 { "" } else { "s" })}</span>
+                                            <button type="button" class="btn btn-sm" on:click=move |_| confirm.set(false)>"Cancelar"</button>
+                                            <button type="button" class="btn btn-error btn-sm" disabled=busy on:click=move |_| { remove.dispatch(()); }>"Borrar etiqueta"</button>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="flex items-center gap-2">
+                                            <button type="submit" class="btn btn-primary" disabled=busy>
+                                                {if is_new { "Crear etiqueta" } else { "Guardar cambios" }}
+                                            </button>
+                                            {move || saved.get().then(|| view! { <span role="status" class="text-sm text-success">"✓ Guardado"</span> })}
+                                            <span class="grow"></span>
+                                            {(!is_new).then(|| view! {
+                                                <button type="button" class="btn btn-ghost btn-sm text-error" on:click=move |_| confirm.set(true)>"Borrar etiqueta"</button>
+                                            })}
+                                        </div>
+                                    }.into_any()
+                                }}
+                            </form>
+                        }.into_any()
+                    }
+                }}
+            </div>
+        </div>
     }
 }
 

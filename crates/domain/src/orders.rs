@@ -49,7 +49,9 @@ pub fn tidy_delivery(d: &mut DeliverySettings) -> Vec<String> {
     if d.pickup_enabled && d.pickup_address.is_empty() {
         errors.push("Poné la dirección donde se retiran los pedidos.".to_string());
     }
-    if d.shipping_cents.is_some_and(|c| !(0..=SHIPPING_MAX_CENTS).contains(&c)) {
+    if d.shipping_cents
+        .is_some_and(|c| !(0..=SHIPPING_MAX_CENTS).contains(&c))
+    {
         errors.push("El costo del envío no parece correcto.".to_string());
     }
     errors
@@ -150,7 +152,10 @@ pub fn phone_digits(s: &str) -> String {
 /// Limpia el formulario y devuelve los problemas de cada campo (vacío si
 /// está todo bien). Se usa igual en el navegador y en el servidor.
 pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldError> {
-    f.name = clip(&f.name.split_whitespace().collect::<Vec<_>>().join(" "), NAME_MAX);
+    f.name = clip(
+        &f.name.split_whitespace().collect::<Vec<_>>().join(" "),
+        NAME_MAX,
+    );
     f.email = clip(f.email.trim(), EMAIL_MAX).to_lowercase();
     f.phone = clip(f.phone.trim(), 30);
     f.address = clip(f.address.trim(), ADDRESS_MAX);
@@ -164,15 +169,27 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
         e.push(err("name", "Escribí tu nombre y apellido."));
     }
     if f.email.is_empty() {
-        e.push(err("email", "Escribí tu email: ahí te llega el comprobante."));
+        e.push(err(
+            "email",
+            "Escribí tu email: ahí te llega el comprobante.",
+        ));
     } else if !looks_like_email(&f.email) {
-        e.push(err("email", "Revisá el email, por ejemplo: nombre@correo.com"));
+        e.push(err(
+            "email",
+            "Revisá el email, por ejemplo: nombre@correo.com",
+        ));
     }
     let digits = phone_digits(&f.phone).len();
     if digits == 0 {
-        e.push(err("phone", "Escribí un teléfono para coordinar la entrega."));
+        e.push(err(
+            "phone",
+            "Escribí un teléfono para coordinar la entrega.",
+        ));
     } else if !(8..=15).contains(&digits) {
-        e.push(err("phone", "Revisá el teléfono, con característica: por ejemplo 11 5555-1234."));
+        e.push(err(
+            "phone",
+            "Revisá el teléfono, con característica: por ejemplo 11 5555-1234.",
+        ));
     }
     let allowed = match f.delivery {
         Delivery::Pickup => d.pickup_enabled,
@@ -190,7 +207,10 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
         if f.postal_code.is_empty() {
             e.push(err("postal_code", "Escribí el código postal."));
         } else if !pc_ok {
-            e.push(err("postal_code", "Revisá el código postal, por ejemplo 1123."));
+            e.push(err(
+                "postal_code",
+                "Revisá el código postal, por ejemplo 1123.",
+            ));
         }
         if f.city.is_empty() {
             e.push(err("city", "Escribí la ciudad o localidad."));
@@ -203,7 +223,10 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
     if f.lines.is_empty() {
         e.push(err("cart", "Tu carrito está vacío."));
     } else if f.lines.len() > MAX_ORDER_LINES {
-        e.push(err("cart", "Hay demasiados productos distintos en el carrito."));
+        e.push(err(
+            "cart",
+            "Hay demasiados productos distintos en el carrito.",
+        ));
     }
     e
 }
@@ -517,7 +540,15 @@ mod tests {
             .collect();
         assert_eq!(
             fields,
-            ["name", "email", "phone", "address", "postal_code", "city", "cart"]
+            [
+                "name",
+                "email",
+                "phone",
+                "address",
+                "postal_code",
+                "city",
+                "cart"
+            ]
         );
     }
 
@@ -564,7 +595,10 @@ mod tests {
 
     #[test]
     fn columns_and_times() {
-        assert_eq!(OrderColumn::of(OrderStatus::New), Some(OrderColumn::AwaitingPayment));
+        assert_eq!(
+            OrderColumn::of(OrderStatus::New),
+            Some(OrderColumn::AwaitingPayment)
+        );
         assert_eq!(OrderColumn::of(OrderStatus::Cancelled), None);
         for c in OrderColumn::ALL {
             assert_eq!(OrderColumn::of(c.status()), Some(c));

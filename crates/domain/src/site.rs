@@ -53,7 +53,10 @@ fn base_labels(labels: &[&str]) -> usize {
 
 /// `1-2-3-4`, una IP escrita con guiones (como la usa sslip.io).
 fn is_dashed_ip(label: &str) -> bool {
-    label.replace('-', ".").parse::<std::net::Ipv4Addr>().is_ok()
+    label
+        .replace('-', ".")
+        .parse::<std::net::Ipv4Addr>()
+        .is_ok()
 }
 
 /// Lee el sitio de un `Host` (`demo.localhost:3000` → `Store("demo")`).
@@ -297,8 +300,14 @@ mod tests {
     #[test]
     fn store_hosts_from_the_platform() {
         assert_eq!(store_host("localhost:3000", "ana"), "ana.localhost:3000");
-        assert_eq!(store_host("185-2-3-4.sslip.io", "ana"), "ana.185-2-3-4.sslip.io");
-        assert_eq!(platform_host("ana.185-2-3-4.sslip.io"), "185-2-3-4.sslip.io");
+        assert_eq!(
+            store_host("185-2-3-4.sslip.io", "ana"),
+            "ana.185-2-3-4.sslip.io"
+        );
+        assert_eq!(
+            platform_host("ana.185-2-3-4.sslip.io"),
+            "185-2-3-4.sslip.io"
+        );
         assert_eq!(store_host("127.0.0.1:3000", "ana"), "ana.localhost:3000");
         assert_eq!(
             store_host("www.marketmaker.tienda", "ana"),
