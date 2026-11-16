@@ -15,10 +15,10 @@ primera vez que alguien entra, y solo si existe (`/tls-ok`).
 Después, completar `/opt/marketmaker/current/.env.local` (lo crea `setup.sh`
 con `DATABASE_URL`):
 
-    APP_URL=https://1-2-3-4.sslip.io
+    APP_URL=https://mkr.com.ar
     ALLOWED_EMAILS=...
     R2_ACCOUNT_ID=... R2_BUCKET=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=...
-    MP_REDIRECT_URL=https://1-2-3-4.sslip.io/mp/vuelta   # con Mercado Pago
+    MP_REDIRECT_URL=https://mkr.com.ar/mp/vincular   # con Mercado Pago
 
 ## Cada actualización
 
