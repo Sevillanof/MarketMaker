@@ -3,7 +3,7 @@
 //! tienda.
 
 use crate::auth::{
-    change_password, check_code, load_account, lookup_email, request_code, save_name,
+    change_password, check_code, load_account, lookup_email, request_code, save_avatar, save_name,
     set_password_with_code, sign_in, sign_out,
 };
 use domain::{
@@ -217,7 +217,7 @@ fn PasswordField(
                     {move || match score() {
                         0 => format!("{} caracteres o más.", domain::PASSWORD_MIN),
                         1 => format!("Muy corta: {} caracteres o más.", domain::PASSWORD_MIN),
-                        2 => "Sirve. Con mayúsculas, números o símbolos queda mejor.".to_string(),
+                        2 => "Aceptable. Con mayúsculas, números o símbolos es más segura.".to_string(),
                         3 => "Buena.".to_string(),
                         _ => "Muy buena.".to_string(),
                     }}
@@ -305,7 +305,7 @@ fn SignInForm(next: String) -> impl IntoView {
                 goto(Step::Create);
             }
             Ok(EmailLookup::BadEmail) => problem.set(Some(
-                "Revisá el email: parece que le falta algo (por ejemplo, ana@correo.com).".into(),
+                "El email no es válido. Revisalo (por ejemplo, ana@correo.com).".into(),
             )),
             Ok(EmailLookup::NotAllowed) => problem.set(Some(NOT_ALLOWED.into())),
             Err(_) => problem.set(Some(CONNECTION.into())),
@@ -317,9 +317,9 @@ fn SignInForm(next: String) -> impl IntoView {
         };
         match result {
             Ok(PasswordSignIn::In { next }) => go(&next),
-            Ok(PasswordSignIn::Wrong) => problem.set(Some("Esa contraseña no es. Probá de nuevo o tocá \"¿Te la olvidaste?\".".into())),
+            Ok(PasswordSignIn::Wrong) => problem.set(Some("La contraseña no es correcta. Probá de nuevo o tocá \"¿Te la olvidaste?\".".into())),
             Ok(PasswordSignIn::Locked { minutes }) => problem.set(Some(format!(
-                "Probaste muchas veces seguidas. Esperá {minutes} minutos o entrá con un código por email."
+                "Hubo demasiados intentos seguidos. Esperá {minutes} minutos o entrá con un código por email."
             ))),
             Ok(PasswordSignIn::NoPassword) => send_code(CodeFor::Reset),
             Err(_) => problem.set(Some(CONNECTION.into())),
@@ -338,23 +338,24 @@ fn SignInForm(next: String) -> impl IntoView {
                 goto(Step::Code(code_for.get_untracked()));
             }
             Ok(CodeRequest::BadEmail) => {
-                problem.set(Some("Revisá el email: parece que le falta algo.".into()))
+                problem.set(Some("El email no es válido. Revisalo.".into()))
             }
             Ok(CodeRequest::NotAllowed) => problem.set(Some(NOT_ALLOWED.into())),
             Ok(CodeRequest::TooMany) => problem.set(Some(
-                "Pediste muchos códigos seguidos. Esperá un rato y probá de nuevo.".into(),
+                "Se pidieron demasiados códigos seguidos. Esperá unos minutos y probá de nuevo."
+                    .into(),
             )),
             Err(_) => problem.set(Some(CONNECTION.into())),
         }
     });
     let wrong_code = move |left: u32| {
         if left == 1 {
-            "Ese código no es. Te queda 1 intento.".to_string()
+            "El código no es correcto. Te queda 1 intento.".to_string()
         } else {
-            format!("Ese código no es. Te quedan {left} intentos.")
+            format!("El código no es correcto. Te quedan {left} intentos.")
         }
     };
-    let expired = "Ese código venció o ya no sirve. Pedí uno nuevo.";
+    let expired = "El código venció o ya no es válido. Pedí uno nuevo.";
     Effect::new(move |_| {
         let Some(result) = check.value().get() else {
             return;
@@ -599,6 +600,8 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
             go("/");
         }
     });
+    let avatar = account.avatar.clone();
+    let has_photo = avatar.is_some();
     let first_of_email = account.email.chars().next();
     let initial = move || {
         saved_name
@@ -625,11 +628,12 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
     view! {
         <section class="overflow-hidden rounded-2xl border border-base-300 bg-base-100">
             <div class="flex items-center gap-4 px-6 py-5">
-                <span aria-hidden="true" class="grid size-13 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] text-xl font-bold text-white">{initial}</span>
-                <div class="min-w-0">
+                {move || view! { <crate::panel::Avatar letter=initial() size="size-13 text-xl" photo=avatar.clone()/> }}
+                <div class="min-w-0 grow">
                     <div class="truncate text-lg font-bold">{move || if saved_name.get().is_empty() { "Sin nombre".to_string() } else { saved_name.get() }}</div>
                     <div class="text-sm text-base-content/70">{stores}</div>
                 </div>
+                <ProfilePhoto has_photo=has_photo/>
             </div>
             <AccountRow icon="user" label="Nombre" action=change_btn(Signal::stored("Cambiar"), name_dialog)>
                 <span class=move || if saved_name.get().is_empty() { "text-base-content/50" } else { "" }>
@@ -663,11 +667,73 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
                     <button type="button" class="btn btn-outline btn-sm border-red-200 bg-base-100 text-red-700 hover:border-red-300 hover:bg-red-50"
                         on:click=move |_| { out.dispatch(()); }>"Salir"</button>
                 }.into_any()>
-                "Cerrar tu cuenta en esta compu"
+                "Cerrar sesión en este dispositivo"
             </AccountRow>
         </section>
         <NameDialog dialog=name_dialog saved_name/>
         <PasswordDialog dialog=pw_dialog has_password notice/>
+    }
+}
+
+/// "Cambiar foto" / "Quitar" de la foto de perfil. La foto nueva se sube a
+/// Mis fotos (así se convierte y se achica como las demás) y queda como foto
+/// de perfil. Después recarga, para que el menú del costado la muestre.
+#[component]
+fn ProfilePhoto(has_photo: bool) -> impl IntoView {
+    let photos = editor::MyPhotos::new();
+    let problem = RwSignal::new(None::<String>);
+    let saving = RwSignal::new(false);
+    let apply = move |id: Option<String>| {
+        saving.set(true);
+        problem.set(None);
+        leptos::task::spawn_local(async move {
+            match save_avatar(id).await {
+                Ok(()) => {
+                    let _ = window().location().reload();
+                }
+                Err(e) => {
+                    saving.set(false);
+                    problem.set(Some(server_message(e)));
+                }
+            }
+        });
+    };
+    let busy = move || saving.get() || photos.progress.get().is_some();
+    view! {
+        <div class="flex shrink-0 flex-col items-end gap-1">
+            <div class="flex items-center gap-2">
+                {has_photo.then(|| view! {
+                    <button type="button" class="btn btn-ghost btn-sm text-base-content/70" disabled=busy
+                        on:click=move |_| apply(None)>"Quitar"</button>
+                })}
+                <label for="foto-perfil" class="btn btn-outline btn-sm border-base-300 bg-base-100"
+                    class:btn-disabled=busy>
+                    {move || if busy() { "Subiendo…" } else if has_photo { "Cambiar foto" } else { "Subir foto" }}
+                </label>
+                <input id="foto-perfil" type="file" class="hidden"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    on:change=move |ev| {
+                        problem.set(None);
+                        photos.upload(
+                            editor::take_files(&ev).into_iter().take(1).collect(),
+                            Callback::new(move |item: domain::MediaItem| apply(Some(item.id))),
+                        )
+                    }/>
+            </div>
+            {move || {
+                let errors = photos.upload_errors.get();
+                problem.get().or_else(|| errors.into_iter().next())
+                    .map(|text| view! { <FieldNote ok=false text/> })
+            }}
+        </div>
+    }
+}
+
+/// El texto de un error del servidor, sin el prefijo técnico.
+fn server_message(e: ServerFnError) -> String {
+    match e {
+        ServerFnError::ServerError(msg) => msg,
+        _ => CONNECTION.to_string(),
     }
 }
 
@@ -742,13 +808,13 @@ fn PasswordDialog(
         Some(Ok(PasswordChange::Done)) => {
             has_password.set(true);
             notice.set(Some(
-                "Listo, tu contraseña cambió. Cerramos tu cuenta en las otras compus y celulares."
+                "Tu contraseña se actualizó. Cerramos tu sesión en todos tus otros dispositivos."
                     .into(),
             ));
             close_modal(dialog);
         }
         Some(Ok(PasswordChange::WrongCurrent)) => {
-            problem.set(Some("La contraseña actual no es esa.".into()))
+            problem.set(Some("La contraseña actual no es correcta.".into()))
         }
         Some(Ok(PasswordChange::Weak { reason })) => problem.set(Some(reason)),
         Some(Err(_)) => problem.set(Some(CONNECTION.into())),
@@ -771,7 +837,7 @@ fn PasswordDialog(
                     })}
                     <PasswordField value=new label="Contraseña nueva" autocomplete="new-password" meter=true/>
                     {move || problem.get().map(|p| view! { <FieldNote ok=false text=p/> })}
-                    <p class="text-sm text-base-content/60">"Al cambiarla, cerramos tu cuenta en las otras compus y celulares."</p>
+                    <p class="text-sm text-base-content/60">"Al cambiarla, cerramos tu sesión en todos tus otros dispositivos."</p>
                     <div class="flex justify-end gap-2">
                         <button type="button" class="btn btn-ghost" on:click=move |_| close_modal(dialog)>"Cancelar"</button>
                         <button type="submit" class="btn btn-primary" disabled=move || change.pending().get()>

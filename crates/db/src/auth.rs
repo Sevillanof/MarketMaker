@@ -160,6 +160,8 @@ pub struct SessionUser {
     pub email: String,
     /// Cómo quiere que la llamemos ("" si no lo dijo).
     pub name: String,
+    /// La foto de perfil (una de Mis fotos), si eligió una.
+    pub avatar_id: Option<Uuid>,
 }
 
 /// La cuenta de la sesión `token`, si sigue vigente. Usarla la extiende
@@ -169,7 +171,7 @@ pub async fn session_user(pool: &PgPool, token: &str) -> sqlx::Result<Option<Ses
         "UPDATE sessions s SET expires_at = now() + make_interval(days => $2)
          FROM users u
          WHERE s.token_hash = $1 AND s.expires_at > now() AND u.id = s.user_id
-         RETURNING u.id, u.email, u.name",
+         RETURNING u.id, u.email, u.name, u.avatar_id",
     )
     .bind(token_hash(token))
     .bind(SESSION_DAYS)
@@ -394,6 +396,7 @@ pub struct Account {
     pub email: String,
     pub name: String,
     pub password_hash: Option<String>,
+    pub avatar_id: Option<Uuid>,
     /// Minutos que faltan para poder volver a probar la contraseña (0 si puede).
     pub locked_minutes: i32,
 }
@@ -401,7 +404,7 @@ pub struct Account {
 /// La cuenta de `email` (ya normalizado), si existe.
 pub async fn account_by_email(pool: &PgPool, email: &str) -> sqlx::Result<Option<Account>> {
     sqlx::query_as::<_, Account>(
-        "SELECT id, email, name, password_hash,
+        "SELECT id, email, name, password_hash, avatar_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60))::int AS locked_minutes
          FROM users WHERE email = $1",
     )
@@ -413,7 +416,7 @@ pub async fn account_by_email(pool: &PgPool, email: &str) -> sqlx::Result<Option
 /// La cuenta `id`.
 pub async fn account_by_id(pool: &PgPool, id: Uuid) -> sqlx::Result<Option<Account>> {
     sqlx::query_as::<_, Account>(
-        "SELECT id, email, name, password_hash,
+        "SELECT id, email, name, password_hash, avatar_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60))::int AS locked_minutes
          FROM users WHERE id = $1",
     )
@@ -485,4 +488,23 @@ pub async fn delete_other_sessions(
         .execute(pool)
         .await?;
     Ok(())
+}
+
+/// Pone (o quita, con `None`) la foto de perfil. Solo acepta una foto de
+/// Mis fotos de la misma cuenta. Devuelve `false` si la foto no es suya.
+pub async fn set_avatar(
+    pool: &PgPool,
+    user_id: Uuid,
+    media_id: Option<Uuid>,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query(
+        "UPDATE users SET avatar_id = $2
+         WHERE id = $1
+           AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM media WHERE id = $2 AND owner_id = $1))",
+    )
+    .bind(user_id)
+    .bind(media_id)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() == 1)
 }

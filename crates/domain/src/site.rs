@@ -188,6 +188,8 @@ pub struct PanelNav {
     pub email: String,
     /// Cómo quiere que la llamemos ("" si no lo dijo).
     pub name: String,
+    /// La foto de perfil, lista para un `<img>`.
+    pub avatar: Option<String>,
     pub stores: Vec<NavStore>,
 }
 

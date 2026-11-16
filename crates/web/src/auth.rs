@@ -441,6 +441,7 @@ pub async fn load_account() -> Result<Option<AccountInfo>, ServerFnError> {
         email: a.email,
         name: a.name,
         has_password: a.password_hash.is_some(),
+        avatar: a.avatar_id.map(domain::avatar_url),
         stores,
     }))
 }
@@ -456,6 +457,30 @@ pub async fn save_name(name: String) -> Result<String, ServerFnError> {
         .await
         .map_err(crate::server::internal)?;
     Ok(name)
+}
+
+/// Pone una foto de Mis fotos (`media_id`) como foto de perfil, o la
+/// quita con `None`.
+#[server]
+pub async fn save_avatar(media_id: Option<String>) -> Result<(), ServerFnError> {
+    let user = current_user()
+        .await?
+        .ok_or_else(|| ServerFnError::new("Tenés que entrar con tu cuenta."))?;
+    let id = match media_id {
+        Some(s) => Some(
+            uuid::Uuid::parse_str(s.trim())
+                .map_err(|_| ServerFnError::new("No encontramos esa foto."))?,
+        ),
+        None => None,
+    };
+    let ok = db::auth::set_avatar(&crate::server::pool()?, user.id, id)
+        .await
+        .map_err(crate::server::internal)?;
+    if ok {
+        Ok(())
+    } else {
+        Err(ServerFnError::new("No encontramos esa foto en tu cuenta."))
+    }
 }
 
 /// Cambia la contraseña desde "Mi cuenta". Si la cuenta todavía no tenía,
