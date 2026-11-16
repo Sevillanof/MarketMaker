@@ -711,12 +711,19 @@ impl Actions {
 
 /// Tamaño de un bloque dicho en palabras: ancho en columnas y alto en píxeles.
 pub(crate) fn size_text(size: domain::Size) -> String {
-    format!(
-        "ancho {} de {} columnas, alto {} píxeles",
-        size.w,
-        domain::GRID_COLS,
-        u32::from(size.h) * u32::from(domain::ROW_PX)
-    )
+    let width = match WIDTHS.iter().find(|(cols, _)| *cols == size.w).map(|(_, n)| *n) {
+        Some("Completo") => "todo el ancho".to_string(),
+        Some("Mitad") => "mitad del ancho".to_string(),
+        Some(name) => format!("{name} del ancho"),
+        None => format!("{} por ciento del ancho", u32::from(size.w) * 100 / u32::from(domain::GRID_COLS)),
+    };
+    let rows = u32::from(size.h) * u32::from(domain::ROW_PX);
+    let height = match rows {
+        0..=160 => "bajo",
+        161..=400 => "mediano",
+        _ => "alto",
+    };
+    format!("{width}, {height}")
 }
 
 /// Anchos con nombre, en columnas de 48.

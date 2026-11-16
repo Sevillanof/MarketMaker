@@ -474,7 +474,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                             </td>
                                             <td>
                                                 {if p.in_stock {
-                                                    view! { <span class="badge badge-success badge-soft">"Hay stock"</span> }.into_any()
+                                                    view! { <span class="badge badge-soft badge-success text-green-800">"Hay stock"</span> }.into_any()
                                                 } else {
                                                     view! { <span class="badge badge-warning badge-soft">"Agotado"</span> }.into_any()
                                                 }}
