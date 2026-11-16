@@ -203,7 +203,7 @@ pub async fn save_andreani(
     db::andreani::save_settings(&pool, tenant.id, &s)
         .await
         .map_err(internal)?;
-    let warning = match crate::andreani::save_origin(tenant.id, &s.origin).await {
+    let warning = match crate::andreani::save_origin(&pool, tenant.id, &s.origin).await {
         Ok(()) => None,
         Err(e) => {
             leptos::logging::warn!("Andreani: no se pudo guardar el origen: {e}");

@@ -35,6 +35,8 @@ mod platform;
 mod products;
 mod regret;
 mod sales;
+#[cfg(feature = "ssr")]
+pub mod shipments;
 mod store_info;
 pub mod server;
 pub mod site;

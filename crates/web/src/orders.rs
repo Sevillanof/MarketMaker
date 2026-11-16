@@ -20,23 +20,55 @@ pub async fn store_orders(slug: String) -> Result<Option<(String, Vec<Order>)>, 
     Ok(Some((tenant.name, orders)))
 }
 
+/// Mueve un pedido. Si queda pagado y va por Andreani, crea el envío y
+/// devuelve el pedido como quedó.
 #[server(input = leptos::server_fn::codec::Json)]
 pub async fn move_order(
     slug: String,
     id: String,
     status: OrderStatus,
-) -> Result<(), ServerFnError> {
+) -> Result<Option<Order>, ServerFnError> {
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
-    if db::orders::set_status(&pool()?, tenant.id, id, status)
+    let pool = pool()?;
+    if !db::orders::set_status(&pool, tenant.id, id, status)
         .await
         .map_err(internal)?
     {
-        Ok(())
-    } else {
-        Err(ServerFnError::new("Ese pedido no existe."))
+        return Err(ServerFnError::new("Ese pedido no existe."));
     }
+    if status == OrderStatus::Paid {
+        return Ok(crate::shipments::ship_order(&pool, tenant.id, id).await);
+    }
+    Ok(None)
+}
+
+/// "Reintentar": vuelve a crear en Andreani el envío que falló.
+#[server]
+pub async fn retry_shipment(slug: String, id: String) -> Result<Option<Order>, ServerFnError> {
+    let tenant = crate::products::server::require_store(&slug).await?;
+    let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
+    Ok(crate::shipments::ship_order(&crate::server::pool()?, tenant.id, id).await)
+}
+
+/// Pregunta a Andreani cómo va el envío de un pedido (al abrirlo).
+#[server]
+pub async fn refresh_shipment(slug: String, id: String) -> Result<Option<Order>, ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = crate::products::server::require_store(&slug).await?;
+    let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
+    let pool = pool()?;
+    let Some(o) = db::orders::get(&pool, tenant.id, id).await.map_err(internal)? else {
+        return Ok(None);
+    };
+    if crate::shipments::refresh(&pool, tenant.id, std::slice::from_ref(&o))
+        .await
+        .is_empty()
+    {
+        return Ok(None);
+    }
+    db::orders::get(&pool, tenant.id, id).await.map_err(internal)
 }
 
 /// `/tienda/:slug/pedidos`.
@@ -78,9 +110,20 @@ struct BoardCtx {
     /// Aviso para lectores de pantalla y para quien mira: "Pedido #1001 movido a…".
     notice: RwSignal<String>,
     slug: StoredValue<String>,
+    /// Pedidos cuyo envío ya se preguntó a Andreani en esta visita.
+    refreshed: StoredValue<Vec<String>>,
 }
 
 impl BoardCtx {
+    /// Reemplaza un pedido por cómo quedó en el servidor.
+    fn replace(self, o: Order) {
+        self.orders.update(|os| {
+            if let Some(x) = os.iter_mut().find(|x| x.id == o.id) {
+                *x = o;
+            }
+        });
+    }
+
     fn status_of(&self, id: &str) -> Option<OrderStatus> {
         self.orders
             .with_untracked(|os| os.iter().find(|o| o.id == id).map(|o| o.status))
@@ -120,13 +163,17 @@ impl BoardCtx {
         let id2 = id.clone();
         let slug = self.slug.get_value();
         leptos::task::spawn_local(async move {
-            if let Err(e) = move_order(slug, id2, status).await {
+            match move_order(slug, id2, status).await {
+                Ok(Some(o)) => self.replace(o),
+                Ok(None) => {}
+                Err(e) => {
                 set(before);
                 self.notice.set(String::new());
                 self.problem.set(Some(format!(
                     "No pudimos mover el pedido #{number}. {}",
                     error_text(&e)
                 )));
+                }
             }
         });
     }
@@ -141,6 +188,7 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         problem: RwSignal::new(None),
         notice: RwSignal::new(String::new()),
         slug: StoredValue::new(slug.clone()),
+        refreshed: StoredValue::new(Vec::new()),
     };
     let show_cancelled = RwSignal::new(false);
     let cancelled = Memo::new(move |_| {
@@ -410,6 +458,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                 </div>
                 <h3 class="mt-5 font-semibold">{order.delivery.label()}</h3>
                 <p class="text-sm text-base-content/75">{where_}</p>
+                {order.shipment.clone().map(|sh| view! { <ShipmentBox ctx id=order.id.clone() sh paid=order.status != OrderStatus::PendingPayment && order.status != OrderStatus::New && order.status != OrderStatus::Cancelled/> })}
                 {(!order.notes.is_empty()).then(|| view! {
                     <div class="mt-3 rounded-field bg-base-200 p-3 text-sm"><b>"Nota: "</b>{order.notes.clone()}</div>
                 })}
@@ -471,6 +520,81 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                     }.into_any(),
                 }}
             </footer>
+        </div>
+    }
+}
+
+/// El envío con Andreani de un pedido: en qué está y qué hacer.
+#[component]
+fn ShipmentBox(ctx: BoardCtx, id: String, sh: domain::Shipment, paid: bool) -> impl IntoView {
+    use domain::ShipmentState as S;
+    let id = StoredValue::new(id);
+    let busy = RwSignal::new(false);
+    let problem = RwSignal::new(None::<String>);
+    // Al abrirlo, pregunta a Andreani si hay novedades.
+    let first_look = ctx.refreshed.try_update_value(|v| {
+        let new = !v.contains(&id.get_value());
+        if new {
+            v.push(id.get_value());
+        }
+        new
+    });
+    if sh.state == S::Created && !domain::tracking_is_delivered(&sh.status) && first_look == Some(true) {
+        Effect::new(move |_| {
+            let slug = ctx.slug.get_value();
+            leptos::task::spawn_local(async move {
+                if let Ok(Some(o)) = refresh_shipment(slug, id.get_value()).await {
+                    ctx.replace(o);
+                }
+            });
+        });
+    }
+    let retry = move |_| {
+        busy.set(true);
+        problem.set(None);
+        let slug = ctx.slug.get_value();
+        leptos::task::spawn_local(async move {
+            match retry_shipment(slug, id.get_value()).await {
+                Ok(Some(o)) => ctx.replace(o),
+                Ok(None) => {}
+                Err(e) => problem.set(Some(error_text(&e))),
+            }
+            busy.set(false);
+        });
+    };
+    let body = match sh.state {
+        S::Waiting if !paid => view! {
+            <p>"El envío se crea en Andreani cuando el pedido esté pagado."</p>
+        }.into_any(),
+        S::Waiting | S::Creating => view! {
+            <p class="flex items-center gap-2"><span class="loading loading-spinner loading-xs"></span>"Creando el envío en Andreani…"</p>
+        }.into_any(),
+        S::Failed => view! {
+            <p class="text-error">{format!("No se pudo crear el envío. {}", sh.error)}</p>
+            <button type="button" class="btn btn-sm btn-outline mt-2" disabled=move || busy.get() on:click=retry>
+                {move || if busy.get() { "Reintentando…" } else { "Reintentar" }}
+            </button>
+        }.into_any(),
+        S::Created if sh.tracking.is_empty() => view! {
+            <p>{format!("Envío creado en Andreani (n.º {}).", sh.pedido_id)}</p>
+            <p class="mt-1"><b>"Falta pagarlo en Andreani"</b>" para que lo retiren. Después aparecen la etiqueta y el seguimiento."</p>
+            <a class="btn btn-sm btn-primary mt-2" href=domain::ANDREANI_PAY_URL target="_blank" rel="noopener noreferrer">"Pagar el envío en Andreani ↗"</a>
+        }.into_any(),
+        S::Created => {
+            let status = if sh.status.is_empty() { "pendiente de ingreso".to_string() } else { sh.status.clone() };
+            view! {
+                <p>"Seguimiento: " <a class="link" href=domain::tracking_url(&sh.tracking) target="_blank" rel="noopener noreferrer">{sh.tracking.clone()}</a>
+                    {format!(" · {status}")}</p>
+                <a class="btn btn-sm btn-primary mt-2" href=format!("/andreani/etiqueta/{}", id.get_value()) download>"Descargar etiqueta"</a>
+            }.into_any()
+        }
+    };
+    view! {
+        <div class="mt-3 rounded-field border border-base-300 p-3 text-sm">
+            <p class="mb-1 font-semibold">"Envío con Andreani"</p>
+            {body}
+            {move || problem.get().map(|m| view! { <p role="alert" class="mt-1 text-error">{m}</p> })}
+            {(!sh.dni.is_empty()).then(|| view! { <p class="mt-2 text-base-content/70">{format!("DNI de quien recibe: {}", sh.dni)}</p> })}
         </div>
     }
 }

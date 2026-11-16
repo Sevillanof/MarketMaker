@@ -54,14 +54,14 @@ enum Auth<'a> {
     Token(&'a str),
 }
 
-/// Un pedido a la API. Devuelve `response` del JSON (o el JSON entero si no
-/// viene envuelto).
-async fn call(
+/// Un pedido a la API. Devuelve el cuerpo tal cual (con 401/403 como
+/// [`Error::Unauthorized`] y otros errores con el mensaje de Andreani).
+async fn send(
     method: reqwest::Method,
     path: &str,
     auth: Auth<'_>,
     body: Option<Value>,
-) -> Result<Value, Error> {
+) -> Result<Vec<u8>, Error> {
     let mut req = http().request(method, format!("{}{path}", api_url()));
     req = match auth {
         Auth::Credential(c) => req.header("Authorization", c),
@@ -78,22 +78,38 @@ async fn call(
         .bytes()
         .await
         .map_err(|e| Error::Network(e.to_string()))?;
-    let v: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     if status == 401 || status == 403 {
         return Err(Error::Unauthorized);
     }
     if !status.is_success() {
+        let v: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         let msg = v["message"]
             .as_str()
             .or(v["error"].as_str())
+            .or(v["response"]["message"].as_str())
             .unwrap_or("")
             .to_string();
         return Err(Error::Api(status.as_u16(), msg));
     }
-    Ok(match v.get("response") {
+    Ok(bytes.to_vec())
+}
+
+/// `response` del JSON (o el JSON entero si no viene envuelto).
+fn unwrap_json(bytes: &[u8]) -> Value {
+    let v: Value = serde_json::from_slice(bytes).unwrap_or(Value::Null);
+    match v.get("response") {
         Some(r) => r.clone(),
         None => v,
-    })
+    }
+}
+
+async fn call(
+    method: reqwest::Method,
+    path: &str,
+    auth: Auth<'_>,
+    body: Option<Value>,
+) -> Result<Value, Error> {
+    send(method, path, auth, body).await.map(|b| unwrap_json(&b))
 }
 
 /// Lo que devuelve Andreani al entrar.
@@ -178,33 +194,49 @@ pub async fn login(credential: &str) -> Result<LoginInfo, Error> {
     })
 }
 
-/// Un pedido con el token de la tienda. Si venció, vuelve a entrar con el
-/// código guardado una vez. Solo para pedidos que se pueden repetir.
-async fn with_account(
+/// Un pedido con el token de la tienda. Si venció (401), vuelve a entrar
+/// con el código guardado y lo repite una vez: con 401 Andreani no hizo nada,
+/// así que repetirlo es seguro también para crear envíos.
+async fn with_account_raw(
+    pool: &db::Pool,
     tenant: Uuid,
     method: reqwest::Method,
     path: &str,
     body: Option<Value>,
-) -> Result<Value, Error> {
-    let pool = crate::server::pool().map_err(|e| Error::Network(e.to_string()))?;
-    let acc = db::andreani::account(&pool, tenant)
+) -> Result<Vec<u8>, Error> {
+    let acc = db::andreani::account(pool, tenant)
         .await
         .map_err(|e| Error::Network(e.to_string()))?
         .ok_or(Error::Unauthorized)?;
     if !acc.access_token.is_empty() {
-        match call(method.clone(), path, Auth::Token(&acc.access_token), body.clone()).await {
+        match send(method.clone(), path, Auth::Token(&acc.access_token), body.clone()).await {
             Err(Error::Unauthorized) => {}
             other => return other,
         }
     }
     let fresh = login(&acc.credential).await?;
-    let _ = db::andreani::set_token(&pool, tenant, &fresh.access_token).await;
-    call(method, path, Auth::Token(&fresh.access_token), body).await
+    let _ = db::andreani::set_token(pool, tenant, &fresh.access_token).await;
+    send(method, path, Auth::Token(&fresh.access_token), body).await
+}
+
+async fn with_account(
+    pool: &db::Pool,
+    tenant: Uuid,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value, Error> {
+    with_account_raw(pool, tenant, method, path, body)
+        .await
+        .map(|b| unwrap_json(&b))
 }
 
 /// Guarda en la cuenta de Andreani desde dónde despacha la tienda.
-pub async fn save_origin(tenant: Uuid, o: &AndreaniOrigin) -> Result<(), Error> {
+pub async fn save_origin(
+    pool: &db::Pool,
+    tenant: Uuid, o: &AndreaniOrigin) -> Result<(), Error> {
     with_account(
+        pool,
         tenant,
         reqwest::Method::PATCH,
         "/api/v1/Settings/origin",
@@ -241,6 +273,7 @@ pub struct Line {
 
 /// Lo que cuesta mandar `lines` de `from` a `to` con cada servicio.
 pub async fn rates(
+    pool: &db::Pool,
     tenant: Uuid,
     client_type: &str,
     from: &str,
@@ -265,6 +298,7 @@ pub async fn rates(
         })
         .collect();
     let r = with_account(
+        pool,
         tenant,
         reqwest::Method::POST,
         &format!("/api/v1/{}/rates", kind_path(client_type)),
@@ -295,8 +329,11 @@ pub async fn rates(
 }
 
 /// Las sucursales de Andreani cerca de un código postal.
-pub async fn branches(tenant: Uuid, postal_code: &str) -> Result<Vec<AndreaniBranch>, Error> {
+pub async fn branches(
+    pool: &db::Pool,
+    tenant: Uuid, postal_code: &str) -> Result<Vec<AndreaniBranch>, Error> {
     let r = with_account(
+        pool,
         tenant,
         reqwest::Method::GET,
         &format!("/api/v1/Branch?postalCode={postal_code}"),
@@ -329,6 +366,138 @@ fn branch_of(b: &Value) -> Option<AndreaniBranch> {
         address,
         hours: text(b, &["horarioDeAtencion"]),
     })
+}
+
+/// Lo que hace falta para dar de alta un envío.
+pub struct NewShipment<'a> {
+    pub client_type: &'a str,
+    pub contract_id: &'a str,
+    pub quote_cents: i64,
+    pub origin_postal_code: &'a str,
+    pub street: &'a str,
+    pub number: &'a str,
+    pub floor: &'a str,
+    pub postal_code: &'a str,
+    pub city: &'a str,
+    pub branch_code: &'a str,
+    pub name: &'a str,
+    pub last_name: &'a str,
+    pub phone: &'a str,
+    pub dni: &'a str,
+    pub email: &'a str,
+    pub lines: &'a [Line],
+    pub bigger: bool,
+    pub merchant_email: &'a str,
+    /// El número de pedido de la tienda.
+    pub remito: &'a str,
+}
+
+/// Da de alta el envío y devuelve el número de pedido de Andreani. No es
+/// idempotente: si falla por la red, no se reintenta solo.
+pub async fn create_shipment(
+    pool: &db::Pool,
+    tenant: Uuid, n: &NewShipment<'_>) -> Result<String, Error> {
+    let cm = |mm: u32| f64::from(mm) / 10.0;
+    let products: Vec<Value> = n
+        .lines
+        .iter()
+        .map(|l| {
+            json!({
+                "price": (l.unit_cents / 100).max(1),
+                "quantity": l.qty,
+                "kgrams": f64::from(l.parcel.weight_g) / 1000.0,
+                "width": cm(l.parcel.width_mm),
+                "depth": cm(l.parcel.length_mm),
+                "height": cm(l.parcel.height_mm),
+            })
+        })
+        .collect();
+    let r = with_account(
+        pool,
+        tenant,
+        reqwest::Method::POST,
+        &format!("/api/v1/{}/ShippingRegistration", kind_path(n.client_type)),
+        Some(json!({
+            "contract": { "id_contract": n.contract_id },
+            "price_shipment": n.quote_cents as f64 / 100.0,
+            "origin": { "postal_code": n.origin_postal_code },
+            "destination": {
+                "street": n.street,
+                "number": n.number,
+                "floor": n.floor,
+                "postal_code": n.postal_code,
+                "locality": n.city,
+                "code_branch": n.branch_code,
+            },
+            "recipient": {
+                "name": n.name,
+                "last_name": n.last_name,
+                "phone_number": n.phone,
+                "dni": n.dni,
+                "email": n.email,
+            },
+            "products": products,
+            "force_bigger": n.bigger,
+            "email_merchant": n.merchant_email,
+            "remito": n.remito,
+        })),
+    )
+    .await?;
+    let id = text(&r, &["pedidoId", "pedido_id", "numeroDeEnvio"]);
+    if id.is_empty() {
+        return Err(Error::Api(200, "Andreani no devolvió el número de envío".into()));
+    }
+    Ok(id)
+}
+
+/// La etiqueta en PDF de envíos ya pagados (por número de seguimiento).
+pub async fn label(
+    pool: &db::Pool,
+    tenant: Uuid, client_type: &str, trackings: &[String]) -> Result<Vec<u8>, Error> {
+    let pdf = with_account_raw(
+        pool,
+        tenant,
+        reqwest::Method::POST,
+        &format!("/api/v1/{}/ticket", kind_path(client_type)),
+        Some(json!({ "trackingNumbers": trackings })),
+    )
+    .await?;
+    if !pdf.starts_with(b"%PDF") {
+        return Err(Error::Api(200, "Andreani no devolvió un PDF".into()));
+    }
+    Ok(pdf)
+}
+
+/// Seguimiento de un envío: número y estado según Andreani.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tracking {
+    pub pedido_id: String,
+    pub tracking: String,
+    pub status: String,
+}
+
+/// El seguimiento de hasta 100 envíos (por número de pedido de Andreani).
+pub async fn track(
+    pool: &db::Pool,
+    tenant: Uuid, pedido_ids: &[String]) -> Result<Vec<Tracking>, Error> {
+    let r = with_account(
+        pool,
+        tenant,
+        reqwest::Method::POST,
+        "/api/v1/Shipments/ByOrderNumbers",
+        Some(json!({ "salesOrderNumbers": pedido_ids })),
+    )
+    .await?;
+    let list = r.as_array().or(r["data"].as_array()).cloned().unwrap_or_default();
+    Ok(list
+        .iter()
+        .map(|x| Tracking {
+            pedido_id: text(x, &["salesOrderNumber"]),
+            tracking: text(x, &["trackingNumber"]),
+            status: text(x, &["trackingStatus"]).to_lowercase(),
+        })
+        .filter(|t| !t.pedido_id.is_empty())
+        .collect())
 }
 
 /// Decodificador base64 mínimo (solo para leer el tipo de cliente del código).

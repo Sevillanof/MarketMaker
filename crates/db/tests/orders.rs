@@ -270,4 +270,16 @@ async fn andreani_orders_keep_their_shipment(pool: PgPool) {
     assert_eq!(got.delivery, Delivery::Andreani(AndreaniService::Branch));
     assert_eq!(got.shipment, Some(shipment));
     assert_eq!(got.total_cents, 1000 + 450_000);
+
+    // Sin pagar no se crea; pagado, se toma una sola vez (y otra si falla).
+    assert!(!orders::claim_shipment(&pool, t, o).await.unwrap());
+    assert!(orders::set_status(&pool, t, o, OrderStatus::Paid).await.unwrap());
+    assert!(orders::claim_shipment(&pool, t, o).await.unwrap());
+    assert!(!orders::claim_shipment(&pool, t, o).await.unwrap());
+    let mut failed = orders::get(&pool, t, o).await.unwrap().unwrap().shipment.unwrap();
+    assert_eq!(failed.state, ShipmentState::Creating);
+    failed.state = ShipmentState::Failed;
+    orders::save_shipment(&pool, t, o, &failed).await.unwrap();
+    assert!(orders::claim_shipment(&pool, t, o).await.unwrap());
+    assert_eq!(orders::tenant_of(&pool, o).await.unwrap(), Some(t));
 }

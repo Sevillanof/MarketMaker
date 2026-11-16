@@ -559,3 +559,45 @@ pub async fn request_regret(
     .fetch_optional(pool)
     .await
 }
+
+/// Toma el alta del envío con Andreani de un pedido pagado: lo pasa a
+/// "creando" si estaba esperando o había fallado. `false` si no corresponde
+/// (no está pagado, no va por Andreani o ya se está creando o está creado).
+/// Así dos intentos a la vez no crean dos envíos.
+pub async fn claim_shipment(pool: &PgPool, tenant: Uuid, order: Uuid) -> sqlx::Result<bool> {
+    let done = sqlx::query(
+        "UPDATE orders SET shipment = jsonb_set(shipment, '{state}', '\"Creating\"')
+         WHERE tenant_id = $1 AND id = $2 AND shipment IS NOT NULL
+           AND status IN ('paid', 'shipped', 'delivered')
+           AND shipment->>'state' IN ('Waiting', 'Failed')",
+    )
+    .bind(tenant)
+    .bind(order)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// Guarda cómo quedó el envío con Andreani de un pedido.
+pub async fn save_shipment(
+    pool: &PgPool,
+    tenant: Uuid,
+    order: Uuid,
+    shipment: &domain::Shipment,
+) -> sqlx::Result<()> {
+    sqlx::query("UPDATE orders SET shipment = $3 WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant)
+        .bind(order)
+        .bind(sqlx::types::Json(shipment))
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// La tienda de un pedido.
+pub async fn tenant_of(pool: &PgPool, order: Uuid) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query_scalar("SELECT tenant_id FROM orders WHERE id = $1")
+        .bind(order)
+        .fetch_optional(pool)
+        .await
+}

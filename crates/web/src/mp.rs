@@ -311,6 +311,11 @@ pub async fn check_payment(
             {
                 leptos::logging::log!("Mercado Pago: pedido {order} pagado (pago {payment_id})");
                 crate::email::order_emails(pool, tenant, order, true).await;
+                // Si va por Andreani, se crea el envío (sin frenar la respuesta).
+                let pool = pool.clone();
+                tokio::spawn(async move {
+                    crate::shipments::ship_order(&pool, tenant, order).await;
+                });
             }
         }
     }
