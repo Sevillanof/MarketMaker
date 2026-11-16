@@ -40,7 +40,7 @@ systemctl daemon-reload && systemctl enable marketmaker
 if grep -q "^:80" /etc/caddy/Caddyfile 2>/dev/null; then
   cp /opt/marketmaker/src/deploy/Caddyfile /etc/caddy/Caddyfile
   # Tailscale usa el 443 en su IP: Caddy escucha solo en la IP pública.
-  grep -q PUBLIC_IP /etc/default/caddy 2>/dev/null || echo "PUBLIC_IP=$(curl -4s ifconfig.me)" >> /etc/default/caddy
+  sed -i "s/{\$PUBLIC_IP:0.0.0.0}/$(curl -4s ifconfig.me)/" /etc/caddy/Caddyfile
   systemctl reload caddy
 fi
 
