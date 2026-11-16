@@ -42,11 +42,7 @@ async fn online(pool: &db::Pool, tenant: uuid::Uuid) -> Result<bool, ServerFnErr
 /// Dirección de esta tienda, para volver de Mercado Pago.
 #[cfg(feature = "ssr")]
 fn store_base() -> String {
-    format!(
-        "{}://{}",
-        crate::site::scheme(),
-        crate::site::current_host()
-    )
+    format!("{}://{}", crate::site::scheme(), crate::site::current_host())
 }
 
 /// Guarda el pedido. Los precios salen de la base, no del navegador.
@@ -119,9 +115,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     {
         db::orders::Created::Saved { id, number } => (id, number),
         db::orders::Created::Short { name, left: 0 } => {
-            return changed(format!(
-                "\"{name}\" se agotó. Sacalo del carrito para seguir."
-            ))
+            return changed(format!("\"{name}\" se agotó. Sacalo del carrito para seguir."))
         }
         db::orders::Created::Short { name, left } => {
             return changed(format!(
@@ -135,9 +129,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             .await
             .map_err(internal)?
             .ok_or_else(|| ServerFnError::new("No encontramos el pedido."))?;
-        match crate::mp::create_preference(&pool, tenant.id, &tenant.name, &store_base(), &order)
-            .await
-        {
+        match crate::mp::create_preference(&pool, tenant.id, &tenant.name, &store_base(), &order).await {
             Ok(url) => {
                 return Ok(PlaceOrder::Pay {
                     id: id.to_string(),
@@ -145,9 +137,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
                 })
             }
             // El pedido ya está guardado: desde su página se puede reintentar.
-            Err(e) => leptos::logging::log!(
-                "Mercado Pago: no pudimos crear el pago del pedido #{number}: {e}"
-            ),
+            Err(e) => leptos::logging::log!("Mercado Pago: no pudimos crear el pago del pedido #{number}: {e}"),
         }
     }
     Ok(PlaceOrder::Placed {
@@ -201,8 +191,7 @@ pub async fn load_order(
 pub async fn pay_order(id: String) -> Result<String, ServerFnError> {
     use crate::server::{internal, pool};
     let tenant = crate::auth::current_tenant().await?;
-    let order_id =
-        uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("No encontramos el pedido."))?;
+    let order_id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("No encontramos el pedido."))?;
     let pool = pool()?;
     if let Some(url) = db::mp::init_point(&pool, tenant.id, order_id)
         .await
@@ -213,12 +202,7 @@ pub async fn pay_order(id: String) -> Result<String, ServerFnError> {
     let order = db::orders::get(&pool, tenant.id, order_id)
         .await
         .map_err(internal)?
-        .filter(|o| {
-            matches!(
-                o.status,
-                domain::OrderStatus::New | domain::OrderStatus::PendingPayment
-            )
-        })
+        .filter(|o| matches!(o.status, domain::OrderStatus::New | domain::OrderStatus::PendingPayment))
         .ok_or_else(|| ServerFnError::new("Este pedido ya no se puede pagar."))?;
     crate::mp::create_preference(&pool, tenant.id, &tenant.name, &store_base(), &order)
         .await
@@ -360,15 +344,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             errors.set(e);
         }
     };
-    let busy = move || {
-        place.pending().get()
-            || place.value().with(|v| {
-                matches!(
-                    v,
-                    Some(Ok(PlaceOrder::Placed { .. } | PlaceOrder::Pay { .. }))
-                )
-            })
-    };
+    let busy = move || place.pending().get() || place.value().with(|v| matches!(v, Some(Ok(PlaceOrder::Placed { .. } | PlaceOrder::Pay { .. }))));
     let empty = Memo::new(move |_| cart.count() == 0);
 
     view! {
@@ -453,11 +429,7 @@ fn focus_first(errors: &[FieldError]) {
 }
 
 fn error_for(errors: RwSignal<Vec<FieldError>>, field: &'static str) -> Option<String> {
-    errors.with(|e| {
-        e.iter()
-            .find(|e| e.field == field)
-            .map(|e| e.message.clone())
-    })
+    errors.with(|e| e.iter().find(|e| e.field == field).map(|e| e.message.clone()))
 }
 
 /// Un campo de texto con su etiqueta y su error debajo.
@@ -502,11 +474,7 @@ fn TextField(
 
 /// Retiro o envío, como tarjetas para elegir (solo las que ofrece la tienda).
 #[component]
-fn DeliveryChoice(
-    f: Fields,
-    d: DeliverySettings,
-    errors: RwSignal<Vec<FieldError>>,
-) -> impl IntoView {
+fn DeliveryChoice(f: Fields, d: DeliverySettings, errors: RwSignal<Vec<FieldError>>) -> impl IntoView {
     let mut options = Vec::new();
     if d.pickup_enabled {
         let detail = [d.pickup_address.clone(), d.pickup_hours.clone()]
@@ -626,10 +594,7 @@ pub fn OrderPage() -> impl IntoView {
     // Al volver de Mercado Pago, la dirección trae `payment_id` y `status`.
     let query = leptos_router::hooks::use_query_map();
     let payment_id = query.read_untracked().get("payment_id");
-    let receipt = Resource::new(
-        move || (id.clone(), payment_id.clone()),
-        |(id, p)| load_order(id, p),
-    );
+    let receipt = Resource::new(move || (id.clone(), payment_id.clone()), |(id, p)| load_order(id, p));
     view! {
         <leptos_meta::Title text="Tu pedido"/>
         <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
@@ -657,34 +622,19 @@ pub fn OrderPage() -> impl IntoView {
 fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
     // Para que el contador del menú quede en 0 si se vuelve a la tienda.
     Cart::provide(view.products.clone());
-    let OrderReceipt {
-        store_name,
-        order,
-        delivery,
-        can_pay,
-    } = r;
-    let first_name = order
-        .customer_name
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
-        .to_string();
+    let OrderReceipt { store_name, order, delivery, can_pay } = r;
+    let first_name = order.customer_name.split_whitespace().next().unwrap_or("").to_string();
     let where_ = match order.delivery {
-        Delivery::Pickup => [
-            delivery.pickup_address.clone(),
-            delivery.pickup_hours.clone(),
-        ]
-        .into_iter()
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" · "),
+        Delivery::Pickup => [delivery.pickup_address.clone(), delivery.pickup_hours.clone()]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" · "),
         Delivery::Shipping => format!("{}, {} ({})", order.address, order.city, order.postal_code),
     };
     let shipping_text = match order.delivery {
         Delivery::Pickup => "Gratis".to_string(),
-        Delivery::Shipping if delivery.shipping_cents.is_none() && order.shipping_cents == 0 => {
-            "A coordinar".to_string()
-        }
+        Delivery::Shipping if delivery.shipping_cents.is_none() && order.shipping_cents == 0 => "A coordinar".to_string(),
         Delivery::Shipping if order.shipping_cents == 0 => "Gratis".to_string(),
         Delivery::Shipping => format_price(order.shipping_cents),
     };
