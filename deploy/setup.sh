@@ -6,7 +6,7 @@ set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "Correr con sudo"; exit 1; }
 
 apt-get update
-apt-get install -y build-essential pkg-config libssl-dev git curl postgresql \
+apt-get install -y build-essential pkg-config libssl-dev git curl postgresql fonts-dejavu-core \
   debian-keyring debian-archive-keyring apt-transport-https gnupg
 
 # Caddy desde su repositorio oficial.

@@ -119,7 +119,7 @@ pub fn MyPhotosPage() -> impl IntoView {
                         "Subir fotos"
                     </label>
                     <input id="mis-fotos-subir" type="file" class="sr-only" multiple
-                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
                         on:change=move |ev| uploads.upload(editor::take_files(&ev), Callback::new(|_| ()))/>
                     <editor::LinkImport photos=uploads done=Callback::new(|_| ()) uid="mis-fotos"/>
                 </div>

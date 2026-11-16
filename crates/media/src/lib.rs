@@ -33,7 +33,7 @@ pub enum MediaError {
     TooBig(usize),
     #[error("Las fotos HEIC del iPhone todavía no se pueden subir. Abrila en Fotos, exportala como JPG y subila de nuevo.")]
     Heic,
-    #[error("Ese archivo no es una foto. Podés subir JPG, PNG, WebP o GIF.")]
+    #[error("Ese archivo no es una foto. Podés subir JPG, PNG, WebP, GIF o un logo en SVG.")]
     NotAnImage,
     #[error("No pudimos leer esta foto. Puede estar dañada: probá abrirla y guardarla de nuevo.")]
     Broken,
@@ -79,22 +79,11 @@ pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
     if is_heic(bytes) {
         return Err(MediaError::Heic);
     }
-    let reader = ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|_| MediaError::NotAnImage)?;
-    if reader.format().is_none() {
-        return Err(MediaError::NotAnImage);
-    }
-    let mut decoder = reader.into_decoder().map_err(|_| MediaError::NotAnImage)?;
-    let (w, h) = decoder.dimensions();
-    if w > MAX_SIDE || h > MAX_SIDE {
-        return Err(MediaError::Huge(w, h));
-    }
-    let orientation = decoder.orientation().ok();
-    let mut img = DynamicImage::from_decoder(decoder).map_err(|_| MediaError::Broken)?;
-    if let Some(o) = orientation {
-        img.apply_orientation(o);
-    }
+    let img = if looks_like_svg(bytes) {
+        svg_to_image(bytes)?
+    } else {
+        decode(bytes)?
+    };
     let rgba = DynamicImage::ImageRgba8(img.to_rgba8());
     let (width, height) = (rgba.width(), rgba.height());
 
@@ -121,6 +110,79 @@ pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
         height,
         variants,
     })
+}
+
+/// Lee una foto JPG, PNG, WebP o GIF y la gira según cómo se sacó.
+fn decode(bytes: &[u8]) -> Result<DynamicImage, MediaError> {
+    let reader = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|_| MediaError::NotAnImage)?;
+    if reader.format().is_none() {
+        return Err(MediaError::NotAnImage);
+    }
+    let mut decoder = reader.into_decoder().map_err(|_| MediaError::NotAnImage)?;
+    let (w, h) = decoder.dimensions();
+    if w > MAX_SIDE || h > MAX_SIDE {
+        return Err(MediaError::Huge(w, h));
+    }
+    let orientation = decoder.orientation().ok();
+    let mut img = DynamicImage::from_decoder(decoder).map_err(|_| MediaError::Broken)?;
+    if let Some(o) = orientation {
+        img.apply_orientation(o);
+    }
+    Ok(img)
+}
+
+/// ¿Es un SVG (un logo, casi siempre)?
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]).to_lowercase();
+    let head = head.trim_start_matches('\u{feff}').trim_start();
+    (head.starts_with("<svg") || head.starts_with("<?xml") || head.starts_with("<!--"))
+        && head.contains("<svg")
+}
+
+/// Lado más largo al que se dibuja un SVG.
+const SVG_SIDE: f32 = 1600.0;
+
+/// Dibuja el SVG como imagen (con fondo transparente). Así no se guarda ni
+/// se sirve el SVG original: no queda ningún código que traiga adentro, y no
+/// se leen archivos ni direcciones que nombre.
+fn svg_to_image(bytes: &[u8]) -> Result<DynamicImage, MediaError> {
+    use resvg::{tiny_skia, usvg};
+    // Las letras de los logos con texto usan las fuentes del servidor (se
+    // cargan una sola vez).
+    static OPTIONS: std::sync::OnceLock<usvg::Options<'static>> = std::sync::OnceLock::new();
+    let options = OPTIONS.get_or_init(|| {
+        let mut o = usvg::Options::default();
+        o.fontdb_mut().load_system_fonts();
+        o
+    });
+    let tree = usvg::Tree::from_data(bytes, options).map_err(|_| MediaError::Broken)?;
+    let size = tree.size();
+    let (w, h) = (size.width(), size.height());
+    if !(w > 0.0 && h > 0.0) {
+        return Err(MediaError::Broken);
+    }
+    let scale = SVG_SIDE / w.max(h);
+    let (pw, ph) = (
+        ((w * scale).round() as u32).max(1),
+        ((h * scale).round() as u32).max(1),
+    );
+    let mut pixmap = tiny_skia::Pixmap::new(pw, ph).ok_or(MediaError::Broken)?;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    // tiny-skia guarda los colores premultiplicados por la transparencia.
+    let mut rgba = Vec::with_capacity((pw * ph * 4) as usize);
+    for p in pixmap.pixels() {
+        let c = p.demultiply();
+        rgba.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
+    }
+    image::RgbaImage::from_raw(pw, ph, rgba)
+        .map(DynamicImage::ImageRgba8)
+        .ok_or(MediaError::Broken)
 }
 
 /// AVIF y WebP de la foto achicada a `target` de ancho (sin agrandarla).
@@ -580,6 +642,20 @@ mod tests {
             .write_to(&mut Cursor::new(&mut out), image::ImageFormat::Png)
             .unwrap();
         out
+    }
+
+    #[test]
+    fn an_svg_logo_becomes_a_picture_without_its_code() {
+        let svg = br##"<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20" viewBox="0 0 40 20">
+  <script>alert(1)</script>
+  <image href="file:///etc/passwd" width="10" height="10"/>
+  <rect width="40" height="20" fill="#16a34a"/>
+</svg>"##;
+        let p = process(svg).unwrap();
+        assert_eq!((p.width, p.height), (1600, 800));
+        assert!(p.variants.iter().all(|v| v.content_type != "image/svg+xml"));
+        assert!(matches!(process(b"<svg"), Err(MediaError::Broken)));
     }
 
     #[test]

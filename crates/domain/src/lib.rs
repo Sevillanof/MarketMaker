@@ -259,6 +259,18 @@ impl PageDoc {
     /// [`SHARED_ON_NEW_PAGE`]), uno debajo del otro en el orden de `from`:
     /// el menú arriba y el pie justo debajo.
     pub fn add_page(&mut self, path: String, name: String, from: usize) -> usize {
+        self.add_page_with(path, name, from, Vec::new())
+    }
+
+    /// Como [`PageDoc::add_page`], con los bloques `body` (de todo el ancho)
+    /// entre el menú y el pie.
+    pub fn add_page_with(
+        &mut self,
+        path: String,
+        name: String,
+        from: usize,
+        body: Vec<Widget>,
+    ) -> usize {
         let mut nodes: Vec<Node> = Vec::new();
         // Los bloques de origen quedan compartidos (si no lo estaban) y las
         // copias entran en el mismo grupo.
@@ -274,8 +286,23 @@ impl PageDoc {
             .cloned()
             .collect();
         shared.sort_by_key(|n| (n.pos.y, n.pos.x));
+        // El cuerpo va después del menú y antes de todo lo demás (el pie).
+        let at = shared
+            .iter()
+            .take_while(|n| n.widget.type_name() == "Navbar")
+            .count();
+        let body: Vec<Node> = body
+            .into_iter()
+            .map(|w| {
+                let mut n = Node::new(String::new(), w);
+                n.size.w = GRID_COLS;
+                n.pos.x = 0;
+                n
+            })
+            .collect();
+        let tail = shared.split_off(at);
         let mut y = 0_u16;
-        for mut n in shared {
+        for mut n in shared.into_iter().chain(body).chain(tail) {
             n.pos.y = y;
             y += u16::from(n.size.h);
             n.id = self.fresh_id(&nodes);
@@ -653,6 +680,10 @@ pub struct PageView {
     /// Nombre de la tienda, para el título de la pestaña y al compartir.
     #[serde(default)]
     pub store_name: String,
+    /// Nombre, logo y contacto: el menú y el pie los usan si sus campos
+    /// quedan vacíos.
+    #[serde(default)]
+    pub store: StoreInfo,
 }
 
 /// Resultado de intentar guardar un documento.

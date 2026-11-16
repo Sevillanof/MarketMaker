@@ -130,6 +130,9 @@ pub struct MyPhoto {
 /// Cómo se llama una página para el dueño: `home` es "Inicio"; las demás,
 /// su dirección con mayúscula (`ofertas` → "Ofertas").
 pub fn page_label(slug: &str) -> String {
+    if slug == "logo:" {
+        return "Logo de la tienda".into();
+    }
     if let Some(name) = slug.strip_prefix("producto:") {
         return format!("Producto «{name}»");
     }

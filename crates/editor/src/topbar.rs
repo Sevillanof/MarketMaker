@@ -99,6 +99,7 @@ pub(crate) fn PageSwitcher() -> impl IntoView {
             <code class="px-1.5 text-xs text-base-content/75" title="Dirección de la página en tu tienda">
                 {move || state.doc.with(|d| d.page_path(state.page.get()).to_string())}
             </code>
+            <NewPageMenu/>
             {move || (state.page.get() > 0).then(|| view! {
                 <button
                     type="button"
@@ -111,5 +112,39 @@ pub(crate) fn PageSwitcher() -> impl IntoView {
                 </button>
             })}
         </div>
+    }
+}
+
+/// "+ Nueva página": crea una de las páginas modelo (Quiénes somos,
+/// Contacto, Preguntas frecuentes) con el menú y el pie de la actual.
+#[component]
+fn NewPageMenu() -> impl IntoView {
+    let actions = expect_context::<Actions>();
+    let menu = NodeRef::<leptos::html::Details>::new();
+    view! {
+        <details node_ref=menu class="dropdown">
+            <summary class="btn btn-ghost btn-sm gap-1" title="Crear una página nueva">
+                <Icon name="plus" class="h-4 w-4"/>"Nueva página"
+            </summary>
+            <ul class="dropdown-content menu z-50 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
+                {domain::PAGE_TEMPLATES
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (_, name))| view! {
+                        <li>
+                            <button type="button" on:click=move |_| {
+                                if let Some(d) = menu.get_untracked() {
+                                    d.set_open(false);
+                                }
+                                actions.add_template_page(i);
+                            }>{*name}</button>
+                        </li>
+                    })
+                    .collect_view()}
+                <li class="menu-title pt-2 text-xs font-normal whitespace-normal">
+                    "Para otra página, poné un enlace en el menú y tocalo."
+                </li>
+            </ul>
+        </details>
     }
 }

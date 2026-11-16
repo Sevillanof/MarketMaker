@@ -253,6 +253,11 @@ pub async fn usage(pool: &PgPool, owner_id: Uuid) -> sqlx::Result<Vec<(Uuid, Str
          JOIN tenants t ON t.id = ms.tenant_id
          JOIN products pr ON pr.tenant_id = t.id
          WHERE m.owner_id = $1 AND strpos(array_to_string(pr.photos, ' '), m.id::text) > 0
+         UNION
+         SELECT DISTINCT m.id, t.name, 'logo:'
+         FROM media m
+         JOIN tenants t ON t.logo_id = m.id
+         WHERE m.owner_id = $1
          ORDER BY 2, 3",
     )
     .bind(owner_id)

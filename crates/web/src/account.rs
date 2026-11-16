@@ -61,7 +61,7 @@ enum Step {
 /// Aviso chico debajo de un campo: rojo con un círculo si algo salió mal,
 /// verde con un tilde si salió bien. Sin recuadro, para que no grite.
 #[component]
-fn FieldNote(ok: bool, #[prop(into)] text: String) -> impl IntoView {
+pub(crate) fn FieldNote(ok: bool, #[prop(into)] text: String) -> impl IntoView {
     let (role, color, icon) = if ok {
         ("status", "text-green-700", "M5 12.5l4 4 10-10")
     } else {
