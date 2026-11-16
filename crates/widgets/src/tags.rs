@@ -168,7 +168,7 @@ fn count_badge(show: bool, n: usize) -> impl IntoView {
     show.then(|| {
         view! {
             <span class="mk-chip-n" aria-hidden="true">{n}</span>
-            <span class="sr-only">{format!(", {n} productos")}</span>
+            <span class="sr-only">{if n == 1 { ", 1 producto".to_string() } else { format!(", {n} productos") }}</span>
         }
     })
 }
@@ -238,7 +238,7 @@ fn TagColumn(props: TagFilterProps, products: Vec<Product>, editing: bool) -> im
         <div class="mk-box mk-pad mk-tagcol flex h-full flex-col gap-1 overflow-hidden rounded-box">
             <fieldset class="flex min-h-0 flex-col gap-1">
                 <legend class="mk-title mb-1 text-lg font-bold">{label_or(&props.title, "Filtrar")}</legend>
-                <div class="flex min-h-0 flex-col overflow-y-auto">
+                <div class="flex min-h-0 flex-col overflow-y-auto pr-1">
                     {tags.into_iter().map(|t| {
                         let n = count(&t);
                         let tag = t.tag.clone();

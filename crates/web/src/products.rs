@@ -591,7 +591,7 @@ fn TagManager(
         <div class="flex items-start gap-3">
             <div class="grow">
                 <h2 id="etiquetas-titulo" class="text-xl font-bold">"Etiquetas"</h2>
-                <p class="text-sm text-base-content/70">"Sirven para agrupar productos. Si ponés el bloque «Filtro por etiquetas» en tu tienda, tus clientes las tocan para ver solo esos productos."</p>
+                <p class="text-sm text-base-content/70">"Sirven para agrupar productos. Si sumás a tu tienda uno de los bloques de etiquetas (en el editor, en Productos), tus clientes las tocan para ver solo esos productos."</p>
             </div>
             <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=close>"✕"</button>
         </div>

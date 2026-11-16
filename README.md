@@ -77,7 +77,7 @@ En el editor (pensado para alguien sin experiencia):
 
 ## Widgets
 
-Menú superior, Banner, Carrusel, Categorías, Cuadrícula de productos, Producto destacado, Beneficios, Oferta con cuenta regresiva, Tarjeta, Texto, Pestañas, Preguntas frecuentes, Galería de fotos, Testimonios, Logos de marcas, Imagen y Pie de página.
+Menú superior, Banner, Carrusel, Categorías, Cuadrícula de productos, cinco bloques para filtrar por etiqueta (en fila, en columna, con foto, buscador con filtros y productos con pestañas), Producto destacado, Beneficios, Oferta con cuenta regresiva, Tarjeta, Texto, Pestañas, Preguntas frecuentes, Galería de fotos, Testimonios, Logos de marcas, Imagen y Pie de página.
 
 La grilla del panel tiene 48 columnas y filas de 8 px, con imán: los bloques se ubican y miden con precisión sin salirse de la grilla. Cada widget define su ancho (columnas, de 48) y alto (filas de 8 px) mínimos, máximos y por defecto en `Widget::limits` (`crates/domain/src/widgets.rs`). El editor y el guardado no permiten salir de esos límites. `/dev/widgets` muestra cada widget en su tamaño mínimo, por defecto y máximo.
 
