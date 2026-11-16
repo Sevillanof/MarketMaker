@@ -49,6 +49,7 @@ pub async fn load_panel_nav() -> Result<Option<PanelNav>, ServerFnError> {
     Ok(Some(PanelNav {
         email: user.email,
         name: user.name,
+        avatar: user.avatar_id.map(domain::avatar_url),
         stores,
     }))
 }
@@ -149,13 +150,24 @@ fn StoreMark(name: String, slug: String, #[prop(optional)] small: bool) -> impl 
     }
 }
 
-/// La inicial de la persona en un círculo naranja.
+/// La foto de perfil de la persona, o su inicial en un círculo naranja.
 #[component]
-pub fn Avatar(letter: String, #[prop(into)] size: String) -> impl IntoView {
-    view! {
-        <span aria-hidden="true" class=format!(
-            "grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] font-bold text-white {size}"
-        )>{letter}</span>
+pub fn Avatar(
+    letter: String,
+    #[prop(into)] size: String,
+    #[prop(default = None)] photo: Option<String>,
+) -> impl IntoView {
+    match photo {
+        Some(src) => view! {
+            <img src=src alt="" class=format!("shrink-0 rounded-full bg-base-200 object-cover {size}")/>
+        }
+        .into_any(),
+        None => view! {
+            <span aria-hidden="true" class=format!(
+                "grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] font-bold text-white {size}"
+            )>{letter}</span>
+        }
+        .into_any(),
     }
 }
 
@@ -314,7 +326,7 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
         <details class="dropdown dropdown-top w-full border-t border-base-300 pt-3">
             <summary class=if section == Section::Account { "flex cursor-pointer list-none items-center gap-2 rounded-lg bg-base-200 p-1.5" } else { "flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 hover:bg-base-200" }
                 aria-label="Tu cuenta">
-                <Avatar letter=initial.clone() size="size-8 text-sm"/>
+                <Avatar letter=initial.clone() size="size-8 text-sm" photo=nav.avatar.clone()/>
                 <span class="flex min-w-0 grow flex-col leading-tight">
                     <span class="truncate text-sm font-semibold">{shown_name.clone()}</span>
                     <span class="truncate text-xs text-base-content/60">{nav.email.clone()}</span>
@@ -322,7 +334,7 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
             </summary>
             <div class="dropdown-content z-30 mb-2 w-64 rounded-2xl border border-base-300 bg-base-100 p-1.5 shadow-xl">
                 <div class="mb-1 flex items-center gap-3 border-b border-base-300 px-2.5 pt-2.5 pb-3">
-                    <Avatar letter=initial size="size-10 text-base"/>
+                    <Avatar letter=initial size="size-10 text-base" photo=nav.avatar.clone()/>
                     <div class="min-w-0">
                         <div class="truncate font-bold">{shown_name}</div>
                         <div class="truncate text-xs text-base-content/60">{nav.email.clone()}</div>

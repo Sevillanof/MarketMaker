@@ -211,3 +211,38 @@ async fn changing_password_closes_other_sessions(pool: PgPool) {
     delete_other_sessions(&pool, id, None).await.unwrap();
     assert!(session_user(&pool, &mine).await.unwrap().is_none());
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn profile_photo_must_be_your_own_and_clears_when_deleted(pool: PgPool) {
+    use db::media::{self, NewMedia};
+    let ana = new_account(&pool, "ana@correo.com").await;
+    let luz = new_account(&pool, "luz@correo.com").await;
+    let photo = |id, owner, sha| NewMedia {
+        id,
+        owner_id: owner,
+        name: "Yo",
+        width: 800,
+        height: 800,
+        bytes: 1000,
+        web_bytes: 100,
+        stored_bytes: 600,
+        sha256: sha,
+    };
+    let mine = uuid::Uuid::new_v4();
+    let hers = uuid::Uuid::new_v4();
+    media::insert(&pool, &photo(mine, ana, "a")).await.unwrap();
+    media::insert(&pool, &photo(hers, luz, "b")).await.unwrap();
+    let token = create_session(&pool, ana).await.unwrap();
+
+    assert!(!set_avatar(&pool, ana, Some(hers)).await.unwrap());
+    assert!(set_avatar(&pool, ana, Some(mine)).await.unwrap());
+    let me = session_user(&pool, &token).await.unwrap().unwrap();
+    assert_eq!(me.avatar_id, Some(mine));
+
+    // Si borra la foto de Mis fotos, vuelve a la inicial.
+    media::delete(&pool, ana, mine).await.unwrap();
+    let me = session_user(&pool, &token).await.unwrap().unwrap();
+    assert_eq!(me.avatar_id, None);
+
+    assert!(set_avatar(&pool, ana, None).await.unwrap());
+}

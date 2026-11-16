@@ -56,7 +56,7 @@ pub enum EmailLookup {
 pub enum PasswordSignIn {
     /// Entró: ya tiene la sesión abierta. `next` es adónde ir.
     In { next: String },
-    /// La contraseña no es esa (o no hay cuenta con ese email).
+    /// La contraseña no es correcta (o no hay cuenta con ese email).
     Wrong,
     /// Muchos intentos fallidos: tiene que esperar `minutes` minutos o
     /// entrar con un código.
@@ -87,15 +87,22 @@ pub struct AccountInfo {
     pub email: String,
     pub name: String,
     pub has_password: bool,
+    /// La foto de perfil, lista para un `<img>`.
+    pub avatar: Option<String>,
     /// En cuántas tiendas es dueña.
     pub stores: u32,
+}
+
+/// La dirección de la foto de perfil `id` (la de 480 px alcanza para un círculo).
+pub fn avatar_url(id: impl std::fmt::Display) -> String {
+    format!("/media/{id}/480.webp")
 }
 
 /// Resultado de cambiar la contraseña desde "Mi cuenta".
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum PasswordChange {
     Done,
-    /// La contraseña actual no es esa.
+    /// La contraseña actual no es correcta.
     WrongCurrent,
     Weak {
         reason: String,

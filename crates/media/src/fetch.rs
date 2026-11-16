@@ -36,7 +36,7 @@ pub enum Plan {
 }
 
 const DOWNLOAD_IT: &str =
-    "no deja que otros sitios saquen sus fotos. Bajala a tu compu y subila con Subir fotos.";
+    "no deja que otros sitios saquen sus fotos. Descargala en tu dispositivo y subila con Subir fotos.";
 
 /// Revisa el enlace y lo cambia para bajar el archivo cuando hace falta
 /// (Dropbox `dl=1`, Drive `uc?export=download`).
