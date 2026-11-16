@@ -81,6 +81,22 @@ pub enum SetPassword {
     NotAllowed,
 }
 
+/// Resultado de crear la cuenta con nombre y contraseña.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum AccountCreation {
+    /// Cuenta creada y adentro. `next` es adónde ir.
+    In { next: String },
+    /// Hace falta confirmar el email con un código (no está invitado: entró
+    /// por el registro abierto).
+    NeedsCode,
+    /// Ese email ya tiene cuenta: que entre con su contraseña.
+    Exists,
+    /// La contraseña no sirve; el texto dice por qué.
+    Weak { reason: String },
+    /// El email no está habilitado.
+    NotAllowed,
+}
+
 /// Lo que muestra "Mi cuenta".
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AccountInfo {
