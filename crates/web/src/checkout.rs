@@ -621,7 +621,7 @@ fn Note(f: Fields) -> impl IntoView {
 }
 
 /// Lleva el foco (y la vista) a un elemento por su id.
-fn focus_id(id: String) {
+pub(crate) fn focus_id(id: String) {
     use leptos::wasm_bindgen::JsCast;
     request_animation_frame(move || {
         let Some(el) = document()
@@ -653,7 +653,7 @@ fn focus_first(errors: &[FieldError]) {
     focus_id(id);
 }
 
-fn error_for(errors: RwSignal<Vec<FieldError>>, field: &'static str) -> Option<String> {
+pub(crate) fn error_for(errors: RwSignal<Vec<FieldError>>, field: &'static str) -> Option<String> {
     errors.with(|e| {
         e.iter()
             .find(|e| e.field == field)
@@ -663,7 +663,7 @@ fn error_for(errors: RwSignal<Vec<FieldError>>, field: &'static str) -> Option<S
 
 /// Un campo de texto con su etiqueta y su error debajo.
 #[component]
-fn TextField(
+pub(crate) fn TextField(
     id: &'static str,
     label: &'static str,
     value: RwSignal<String>,

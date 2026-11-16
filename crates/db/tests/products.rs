@@ -32,6 +32,12 @@ fn taza() -> Product {
             },
         )]
         .into(),
+        parcel: Some(domain::Parcel {
+            weight_g: 350,
+            length_mm: 120,
+            width_mm: 120,
+            height_mm: 105,
+        }),
         ..Product::default()
     }
 }

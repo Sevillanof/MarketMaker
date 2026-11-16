@@ -9,6 +9,7 @@ mod layout;
 mod look;
 mod media;
 mod orders;
+mod shipping;
 mod site;
 mod starter;
 mod typography;
@@ -20,6 +21,7 @@ pub use layout::*;
 pub use look::*;
 pub use media::*;
 pub use orders::*;
+pub use shipping::*;
 pub use site::*;
 pub use starter::*;
 pub use typography::*;
@@ -734,6 +736,9 @@ pub struct Product {
     /// Los compradores no lo ven. Deja de serlo cuando el dueño lo guarda.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub example: bool,
+    /// Peso y medidas para cotizar el envío. `None`: el paquete de la tienda.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parcel: Option<Parcel>,
 }
 
 fn yes() -> bool {
@@ -756,6 +761,7 @@ impl Default for Product {
             tags: Vec::new(),
             photo_fits: BTreeMap::new(),
             example: false,
+            parcel: None,
         }
     }
 }

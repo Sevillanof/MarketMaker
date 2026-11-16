@@ -12,6 +12,8 @@ use leptos_router::{
 use storefront::StorefrontPage;
 
 mod account;
+#[cfg(feature = "ssr")]
+pub mod andreani;
 pub mod auth;
 mod checkout;
 mod dev;

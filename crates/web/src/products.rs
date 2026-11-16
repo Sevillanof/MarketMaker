@@ -772,6 +772,11 @@ struct Form {
     /// Cantidad disponible; vacío si no se cuenta.
     stock: RwSignal<String>,
     visible: RwSignal<bool>,
+    /// Peso (kg) y medidas (cm) para el envío; todo vacío: el paquete de la tienda.
+    weight: RwSignal<String>,
+    length: RwSignal<String>,
+    width: RwSignal<String>,
+    height: RwSignal<String>,
 }
 
 impl Form {
@@ -798,6 +803,10 @@ impl Form {
             in_stock: RwSignal::new(p.in_stock || p.stock.is_some()),
             stock: RwSignal::new(p.stock.map(|s| s.to_string()).unwrap_or_default()),
             visible: RwSignal::new(p.visible),
+            weight: RwSignal::new(p.parcel.map(|x| domain::kg_input(x.weight_g)).unwrap_or_default()),
+            length: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.length_mm)).unwrap_or_default()),
+            width: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.width_mm)).unwrap_or_default()),
+            height: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.height_mm)).unwrap_or_default()),
         }
     }
 
@@ -845,6 +854,16 @@ impl Form {
                 }
             }
         };
+        let parcel = domain::parse_parcel(
+            &self.weight.get(),
+            &self.length.get(),
+            &self.width.get(),
+            &self.height.get(),
+        )
+        .unwrap_or_else(|e| {
+            errors.push(e);
+            None
+        });
         let photos = self.photos.get();
         let p = Product {
             id: id.to_string(),
@@ -860,6 +879,7 @@ impl Form {
             tags: self.tags.get(),
             photo_fits: self.fits.get(),
             example: false,
+            parcel,
         };
         if errors.is_empty() {
             Ok(p)
@@ -885,7 +905,9 @@ impl Form {
 /// `general`.
 fn error_field(e: &str) -> &'static str {
     let e = e.to_lowercase();
-    if e.contains("precio anterior") {
+    if e.contains("el peso") || e.contains("medidas en") {
+        "parcel"
+    } else if e.contains("precio anterior") {
         "was"
     } else if e.contains("precio") {
         "price"
@@ -912,6 +934,7 @@ fn focus_first_error(errors: &[String]) {
         "price" => "p-price",
         "was" => "p-was",
         "stock" => "p-stock",
+        "parcel" => "p-weight",
         "description" => "p-description",
         _ => return,
     };
@@ -948,6 +971,10 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         form.in_stock.track();
         form.stock.track();
         form.visible.track();
+        form.weight.track();
+        form.length.track();
+        form.width.track();
+        form.height.track();
         if first.is_some() {
             dirty.set(true);
             saved.set(false);
@@ -1165,6 +1192,19 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                         <p class="label">"Apagalo para prepararlo sin que lo vean."</p>
                     </fieldset>
                 </div>
+                <fieldset class="fieldset" aria-describedby="p-parcel-hint">
+                    <legend class="fieldset-legend">"Envío " <span class="font-normal text-base-content/60">"(opcional)"</span></legend>
+                    <p id="p-parcel-hint" class="label whitespace-normal">
+                        "Peso y medidas del producto ya empaquetado, para cotizar con Andreani. Vacío: se usa el paquete de tu tienda (en Entregas)."
+                    </p>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <crate::sales::ParcelInput id="p-weight" label="Peso" unit="kg" value=form.weight invalid=Signal::derive(move || has_error("parcel"))/>
+                        <crate::sales::ParcelInput id="p-length" label="Largo" unit="cm" value=form.length invalid=Signal::derive(move || has_error("parcel"))/>
+                        <crate::sales::ParcelInput id="p-width" label="Ancho" unit="cm" value=form.width invalid=Signal::derive(move || has_error("parcel"))/>
+                        <crate::sales::ParcelInput id="p-height" label="Alto" unit="cm" value=form.height invalid=Signal::derive(move || has_error("parcel"))/>
+                    </div>
+                    {field_error("parcel")}
+                </fieldset>
                 <div class="flex flex-wrap items-center justify-end gap-3 border-t border-base-200 pt-4">
                     {move || {
                         let n = errors.with(Vec::len);
