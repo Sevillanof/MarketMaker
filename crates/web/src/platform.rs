@@ -2,13 +2,13 @@
 //! tienda. Y las pantallas de paso entre la plataforma y cada tienda.
 
 use crate::auth::{sign_out, who_am_i};
-use crate::stores::{create_store, my_stores, open_store, use_pass};
-use domain::{NewStoreOutcome, StoreCard};
+use crate::stores::{create_store, my_stores, use_pass};
+use domain::NewStoreOutcome;
 use leptos::prelude::*;
-use leptos_router::hooks::use_query_map;
+use leptos_router::{components::Redirect, hooks::use_query_map};
 
 /// Va a `url` recargando la página.
-fn go(url: &str) {
+pub(crate) fn go(url: &str) {
     let _ = window().location().set_href(url);
 }
 
@@ -39,7 +39,11 @@ pub fn PlatformHome() -> impl IntoView {
                         None => view! { <Welcome/> }.into_any(),
                         Some(me) => {
                             let stores = stores.await.unwrap_or_default();
-                            view! { <Dashboard email=me.email stores/> }.into_any()
+                            match stores.first() {
+                                // Con tiendas, el panel arranca en la más nueva.
+                                Some(s) => view! { <Redirect path=format!("/tienda/{}", s.slug)/> }.into_any(),
+                                None => view! { <FirstStore email=me.email/> }.into_any(),
+                            }
                         }
                     }
                 })}
@@ -69,63 +73,36 @@ fn Welcome() -> impl IntoView {
     }
 }
 
+/// Con cuenta y sin tiendas: crear la primera.
 #[component]
-fn Dashboard(email: String, stores: Vec<StoreCard>) -> impl IntoView {
+fn FirstStore(email: String) -> impl IntoView {
     let out = Action::new(|_: &()| sign_out());
     Effect::new(move |_| {
         if let Some(Ok(())) = out.value().get() {
             go("/");
         }
     });
-    let open = Action::new(|slug: &String| open_store(slug.clone()));
-    let open_error = RwSignal::new(None::<String>);
-    Effect::new(move |_| match open.value().get() {
-        Some(Ok(url)) => go(&url),
-        Some(Err(_)) => open_error.set(Some(
-            "No pudimos abrir el editor. Recargá la página y probá de nuevo.".into(),
-        )),
-        None => {}
-    });
-    let empty = stores.is_empty();
     view! {
         <div class="flex flex-wrap items-center gap-3">
-            <h1 class="grow text-3xl font-bold">{if empty { "Creá tu primera tienda" } else { "Tus tiendas" }}</h1>
-            <a class="btn btn-outline btn-sm" href="/mis-fotos">"Mis fotos"</a>
+            <h1 class="grow text-3xl font-bold">"Creá tu primera tienda"</h1>
             <span class="text-sm text-base-content/70">{email}</span>
             <button class="btn btn-ghost btn-sm" on:click=move |_| { out.dispatch(()); }>"Salir"</button>
         </div>
-        {move || open_error.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
-        <ul class="grid gap-4 sm:grid-cols-2" aria-label="Tus tiendas">
-            {stores.into_iter().map(|s| {
-                let slug = s.slug.clone();
-                let address = s.url.split_once("://").map_or(s.url.clone(), |(_, a)| a.to_string());
-                view! {
-                    <li class="card bg-base-100 shadow-sm">
-                        <div class="card-body gap-2">
-                            <h2 class="card-title">{s.name.clone()}</h2>
-                            <p class="font-mono text-sm text-base-content/70">{address}</p>
-                            <div class="card-actions mt-2">
-                                <button class="btn btn-primary btn-sm" disabled=move || open.pending().get()
-                                    on:click=move |_| { open.dispatch(slug.clone()); }>"Editar"</button>
-                                <a class="btn btn-outline btn-sm" href=format!("/tienda/{}/productos", s.slug)>"Productos"</a>
-                                <a class="btn btn-outline btn-sm" href=format!("/tienda/{}/pedidos", s.slug)>"Pedidos"</a>
-                                <a class="btn btn-ghost btn-sm" href=format!("/tienda/{}/ventas", s.slug)>"Entregas"</a>
-                                <a class="btn btn-ghost btn-sm" href=format!("/tienda/{}/cobros", s.slug)>"Cobros"</a>
-                                <a class="btn btn-ghost btn-sm" href=s.url.clone() target="_blank" rel="noopener">"Ver tienda"</a>
-                            </div>
-                        </div>
-                    </li>
-                }
-            }).collect_view()}
-        </ul>
-        <NewStore first=empty/>
+        <div class="card bg-base-100 shadow-sm"><div class="card-body">
+            <NewStore first=true/>
+        </div></div>
     }
 }
 
 /// Formulario para crear una tienda: nombre y dirección (sugerida a partir
 /// del nombre hasta que la persona la cambia).
 #[component]
-fn NewStore(first: bool) -> impl IntoView {
+pub(crate) fn NewStore(
+    first: bool,
+    /// En una ventana: muestra "Cancelar" y la cierra.
+    #[prop(optional)]
+    on_cancel: Option<Callback<()>>,
+) -> impl IntoView {
     let name = RwSignal::new(String::new());
     let slug = RwSignal::new(String::new());
     let slug_touched = RwSignal::new(false);
@@ -153,9 +130,11 @@ fn NewStore(first: bool) -> impl IntoView {
         create.dispatch((name.get_untracked(), slug.get_untracked()));
     };
     view! {
-        <form class="card bg-base-100 shadow-sm" on:submit=on_submit>
-            <div class="card-body gap-4">
-                <h2 class="card-title">{if first { "Tu tienda" } else { "Crear otra tienda" }}</h2>
+        <form class="flex flex-col gap-4" on:submit=on_submit>
+                <div>
+                    <h2 id="crear-tienda-titulo" class="text-xl font-bold">{if first { "Tu tienda" } else { "Crear tienda" }}</h2>
+                    <p class="text-sm text-base-content/70">"Arrancás con un diseño de ejemplo y lo cambiás cuando quieras."</p>
+                </div>
                 <label class="flex flex-col gap-1">
                     <span class="font-medium">"Nombre de la tienda"</span>
                     <input class="input w-full" name="name" required maxlength="60" placeholder="La Casa de Ana"
@@ -183,10 +162,14 @@ fn NewStore(first: bool) -> impl IntoView {
                     </div>
                 </label>
                 {move || problem.get().map(|p| view! { <div role="alert" class="alert alert-error text-sm">{p}</div> })}
-                <button class="btn btn-primary self-start" type="submit" disabled=move || create.pending().get()>
-                    {move || if create.pending().get() { "Creando…" } else { "Crear tienda" }}
-                </button>
-            </div>
+                <div class="flex flex-wrap justify-end gap-2">
+                    {on_cancel.map(|cancel| view! {
+                        <button class="btn btn-ghost" type="button" on:click=move |_| cancel.run(())>"Cancelar"</button>
+                    })}
+                    <button class="btn btn-primary" type="submit" disabled=move || create.pending().get()>
+                        {move || if create.pending().get() { "Creando…" } else { "Crear y empezar a editar" }}
+                    </button>
+                </div>
         </form>
     }
 }

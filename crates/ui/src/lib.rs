@@ -195,7 +195,7 @@ pub fn PageSkeleton() -> impl IntoView {
     }
 }
 
-/// Ícono de línea (24×24) de la lista de beneficios. Si el nombre no existe
+/// Ícono de línea (24×24) de la lista de beneficios y del panel. Si el nombre no existe
 /// se dibuja una estrella.
 #[component]
 pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -> impl IntoView {
@@ -209,6 +209,17 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "chat" => "M4 5h16v11H9l-5 4z",
         "gift" => "M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7c-2-4-6-3-5 0M12 7c2-4 6-3 5 0",
         "clock" => "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l3 2",
+        // Menú del panel.
+        "home" => "M3 10l9-7 9 7v10h-6v-6H9v6H3z",
+        "pencil" => "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
+        "box" => "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",
+        "bag" => "M6 3L3 7v13h18V7l-3-4zM3 7h18M16 11a4 4 0 0 1-8 0",
+        "photo" => "M3 3h18v18H3zM9 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4M21 15l-5-5L5 21",
+        "plus" => "M12 5v14M5 12h14",
+        "check" => "M5 12l5 5 9-10",
+        "chevron-down" => "M6 9l6 6 6-6",
+        "external" => "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+        "log-out" => "M9 21H4V3h5M16 17l5-5-5-5M21 12H9",
         _ => "M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
     };
     let class = format!("inline-block {class}");

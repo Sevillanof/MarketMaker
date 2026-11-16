@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 //! Render de cada widget. Un componente por variante de [`Widget`].
 //!
 //! Los widgets usan solo colores semánticos de daisyUI y se adaptan al ancho

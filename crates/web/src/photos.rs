@@ -93,6 +93,11 @@ pub async fn delete_photo(id: String) -> Result<(), ServerFnError> {
 /// `/mis-fotos`.
 #[component]
 pub fn MyPhotosPage() -> impl IntoView {
+    // La tienda que queda elegida en el menú (`?tienda=`); sin ella, la más nueva.
+    let store = leptos_router::hooks::use_query_map()
+        .read_untracked()
+        .get("tienda")
+        .unwrap_or_default();
     let reload = RwSignal::new(0u32);
     let photos = Resource::new(move || reload.get(), |_| my_photos());
     let uploads = editor::MyPhotos::new();
@@ -106,13 +111,9 @@ pub fn MyPhotosPage() -> impl IntoView {
     });
     view! {
         <leptos_meta::Title text="Mis fotos · MarketMaker"/>
-        <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">
-            <header class="flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-3">
-                <a href="/" class="text-lg font-bold">"MarketMaker"</a>
-            </header>
+        <crate::panel::StoreShell slug=store section=crate::panel::Section::Photos>
             <div class="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10">
                 <div class="flex flex-wrap items-center gap-3">
-                    <a href="/" class="btn btn-ghost btn-sm">"← Tus tiendas"</a>
                     <h1 class="grow text-3xl font-bold">"Mis fotos"</h1>
                     <label for="mis-fotos-subir" class="btn btn-primary" class:btn-disabled=move || uploads.progress.get().is_some()>
                         "Subir fotos"
@@ -172,7 +173,7 @@ pub fn MyPhotosPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </div>
+        </crate::panel::StoreShell>
     }
 }
 

@@ -17,14 +17,15 @@ mod checkout;
 mod dev;
 #[cfg(feature = "ssr")]
 pub mod media;
-mod photos;
-mod platform;
-mod orders;
-mod payments;
 #[cfg(feature = "ssr")]
 pub mod email;
 #[cfg(feature = "ssr")]
 pub mod mp;
+mod orders;
+mod panel;
+mod payments;
+mod photos;
+mod platform;
 mod products;
 mod sales;
 pub mod server;
@@ -69,6 +70,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
                     <Route path=path!("/mis-fotos") view=photos::MyPhotosPage ssr=SsrMode::Async/>
+                    <Route path=path!("/tienda/:slug") view=panel::StoreHomePage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/productos") view=products::ProductsPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/productos/:id") view=products::ProductEditPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/pedidos") view=orders::OrdersPage ssr=SsrMode::Async/>

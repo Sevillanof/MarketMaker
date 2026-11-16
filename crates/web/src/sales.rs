@@ -1,7 +1,7 @@
 //! Ventas de una tienda, en la plataforma (`/tienda/:slug/ventas`): por
 //! ahora, cómo entrega sus pedidos (retiro y envío).
 
-use crate::products::{error_text, slug_param, Shell, SignInFirst};
+use crate::products::{error_text, slug_param, SignInFirst};
 use domain::DeliverySettings;
 use leptos::prelude::*;
 
@@ -47,40 +47,43 @@ pub fn SalesPage() -> impl IntoView {
     let slug = slug_param();
     let data = Resource::new(move || slug.get(), store_delivery);
     view! {
-        <leptos_meta::Title text="Ventas · MarketMaker"/>
-        <Shell>
+        <leptos_meta::Title text="Entregas · MarketMaker"/>
+        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Delivery>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
                         match data.await {
-                            Ok(Some((name, d))) => view! { <DeliveryForm slug=slug.get_untracked() name d/> }.into_any(),
+                            Ok(Some((_, d))) => view! { <DeliveryForm slug=slug.get_untracked() d/> }.into_any(),
                             Ok(None) => view! { <SignInFirst back=format!("/tienda/{}/ventas", slug.get_untracked())/> }.into_any(),
                             Err(e) => view! { <div role="alert" class="alert alert-error">{error_text(&e)}</div> }.into_any(),
                         }
                     })}
                 </Suspense>
             </div>
-        </Shell>
+        </crate::panel::StoreShell>
     }
     .into_any()
 }
 
 #[component]
-fn DeliveryForm(slug: String, name: String, d: DeliverySettings) -> impl IntoView {
+fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
     let pickup = RwSignal::new(d.pickup_enabled);
     let address = RwSignal::new(d.pickup_address);
     let hours = RwSignal::new(d.pickup_hours);
     let shipping = RwSignal::new(d.shipping_enabled);
     // Vacío: a coordinar. "0": gratis.
-    let cost = RwSignal::new(d.shipping_cents.map(domain::price_input).unwrap_or_default());
+    let cost = RwSignal::new(
+        d.shipping_cents
+            .map(domain::price_input)
+            .unwrap_or_default(),
+    );
     let note = RwSignal::new(d.shipping_note);
     let problems = RwSignal::new(Vec::<String>::new());
     let saved = RwSignal::new(false);
     let slug = StoredValue::new(slug);
 
-    let save = Action::new(move |d: &DeliverySettings| {
-        save_store_delivery(slug.get_value(), d.clone())
-    });
+    let save =
+        Action::new(move |d: &DeliverySettings| save_store_delivery(slug.get_value(), d.clone()));
     Effect::new(move |_| match save.value().get() {
         Some(Ok(e)) => {
             saved.set(e.is_empty());
@@ -130,18 +133,13 @@ fn DeliveryForm(slug: String, name: String, d: DeliverySettings) -> impl IntoVie
 
     view! {
         <div class="flex flex-wrap items-center gap-3">
-            <a href="/" class="btn btn-ghost btn-sm">"← Tus tiendas"</a>
             <div class="grow">
-                <h1 class="text-3xl font-bold">"Ventas"</h1>
-                <p class="text-sm text-base-content/70">{name}</p>
+                <h1 class="text-3xl font-bold">"Entregas"</h1>
+                <p class="text-sm text-base-content/70">"Lo que elijas acá aparece en \"Finalizar compra\" de tu tienda."</p>
             </div>
         </div>
         <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(); }>
             <div class="card-body gap-4">
-                <div>
-                    <h2 class="card-title">"Entregas"</h2>
-                    <p class="text-sm text-base-content/70">"Lo que elijas acá aparece en \"Finalizar compra\" de tu tienda."</p>
-                </div>
                 {move || (!problems.get().is_empty()).then(|| view! {
                     <div role="alert" class="alert alert-error text-sm">
                         <ul>{problems.get().into_iter().map(|p| view! { <li>{p}</li> }).collect_view()}</ul>

@@ -180,19 +180,6 @@ pub(crate) fn error_text(e: &ServerFnError) -> String {
     }
 }
 
-/// Encabezado de las pantallas de la plataforma.
-#[component]
-pub(crate) fn Shell(children: Children) -> impl IntoView {
-    view! {
-        <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">
-            <header class="flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-3">
-                <a href="/" class="text-lg font-bold">"MarketMaker"</a>
-            </header>
-            {children()}
-        </div>
-    }
-}
-
 #[component]
 pub(crate) fn SignInFirst(back: String) -> impl IntoView {
     view! {
@@ -226,7 +213,7 @@ pub fn ProductsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), list_store_products);
     view! {
         <leptos_meta::Title text="Productos · MarketMaker"/>
-        <Shell>
+        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Products>
             <div class="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -238,7 +225,7 @@ pub fn ProductsPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </Shell>
+        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -298,12 +285,10 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     let empty = products.with_untracked(Vec::is_empty);
     view! {
         <div class="flex flex-wrap items-center gap-3">
-            <a href="/" class="btn btn-ghost btn-sm">"← Tus tiendas"</a>
             <div class="grow">
                 <h1 class="text-3xl font-bold">"Productos"</h1>
                 <p class="text-sm text-base-content/70">{data.store_name} " · " {summary}</p>
             </div>
-            <a class="btn btn-ghost" href="/mis-fotos">"Mis fotos"</a>
             <a class="btn btn-primary" href=new_href.clone()>"+ Nuevo producto"</a>
         </div>
         {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
@@ -431,7 +416,7 @@ pub fn ProductEditPage() -> impl IntoView {
     );
     view! {
         <leptos_meta::Title text="Producto · MarketMaker"/>
-        <Shell>
+        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Products>
             <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -451,7 +436,7 @@ pub fn ProductEditPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </Shell>
+        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -530,7 +515,10 @@ impl Form {
             match stock_text.trim().replace('.', "").parse::<u32>() {
                 Ok(n) => Some(n),
                 Err(_) => {
-                    errors.push("La cantidad tiene que ser un número entero, como 5, o quedar vacía.".to_string());
+                    errors.push(
+                        "La cantidad tiene que ser un número entero, como 5, o quedar vacía."
+                            .to_string(),
+                    );
                     None
                 }
             }
