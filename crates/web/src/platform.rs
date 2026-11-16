@@ -264,12 +264,14 @@ pub(crate) fn focus_id(id: &'static str) {
 /// Una dirección de tienda en la plataforma (`localhost:3000/ofertas`).
 #[component]
 pub fn NotAStore() -> impl IntoView {
+    crate::not_found_status();
     view! {
+        <leptos_meta::Title text="Página no encontrada · MarketMaker"/>
         <Shell>
             <div class="card bg-base-100 shadow-sm"><div class="card-body gap-3">
                 <h1 class="card-title text-2xl">"Esta página no existe"</h1>
-                <p>"Las tiendas tienen su propia dirección, por ejemplo demo.localhost:3000."</p>
-                <a class="btn btn-primary self-start" href="/">"Ir a tus tiendas"</a>
+                <p>"Puede que la dirección esté mal escrita o que la página ya no exista."</p>
+                <a class="btn btn-primary self-start" href="/">"Ir al inicio"</a>
             </div></div>
         </Shell>
     }
@@ -278,7 +280,9 @@ pub fn NotAStore() -> impl IntoView {
 /// La dirección no es de ninguna tienda (`nadie.localhost:3000`).
 #[component]
 pub fn StoreNotFound() -> impl IntoView {
+    crate::not_found_status();
     view! {
+        <leptos_meta::Title text="Tienda no encontrada · MarketMaker"/>
         <Shell>
             <div class="card bg-base-100 shadow-sm"><div class="card-body gap-3">
                 <h1 class="card-title text-2xl">"No encontramos esta tienda"</h1>

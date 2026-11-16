@@ -18,6 +18,7 @@ mod dev;
 #[cfg(feature = "ssr")]
 pub mod email;
 mod landing;
+mod legal;
 #[cfg(feature = "ssr")]
 pub mod limits;
 #[cfg(feature = "ssr")]
@@ -30,6 +31,7 @@ mod payments;
 mod photos;
 mod platform;
 mod products;
+mod regret;
 mod sales;
 mod store_info;
 pub mod server;
@@ -69,7 +71,7 @@ pub fn App() -> impl IntoView {
 
         <Router>
             <main>
-                <Routes fallback=|| "Página no encontrada.".into_view()>
+                <Routes fallback=|| view! { <platform::NotAStore/> }>
                     <Route path=StaticSegment("") view=Home ssr=SsrMode::Async/>
                     <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
@@ -83,6 +85,9 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/tienda/:slug/ventas") view=sales::SalesPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/datos") view=store_info::StoreInfoPage ssr=SsrMode::Async/>
                     <Route path=path!("/comprar") view=checkout::CheckoutPage ssr=SsrMode::Async/>
+                    <Route path=path!("/terminos") view=legal::TermsPage/>
+                    <Route path=path!("/privacidad") view=legal::PrivacyPage/>
+                    <Route path=path!("/arrepentimiento") view=regret::RegretPage ssr=SsrMode::Async/>
                     <Route path=path!("/pedido/:id") view=checkout::OrderPage ssr=SsrMode::Async/>
                     <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
@@ -107,6 +112,14 @@ fn Home() -> impl IntoView {
     }
 }
 
+/// Responde con el código 404 (la página no existe), para los buscadores.
+pub(crate) fn not_found_status() {
+    #[cfg(feature = "ssr")]
+    if let Some(r) = use_context::<leptos_axum::ResponseOptions>() {
+        r.set_status(http::StatusCode::NOT_FOUND);
+    }
+}
+
 /// Marketplace: la última versión publicada de la tienda, en la página de la
 /// dirección actual (`/` es Inicio, `/ofertas` es Ofertas…). Toda la tienda
 /// se guarda en un solo documento, el de `home`.
@@ -126,7 +139,11 @@ fn HomePage() -> impl IntoView {
                         <StoreSoon name=view.store_name.clone()/>
                     }
                     .into_any(),
-                    Ok(view) => view! {
+                    Ok(view) => {
+                        if view.doc.page_index(&location.pathname.get_untracked()).is_none() {
+                            not_found_status();
+                        }
+                        view! {
                         <account::OwnerBar me/>
                         <StoreMeta view=view.clone()/>
                         {move || {
@@ -134,7 +151,8 @@ fn HomePage() -> impl IntoView {
                             view! { <StorefrontPage view=view.clone() path/> }
                         }}
                     }
-                    .into_any(),
+                    .into_any()
+                    }
                     Err(_) => view! { <platform::StoreNotFound/> }.into_any(),
                 }
             })}

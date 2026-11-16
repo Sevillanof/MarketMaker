@@ -416,7 +416,7 @@ impl Fetcher {
     /// Una dirección escrita como IP no pasa por el resolvedor: se revisa acá.
     async fn check_host(&self, url: &url::Url) -> Result<(), String> {
         if url.port().is_some_and(|p| p != 80 && p != 443) && !self.allow_private {
-            return Err("Ese enlace usa un puerto raro: no lo podemos usar.".into());
+            return Err("Ese enlace no se puede usar. Probá con otro.".into());
         }
         let private = match url.host() {
             Some(url::Host::Ipv4(ip)) => is_private(IpAddr::V4(ip)),

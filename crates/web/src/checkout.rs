@@ -295,7 +295,7 @@ fn error_text(e: &ServerFnError) -> String {
 
 /// Fondo y letras de la tienda, para que estas páginas se vean como ella.
 #[component]
-fn StoreFrame(view: PageView, children: Children) -> impl IntoView {
+pub(crate) fn StoreFrame(view: PageView, children: Children) -> impl IntoView {
     let doc = view.doc;
     view! {
         <div data-theme=doc.theme.clone() class="mk-store min-h-screen bg-base-200 text-base-content"
@@ -308,7 +308,7 @@ fn StoreFrame(view: PageView, children: Children) -> impl IntoView {
 }
 
 #[component]
-fn StoreHeader(name: String) -> impl IntoView {
+pub(crate) fn StoreHeader(name: String) -> impl IntoView {
     view! {
         <header class="flex h-18 items-center rounded-box bg-base-100 px-6 shadow-sm">
             <a href="/" class="mk-h text-lg font-bold">{name}</a>
