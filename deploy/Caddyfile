@@ -1,0 +1,17 @@
+# MarketMaker en la VPS: Caddy atiende https en 80/443 y le pasa todo a la
+# app, que escucha solo en 127.0.0.1:3000. Los certificados de cada tienda
+# (`ana.<plataforma>`) se piden la primera vez que alguien entra, y solo si
+# la app dice que esa dirección existe (`/tls-ok`).
+{
+	on_demand_tls {
+		ask http://127.0.0.1:3000/tls-ok
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
