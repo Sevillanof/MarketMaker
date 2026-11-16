@@ -246,3 +246,31 @@ async fn profile_photo_must_be_your_own_and_clears_when_deleted(pool: PgPool) {
 
     assert!(set_avatar(&pool, ana, None).await.unwrap());
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn invited_account_is_created_without_code_but_only_once(pool: PgPool) {
+    let id = create_account(&pool, "ana@correo.com", "Ana", "hash-1")
+        .await
+        .unwrap()
+        .expect("debía crear la cuenta");
+    let account = account_by_email(&pool, "ana@correo.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.id, id);
+    assert_eq!(account.name, "Ana");
+    assert_eq!(account.password_hash.as_deref(), Some("hash-1"));
+    // Con el mismo email no se crea otra ni se pisa la contraseña.
+    assert_eq!(
+        create_account(&pool, "ana@correo.com", "Otra", "hash-2")
+            .await
+            .unwrap(),
+        None
+    );
+    let account = account_by_email(&pool, "ana@correo.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.password_hash.as_deref(), Some("hash-1"));
+    assert_eq!(account.name, "Ana");
+}

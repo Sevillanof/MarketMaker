@@ -2,16 +2,19 @@
 //! código por email), crear la cuenta, "Mi cuenta", salir y saber quién está
 //! mirando.
 //!
-//! El código por email se usa para confirmar el email al crear la cuenta y
-//! cuando la persona se olvidó la contraseña (o prefiere no usarla).
+//! Quien está invitado (su email está en `ALLOWED_EMAILS`) crea la cuenta con
+//! nombre y contraseña, sin código. El código por email queda para cuando la
+//! persona se olvidó la contraseña (o prefiere no usarla), para las cuentas de
+//! antes que todavía no tienen contraseña y para confirmar el email de quien
+//! se registra sin invitación (`REGISTRO_ABIERTO=true`).
 //!
 //! Quién puede tener cuenta: si `REGISTRO_ABIERTO=true`, cualquiera; si no,
 //! solo los emails de `ALLOWED_EMAILS` (una lista separada por comas en
 //! `.env.local`). Las dos cosas se releen en cada pedido.
 
 use domain::{
-    AccountInfo, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn,
-    SetPassword,
+    AccountCreation, AccountInfo, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange,
+    PasswordSignIn, SetPassword,
 };
 use leptos::prelude::*;
 
@@ -78,7 +81,12 @@ mod ssr {
     }
 
     pub fn is_allowed(email: &str) -> bool {
-        signup_open() || allowed_emails().contains(email)
+        signup_open() || is_invited(email)
+    }
+
+    /// El email está en `ALLOWED_EMAILS`: puede crear su cuenta sin código.
+    pub fn is_invited(email: &str) -> bool {
+        allowed_emails().contains(email)
     }
 
     /// Corre `f` (cálculo pesado, como un hash de contraseña) fuera de los
@@ -366,6 +374,44 @@ pub async fn sign_in(
         .map_err(internal)?;
     open_session(account.id).await?;
     Ok(PasswordSignIn::In {
+        next: domain::safe_next(&next),
+    })
+}
+
+/// Crea la cuenta de un email invitado con nombre y contraseña, sin código, y
+/// entra. Si el email no está invitado (registro abierto) pide el código; si
+/// ya tiene cuenta no la toca.
+#[server]
+pub async fn create_account(
+    email: String,
+    name: String,
+    password: String,
+    next: String,
+) -> Result<AccountCreation, ServerFnError> {
+    use crate::server::internal;
+    let Some(email) = domain::normalize_email(&email) else {
+        return Ok(AccountCreation::NotAllowed);
+    };
+    if !is_allowed(&email) {
+        return Ok(AccountCreation::NotAllowed);
+    }
+    if let Some(reason) = domain::password_problem(&password) {
+        return Ok(AccountCreation::Weak { reason });
+    }
+    if !is_invited(&email) {
+        return Ok(AccountCreation::NeedsCode);
+    }
+    let name = domain::clean_name(&name);
+    let hash = blocking(move || db::auth::hash_password(&password)).await?;
+    let pool = crate::server::pool()?;
+    let Some(user_id) = db::auth::create_account(&pool, &email, &name, &hash)
+        .await
+        .map_err(internal)?
+    else {
+        return Ok(AccountCreation::Exists);
+    };
+    open_session(user_id).await?;
+    Ok(AccountCreation::In {
         next: domain::safe_next(&next),
     })
 }

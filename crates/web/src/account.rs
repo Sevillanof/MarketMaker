@@ -3,11 +3,12 @@
 //! tienda.
 
 use crate::auth::{
-    change_password, check_code, load_account, lookup_email, request_code, save_avatar, save_name,
-    set_password_with_code, sign_in, sign_out,
+    change_password, check_code, create_account, load_account, lookup_email, request_code,
+    save_avatar, save_name, set_password_with_code, sign_in, sign_out,
 };
 use domain::{
-    CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn, SetPassword,
+    AccountCreation, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn,
+    SetPassword,
 };
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
@@ -41,6 +42,7 @@ const NOT_ALLOWED: &str = "Por ahora MarketMaker es solo por invitación y este 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum CodeFor {
     /// Confirmar el email de una cuenta nueva (nombre y contraseña ya escritos).
+    /// Solo si no está invitado: los invitados entran sin código.
     NewAccount,
     /// Elegir una contraseña nueva (se la olvidó, o la cuenta es de antes y no tenía).
     Reset,
@@ -88,7 +90,7 @@ pub fn Logo(#[prop(optional, into)] class: String) -> impl IntoView {
 }
 
 /// `/entrar`: primero el email; si ya tiene cuenta, la contraseña; si es
-/// nuevo, nombre y contraseña y un código para confirmar el email.
+/// nuevo e invitado, nombre y contraseña y ya está adentro.
 #[component]
 pub fn SignInPage() -> impl IntoView {
     let query = use_query_map();
@@ -253,8 +255,12 @@ fn SignInForm(next: String) -> impl IntoView {
             set_password_with_code(e.clone(), c.clone(), nm.clone(), p.clone(), n.clone())
         },
     );
+    let create = Action::new(|(e, nm, p, n): &(String, String, String, String)| {
+        create_account(e.clone(), nm.clone(), p.clone(), n.clone())
+    });
     let busy = move || {
-        lookup.pending().get()
+        create.pending().get()
+            || lookup.pending().get()
             || login.pending().get()
             || ask.pending().get()
             || check.pending().get()
@@ -368,6 +374,25 @@ fn SignInForm(next: String) -> impl IntoView {
         }
     });
     Effect::new(move |_| {
+        let Some(result) = create.value().get() else {
+            return;
+        };
+        match result {
+            Ok(AccountCreation::In { next }) => go(&next),
+            Ok(AccountCreation::NeedsCode) => send_code(CodeFor::NewAccount),
+            Ok(AccountCreation::Exists) => {
+                password.set(String::new());
+                goto(Step::Password);
+                info.set(Some(
+                    "Este email ya tiene una cuenta. Entrá con tu contraseña.".into(),
+                ));
+            }
+            Ok(AccountCreation::Weak { reason }) => problem.set(Some(reason)),
+            Ok(AccountCreation::NotAllowed) => problem.set(Some(NOT_ALLOWED.into())),
+            Err(_) => problem.set(Some(CONNECTION.into())),
+        }
+    });
+    Effect::new(move |_| {
         let Some(result) = finish.value().get() else {
             return;
         };
@@ -440,6 +465,7 @@ fn SignInForm(next: String) -> impl IntoView {
                     {move || if name.get().is_empty() { "Hola de nuevo".to_string() } else { format!("Hola de nuevo, {}", name.get()) }}
                 </h1>
                 {chip(true)}
+                {move || info.get().map(|i| view! { <p role="status" class="-mt-1 text-sm text-base-content/70">{i}</p> })}
                 <PasswordField value=password label="Contraseña" autocomplete="current-password" autofocus=true
                     extra=view! {
                         <button type="button" class="link link-primary text-sm font-semibold no-underline" disabled=busy
@@ -458,7 +484,8 @@ fn SignInForm(next: String) -> impl IntoView {
                     problem.set(Some(reason));
                     return;
                 }
-                send_code(CodeFor::NewAccount);
+                problem.set(None);
+                create.dispatch((email.get_untracked(), name.get_untracked(), password.get_untracked(), next.get_value()));
             }>
                 <h1 class="text-3xl font-extrabold tracking-tight">"Creá tu cuenta"</h1>
                 {chip(false)}
@@ -472,8 +499,8 @@ fn SignInForm(next: String) -> impl IntoView {
                 </label>
                 <PasswordField value=password label="Elegí una contraseña" autocomplete="new-password" meter=true/>
                 {alert}
-                {submit_btn("Crear cuenta", "Mandando código…")}
-                <p class="text-xs text-base-content/60">"Te mandamos un código para confirmar que el email es tuyo. Al crear la cuenta aceptás los términos y la privacidad."</p>
+                {submit_btn("Crear cuenta", "Creando cuenta…")}
+                <p class="text-xs text-base-content/60">"Al crear la cuenta aceptás los términos y la privacidad."</p>
             </form>
         }.into_any(),
         Step::Code(purpose) => {

@@ -465,6 +465,27 @@ pub async fn set_password_hash(pool: &PgPool, id: Uuid, hash: &str) -> sqlx::Res
     Ok(())
 }
 
+/// Crea la cuenta de `email` (ya normalizado) con nombre y contraseña (ya en
+/// hash), sin código: es para emails invitados. Devuelve `None` si ese email
+/// ya tiene cuenta, para que entre con su contraseña en vez de pisarla.
+pub async fn create_account(
+    pool: &PgPool,
+    email: &str,
+    name: &str,
+    password_hash: &str,
+) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query_scalar(
+        "INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3)
+         ON CONFLICT (email) DO NOTHING
+         RETURNING id",
+    )
+    .bind(email)
+    .bind(name)
+    .bind(password_hash)
+    .fetch_optional(pool)
+    .await
+}
+
 /// Cambia el nombre de la cuenta.
 pub async fn set_name(pool: &PgPool, id: Uuid, name: &str) -> sqlx::Result<()> {
     sqlx::query("UPDATE users SET name = $2 WHERE id = $1")
