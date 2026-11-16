@@ -22,6 +22,8 @@ mod platform;
 mod orders;
 mod payments;
 #[cfg(feature = "ssr")]
+pub mod email;
+#[cfg(feature = "ssr")]
 pub mod mp;
 mod products;
 mod sales;

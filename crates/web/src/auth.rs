@@ -191,8 +191,11 @@ pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {
     {
         Err(db::auth::TooMany) => Ok(CodeRequest::TooMany),
         Ok(code) => {
-            // Sin servicio de emails todavía: el código va a la terminal.
+            // Sin RESEND_API_KEY, el email (con el código) va a la terminal.
             leptos::logging::log!("\n  Código para entrar de {email}: {code}\n");
+            if let Err(e) = crate::email::deliver(&crate::email::login_code(&email, &code)).await {
+                leptos::logging::log!("No pudimos mandar el código a {email}: {e}");
+            }
             Ok(CodeRequest::Sent)
         }
     }

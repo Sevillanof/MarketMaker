@@ -276,6 +276,7 @@ pub async fn check_payment(pool: &db::Pool, tenant: Uuid, payment_id: &str) -> R
                 .map_err(|e| e.to_string())?
             {
                 leptos::logging::log!("Mercado Pago: pedido {order} pagado (pago {payment_id})");
+                crate::email::order_emails(pool, tenant, order, true).await;
             }
         }
     }

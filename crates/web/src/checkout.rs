@@ -124,6 +124,11 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             ))
         }
     };
+    if !pay_online {
+        // Sin pago online, la venta ya está: avisos al comprador y al dueño.
+        // Con Mercado Pago se avisa cuando se aprueba el pago.
+        crate::email::order_emails(&pool, tenant.id, id, false).await;
+    }
     if pay_online {
         let order = db::orders::get(&pool, tenant.id, id)
             .await
