@@ -16,6 +16,11 @@ mod look;
 mod palette;
 mod photos;
 pub use photos::{take_files, LinkImport, MyPhotos};
+
+/// Dirección del panel de la tienda en la plataforma. Si está en el contexto,
+/// la barra muestra a la izquierda un botón para volver ahí.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PanelLink(pub String);
 mod store_drawer;
 mod topbar;
 mod typography;
@@ -1142,6 +1147,12 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         <div data-theme="light" class="flex h-screen flex-col bg-base-200 text-base-content">
             <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4">
                 <h1 class="sr-only">"Editor de tu tienda"</h1>
+                {use_context::<PanelLink>().map(|PanelLink(href)| view! {
+                    <a href=href class="btn btn-ghost btn-square h-11 w-11" aria-label="Volver a tus tiendas"
+                        title="Volver a tus tiendas">
+                        <Icon name="arrow-left" class="h-5 w-5"/>
+                    </a>
+                })}
                 <StoreMenu/>
                 <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
                 <PageSwitcher/>

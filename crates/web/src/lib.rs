@@ -139,6 +139,9 @@ fn EditorPage() -> impl IntoView {
         save_page("home".to_string(), doc.clone(), *base_version)
     });
     let me = Resource::new(|| (), |_| who_am_i());
+    if let domain::Site::Store(slug) = site::current_site() {
+        provide_context(editor::PanelLink(format!("{}/tienda/{slug}", site::platform_url())));
+    }
     if site::current_site() == domain::Site::Platform {
         // En la plataforma no hay editor: cada tienda tiene el suyo.
         return view! { <Redirect path="/"/> }.into_any();
