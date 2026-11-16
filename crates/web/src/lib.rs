@@ -75,7 +75,9 @@ pub fn App() -> impl IntoView {
             <main>
                 <Routes fallback=|| view! { <platform::NotAStore/> }>
                     <Route path=StaticSegment("") view=Home ssr=SsrMode::Async/>
-                    <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
+                    // El editor se baja aparte (`cargo leptos build --split`): quien
+                    // compra en una tienda no carga su código.
+                    <Route path=path!("/editor") view={leptos_router::Lazy::<EditorRoute>::new()} ssr=SsrMode::Async/>
                     <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
                     <Route path=path!("/cuenta") view=account::AccountPage ssr=SsrMode::Async/>
                     <Route path=path!("/mis-fotos") view=photos::MyPhotosPage ssr=SsrMode::Async/>
@@ -208,6 +210,21 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
         <leptos_meta::Meta property="og:title" content=name/>
         <leptos_meta::Meta property="og:description" content=description/>
         {image.map(|i| view! { <leptos_meta::Meta property="og:image" content=i/> })}
+    }
+}
+
+/// `/editor` como ruta que se carga aparte.
+#[derive(Debug)]
+struct EditorRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for EditorRoute {
+    fn data() -> Self {
+        EditorRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <EditorPage/> }.into_any()
     }
 }
 

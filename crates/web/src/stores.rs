@@ -103,9 +103,37 @@ pub async fn create_store(name: String, slug: String) -> Result<NewStoreOutcome,
             suggestion: free_slug(&pool, &slug).await?,
         });
     }
+    warm_certificate(&slug).await;
     Ok(NewStoreOutcome::Created {
         open: pass_url(&pool, user.id, &slug).await?,
     })
+}
+
+/// En producción cada tienda tiene su propio certificado https, que Caddy
+/// pide la primera vez que alguien entra a la dirección. Eso tardaba unos
+/// 10 segundos con la pantalla quieta justo al crear la tienda: lo pedimos
+/// acá, mientras la persona ve "Creando tu tienda…". Si falla, no pasa nada:
+/// Caddy lo pide igual cuando el navegador llega.
+#[cfg(feature = "ssr")]
+async fn warm_certificate(slug: &str) {
+    let url = crate::email::store_url(slug);
+    if !url.starts_with("https://") {
+        return;
+    }
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(25))
+        .build()
+    else {
+        return;
+    };
+    let started = std::time::Instant::now();
+    match client.head(format!("{url}/favicon.ico")).send().await {
+        Ok(_) => leptos::logging::log!(
+            "Certificado de {url} listo en {} ms",
+            started.elapsed().as_millis()
+        ),
+        Err(e) => leptos::logging::log!("No se pudo preparar el certificado de {url}: {e}"),
+    }
 }
 
 /// ¿Está libre la dirección `slug`? Para avisar mientras se escribe.

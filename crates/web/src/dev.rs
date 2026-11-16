@@ -7,6 +7,18 @@ use domain::{Node, Product, Size, Widget, WIDGET_TYPES};
 use leptos::prelude::*;
 use widgets::{node_style, render_widget, RenderCtx};
 
+/// Datos de una tienda de ejemplo, para ver el contacto del pie y del
+/// bloque Contacto.
+fn provide_sample_store() {
+    provide_context(domain::StoreInfo {
+        name: "La Huerta".to_string(),
+        logo_url: String::new(),
+        whatsapp: "11 5555-1234".to_string(),
+        instagram: "lahuerta".to_string(),
+        email: "hola@lahuerta.com.ar".to_string(),
+    });
+}
+
 fn sample_products() -> Vec<Product> {
     let names = [
         "Auriculares inalámbricos",
@@ -43,6 +55,7 @@ pub fn DevWidgetsPage() -> impl IntoView {
     if !cfg!(debug_assertions) {
         return view! { "Página no encontrada." }.into_any();
     }
+    provide_sample_store();
     let products = sample_products();
     let first_id = products[0].id.clone();
     let ctx = RenderCtx {
@@ -118,6 +131,7 @@ pub fn DevDesignsPage() -> impl IntoView {
     if !cfg!(debug_assertions) {
         return view! { "Página no encontrada." }.into_any();
     }
+    provide_sample_store();
     let theme = leptos_router::hooks::use_query_map()
         .with_untracked(|q| q.get("theme"))
         .filter(|t| domain::THEMES.contains(&t.as_str()))

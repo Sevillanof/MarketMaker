@@ -96,6 +96,12 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "Envíos, pagos, cambios",
     ),
     ("Confianza", "Logos", "logos", "Marcas que vendés"),
+    (
+        "Contenido",
+        "Contact",
+        "contact",
+        "WhatsApp, Instagram, email y horario",
+    ),
     ("Pie", "Footer", "footer", "Datos y enlaces al final"),
 ];
 
