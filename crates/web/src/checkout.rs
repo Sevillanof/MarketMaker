@@ -142,7 +142,7 @@ async fn andreani_quote(
         ));
     }
     let origin = settings.origin.postal_code.clone();
-    let rates = match crate::andreani::rates(tenant, &acc.client_type, &origin, &cp, &items, bigger)
+    let rates = match crate::andreani::rates(pool, tenant, &acc.client_type, &origin, &cp, &items, bigger)
         .await
     {
         Ok(r) => r,
@@ -199,7 +199,7 @@ pub async fn find_branches(postal_code: String) -> Result<Vec<AndreaniBranch>, S
     if andreani_ready(&crate::server::pool()?, tenant.id).await?.is_none() {
         return Ok(Vec::new());
     }
-    crate::andreani::branches(tenant.id, &cp).await.map_err(|e| {
+    crate::andreani::branches(&crate::server::pool()?, tenant.id, &cp).await.map_err(|e| {
         leptos::logging::warn!("Andreani: sucursales de {cp}: {e}");
         ServerFnError::new("No pudimos traer las sucursales de Andreani. Probá de nuevo en un momento.")
     })
@@ -350,7 +350,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             error: String::new(),
         };
         if svc.needs_branch() {
-            let branches = crate::andreani::branches(tenant.id, &form.postal_code)
+            let branches = crate::andreani::branches(&pool, tenant.id, &form.postal_code)
                 .await
                 .unwrap_or_default();
             let Some(b) = branches.into_iter().find(|b| b.code == form.branch) else {
