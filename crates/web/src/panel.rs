@@ -16,6 +16,8 @@ pub enum Section {
     Delivery,
     Payments,
     Photos,
+    /// Mi cuenta: no está en el menú, se abre desde tu nombre.
+    Account,
 }
 
 /// Quién entró y sus tiendas, para el menú. `None` si no entró.
@@ -147,6 +149,16 @@ fn StoreMark(name: String, slug: String, #[prop(optional)] small: bool) -> impl 
     }
 }
 
+/// La inicial de la persona en un círculo naranja.
+#[component]
+pub fn Avatar(letter: String, #[prop(into)] size: String) -> impl IntoView {
+    view! {
+        <span aria-hidden="true" class=format!(
+            "grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] font-bold text-white {size}"
+        )>{letter}</span>
+    }
+}
+
 /// Las páginas de una tienda en la plataforma: menú al costado y contenido.
 #[component]
 pub fn StoreShell(slug: String, section: Section, children: Children) -> impl IntoView {
@@ -239,6 +251,7 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                         // Recarga la página: cada tienda trae sus propios datos.
                         let href = match section {
                             Section::Photos => format!("/mis-fotos?tienda={}", s.slug),
+                            Section::Account => format!("/cuenta?tienda={}", s.slug),
                             _ => format!("/tienda/{}", s.slug),
                         };
                         view! {
@@ -263,6 +276,19 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
     let to_prepare = current.as_ref().map_or(0, |c| c.to_prepare);
     let base = format!("/tienda/{s}");
     let design_slug = s.clone();
+    let initial = nav
+        .name
+        .chars()
+        .next()
+        .or(nav.email.chars().next())
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
+    let shown_name = if nav.name.is_empty() {
+        "Mi cuenta".to_string()
+    } else {
+        nav.name.clone()
+    };
     view! {
         {switcher}
         {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-xs">{e}</div> })}
@@ -285,21 +311,33 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                 {item(Section::Photos, format!("/mis-fotos?tienda={s}"), "photo", "Mis fotos", 0)}
             </ul>
         </nav>
-        <div class="flex items-center gap-2 border-t border-base-300 pt-3">
-            <a href="/cuenta" class="flex min-w-0 grow items-center gap-2 rounded-lg p-1 hover:bg-base-200" title="Mi cuenta">
-                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] text-sm font-bold text-white" aria-hidden="true">
-                    {nav.name.chars().next().or(nav.email.chars().next()).unwrap_or('?').to_uppercase().to_string()}
-                </span>
-                <span class="flex min-w-0 flex-col leading-tight">
-                    <span class="truncate text-sm font-semibold">{if nav.name.is_empty() { "Mi cuenta".to_string() } else { nav.name.clone() }}</span>
+        <details class="dropdown dropdown-top w-full border-t border-base-300 pt-3">
+            <summary class=if section == Section::Account { "flex cursor-pointer list-none items-center gap-2 rounded-lg bg-base-200 p-1.5" } else { "flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 hover:bg-base-200" }
+                aria-label="Tu cuenta">
+                <Avatar letter=initial.clone() size="size-8 text-sm"/>
+                <span class="flex min-w-0 grow flex-col leading-tight">
+                    <span class="truncate text-sm font-semibold">{shown_name.clone()}</span>
                     <span class="truncate text-xs text-base-content/60">{nav.email.clone()}</span>
                 </span>
-            </a>
-            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Salir" title="Salir"
-                on:click=move |_| { out.dispatch(()); }>
-                <ui::Icon class="size-[18px]" name="log-out"/>
-            </button>
-        </div>
+            </summary>
+            <div class="dropdown-content z-30 mb-2 w-64 rounded-2xl border border-base-300 bg-base-100 p-1.5 shadow-xl">
+                <div class="mb-1 flex items-center gap-3 border-b border-base-300 px-2.5 pt-2.5 pb-3">
+                    <Avatar letter=initial size="size-10 text-base"/>
+                    <div class="min-w-0">
+                        <div class="truncate font-bold">{shown_name}</div>
+                        <div class="truncate text-xs text-base-content/60">{nav.email.clone()}</div>
+                    </div>
+                </div>
+                <ul class="menu w-full p-0">
+                    <li><a href=format!("/cuenta?tienda={s}") class=if section == Section::Account { "bg-base-200" } else { "" }>
+                        <ui::Icon class="size-[18px] text-base-content/60" name="user"/>"Mi cuenta"
+                    </a></li>
+                    <li class="mt-1 border-t border-base-300 pt-1"><button type="button" on:click=move |_| { out.dispatch(()); }>
+                        <ui::Icon class="size-[18px] text-base-content/60" name="log-out"/>"Salir"
+                    </button></li>
+                </ul>
+            </div>
+        </details>
         <dialog node_ref=dialog class="modal" aria-labelledby="crear-tienda-titulo">
             <div class="modal-box max-w-lg">
                 <crate::platform::NewStore first=false on_cancel=close_dialog/>

@@ -429,13 +429,19 @@ pub async fn load_account() -> Result<Option<AccountInfo>, ServerFnError> {
     let Some(user) = current_user().await? else {
         return Ok(None);
     };
-    let account = db::auth::account_by_id(&crate::server::pool()?, user.id)
+    let pool = crate::server::pool()?;
+    let account = db::auth::account_by_id(&pool, user.id)
         .await
         .map_err(crate::server::internal)?;
+    let stores = db::auth::stores_for_user(&pool, user.id)
+        .await
+        .map_err(crate::server::internal)?
+        .len() as u32;
     Ok(account.map(|a| AccountInfo {
         email: a.email,
         name: a.name,
         has_password: a.password_hash.is_some(),
+        stores,
     }))
 }
 
