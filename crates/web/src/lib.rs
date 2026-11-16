@@ -3,7 +3,7 @@
 use domain::PageDoc;
 use editor::{Editor, PublishAction, SaveAction};
 use leptos::prelude::*;
-use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
+use leptos_meta::{provide_meta_context, MetaTags, Title};
 use leptos_router::{
     components::{Redirect, Route, Router, Routes},
     hooks::use_location,
@@ -50,6 +50,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <AutoReload options=options.clone()/>
+                <leptos_meta::HashedStylesheet options=options.clone() id="leptos"/>
                 <HydrationScripts options/>
                 <MetaTags/>
             </head>
@@ -66,14 +67,15 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Stylesheet id="leptos" href="/pkg/marketplace.css"/>
         <Title text="Marketplace"/>
 
         <Router>
             <main>
                 <Routes fallback=|| view! { <platform::NotAStore/> }>
                     <Route path=StaticSegment("") view=Home ssr=SsrMode::Async/>
-                    <Route path=path!("/editor") view=EditorPage ssr=SsrMode::Async/>
+                    // El editor se baja aparte (`cargo leptos build --split`): quien
+                    // compra en una tienda no carga su código.
+                    <Route path=path!("/editor") view={leptos_router::Lazy::<EditorRoute>::new()} ssr=SsrMode::Async/>
                     <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
                     <Route path=path!("/cuenta") view=account::AccountPage ssr=SsrMode::Async/>
                     <Route path=path!("/mis-fotos") view=photos::MyPhotosPage ssr=SsrMode::Async/>
@@ -209,6 +211,21 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
     }
 }
 
+/// `/editor` como ruta que se carga aparte.
+#[derive(Debug)]
+struct EditorRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for EditorRoute {
+    fn data() -> Self {
+        EditorRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <EditorPage/> }.into_any()
+    }
+}
+
 /// Editor en `/editor`: arranca desde el borrador (lo último guardado) de `home`.
 #[component]
 fn EditorPage() -> impl IntoView {
@@ -229,8 +246,15 @@ fn EditorPage() -> impl IntoView {
         // En la plataforma no hay editor: cada tienda tiene el suyo.
         return view! { <Redirect path="/"/> }.into_any();
     }
+    let panel = match site::current_site() {
+        domain::Site::Store(slug) => format!("{}/tienda/{slug}", site::platform_url()),
+        domain::Site::Platform => "/".into(),
+    };
     view! {
-        <Title text="Editor · Marketplace"/>
+        <Title text="Editor · MarketMaker"/>
+        // El editor es solo para computadora; en el celular, un aviso.
+        <EditorOnDesktop panel/>
+        <div class="max-lg:hidden">
         <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
             {move || Suspend::new(async move {
                 // Sin cuenta, a Entrar; con una cuenta que no es dueña, un aviso.
@@ -251,8 +275,27 @@ fn EditorPage() -> impl IntoView {
                 }
             })}
         </Suspense>
+        </div>
     }
     .into_any()
+}
+
+/// En pantallas chicas: el diseño se edita en una computadora; Productos y
+/// Pedidos sí se pueden usar desde el celular.
+#[component]
+fn EditorOnDesktop(panel: String) -> impl IntoView {
+    view! {
+        <div data-theme="light" class="min-h-screen bg-base-200 px-4 py-12 text-base-content lg:hidden">
+            <div class="card mx-auto max-w-md bg-base-100 shadow-sm"><div class="card-body gap-3">
+                <h1 class="card-title text-2xl">"Para diseñar tu tienda, usá una computadora"</h1>
+                <p class="text-base-content/75">"El editor necesita una pantalla grande. Desde el celular podés cargar productos y atender tus pedidos."</p>
+                <div class="flex flex-wrap gap-2">
+                    <a class="btn btn-primary" href=format!("{panel}/pedidos")>"Ver pedidos"</a>
+                    <a class="btn" href=format!("{panel}/productos")>"Ver productos"</a>
+                </div>
+            </div></div>
+        </div>
+    }
 }
 
 /// `/editor` con una cuenta que no es dueña de esta tienda.

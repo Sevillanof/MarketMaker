@@ -49,7 +49,18 @@ async fn main() {
 
     let conf = get_configuration(None).unwrap();
     let addr = conf.leptos_options.site_addr;
-    let leptos_options = conf.leptos_options;
+    let mut leptos_options = conf.leptos_options;
+    // Con `hash-files` (Cargo.toml) cargo-leptos deja `hash.txt` junto al
+    // servidor y los archivos de `/pkg` llevan la versión en el nombre: el
+    // navegador los guarda un año y la segunda visita no los vuelve a bajar.
+    let hashed = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join(leptos_options.hash_file.as_ref())))
+        .is_some_and(|p| p.exists());
+    leptos_options.hash_files = hashed;
+    if !hashed {
+        log!("Sin hash.txt junto al servidor: /pkg se sirve sin guardar en el navegador.");
+    }
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
     let site_root = leptos_options.site_root.to_string();
@@ -100,12 +111,26 @@ async fn main() {
             }
         }),
     );
-    for dir in ["pkg", "fonts", "img"] {
+    for dir in ["fonts", "img"] {
         app = app.nest_service(
             &format!("/{dir}"),
             ServeDir::new(format!("{site_root}/{dir}")),
         );
     }
+    let pkg_cache = if hashed {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    app = app.nest_service(
+        "/pkg",
+        tower::ServiceBuilder::new()
+            .layer(SetResponseHeaderLayer::overriding(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static(pkg_cache),
+            ))
+            .service(ServeDir::new(format!("{site_root}/pkg"))),
+    );
     let app = app
         .route_service(
             "/favicon.ico",
@@ -130,9 +155,9 @@ async fn main() {
         )
         .fallback(leptos_axum::file_and_error_handler(shell))
         .layer(axum::middleware::from_fn(same_site_posts))
-        // El JS, WASM y CSS de `/pkg` tienen siempre el mismo nombre: con
-        // `no-cache` el navegador pregunta antes de reusarlos y nunca mezcla
-        // una versión vieja con el HTML nuevo (pasaba después de un `git pull`).
+        // Las páginas (y `/pkg` sin versión en el nombre) van con `no-cache`:
+        // el navegador pregunta antes de reusarlas y nunca mezcla una versión
+        // vieja con el HTML nuevo (pasaba después de un `git pull`).
         .layer(SetResponseHeaderLayer::if_not_present(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache"),

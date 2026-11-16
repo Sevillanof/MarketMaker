@@ -86,7 +86,7 @@ fn EmptyInspector() -> impl IntoView {
     let shortcuts: &[(&str, &str)] = &[
         ("Ctrl/⌘ + Z", "Deshacer"),
         ("Ctrl/⌘ + Mayús + Z", "Rehacer"),
-        ("Ctrl/⌘ + S", "Publicar"),
+        ("Ctrl/⌘ + S", "Guardar ahora"),
         ("Tab", "Ir de un bloque a otro"),
         ("Enter", "Editar el bloque enfocado"),
         ("Flechas", "Mover el bloque"),
@@ -96,7 +96,7 @@ fn EmptyInspector() -> impl IntoView {
     ];
     view! {
         <div class="flex flex-col gap-4">
-            <h2 id="mk-inspector-title" tabindex="-1" class="text-lg font-bold">"Ningún bloque elegido"</h2>
+            <h2 id="mk-inspector-title" tabindex="-1" class="text-lg font-bold">"Elegí un bloque para cambiarlo"</h2>
             {move || if state.in_modal() {
                 view! {
                     <p class="text-sm">"Estás en la ficha del producto. Hacé clic en uno de sus bloques para cambiarlo aquí, o sumá bloques desde la izquierda."</p>
@@ -104,18 +104,19 @@ fn EmptyInspector() -> impl IntoView {
                 }.into_any()
             } else {
                 view! {
-                    <p class="text-sm">"Hacé clic en un bloque del lienzo para cambiar sus textos, imágenes y tamaño aquí."</p>
+                    <p class="text-sm">"Hacé clic en un bloque de tu tienda y acá aparecen sus textos, imágenes y colores."</p>
                 }.into_any()
             }}
-            <div>
-                <h3 class="mb-2 text-sm font-semibold">"Atajos de teclado"</h3>
-                <dl class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-sm">
+            <p class="rounded-box bg-base-200 p-3 text-sm">"Consejo: arrastrá un bloque para moverlo, y tirá de su borde para cambiar su tamaño."</p>
+            <details class="text-sm">
+                <summary class="cursor-pointer font-semibold">"⌨ Atajos de teclado"</summary>
+                <dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
                     {shortcuts.iter().map(|(k, d)| view! {
                         <dt><kbd class="kbd kbd-sm">{*k}</kbd></dt>
                         <dd>{*d}</dd>
                     }).collect_view()}
                 </dl>
-            </div>
+            </details>
         </div>
     }
 }

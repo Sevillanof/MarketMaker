@@ -96,9 +96,6 @@ pub(crate) fn PageSwitcher() -> impl IntoView {
                         .collect_view()}
                 </select>
             </label>
-            <code class="px-1.5 text-xs text-base-content/75" title="Dirección de la página en tu tienda">
-                {move || state.doc.with(|d| d.page_path(state.page.get()).to_string())}
-            </code>
             <NewPageMenu/>
             {move || (state.page.get() > 0).then(|| view! {
                 <button

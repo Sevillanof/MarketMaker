@@ -200,19 +200,44 @@ pub fn StoreShell(slug: String, section: Section, children: Children) -> impl In
     let nav = Resource::new(|| (), |_| load_panel_nav());
     let slug = StoredValue::new(slug);
     view! {
-        <div data-theme="light" class="flex min-h-screen bg-base-200 text-base-content">
-            <aside class="sticky top-0 flex h-screen w-64 shrink-0 flex-col gap-3 border-r border-base-300 bg-base-100 p-3">
-                <a href="/" class="px-2 pt-1 text-lg font-bold">"MarketMaker"</a>
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-12 w-full"/> }>
-                    {move || Suspend::new(async move {
-                        match nav.await {
-                            Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_value() section/> }.into_any(),
-                            _ => ().into_any(),
-                        }
-                    })}
-                </Suspense>
-            </aside>
-            <div class="min-w-0 flex-1">{children()}</div>
+        // En pantallas chicas el menú se esconde y se abre con el botón de
+        // arriba (cajón de daisyUI: funciona aunque la página no cargó el JS).
+        <div data-theme="light" class="drawer min-h-screen bg-base-200 text-base-content lg:drawer-open">
+            <input id="mk-panel-nav" type="checkbox" class="drawer-toggle" aria-hidden="true" tabindex="-1"/>
+            <div class="drawer-content min-w-0">
+                <header class="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-base-300 bg-base-100 px-2 lg:hidden">
+                    <label for="mk-panel-nav" role="button" tabindex="0" class="btn btn-ghost btn-square" aria-label="Abrir el menú"
+                        on:keydown=|ev| {
+                            if ev.key() == "Enter" || ev.key() == " " {
+                                ev.prevent_default();
+                                if let Some(el) = document().get_element_by_id("mk-panel-nav") {
+                                    use leptos::wasm_bindgen::JsCast;
+                                    if let Ok(input) = el.dyn_into::<leptos::web_sys::HtmlInputElement>() {
+                                        input.set_checked(!input.checked());
+                                    }
+                                }
+                            }
+                        }>
+                        <ui::Icon class="size-6" name="menu"/>
+                    </label>
+                    <a href="/" class="text-lg font-bold">"MarketMaker"</a>
+                </header>
+                {children()}
+            </div>
+            <div class="drawer-side z-30">
+                <label for="mk-panel-nav" aria-label="Cerrar el menú" class="drawer-overlay"></label>
+                <aside class="sticky top-0 flex h-screen w-64 shrink-0 flex-col gap-3 border-r border-base-300 bg-base-100 p-3">
+                    <a href="/" class="px-2 pt-1 text-lg font-bold">"MarketMaker"</a>
+                    <Suspense fallback=|| view! { <ui::Skeleton class="h-12 w-full"/> }>
+                        {move || Suspend::new(async move {
+                            match nav.await {
+                                Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_value() section/> }.into_any(),
+                                _ => ().into_any(),
+                            }
+                        })}
+                    </Suspense>
+                </aside>
+            </div>
         </div>
     }
 }
@@ -334,16 +359,16 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                     <button type="button" disabled=move || open.pending().get()
                         on:click=move |_| { open.dispatch(design_slug.clone()); }>
                         <ui::Icon class="size-[18px]" name="pencil"/>"Diseño"
-                        <span class="ml-auto text-xs text-base-content/50">"Abre el editor"</span>
+                        <span class="ml-auto text-xs text-base-content/70">"Abre el editor"</span>
                     </button>
                 </li>
                 {item(Section::Products, format!("{base}/productos"), "box", "Productos", 0)}
                 {item(Section::Orders, format!("{base}/pedidos"), "bag", "Pedidos", to_prepare)}
-                <li class="menu-title mt-3">"Cómo vendés"</li>
+                <li class="menu-title mt-3 text-base-content/75">"Cómo vendés"</li>
                 {item(Section::Delivery, format!("{base}/ventas"), "truck", "Entregas", 0)}
                 {item(Section::Payments, format!("{base}/cobros"), "card", "Cobros", 0)}
                 {item(Section::StoreInfo, format!("{base}/datos"), "store", "Datos de la tienda", 0)}
-                <li class="menu-title mt-3">"Tu cuenta"</li>
+                <li class="menu-title mt-3 text-base-content/75">"Tu cuenta"</li>
                 {item(Section::Photos, format!("/mis-fotos?tienda={s}"), "photo", "Mis fotos", 0)}
             </ul>
         </nav>

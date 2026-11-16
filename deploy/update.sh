@@ -15,8 +15,10 @@ fi
 rustup target add wasm32-unknown-unknown
 command -v cargo-leptos >/dev/null || cargo install --locked cargo-leptos
 
-cargo leptos build --release
+cargo leptos build --release --split
 install -m 755 target/release/server "$OUT/server.new" && mv "$OUT/server.new" "$OUT/server"
+# Las versiones de los archivos de /pkg (ver hash-files en Cargo.toml).
+if [ -f target/release/hash.txt ]; then install -m 644 target/release/hash.txt "$OUT/hash.txt"; else rm -f "$OUT/hash.txt"; fi
 rm -rf "$OUT/site.new" && cp -r target/site "$OUT/site.new" && rm -rf "$OUT/site" && mv "$OUT/site.new" "$OUT/site"
 sudo systemctl restart marketmaker
 # Los logos SVG con texto necesitan alguna fuente instalada.

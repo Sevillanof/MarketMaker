@@ -58,6 +58,10 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 # this name is used for the wasm, js and css file names
 name = "marketplace"
 
+# Archivos de /pkg con la versión en el nombre (hash.txt junto al servidor):
+# el servidor los manda con cache-control immutable.
+hash-files = true
+
 # the package in the workspace that contains the server binary (binary crate)
 bin-package = "server"
 

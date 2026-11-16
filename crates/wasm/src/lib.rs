@@ -6,5 +6,6 @@ pub fn hydrate() {
     _ = console_log::init_with_level(log::Level::Debug);
     console_error_panic_hook::set_once();
 
-    leptos::mount::hydrate_body(App);
+    // `hydrate_lazy`: el editor (`/editor`) se baja aparte, ver `EditorRoute`.
+    leptos::mount::hydrate_lazy(App);
 }
