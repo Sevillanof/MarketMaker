@@ -1498,3 +1498,53 @@ dialog.mk-cart::backdrop {
     animation: mk-flash-b 0.7s ease-in-out;
   }
 }
+
+/* ── Celular del comprador ───────────────────────────────────────────────
+   Probado en un Android de 360 px y un iPhone (reporte celular-comprador). */
+
+/* El iPhone agranda la pantalla al tocar un campo con letra menor a 16 px. */
+@media (max-width: 767px) {
+  .input,
+  .select,
+  .textarea,
+  label.input > input {
+    font-size: max(1rem, 1em);
+  }
+}
+
+/* Con el dedo: botones de 40 px como mínimo (daisyUI los hace de 32 px o
+   menos). El de "Agregar al carrito" de las tarjetas puede partir el texto
+   en dos líneas sin salirse del botón. */
+@media (pointer: coarse) {
+  .btn-sm,
+  .btn-xs {
+    --size: 2.5rem;
+  }
+  .mk-cart-add:not(.mk-qty) {
+    height: auto;
+    min-height: var(--size);
+    padding-block: 0.375rem;
+    line-height: 1.2;
+  }
+  .mk-legal a {
+    display: inline-block;
+    padding-block: 0.75rem;
+  }
+}
+
+/* Ficha del producto en el celular: la fila de cantidad y "Agregar al
+   carrito" queda pegada abajo de la ventana, siempre a la vista, aunque
+   la foto y la descripción obliguen a desplazar. */
+@media (max-width: 767px) {
+  .mk-dialog-box .mk-node:has(.mk-pbtn) {
+    position: sticky;
+    bottom: -1rem;
+    z-index: 5;
+    margin-bottom: -1rem;
+    padding: 0.75rem 0 1rem;
+    background: var(--color-base-100);
+    box-shadow: 0 -8px 16px -8px rgb(0 0 0 / 0.12);
+    height: auto;
+    min-height: calc(var(--h) * 8px - 16px);
+  }
+}

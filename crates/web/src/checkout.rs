@@ -943,7 +943,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                             <Step n=2 title="Entrega" step done_line=Signal::derive(delivery_line)>
                                 {has_andreani.then(|| view! {
                                     <div class="mb-2 sm:max-w-xs">
-                                        <TextField id="postal_code" label="Código postal" value=f.postal errors autocomplete="postal-code" placeholder="1425" max=10/>
+                                        <TextField id="postal_code" label="Código postal" value=f.postal errors autocomplete="postal-code" inputmode="numeric" placeholder="1425" max=10/>
                                         <p role="status" class="-mt-1 text-sm"
                                             class:opacity-70=move || f.quote.with(|q| q.as_ref().is_none_or(|q| q.problem.is_none()))>
                                             {move || if quoting.pending().get() {

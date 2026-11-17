@@ -364,7 +364,7 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
         <div class=root_class>
             {has_image.then(|| view! {
                 <div class="mk-banner-img absolute inset-0">
-                    <Image src=props.image_url.clone() alt=props.title.clone()/>
+                    <Image src=props.image_url.clone() alt=props.title.clone() eager=true/>
                 </div>
                 <div class="mk-banner-ov hero-overlay absolute inset-0"></div>
             })}
