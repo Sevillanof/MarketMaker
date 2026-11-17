@@ -38,7 +38,9 @@ jobs:
           tool: cargo-leptos
 
       - name: Compilar
-        run: cargo leptos build --release --split
+        run: |
+          cargo leptos build --release --split
+          deploy/hash-js.sh target/release/hash.txt target/site/pkg
 
       - name: Armar el paquete
         run: |
