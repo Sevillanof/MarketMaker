@@ -5,7 +5,9 @@
 //! queda, y el cambio se ve al instante en el lienzo. Sin textos de ayuda ni
 //! resúmenes; las opciones nuevas se suman como una sección más.
 
-use domain::{font_css, Side, StoreLayout, FONT_PAIRS, MAX_PAD, PAD_STEP, STORE_SIZES};
+use domain::{
+    font_css, Side, StoreLayout, FONT_PAIRS, GRID_COLS, MAX_PAD, PAD_STEP, ROW_PX, STORE_SIZES,
+};
 use leptos::prelude::*;
 
 use crate::icons::Icon;
@@ -224,7 +226,38 @@ pub(crate) fn Margins() -> impl IntoView {
                             pct(l.pad_left, w),
                         )
                     }
-                ></div>
+                >
+                    <div class="mk-cross-in">
+                        {move || {
+                            // Ancho real del contenido, para que alto y ancho
+                            // de cada bloque guarden la proporción verdadera.
+                            let (w, _) = screen.get();
+                            let l = layout.get();
+                            let avail = (w - f64::from(l.pad_left) - f64::from(l.pad_right)).max(1.0);
+                            let content = if l.is_full() { avail } else { f64::from(l.max_width).min(avail) };
+                            let cols = f64::from(GRID_COLS);
+                            state
+                                .nodes()
+                                .into_iter()
+                                .map(|n| {
+                                    let px = |rows: f64| rows * f64::from(ROW_PX) / content * 100.0;
+                                    view! {
+                                        <i
+                                            class="mk-cross-bk"
+                                            style=format!(
+                                                "left:{:.2}%; width:{:.2}%; top:{:.2}cqw; height:{:.2}cqw",
+                                                f64::from(n.pos.x) / cols * 100.0,
+                                                f64::from(n.size.w) / cols * 100.0,
+                                                px(f64::from(n.pos.y)),
+                                                px(f64::from(n.size.h)),
+                                            )
+                                        ></i>
+                                    }
+                                })
+                                .collect_view()
+                        }}
+                    </div>
+                </div>
                 <div class="mk-cross-r">{field(Side::Right)}</div>
                 <div class="mk-cross-b">{field(Side::Bottom)}</div>
             </div>

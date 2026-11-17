@@ -1389,12 +1389,21 @@ dialog.mk-cart::backdrop {
   background: var(--color-base-100);
   overflow: hidden;
 }
-.mk-cross-pg::before {
-  content: "";
+.mk-cross-in {
   position: absolute;
   inset: var(--t) var(--r) var(--b) var(--l);
+  overflow: hidden;
+  container-type: inline-size;
   border-radius: 2px;
-  background: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  background: color-mix(in oklab, var(--color-primary) 14%, transparent);
+}
+/* Esqueleto de un bloque de la página: sus posiciones reales, a escala. */
+.mk-cross-bk {
+  position: absolute;
+  display: block;
+  border-radius: 1.5px;
+  background: color-mix(in oklab, var(--color-primary) 38%, transparent);
+  outline: 0.5px solid var(--color-base-100);
 }
 .mk-step {
   display: flex;
