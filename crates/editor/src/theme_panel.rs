@@ -81,12 +81,12 @@ fn Name() -> impl IntoView {
     let css_open = RwSignal::new(false);
     view! {
         <div class="mt-3 flex items-center gap-2">
-            <label for="mk-theme-name" class="text-xs font-semibold text-base-content/70">"Nombre"</label>
+            <label for="mk-theme-name" class="text-xs font-semibold text-base-content/70">"Nombre del estilo"</label>
             <input
                 id="mk-theme-name"
                 type="text"
                 maxlength="40"
-                placeholder="Mi tema"
+                placeholder="Nombre de tu estilo"
                 class="min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-sm font-semibold hover:border-base-content/30 focus:border-primary focus:outline-none"
                 prop:value=move || state.doc.with(|d| d.style.name.clone())
                 on:input=move |ev| {
@@ -110,14 +110,14 @@ fn Name() -> impl IntoView {
                         d.style.set_color("accent", Some(&hsl_hex(b, 0.65, 0.55)));
                     });
                 }
-            >"Al azar"</button>
+            >"Colores al azar"</button>
             <button
                 type="button"
                 class="btn btn-sm btn-neutral font-semibold"
                 aria-expanded=move || css_open.get().to_string()
                 aria-controls="mk-theme-css"
                 on:click=move |_| css_open.update(|o| *o = !*o)
-            >"{ } CSS"</button>
+            >"CSS propio"</button>
         </div>
         <pre
             id="mk-theme-css"
@@ -199,11 +199,11 @@ fn Swatch(
 fn Colors() -> impl IntoView {
     // Cada color con su texto: (clave, texto sobre él, nombre).
     const PAIRS: [(&str, &str, &str); 8] = [
-        ("primary", "primary-content", "principal"),
-        ("secondary", "secondary-content", "secundario"),
-        ("accent", "accent-content", "acento"),
-        ("neutral", "neutral-content", "neutro"),
-        ("info", "info-content", "info"),
+        ("primary", "primary-content", "marca"),
+        ("secondary", "secondary-content", "segundo color"),
+        ("accent", "accent-content", "destacado"),
+        ("neutral", "neutral-content", "gris oscuro"),
+        ("info", "info-content", "información"),
         ("success", "success-content", "éxito"),
         ("warning", "warning-content", "aviso"),
         ("error", "error-content", "error"),
@@ -211,12 +211,12 @@ fn Colors() -> impl IntoView {
     view! {
         <Section title="Colores" id="mk-th-colors">
             <div class="mk-swatch-strip">
-                <Swatch pick="base-100" bg="base-100" fg="base-content" text="100" label="Fondo".to_string()/>
-                <Swatch pick="base-200" bg="base-200" fg="base-content" text="200" label="Fondo 2".to_string()/>
-                <Swatch pick="base-300" bg="base-300" fg="base-content" text="300" label="Fondo 3".to_string()/>
+                <Swatch pick="base-100" bg="base-100" fg="base-content" text="1" label="Fondo".to_string()/>
+                <Swatch pick="base-200" bg="base-200" fg="base-content" text="2" label="Fondo 2".to_string()/>
+                <Swatch pick="base-300" bg="base-300" fg="base-content" text="3" label="Fondo 3".to_string()/>
                 <Swatch pick="base-content" bg="base-content" fg="base-100" text="A" label="Texto".to_string()/>
             </div>
-            <p class="mt-0.5 text-[10px] text-base-content/60">"base: fondos y texto"</p>
+            <p class="mt-0.5 text-[10px] text-base-content/60">"fondos (1, 2, 3) y texto"</p>
             <div class="mt-2 grid grid-cols-4 gap-x-2 gap-y-2" role="group" aria-labelledby="mk-th-colors">
                 {PAIRS.iter().map(|(key, content, name)| view! {
                     <div class="min-w-0">
@@ -345,9 +345,9 @@ fn RadiusRow(which: Corner, title: &'static str, hint: &'static str) -> impl Int
 fn Corners() -> impl IntoView {
     view! {
         <Section title="Esquinas" id="mk-th-corners">
-            <RadiusRow which=Corner::Box title="Cajas" hint="tarjeta, ventana, aviso"/>
-            <RadiusRow which=Corner::Field title="Campos" hint="botón, campo, pestaña"/>
-            <RadiusRow which=Corner::Selector title="Selectores" hint="casilla, interruptor, etiqueta"/>
+            <RadiusRow which=Corner::Box title="Tarjetas" hint="tarjetas, ventanas, avisos"/>
+            <RadiusRow which=Corner::Field title="Botones y campos" hint="botones, campos, pestañas"/>
+            <RadiusRow which=Corner::Selector title="Casillas e interruptores" hint="casillas, interruptores, etiquetas"/>
             <Margins/>
         </Section>
     }
@@ -475,8 +475,8 @@ fn Sizes() -> impl IntoView {
     view! {
         <Section title="Tamaños" id="mk-th-sizes">
             <SizeCard
-                title="Campos"
-                hint="botón, campo, pestaña"
+                title="Botones y campos"
+                hint="botones, campos, pestañas"
                 bars=[10, 16, 22, 28, 34]
                 value=Signal::derive(move || state.doc.with(|d| d.style.size_field.unwrap_or_else(|| theme_base(&d.theme).size_field)))
                 on_change=Callback::new(move |v| {
@@ -485,7 +485,7 @@ fn Sizes() -> impl IntoView {
                 })
             />
             <SizeCard
-                title="Selectores"
+                title="Casillas e interruptores"
                 hint="casilla, interruptor, etiqueta"
                 bars=[8, 12, 16, 20, 26]
                 value=Signal::derive(move || state.doc.with(|d| d.style.size_selector.unwrap_or_else(|| theme_base(&d.theme).size_selector)))

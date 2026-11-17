@@ -270,6 +270,9 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
     let problems = RwSignal::new(Vec::<FieldError>::new());
     let failure = RwSignal::new(None::<String>);
     let saved = RwSignal::new(false);
+    // Guardado automático: true mientras el guardado lo disparó un cambio y no el botón/Enter.
+    let auto = RwSignal::new(false);
+    let tick = RwSignal::new(0u32);
     let slug = StoredValue::new(slug);
 
     let save =
@@ -279,7 +282,10 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             saved.set(e.is_empty());
             failure.set(None);
             if let Some(f) = e.first() {
-                focus_id(if f.field == "type" { "d-pickup".to_string() } else { format!("d-{}", f.field) });
+                // Al escribir, el error se muestra bajo el campo sin sacarle el foco.
+                if !auto.get_untracked() {
+                    focus_id(if f.field == "type" { "d-pickup".to_string() } else { format!("d-{}", f.field) });
+                }
             }
             problems.set(e);
         }
@@ -300,7 +306,9 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                         field: "cost".into(),
                         message: "Escribí el costo como 3500 o 3.500,50, o dejalo vacío para coordinarlo.".into(),
                     }];
-                    focus_id("d-cost".to_string());
+                    if !auto.get_untracked() {
+                        focus_id("d-cost".to_string());
+                    }
                     problems.set(e);
                     return;
                 }
@@ -328,9 +336,24 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             }
         }
     };
-    let dirty = move || {
+    // Cada cambio se guarda solo: los interruptores al instante y lo que se escribe
+    // cuando se deja de tipear un momento (igual que Cobros).
+    let schedule = move |ms: u64| {
         saved.set(false);
+        tick.update(|t| *t = t.wrapping_add(1));
+        let n = tick.get_untracked();
+        set_timeout(
+            move || {
+                if tick.get_untracked() == n {
+                    auto.set(true);
+                    submit();
+                }
+            },
+            std::time::Duration::from_millis(ms),
+        );
     };
+    let dirty = move || schedule(800);
+    let toggled = move || schedule(0);
     let problem = move |field: &'static str| error_for(problems, field);
 
     view! {
@@ -340,7 +363,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                 <p class="text-sm text-base-content/70">"Lo que elijas acá aparece en \"Finalizar compra\" de tu tienda."</p>
             </div>
         </div>
-        <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(); }>
+        <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); auto.set(false); submit(); }>
             <div class="card-body gap-4">
                 {move || problem("type").map(|m| view! { <p id="d-type-error" role="status" class="text-sm text-error">{m}</p> })}
 
@@ -348,7 +371,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                     <label class="flex cursor-pointer items-center gap-3">
                         <input type="checkbox" class="toggle toggle-primary" id="d-pickup"
                             prop:checked=move || pickup.get()
-                            on:change=move |ev| { pickup.set(event_target_checked(&ev)); dirty(); }/>
+                            on:change=move |ev| { pickup.set(event_target_checked(&ev)); toggled(); }/>
                         <span><span class="block font-semibold">"Retiro en el local"</span>
                         <span class="block text-sm text-base-content/70">"El comprador pasa a buscar su pedido, sin costo."</span></span>
                     </label>
@@ -376,7 +399,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                     <label class="flex cursor-pointer items-center gap-3">
                         <input type="checkbox" class="toggle toggle-primary" id="d-shipping"
                             prop:checked=move || shipping.get()
-                            on:change=move |ev| { shipping.set(event_target_checked(&ev)); dirty(); }/>
+                            on:change=move |ev| { shipping.set(event_target_checked(&ev)); toggled(); }/>
                         <span><span class="block font-semibold">"Envío a domicilio"</span>
                         <span class="block text-sm text-base-content/70">"El comprador escribe su dirección al comprar."</span></span>
                     </label>
@@ -404,11 +427,11 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                     })}
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <button type="submit" class="btn btn-primary" disabled=move || save.pending().get()>
-                        {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
-                    </button>
-                    <span role="status" class="text-sm text-success">{move || saved.get().then_some("✓ Guardado")}</span>
+                <div class="flex min-h-6 items-center gap-3">
+                    <span role="status" class="text-sm text-base-content/60">
+                        {move || if save.pending().get() { Some("Guardando…") } else { None }}
+                    </span>
+                    <span role="status" class="text-sm text-success">{move || (saved.get() && !save.pending().get()).then_some("✓ Guardado")}</span>
                     {move || failure.get().map(|m| view! { <span role="alert" class="text-sm text-error">{m}</span> })}
                 </div>
             </div>
