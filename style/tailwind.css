@@ -1512,13 +1512,20 @@ dialog.mk-cart::backdrop {
   }
 }
 
-/* Con el dedo: botones de 40 px como mínimo (daisyUI los hace de 32 px o
+/* Con el dedo: botones de 44 px como mínimo (daisyUI los hace de 32 px o
    menos). El de "Agregar al carrito" de las tarjetas puede partir el texto
    en dos líneas sin salirse del botón. */
 @media (pointer: coarse) {
   .btn-sm,
   .btn-xs {
-    --size: 2.5rem;
+    --size: 2.75rem;
+  }
+  /* El selector de cantidad de la tarjeta reparte el ancho: 3 botones de
+     44 px no entran en una tarjeta de 360 px de pantalla. */
+  .mk-qty .btn-square {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 0;
   }
   .mk-cart-add:not(.mk-qty) {
     height: auto;
