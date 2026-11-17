@@ -342,7 +342,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
         </div>
         <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(); }>
             <div class="card-body gap-4">
-                {move || problem("type").map(|m| view! { <p id="d-type-error" role="alert" class="text-sm text-error">{m}</p> })}
+                {move || problem("type").map(|m| view! { <p id="d-type-error" role="status" class="text-sm text-error">{m}</p> })}
 
                 <div class="rounded-box border border-base-300 p-4">
                     <label class="flex cursor-pointer items-center gap-3">
@@ -361,7 +361,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                                     aria-describedby=move || problem("address").is_some().then_some("d-address-error")
                                     maxlength=domain::PICKUP_ADDRESS_MAX placeholder="Av. Corrientes 1234, CABA"
                                     prop:value=move || address.get() on:input=move |ev| { address.set(event_target_value(&ev)); problems.update(|e| e.retain(|e| e.field != "address")); dirty(); }/>
-                                {move || problem("address").map(|m| view! { <p id="d-address-error" role="alert" class="label whitespace-normal text-error">{m}</p> })}
+                                {move || problem("address").map(|m| view! { <p id="d-address-error" class="label whitespace-normal text-error">{m}</p> })}
                             </fieldset>
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-hours">"Horarios " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
@@ -391,7 +391,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                                         prop:value=move || cost.get() on:input=move |ev| { cost.set(event_target_value(&ev)); problems.update(|e| e.retain(|e| e.field != "cost")); dirty(); }/>
                                 </label>
                                 {move || match problem("cost") {
-                                    Some(m) => view! { <p id="d-cost-error" role="alert" class="label whitespace-normal text-error">{m}</p> }.into_any(),
+                                    Some(m) => view! { <p id="d-cost-error" class="label whitespace-normal text-error">{m}</p> }.into_any(),
                                     None => view! { <p id="d-cost-hint" class="label whitespace-normal">{cost_hint}</p> }.into_any(),
                                 }}
                             </fieldset>
