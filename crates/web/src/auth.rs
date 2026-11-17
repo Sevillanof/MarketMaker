@@ -72,7 +72,18 @@ mod ssr {
     }
 
     pub fn allowed_emails() -> HashSet<String> {
-        env_values("ALLOWED_EMAILS")
+        email_list("ALLOWED_EMAILS")
+    }
+
+    /// `ADMIN_EMAILS` (en `.env.local`): quien administra MarketMaker. Una
+    /// cuenta de antes sin contraseña estrena la que escriba en Entrar, sin
+    /// confirmar el email.
+    pub fn is_admin(email: &str) -> bool {
+        email_list("ADMIN_EMAILS").contains(email)
+    }
+
+    fn email_list(key: &str) -> HashSet<String> {
+        env_values(key)
             .join(",")
             .split([',', ';', ' '])
             .map(|e| e.trim_matches(|c| c == '"' || c == '\''))
@@ -252,6 +263,39 @@ pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {
     }
 }
 
+/// "¿La olvidaste?" (o confirmar una cuenta del registro abierto): manda por
+/// email un enlace para elegir la contraseña. El enlace lleva el código, así
+/// nadie tiene que copiarlo.
+#[server]
+pub async fn request_password_link(
+    email: String,
+    new_account: bool,
+) -> Result<CodeRequest, ServerFnError> {
+    let Some(email) = domain::normalize_email(&email) else {
+        return Ok(CodeRequest::BadEmail);
+    };
+    if !is_allowed(&email) {
+        return Ok(CodeRequest::NotAllowed);
+    }
+    let pool = crate::server::pool()?;
+    match db::auth::create_login_code(&pool, &email)
+        .await
+        .map_err(crate::server::internal)?
+    {
+        Err(db::auth::TooMany) => Ok(CodeRequest::TooMany),
+        Ok(code) => {
+            let url = domain::password_link(&crate::email::app_url(), &email, &code, new_account);
+            // Sin RESEND_API_KEY, el email (con el enlace) va a la terminal.
+            leptos::logging::log!("\n  Enlace para elegir contraseña de {email}: {url}\n");
+            let mail = crate::email::password_link(&email, &url, new_account);
+            if let Err(e) = crate::email::deliver(&mail).await {
+                leptos::logging::log!("No pudimos mandar el enlace a {email}: {e}");
+            }
+            Ok(CodeRequest::Sent)
+        }
+    }
+}
+
 /// Paso 2: revisa el código; si es correcto abre la sesión (cookie) y, si la
 /// tienda todavía no tiene dueño, esta persona pasa a serlo.
 #[server]
@@ -384,7 +428,23 @@ pub async fn sign_in(
         });
     }
     let Some(hash) = account.password_hash else {
-        return Ok(PasswordSignIn::NoPassword);
+        // Cuenta de antes, sin contraseña: la del administrador estrena la que
+        // escribió; las demás confirman el email una vez con un enlace.
+        if !is_admin(&email) {
+            return Ok(PasswordSignIn::NoPassword);
+        }
+        if let Some(reason) = domain::password_problem(&password) {
+            return Ok(PasswordSignIn::Weak { reason });
+        }
+        let hash = blocking(move || db::auth::hash_password(&password)).await?;
+        db::auth::set_password_hash(&pool, account.id, &hash)
+            .await
+            .map_err(internal)?;
+        crate::limits::clear(&tries);
+        open_session(account.id).await?;
+        return Ok(PasswordSignIn::In {
+            next: domain::safe_next(&next),
+        });
     };
     let ok = blocking(move || db::auth::verify_password(&password, &hash)).await?;
     if !ok {

@@ -3,12 +3,11 @@
 //! tienda.
 
 use crate::auth::{
-    change_password, check_code, create_account, load_account, lookup_email, request_code,
+    change_password, create_account, load_account, lookup_email, request_password_link,
     save_avatar, save_name, set_password_with_code, sign_in, sign_out,
 };
 use domain::{
-    AccountCreation, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn,
-    SetPassword,
+    AccountCreation, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn, SetPassword,
 };
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
@@ -38,25 +37,26 @@ const CONNECTION: &str =
     "No pudimos comunicarnos con el servidor. Revisá tu conexión y probá de nuevo.";
 const NOT_ALLOWED: &str = "Por ahora MarketMaker es solo por invitación y este email no está en la lista. Si creés que es un error, escribinos a hola@mkr.com.ar.";
 
-/// Para qué es el código que mandamos por email.
-#[derive(Clone, Copy, PartialEq, Debug)]
-enum CodeFor {
-    /// Confirmar el email de una cuenta nueva (nombre y contraseña ya escritos).
-    /// Solo si no está invitado: los invitados entran sin código.
-    NewAccount,
-    /// Elegir una contraseña nueva (se la olvidó, o la cuenta es de antes y no tenía).
-    Reset,
-    /// Entrar solo con el código, sin contraseña.
-    Login,
-}
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Step {
     /// Email y contraseña juntos.
     SignIn,
     /// Nombre, email y contraseña (solo invitados).
     Create,
-    Code(CodeFor),
+    /// Le mandamos el enlace para elegir contraseña; `new_account` si es para
+    /// confirmar una cuenta del registro abierto.
+    LinkSent { new_account: bool },
+    /// Llegó desde el enlace del email: elige la contraseña (y el nombre, si
+    /// la cuenta es nueva).
+    NewPassword { new_account: bool },
+}
+
+/// El enlace del email trae `recuperar` (el email) y `codigo`.
+#[derive(Clone, PartialEq, Debug)]
+struct Link {
+    email: String,
+    code: String,
+    new_account: bool,
 }
 
 /// Aviso chico debajo de un campo: rojo con un círculo si algo salió mal,
@@ -92,7 +92,8 @@ pub fn Logo(#[prop(optional, into)] class: String) -> impl IntoView {
 
 /// `/entrar`: una tarjeta sobre el fondo oscuro de la plataforma, con email y
 /// contraseña en la misma pantalla (así el navegador completa los dos). Crear
-/// cuenta (solo invitados) y los códigos por email son pasos aparte.
+/// cuenta (solo invitados) y elegir una contraseña nueva (con un enlace por
+/// email) son pasos aparte.
 #[component]
 pub fn SignInPage() -> impl IntoView {
     let query = use_query_map();
@@ -104,6 +105,15 @@ pub fn SignInPage() -> impl IntoView {
     };
     // `/entrar?crear`: los botones "Crear cuenta" abren directo ese paso.
     let create = query.read_untracked().get("crear").is_some();
+    // `/entrar?recuperar=…&codigo=…`: viene del enlace del email.
+    let link = query.with_untracked(|q| {
+        Some(Link {
+            email: q.get("recuperar")?,
+            code: q.get("codigo")?,
+            new_account: q.get("nuevo").is_some(),
+        })
+    });
+    let from_link = link.is_some();
     let me = Resource::new(|| (), |_| crate::auth::who_am_i());
     view! {
         <leptos_meta::Title text="Entrar · MarketMaker"/>
@@ -116,12 +126,14 @@ pub fn SignInPage() -> impl IntoView {
             <main class="flex flex-1 flex-col items-center px-4 pt-2 pb-12 sm:justify-center sm:pt-6">
                 <div data-theme="light" class="w-full max-w-[420px] rounded-[20px] bg-base-100 px-6 pt-7 pb-6 text-base-content shadow-[0_30px_80px_-20px_rgba(0,0,0,.6)] sm:px-9 sm:pt-9 sm:pb-7">
                     <Suspense fallback=|| view! { <ui::Skeleton class="h-80 w-full"/> }>
-                        {move || Suspend::new(async move {
+                        {move || {
+                            let link = link.clone();
+                            Suspend::new(async move {
                             match me.await {
-                                Ok(Some(me)) => view! { <AlreadyIn me next=next()/> }.into_any(),
-                                _ => view! { <SignInForm next=next() create/> }.into_any(),
+                                Ok(Some(me)) if !from_link => view! { <AlreadyIn me next=next()/> }.into_any(),
+                                _ => view! { <SignInForm next=next() create link/> }.into_any(),
                             }
-                        })}
+                        })}}
                     </Suspense>
                 </div>
                 <p class="mt-6 max-w-[480px] text-center text-sm text-white/60">
@@ -233,31 +245,35 @@ enum Spot {
     Email,
     Name,
     Password,
-    Code,
     /// Al pie del formulario (problemas de conexión, límites).
     Form,
 }
 
 #[component]
-fn SignInForm(next: String, create: bool) -> impl IntoView {
+fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
     let next = StoredValue::new(next);
-    let step = RwSignal::new(if create { Step::Create } else { Step::SignIn });
-    let email = RwSignal::new(String::new());
+    let first = match &link {
+        Some(l) => Step::NewPassword {
+            new_account: l.new_account,
+        },
+        None if create => Step::Create,
+        None => Step::SignIn,
+    };
+    let step = RwSignal::new(first);
+    let email = RwSignal::new(link.as_ref().map(|l| l.email.clone()).unwrap_or_default());
+    // El código viaja en el enlace; nadie lo escribe.
+    let code = StoredValue::new(link.map(|l| l.code).unwrap_or_default());
     let name = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
-    let code = RwSignal::new(String::new());
     let problem = RwSignal::new(None::<(Spot, String)>);
     let info = RwSignal::new(None::<String>);
-    // Para qué es el próximo código que se pide.
-    let code_for = RwSignal::new(CodeFor::Login);
 
     let lookup = Action::new(|email: &String| lookup_email(email.clone()));
     let login = Action::new(|(e, p, n): &(String, String, String)| {
         sign_in(e.clone(), p.clone(), n.clone())
     });
-    let ask = Action::new(|email: &String| request_code(email.clone()));
-    let check = Action::new(|(e, c, n): &(String, String, String)| {
-        check_code(e.clone(), c.clone(), n.clone())
+    let ask = Action::new(|(e, new_account): &(String, bool)| {
+        request_password_link(e.clone(), *new_account)
     });
     let finish = Action::new(
         |(e, c, nm, p, n): &(String, String, String, String, String)| {
@@ -272,7 +288,6 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
             || lookup.pending().get()
             || login.pending().get()
             || ask.pending().get()
-            || check.pending().get()
             || finish.pending().get()
     };
     let fail = move |spot: Spot, text: &str| problem.set(Some((spot, text.to_string())));
@@ -281,7 +296,6 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
         email.track();
         name.track();
         password.track();
-        code.track();
         if prev.is_some() {
             problem.set(None);
         }
@@ -307,24 +321,26 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
             true
         }
     };
-    let send_code = move |purpose: CodeFor| {
+    let send_link = move |new_account: bool| {
         info.set(None);
         if email.get_untracked().trim().is_empty() {
-            fail(Spot::Email, "Escribí tu email y te mandamos el código.");
+            fail(
+                Spot::Email,
+                "Escribí tu email y te mandamos un enlace para elegir una contraseña nueva.",
+            );
             return;
         }
         if !email_ok() {
             return;
         }
-        code_for.set(purpose);
         problem.set(None);
-        ask.dispatch(email.get_untracked());
+        ask.dispatch((email.get_untracked(), new_account));
     };
 
     // Contraseña no aceptada: si el email ni siquiera tiene cuenta, se lo
     // decimos y lo llevamos a crearla (el email ya se puede consultar con
     // `lookup_email`, que tiene su propio límite).
-    let wrong_password = "El email o la contraseña no son correctos. Probá de nuevo o recuperala con \"¿La olvidaste?\".";
+    let wrong_password = "El email o la contraseña no son correctos. Probá de nuevo o elegí otra con \"¿La olvidaste?\".";
     Effect::new(move |_| {
         let Some(result) = lookup.value().get() else {
             return;
@@ -348,12 +364,17 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
                 lookup.dispatch(email.get_untracked());
             }
             Ok(PasswordSignIn::Locked { minutes }) => problem.set(Some((Spot::Password, format!(
-                "Hubo demasiados intentos seguidos. Esperá {minutes} minutos o entrá con un código por email."
+                "Hubo demasiados intentos seguidos. Esperá {minutes} minutos o elegí una contraseña nueva con \"¿La olvidaste?\"."
             )))),
+            Ok(PasswordSignIn::Weak { reason }) => problem.set(Some((
+                Spot::Password,
+                format!("Tu cuenta todavía no tiene contraseña: la que escribas acá va a ser la tuya. {reason}"),
+            ))),
             Ok(PasswordSignIn::NoPassword) => {
-                info.set(Some("Tu cuenta todavía no tiene contraseña. Te mandamos un código para que elijas una.".into()));
-                code_for.set(CodeFor::Reset);
-                ask.dispatch(email.get_untracked());
+                send_link(false);
+                info.set(Some(
+                    "Tu cuenta todavía no tiene contraseña. Confirmá tu email con el enlace y elegila: es solo esta vez, después entrás directo con tu contraseña.".into(),
+                ));
             }
             Err(_) => fail(Spot::Form, CONNECTION),
         }
@@ -362,49 +383,26 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
         let Some(result) = ask.value().get() else {
             return;
         };
+        let new_account = ask.input().get_untracked().map(|(_, n)| n).unwrap_or(false);
         match result {
-            Ok(CodeRequest::Sent) => {
-                code.set(String::new());
-                if code_for.get_untracked() == CodeFor::Reset {
-                    password.set(String::new());
-                }
-                goto(Step::Code(code_for.get_untracked()));
-            }
+            Ok(CodeRequest::Sent) => goto(Step::LinkSent { new_account }),
             Ok(CodeRequest::BadEmail) => fail(Spot::Email, "El email no es válido. Revisalo."),
             Ok(CodeRequest::NotAllowed) => fail(Spot::Email, NOT_ALLOWED),
             Ok(CodeRequest::TooMany) => fail(
                 Spot::Form,
-                "Se pidieron demasiados códigos seguidos. Esperá unos minutos y probá de nuevo.",
+                "Se pidieron demasiados enlaces seguidos. Esperá unos minutos y probá de nuevo.",
             ),
             Err(_) => fail(Spot::Form, CONNECTION),
         }
     });
-    let wrong_code = move |left: u32| {
-        if left == 1 {
-            "El código no es correcto. Te queda 1 intento.".to_string()
-        } else {
-            format!("El código no es correcto. Te quedan {left} intentos.")
-        }
-    };
-    let expired = "El código venció o ya no es válido. Pedí uno nuevo.";
-    Effect::new(move |_| {
-        let Some(result) = check.value().get() else {
-            return;
-        };
-        match result {
-            Ok(CodeCheck::In { next }) => go(&next),
-            Ok(CodeCheck::Wrong { left }) => problem.set(Some((Spot::Code, wrong_code(left)))),
-            Ok(CodeCheck::Expired) => fail(Spot::Code, expired),
-            Err(_) => fail(Spot::Form, CONNECTION),
-        }
-    });
+    let expired = "Este enlace venció o ya se usó. Pedí uno nuevo con \"¿La olvidaste?\".";
     Effect::new(move |_| {
         let Some(result) = create.value().get() else {
             return;
         };
         match result {
             Ok(AccountCreation::In { next }) => go(&next),
-            Ok(AccountCreation::NeedsCode) => send_code(CodeFor::NewAccount),
+            Ok(AccountCreation::NeedsCode) => send_link(true),
             Ok(AccountCreation::Exists) => {
                 password.set(String::new());
                 goto(Step::SignIn);
@@ -426,8 +424,7 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
         };
         match result {
             Ok(SetPassword::In { next }) => go(&next),
-            Ok(SetPassword::Wrong { left }) => problem.set(Some((Spot::Code, wrong_code(left)))),
-            Ok(SetPassword::Expired) => fail(Spot::Code, expired),
+            Ok(SetPassword::Wrong { .. }) | Ok(SetPassword::Expired) => fail(Spot::Form, expired),
             Ok(SetPassword::Weak { reason }) => problem.set(Some((Spot::Password, reason))),
             Ok(SetPassword::NotAllowed) => fail(Spot::Form, NOT_ALLOWED),
             Err(_) => fail(Spot::Form, CONNECTION),
@@ -478,6 +475,20 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
         }
     };
     let link = "text-sm font-semibold text-primary hover:underline disabled:opacity-50";
+    let name_field = move || {
+        view! {
+            <div class="flex flex-col gap-1.5">
+                <label for="name" class="text-sm font-semibold">"Tu nombre"</label>
+                <input id="name" type="text" name="name" autocomplete="given-name" data-autofocus=""
+                    enterkeyhint="next" maxlength=domain::ACCOUNT_NAME_MAX.to_string()
+                    class=move || format!("input h-12 w-full text-base {}", if bad(Spot::Name).get() { "input-error" } else { "" })
+                    placeholder="Ana"
+                    prop:value=move || name.get()
+                    on:input=move |ev| name.set(event_target_value(&ev))/>
+                {note_at(Spot::Name)}
+            </div>
+        }
+    };
 
     move || {
         match step.get() {
@@ -503,16 +514,10 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
                         bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()
                         extra=view! {
                             <button type="button" class=link disabled=busy
-                                on:click=move |_| send_code(CodeFor::Reset)>"¿La olvidaste?"</button>
+                                on:click=move |_| send_link(false)>"¿La olvidaste?"</button>
                         }.into_any()/>
                     {note_at(Spot::Form)}
                     {submit_btn("Entrar", "Entrando…")}
-                    <div class="flex items-center gap-3 text-[13px] text-base-content/50 before:h-px before:flex-1 before:bg-base-300 after:h-px after:flex-1 after:bg-base-300">"o"</div>
-                    <button type="button" class="btn h-12 border-base-300 bg-base-100 text-[15px] font-semibold shadow-none hover:bg-base-200" disabled=busy
-                        on:click=move |_| send_code(CodeFor::Login)>
-                        <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
-                        "Entrar con un código por email"
-                    </button>
                 </div>
                 <p class="border-t border-base-300 pt-5 text-center text-sm text-base-content/70">
                     "¿Te invitaron a MarketMaker? "
@@ -543,16 +548,7 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
                     {heading("Creá tu cuenta", "Por ahora MarketMaker es solo con invitación. Usá el email al que te llegó.")}
                 </div>
                 <div class="flex flex-col gap-4">
-                    <div class="flex flex-col gap-1.5">
-                        <label for="name" class="text-sm font-semibold">"Tu nombre"</label>
-                        <input id="name" type="text" name="name" autocomplete="given-name" data-autofocus=""
-                            enterkeyhint="next" maxlength=domain::ACCOUNT_NAME_MAX.to_string()
-                            class=move || format!("input h-12 w-full text-base {}", if bad(Spot::Name).get() { "input-error" } else { "" })
-                            placeholder="Ana"
-                            prop:value=move || name.get()
-                            on:input=move |ev| name.set(event_target_value(&ev))/>
-                        {note_at(Spot::Name)}
-                    </div>
+                    {name_field()}
                     {email_field(false)}
                     <PasswordField value=password label="Elegí una contraseña" autocomplete="new-password" meter=true
                         bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()/>
@@ -562,65 +558,66 @@ fn SignInForm(next: String, create: bool) -> impl IntoView {
                 </div>
             </form>
         }.into_any(),
-        Step::Code(purpose) => {
-            let (title, button) = match purpose {
-                CodeFor::NewAccount => ("Confirmá tu email", "Crear cuenta"),
-                CodeFor::Reset => ("Elegí tu contraseña", "Guardar y entrar"),
-                CodeFor::Login => ("Revisá tu email", "Entrar"),
-            };
-            view! {
-                <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
-                    ev.prevent_default();
-                    if code.get_untracked().trim().is_empty() {
-                        fail(Spot::Code, "Escribí el código que te mandamos.");
-                        return;
-                    }
-                    if purpose == CodeFor::Reset {
-                        if let Some(reason) = domain::password_problem(&password.get_untracked()) {
-                            problem.set(Some((Spot::Password, reason)));
-                            return;
-                        }
-                    }
-                    problem.set(None);
-                    let (e, c, n) = (email.get_untracked(), code.get_untracked(), next.get_value());
-                    match purpose {
-                        CodeFor::Login => { check.dispatch((e, c, n)); }
-                        _ => { finish.dispatch((e, c, name.get_untracked(), password.get_untracked(), n)); }
-                    }
-                }>
-                    <h1 class="text-[28px] leading-tight font-extrabold tracking-tight">{title}</h1>
-                    {move || info.get().map(|i| view! { <p role="status" class="-mt-2 text-sm text-base-content/70">{i}</p> })}
-                    <p class="-mt-1 text-base-content/80">
-                        "Te mandamos un código de 6 números a " <strong>{shown_email}</strong> ". Vence en 10 minutos."
+        Step::LinkSent { new_account } => view! {
+            <div class="flex flex-col gap-5">
+                <div class="grid size-12 place-items-center rounded-full bg-primary/10 text-primary" aria-hidden="true">
+                    <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                </div>
+                <div>
+                    <h1 class="text-[28px] leading-tight font-extrabold tracking-tight">"Revisá tu email"</h1>
+                    <p role="status" class="mt-1.5 text-[15px] text-base-content/80">
+                        {if new_account { "Te mandamos un enlace a " } else { "Te mandamos un enlace para elegir una contraseña nueva a " }}
+                        <strong>{shown_email}</strong>
+                        {if new_account { " para confirmar tu cuenta." } else { "." }}
+                        " Vence en 10 minutos."
                     </p>
-                    {cfg!(debug_assertions).then(|| view! {
-                        <p class="text-sm text-base-content/70">"En desarrollo el código no se manda por email: aparece en la terminal donde corre el servidor."</p>
-                    })}
-                    <div class="flex flex-col gap-1.5">
-                        <label for="code" class="text-sm font-semibold">"Código"</label>
-                        <input id="code" type="text" name="code" required data-autofocus=""
-                            inputmode="numeric" autocomplete="one-time-code" maxlength="7" enterkeyhint="go"
-                            class=move || format!("input h-14 w-full font-mono text-2xl tracking-[0.4em] {}", if bad(Spot::Code).get() { "input-error" } else { "" })
-                            placeholder="000000"
-                            prop:value=move || code.get()
-                            on:input=move |ev| code.set(event_target_value(&ev))/>
-                        {note_at(Spot::Code)}
-                    </div>
-                    {(purpose == CodeFor::Reset).then(|| view! {
-                        <PasswordField value=password label="Contraseña nueva" autocomplete="new-password" meter=true
-                            bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()/>
-                    })}
+                </div>
+                {move || info.get().map(|i| view! { <p class="text-sm text-base-content/70">{i}</p> })}
+                {cfg!(debug_assertions).then(|| view! {
+                    <p class="text-sm text-base-content/70">"En desarrollo el email no se manda: el enlace aparece en la terminal donde corre el servidor."</p>
+                })}
+                {note_at(Spot::Form)}
+                <div class="flex flex-wrap justify-center gap-x-5 gap-y-2">
+                    <button type="button" class=link disabled=busy
+                        on:click=move |_| send_link(new_account)>"Mandarlo de nuevo"</button>
+                    <button type="button" class=link
+                        on:click=move |_| { info.set(None); password.set(String::new()); goto(Step::SignIn) }>"Volver a Entrar"</button>
+                </div>
+            </div>
+        }.into_any(),
+        Step::NewPassword { new_account } => view! {
+            <form class="flex flex-col gap-6" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
+                ev.prevent_default();
+                if new_account && name.get_untracked().trim().is_empty() {
+                    fail(Spot::Name, "Escribí tu nombre.");
+                    return;
+                }
+                if let Some(reason) = domain::password_problem(&password.get_untracked()) {
+                    problem.set(Some((Spot::Password, reason)));
+                    return;
+                }
+                problem.set(None);
+                finish.dispatch((email.get_untracked(), code.get_value(), name.get_untracked(), password.get_untracked(), next.get_value()));
+            }>
+                <div>
+                    <h1 class="text-[28px] leading-tight font-extrabold tracking-tight">
+                        {if new_account { "Confirmá tu cuenta" } else { "Elegí tu contraseña nueva" }}
+                    </h1>
+                    <p class="mt-1.5 text-[15px] text-base-content/70">"Para la cuenta " <strong class="text-base-content">{shown_email}</strong> "."</p>
+                </div>
+                <div class="flex flex-col gap-4">
+                    // Para que el gestor de contraseñas la guarde con el email correcto.
+                    <input type="email" name="email" autocomplete="username" prop:value=move || email.get() hidden/>
+                    {new_account.then(name_field)}
+                    <PasswordField value=password label="Contraseña nueva" autocomplete="new-password" meter=true autofocus=!new_account
+                        bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()/>
                     {note_at(Spot::Form)}
-                    {submit_btn(button, "Revisando…")}
-                    <div class="flex flex-wrap justify-center gap-x-5 gap-y-2">
-                        <button type="button" class=link disabled=busy
-                            on:click=move |_| send_code(purpose)>"Mandame otro código"</button>
-                        <button type="button" class=link
-                            on:click=move |_| { info.set(None); goto(Step::SignIn) }>"Usar otro email"</button>
-                    </div>
-                </form>
-            }.into_any()
-        }
+                    {submit_btn("Guardar y entrar", "Guardando…")}
+                    <button type="button" class=format!("{link} self-center")
+                        on:click=move |_| { password.set(String::new()); goto(Step::SignIn) }>"Volver a Entrar"</button>
+                </div>
+            </form>
+        }.into_any(),
     }
     }
 }
