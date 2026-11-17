@@ -274,3 +274,35 @@ async fn invited_account_is_created_without_code_but_only_once(pool: PgPool) {
     assert_eq!(account.password_hash.as_deref(), Some("hash-1"));
     assert_eq!(account.name, "Ana");
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn whitelist_adds_and_removes_emails(pool: PgPool) {
+    let code = known_code(&pool, "admin@correo.com").await;
+    let CodeResult::Ok { user_id: admin } = check_login_code(&pool, "admin@correo.com", &code)
+        .await
+        .unwrap()
+    else {
+        panic!("debía entrar");
+    };
+    allow_email(&pool, "lucia@correo.com", admin).await.unwrap();
+    disallow_email(&pool, "ana@correo.com", admin)
+        .await
+        .unwrap();
+    let (allowed, removed) = load_allowlist(&pool).await.unwrap();
+    assert_eq!(allowed, vec!["lucia@correo.com"]);
+    assert_eq!(removed, vec!["ana@correo.com"]);
+    // Volver a agregar a quien se quitó lo habilita otra vez.
+    allow_email(&pool, "ana@correo.com", admin).await.unwrap();
+    let (allowed, removed) = load_allowlist(&pool).await.unwrap();
+    assert_eq!(allowed.len(), 2);
+    assert!(removed.is_empty());
+    // Datos de cada email: con cuenta y sin ella, en el orden pedido.
+    let emails = vec![
+        "lucia@correo.com".to_string(),
+        "admin@correo.com".to_string(),
+    ];
+    let m = allowlist_members(&pool, &emails).await.unwrap();
+    assert_eq!(m[0].email, "lucia@correo.com");
+    assert!(!m[0].has_account && m[0].added.is_some());
+    assert!(m[1].has_account && m[1].joined.is_some());
+}

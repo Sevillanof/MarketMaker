@@ -41,6 +41,7 @@ mod store_info;
 pub mod server;
 pub mod site;
 pub mod stores;
+mod whitelist;
 
 pub use auth::*;
 pub use server::*;

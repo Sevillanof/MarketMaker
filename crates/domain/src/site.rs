@@ -192,6 +192,51 @@ pub struct PanelNav {
     /// La foto de perfil, lista para un `<img>`.
     pub avatar: Option<String>,
     pub stores: Vec<NavStore>,
+    /// Administra MarketMaker: ve la Whitelist en su menú.
+    pub is_admin: bool,
+}
+
+/// Una persona de la Whitelist, con lo que sabemos de su cuenta.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AllowedPerson {
+    pub email: String,
+    /// "" si todavía no creó su cuenta o no dijo su nombre.
+    pub name: String,
+    pub avatar: Option<String>,
+    pub has_account: bool,
+    pub is_admin: bool,
+    /// Se puede quitar de la lista (no la del administrador ni la propia).
+    pub removable: bool,
+    /// "Se unió hace 3 días" / "Agregada hoy", si se sabe.
+    pub joined: String,
+    /// "Último acceso ayer", si se sabe.
+    pub last_seen: String,
+    pub stores: Vec<StoreCard>,
+    pub orders: i64,
+}
+
+/// Qué pasó al agregar o quitar un email de la Whitelist.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum WhitelistChange {
+    Done,
+    /// El email no es válido.
+    Invalid,
+    /// Ya estaba en la lista.
+    Already,
+    /// No se puede quitar (administrador o la propia cuenta).
+    Protected,
+}
+
+/// "hoy", "ayer", "hace 3 días", "hace 2 semanas"… para `secs` segundos atrás.
+pub fn ago_es(secs: i64) -> String {
+    let days = secs.max(0) / 86_400;
+    match days {
+        0 => "hoy".into(),
+        1 => "ayer".into(),
+        2..=13 => format!("hace {days} días"),
+        14..=59 => format!("hace {} semanas", days / 7),
+        _ => format!("hace {} meses", days / 30),
+    }
 }
 
 /// Si lo que ven los visitantes es lo último que guardó el dueño.
@@ -388,6 +433,15 @@ pub fn platform_host(store_host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ages_are_written_in_spanish() {
+        assert_eq!(ago_es(3_600), "hoy");
+        assert_eq!(ago_es(90_000), "ayer");
+        assert_eq!(ago_es(3 * 86_400), "hace 3 días");
+        assert_eq!(ago_es(15 * 86_400), "hace 2 semanas");
+        assert_eq!(ago_es(90 * 86_400), "hace 3 meses");
+    }
 
     #[test]
     fn store_info_is_tidied_and_links_are_built() {
