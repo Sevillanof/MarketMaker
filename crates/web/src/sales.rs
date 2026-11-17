@@ -29,7 +29,7 @@ pub async fn store_delivery(
 pub async fn save_store_delivery(
     slug: String,
     delivery: DeliverySettings,
-) -> Result<Vec<String>, ServerFnError> {
+) -> Result<Vec<FieldError>, ServerFnError> {
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
     let mut d = delivery;
@@ -267,7 +267,8 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             .unwrap_or_default(),
     );
     let note = RwSignal::new(d.shipping_note);
-    let problems = RwSignal::new(Vec::<String>::new());
+    let problems = RwSignal::new(Vec::<FieldError>::new());
+    let failure = RwSignal::new(None::<String>);
     let saved = RwSignal::new(false);
     let slug = StoredValue::new(slug);
 
@@ -276,13 +277,18 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
     Effect::new(move |_| match save.value().get() {
         Some(Ok(e)) => {
             saved.set(e.is_empty());
+            failure.set(None);
+            if let Some(f) = e.first() {
+                focus_id(if f.field == "type" { "d-pickup".to_string() } else { format!("d-{}", f.field) });
+            }
             problems.set(e);
         }
-        Some(Err(e)) => problems.set(vec![error_text(&e)]),
+        Some(Err(e)) => failure.set(Some(error_text(&e))),
         None => {}
     });
     let submit = move || {
         saved.set(false);
+        failure.set(None);
         let text = cost.get_untracked();
         let shipping_cents = if text.trim().is_empty() {
             None
@@ -290,7 +296,12 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             match domain::parse_price(&text) {
                 Some(c) => Some(c),
                 None => {
-                    problems.set(vec!["Escribí el costo del envío como 3500 o 3.500,50, o dejalo vacío para coordinarlo.".into()]);
+                    let e = vec![FieldError {
+                        field: "cost".into(),
+                        message: "Escribí el costo como 3500 o 3.500,50, o dejalo vacío para coordinarlo.".into(),
+                    }];
+                    focus_id("d-cost".to_string());
+                    problems.set(e);
                     return;
                 }
             }
@@ -320,6 +331,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
     let dirty = move || {
         saved.set(false);
     };
+    let problem = move |field: &'static str| error_for(problems, field);
 
     view! {
         <div class="flex flex-wrap items-center gap-3">
@@ -330,11 +342,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
         </div>
         <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(); }>
             <div class="card-body gap-4">
-                {move || (!problems.get().is_empty()).then(|| view! {
-                    <div role="alert" class="alert alert-error text-sm">
-                        <ul>{problems.get().into_iter().map(|p| view! { <li>{p}</li> }).collect_view()}</ul>
-                    </div>
-                })}
+                {move || problem("type").map(|m| view! { <p id="d-type-error" role="alert" class="text-sm text-error">{m}</p> })}
 
                 <div class="rounded-box border border-base-300 p-4">
                     <label class="flex cursor-pointer items-center gap-3">
@@ -348,8 +356,12 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                         <div class="mt-3 grid gap-x-4 sm:grid-cols-2">
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-address">"Dirección"</label>
-                                <input id="d-address" class="input w-full" maxlength=domain::PICKUP_ADDRESS_MAX placeholder="Av. Corrientes 1234, CABA"
-                                    prop:value=move || address.get() on:input=move |ev| { address.set(event_target_value(&ev)); dirty(); }/>
+                                <input id="d-address" class="input w-full" class:input-error=move || problem("address").is_some()
+                                    aria-invalid=move || problem("address").is_some().to_string()
+                                    aria-describedby=move || problem("address").is_some().then_some("d-address-error")
+                                    maxlength=domain::PICKUP_ADDRESS_MAX placeholder="Av. Corrientes 1234, CABA"
+                                    prop:value=move || address.get() on:input=move |ev| { address.set(event_target_value(&ev)); problems.update(|e| e.retain(|e| e.field != "address")); dirty(); }/>
+                                {move || problem("address").map(|m| view! { <p id="d-address-error" role="alert" class="label whitespace-normal text-error">{m}</p> })}
                             </fieldset>
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-hours">"Horarios " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
@@ -372,11 +384,16 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                         <div class="mt-3 grid gap-x-4 sm:grid-cols-[200px_1fr]">
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-cost">"Costo " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
-                                <label class="input w-full"><span class="text-base-content/60">"$"</span>
-                                    <input id="d-cost" inputmode="decimal" placeholder="A coordinar" aria-describedby="d-cost-hint"
-                                        prop:value=move || cost.get() on:input=move |ev| { cost.set(event_target_value(&ev)); dirty(); }/>
+                                <label class="input w-full" class:input-error=move || problem("cost").is_some()><span class="text-base-content/60">"$"</span>
+                                    <input id="d-cost" inputmode="decimal" placeholder="A coordinar"
+                                        aria-invalid=move || problem("cost").is_some().to_string()
+                                        aria-describedby=move || if problem("cost").is_some() { "d-cost-error" } else { "d-cost-hint" }
+                                        prop:value=move || cost.get() on:input=move |ev| { cost.set(event_target_value(&ev)); problems.update(|e| e.retain(|e| e.field != "cost")); dirty(); }/>
                                 </label>
-                                <p id="d-cost-hint" class="label whitespace-normal">{cost_hint}</p>
+                                {move || match problem("cost") {
+                                    Some(m) => view! { <p id="d-cost-error" role="alert" class="label whitespace-normal text-error">{m}</p> }.into_any(),
+                                    None => view! { <p id="d-cost-hint" class="label whitespace-normal">{cost_hint}</p> }.into_any(),
+                                }}
                             </fieldset>
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-note">"Aviso para el comprador"</label>
@@ -392,6 +409,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                         {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
                     </button>
                     <span role="status" class="text-sm text-success">{move || saved.get().then_some("✓ Guardado")}</span>
+                    {move || failure.get().map(|m| view! { <span role="alert" class="text-sm text-error">{m}</span> })}
                 </div>
             </div>
         </form>
