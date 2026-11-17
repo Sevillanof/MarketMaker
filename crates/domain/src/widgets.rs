@@ -130,9 +130,12 @@ pub struct FeaturedProductProps {
 pub struct LinkItem {
     pub label: String,
     pub href: String,
-    /// Opciones del desplegable (solo en el menú superior).
+    /// Opciones del desplegable (solo en el menú superior). Las páginas
+    /// guardadas antes de los desplegables no lo traen.
+    #[serde(default)]
     pub children: Vec<LinkItem>,
     /// Foto del panel ancho del desplegable (solo en el menú superior).
+    #[serde(default)]
     pub image_url: String,
 }
 
@@ -552,10 +555,8 @@ const LINK_ITEM: &[Field] = &[
     field("label", "Texto", text(30)),
     field("href", "Enlace", FieldKind::Url),
 ];
-pub const NAV_MENU_OPTIONS: &[(&str, &str)] = &[
-    ("list", "Lista simple"),
-    ("panel", "Panel ancho con foto"),
-];
+pub const NAV_MENU_OPTIONS: &[(&str, &str)] =
+    &[("list", "Lista simple"), ("panel", "Panel ancho con foto")];
 const SUBLINK_ITEM: &[Field] = &[
     field("label", "Texto", text(30)),
     field("href", "Enlace", FieldKind::Url),
@@ -920,7 +921,11 @@ const PRODUCT_CAROUSEL_FIELDS: &[Field] = &[
         },
     ),
     field("title", "Título", text(80)),
-    field("limit", "Cantidad de productos", FieldKind::Number { min: 2, max: 24 }),
+    field(
+        "limit",
+        "Cantidad de productos",
+        FieldKind::Number { min: 2, max: 24 },
+    ),
     adv("link_label", "Texto de «Ver todos»", text(30)),
     adv("link_href", "Enlace de «Ver todos»", FieldKind::Url),
 ];

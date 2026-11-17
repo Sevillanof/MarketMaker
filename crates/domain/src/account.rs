@@ -157,16 +157,62 @@ pub fn password_problem(password: &str) -> Option<String> {
 
 /// Las contraseñas que más se prueban al intentar entrar en cuentas ajenas.
 const COMMON_PASSWORDS: &[&str] = &[
-    "password", "password1", "password12", "password123", "passw0rd", "contraseña",
-    "contrasena", "contraseña1", "contrasena1", "micontraseña", "micontrasena",
-    "qwerty12", "qwerty123", "qwertyui", "qwertyuiop", "asdfghjk", "asdfghjkl",
-    "zxcvbnm1", "abcd1234", "abc12345", "a1b2c3d4", "iloveyou",
-    "teamo123", "tequiero", "hola1234", "holahola", "bienvenido", "argentina",
-    "argentina1", "argentina10", "bocajuniors", "riverplate", "messi1010",
-    "maradona10", "futbol10", "dragon12", "superman", "batman123", "football",
-    "baseball", "sunshine", "princess", "starwars", "welcome1", "letmein1",
-    "trustno1", "admin123", "administrador", "marketmaker", "mkr12345",
-    "12341234", "11223344", "12121212", "12344321", "1q2w3e4r", "1qaz2wsx",
+    "password",
+    "password1",
+    "password12",
+    "password123",
+    "passw0rd",
+    "contraseña",
+    "contrasena",
+    "contraseña1",
+    "contrasena1",
+    "micontraseña",
+    "micontrasena",
+    "qwerty12",
+    "qwerty123",
+    "qwertyui",
+    "qwertyuiop",
+    "asdfghjk",
+    "asdfghjkl",
+    "zxcvbnm1",
+    "abcd1234",
+    "abc12345",
+    "a1b2c3d4",
+    "iloveyou",
+    "teamo123",
+    "tequiero",
+    "hola1234",
+    "holahola",
+    "bienvenido",
+    "argentina",
+    "argentina1",
+    "argentina10",
+    "bocajuniors",
+    "riverplate",
+    "messi1010",
+    "maradona10",
+    "futbol10",
+    "dragon12",
+    "superman",
+    "batman123",
+    "football",
+    "baseball",
+    "sunshine",
+    "princess",
+    "starwars",
+    "welcome1",
+    "letmein1",
+    "trustno1",
+    "admin123",
+    "administrador",
+    "marketmaker",
+    "mkr12345",
+    "12341234",
+    "11223344",
+    "12121212",
+    "12344321",
+    "1q2w3e4r",
+    "1qaz2wsx",
 ];
 
 /// Una contraseña común, una sola letra repetida o números seguidos.
@@ -261,7 +307,14 @@ mod tests {
 
     #[test]
     fn common_passwords_are_rejected() {
-        for p in ["password", "12345678", "aaaaaaaa", "87654321", "Argentina", "1234567890"] {
+        for p in [
+            "password",
+            "12345678",
+            "aaaaaaaa",
+            "87654321",
+            "Argentina",
+            "1234567890",
+        ] {
             assert!(password_problem(p).is_some(), "{p}");
             assert_eq!(password_score(p), 1, "{p}");
         }

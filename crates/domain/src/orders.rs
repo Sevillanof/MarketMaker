@@ -365,9 +365,10 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
         Delivery::Andreani(svc) => {
             match crate::normalize_postal_code(&f.postal_code) {
                 Some(cp) => f.postal_code = cp,
-                None if f.postal_code.is_empty() => {
-                    e.push(err("postal_code", "Escribí tu código postal, por ejemplo 1425."))
-                }
+                None if f.postal_code.is_empty() => e.push(err(
+                    "postal_code",
+                    "Escribí tu código postal, por ejemplo 1425.",
+                )),
                 None => e.push(err(
                     "postal_code",
                     "Revisá el código postal: son 4 números, por ejemplo 1425.",
@@ -689,7 +690,9 @@ impl OrderColumn {
             (OrderColumn::AwaitingPayment, _) => "Volver a esperando pago",
             (OrderColumn::ToPrepare, _) => "Ya me pagó",
             (OrderColumn::Shipped, Delivery::Pickup) => "Marcar listo para retirar",
-            (OrderColumn::Shipped, Delivery::Shipping | Delivery::Andreani(_)) => "Marcar como enviado",
+            (OrderColumn::Shipped, Delivery::Shipping | Delivery::Andreani(_)) => {
+                "Marcar como enviado"
+            }
             (OrderColumn::Delivered, _) => "Marcar como entregado",
         }
     }
@@ -775,7 +778,10 @@ mod tests {
         let mut f = good();
         f.delivery = Delivery::Andreani(A::Branch);
         f.postal_code = String::new();
-        let fields: Vec<_> = tidy_checkout(&mut f, &d).into_iter().map(|e| e.field).collect();
+        let fields: Vec<_> = tidy_checkout(&mut f, &d)
+            .into_iter()
+            .map(|e| e.field)
+            .collect();
         assert_eq!(fields, ["postal_code", "dni", "branch"]);
         assert!(f.address.is_empty());
 
@@ -783,14 +789,21 @@ mod tests {
         f.delivery = Delivery::Andreani(A::Home);
         f.address = "Corrientes".into();
         f.dni = "30123456".into();
-        let fields: Vec<_> = tidy_checkout(&mut f, &d).into_iter().map(|e| e.field).collect();
+        let fields: Vec<_> = tidy_checkout(&mut f, &d)
+            .into_iter()
+            .map(|e| e.field)
+            .collect();
         assert_eq!(fields, ["address"]);
 
         let mut f = good();
         f.delivery = Delivery::Andreani(A::SameDay);
         assert_eq!(tidy_checkout(&mut f, &d)[0].field, "delivery");
 
-        for x in [Delivery::Pickup, Delivery::Shipping, Delivery::Andreani(A::Branch)] {
+        for x in [
+            Delivery::Pickup,
+            Delivery::Shipping,
+            Delivery::Andreani(A::Branch),
+        ] {
             assert_eq!(Delivery::from_str(x.as_str()), x);
         }
     }
@@ -895,8 +908,13 @@ pub struct RegretForm {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum RegretOutcome {
     /// Quedó registrado; `code` es el código para el comprador.
-    Sent { code: String, number: i32 },
-    Invalid { errors: Vec<FieldError> },
+    Sent {
+        code: String,
+        number: i32,
+    },
+    Invalid {
+        errors: Vec<FieldError>,
+    },
     /// Mensaje general (por ejemplo, demasiados intentos).
     Problem(String),
 }
@@ -949,9 +967,16 @@ mod regret_tests {
             reason: String::new(),
         };
         assert_eq!(tidy_regret(&mut f), Ok(1001));
-        assert_eq!((f.name.as_str(), f.email.as_str()), ("Ana Pérez", "ana@correo.com"));
+        assert_eq!(
+            (f.name.as_str(), f.email.as_str()),
+            ("Ana Pérez", "ana@correo.com")
+        );
         let mut bad = RegretForm::default();
-        let fields: Vec<_> = tidy_regret(&mut bad).unwrap_err().into_iter().map(|e| e.field).collect();
+        let fields: Vec<_> = tidy_regret(&mut bad)
+            .unwrap_err()
+            .into_iter()
+            .map(|e| e.field)
+            .collect();
         assert_eq!(fields, ["name", "email", "number"]);
     }
 }
