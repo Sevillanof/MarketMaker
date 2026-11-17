@@ -59,7 +59,10 @@ async fn main() {
     // navegador los guarda un año y la segunda visita no los vuelve a bajar.
     let hashed = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|d| d.join(leptos_options.hash_file.as_ref())))
+        .and_then(|exe| {
+            exe.parent()
+                .map(|d| d.join(leptos_options.hash_file.as_ref()))
+        })
         .is_some_and(|p| p.exists());
     leptos_options.hash_files = hashed;
     if !hashed {
@@ -123,20 +126,25 @@ async fn main() {
             ServeDir::new(format!("{site_root}/{dir}")),
         );
     }
-    let pkg_cache = if hashed {
-        "public, max-age=31536000, immutable"
-    } else {
-        "no-cache"
-    };
-    app = app.nest_service(
-        "/pkg",
-        tower::ServiceBuilder::new()
-            .layer(SetResponseHeaderLayer::overriding(
-                header::CACHE_CONTROL,
-                HeaderValue::from_static(pkg_cache),
-            ))
-            .service(ServeDir::new(format!("{site_root}/pkg"))),
-    );
+    // Los .js no se guardan como immutable aunque tengan versión en el
+    // nombre: con `--split` cargo-leptos les pone el nombre antes de terminar
+    // de escribirlos (ver deploy/hash-js.sh). Son chicos; el navegador
+    // pregunta y casi siempre recibe un 304.
+    let pkg = Router::new()
+        .fallback_service(ServeDir::new(format!("{site_root}/pkg")))
+        .layer(axum::middleware::map_response(
+            move |uri: axum::http::Uri, mut res: axum::response::Response| async move {
+                let cache = if hashed && !uri.path().ends_with(".js") {
+                    "public, max-age=31536000, immutable"
+                } else {
+                    "no-cache"
+                };
+                res.headers_mut()
+                    .insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
+                res
+            },
+        ));
+    app = app.nest_service("/pkg", pkg);
     let app = app
         .route_service(
             "/favicon.ico",
