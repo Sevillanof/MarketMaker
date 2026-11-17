@@ -13,6 +13,7 @@ mod shipping;
 mod site;
 mod starter;
 mod templates;
+mod theme;
 mod typography;
 mod widgets;
 
@@ -26,6 +27,7 @@ pub use shipping::*;
 pub use site::*;
 pub use starter::*;
 pub use templates::*;
+pub use theme::*;
 pub use typography::*;
 pub use widgets::*;
 

@@ -902,6 +902,7 @@ version = "0.1.0"
 dependencies = [
  "domain",
  "grid",
+ "js-sys",
  "leptos",
  "serde_json",
  "ui",

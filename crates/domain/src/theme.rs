@@ -1,0 +1,204 @@
+//! Tema propio de la tienda (editor "Mi tienda"): colores, esquinas, tamaños,
+//! bordes y efectos que se apoyan en las variables de daisyUI.
+//!
+//! Lo que no se toca queda como lo trae el tema elegido. Los valores de
+//! fábrica de cada tema están en [`THEME_BASES`] para poder mostrarlos en el
+//! editor sin leer el CSS.
+
+/// Cada color editable de la tienda: `(variable de daisyUI sin `--color-`, nombre)`.
+/// El orden es el de [`ThemeBase::colors`].
+pub const COLOR_KEYS: [(&str, &str); 20] = [
+    ("base-100", "Fondo"),
+    ("base-200", "Fondo 2"),
+    ("base-300", "Fondo 3"),
+    ("base-content", "Texto"),
+    ("primary", "Principal"),
+    ("primary-content", "Texto sobre principal"),
+    ("secondary", "Secundario"),
+    ("secondary-content", "Texto sobre secundario"),
+    ("accent", "Acento"),
+    ("accent-content", "Texto sobre acento"),
+    ("neutral", "Neutro"),
+    ("neutral-content", "Texto sobre neutro"),
+    ("info", "Información"),
+    ("info-content", "Texto sobre información"),
+    ("success", "Éxito"),
+    ("success-content", "Texto sobre éxito"),
+    ("warning", "Aviso"),
+    ("warning-content", "Texto sobre aviso"),
+    ("error", "Error"),
+    ("error-content", "Texto sobre error"),
+];
+
+/// Valores de fábrica de un tema de daisyUI.
+#[derive(Clone, Copy, Debug)]
+pub struct ThemeBase {
+    pub dark: bool,
+    /// En el orden de [`COLOR_KEYS`], como `#rrggbb`.
+    pub colors: [&'static str; 20],
+    /// Esquinas, en px.
+    pub radius_box: u8,
+    pub radius_field: u8,
+    pub radius_selector: u8,
+    /// Tamaño base de campos y selectores, en px (4 = el de siempre).
+    pub size_field: f32,
+    pub size_selector: f32,
+    /// Grosor de los bordes, en px.
+    pub border: f32,
+    pub depth: bool,
+    pub noise: bool,
+}
+
+/// Valores de fábrica del tema `theme` (el primero si no se conoce).
+pub fn theme_base(theme: &str) -> &'static ThemeBase {
+    let i = crate::THEMES.iter().position(|t| *t == theme).unwrap_or(0);
+    &THEME_BASES[i]
+}
+
+/// Posición de un color en [`COLOR_KEYS`].
+pub fn color_index(key: &str) -> Option<usize> {
+    COLOR_KEYS.iter().position(|(k, _)| *k == key)
+}
+
+/// `#rrggbb` en minúsculas (acepta `#RGB`); `None` si no es un color.
+pub fn normalize_hex(s: &str) -> Option<String> {
+    let h = s.trim().strip_prefix('#')?;
+    if !h.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    match h.len() {
+        6 => Some(format!("#{}", h.to_ascii_lowercase())),
+        3 => {
+            let mut o = String::from("#");
+            for c in h.chars() {
+                o.push(c.to_ascii_lowercase());
+                o.push(c.to_ascii_lowercase());
+            }
+            Some(o)
+        }
+        _ => None,
+    }
+}
+
+/// Luminancia relativa (WCAG) de un `#rrggbb`.
+fn luminance(hex: &str) -> f32 {
+    let ch = |i: usize| {
+        let v = f32::from(u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0)) / 255.0;
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5)
+}
+
+/// Texto que se lee bien sobre `bg` (oscuro o blanco): mismo umbral que
+/// `contrast-color()`, para llegar a 4,5:1.
+pub fn readable_on(bg: &str) -> &'static str {
+    if luminance(bg) > 0.17913 {
+        "#111111"
+    } else {
+        "#ffffff"
+    }
+}
+
+/// Valores de fábrica de cada tema (sacados de daisyUI), en el orden de [`THEMES`].
+pub const THEME_BASES: &[ThemeBase] = &[
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#ffffff", "#f8f8f8", "#eeeeee", "#18181b", "#422ad5", "#e0e7ff", "#f43098", "#f9e4f0",
+            "#00d3bb", "#084d49", "#09090b", "#e4e4e7", "#00bafe", "#042e49", "#00d390", "#004c39",
+            "#fcb700", "#793205", "#ff627d", "#4d0218",
+        ],
+        radius_box: 8,
+        radius_field: 4,
+        radius_selector: 8,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: true,
+        noise: false,
+    },
+    ThemeBase {
+        dark: true,
+        colors: [
+            "#1d232a", "#191e24", "#15191e", "#ecf9ff", "#605dff", "#edf1fe", "#f43098", "#f9e4f0",
+            "#00d3bb", "#084d49", "#09090b", "#e4e4e7", "#00bafe", "#042e49", "#00d390", "#004c39",
+            "#fcb700", "#793205", "#ff627d", "#4d0218",
+        ],
+        radius_box: 8,
+        radius_field: 4,
+        radius_selector: 8,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: true,
+        noise: false,
+    },
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#faf7f5", "#efeae6", "#e7e2df", "#291334", "#44ebd3", "#005d58", "#f9cbe5", "#a0004a",
+            "#ffd6a7", "#9f2d00", "#262629", "#e4e4e7", "#00a4f2", "#042e49", "#00ba7b", "#002c21",
+            "#eeaf00", "#411e03", "#fe1c55", "#4d0218",
+        ],
+        radius_box: 16,
+        radius_field: 32,
+        radius_selector: 16,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 2.0,
+        depth: true,
+        noise: false,
+    },
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#ffffff", "#e8e8e8", "#d1d1d1", "#333c4d", "#66cc8a", "#223d30", "#377cfb", "#ffffff",
+            "#f68067", "#000000", "#333c4d", "#f9fafb", "#00b5ff", "#000000", "#00a96e", "#000000",
+            "#ffbe00", "#000000", "#ff5861", "#000000",
+        ],
+        radius_box: 16,
+        radius_field: 8,
+        radius_selector: 16,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#ffffff", "#e8e8e8", "#d1d1d1", "#181a2a", "#0082ce", "#ffffff", "#61738d", "#ffffff",
+            "#009689", "#ffffff", "#000000", "#ffffff", "#0090b5", "#ffffff", "#00a43b", "#ffffff",
+            "#fdc700", "#000000", "#ff6266", "#000000",
+        ],
+        radius_box: 4,
+        radius_field: 4,
+        radius_selector: 4,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#ece3ca", "#e4d8b4", "#dbca9b", "#793205", "#ff9fa0", "#801518", "#b7f6cd", "#00642e",
+            "#d08700", "#793205", "#56524c", "#d4d0ce", "#0082ce", "#fef2c6", "#00776f", "#fef2c6",
+            "#f34700", "#fef2c6", "#ff6266", "#7c2808",
+        ],
+        radius_box: 8,
+        radius_field: 4,
+        radius_selector: 4,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+];

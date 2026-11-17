@@ -187,6 +187,7 @@ fn shape(buttons: &str, corners: &str, background: &str) -> StoreStyle {
         buttons: s(buttons),
         corners: s(corners),
         background: s(background),
+        ..StoreStyle::default()
     }
 }
 

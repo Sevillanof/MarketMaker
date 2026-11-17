@@ -10,6 +10,9 @@
 //! el tema.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+use crate::theme::{color_index, normalize_hex, readable_on, theme_base, COLOR_KEYS};
 
 /// Anchos máximos sugeridos del contenido, en px. `0` es "Ancho completo".
 pub const WIDTH_PRESETS: &[(u16, &str)] = &[
@@ -226,26 +229,145 @@ fn css_of(
         .filter(|c| !c.is_empty())
 }
 
-/// Forma de los botones, esquinas y fondo de toda la tienda. Lo vacío es lo
-/// que trae el tema.
+/// Tema propio de la tienda, además de la forma de los botones, las esquinas
+/// y el fondo. Lo vacío es lo que trae el tema elegido.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(default)]
 pub struct StoreStyle {
-    /// Id de [`BUTTON_SHAPES`].
+    /// Id de [`BUTTON_SHAPES`] (tiendas anteriores y plantillas).
     pub buttons: String,
-    /// Id de [`CORNERS`].
+    /// Id de [`CORNERS`] (tiendas anteriores y plantillas).
     pub corners: String,
     /// Id de [`BACKGROUNDS`].
     pub background: String,
+    /// Nombre que se le puso al tema (solo para mostrar).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// Colores cambiados: clave de [`COLOR_KEYS`] → `#rrggbb`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub colors: BTreeMap<String, String>,
+    /// Esquema de color oscuro (barras, formularios del navegador).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dark: bool,
+    /// Esquinas, en px (`0..=`[`MAX_RADIUS`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius_box: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius_field: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius_selector: Option<u8>,
+    /// Tamaño base de campos y selectores, en px.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_field: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_selector: Option<f32>,
+    /// Grosor de los bordes, en px.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise: Option<bool>,
+}
+
+/// Esquina más redonda que se puede elegir, en px.
+pub const MAX_RADIUS: u8 = 48;
+/// Tamaño base de campos y selectores: mínimo, máximo y paso, en px.
+pub const SIZE_RANGE: (f32, f32, f32) = (3.0, 5.0, 0.5);
+/// Grosores de borde que se pueden elegir, en px.
+pub const BORDER_STEPS: [f32; 5] = [0.5, 1.0, 1.5, 2.0, 3.0];
+/// Opciones de esquina, en px.
+pub const RADIUS_STEPS: [u8; 5] = [0, 4, 8, 16, 32];
+
+fn rem(px: f32) -> String {
+    format!("{}rem", px / 16.0)
 }
 
 impl StoreStyle {
+    /// Sin ningún ajuste de tema propio (ni colores, ni esquinas, ni tamaños).
+    pub fn theme_is_default(&self) -> bool {
+        self.colors.is_empty()
+            && !self.dark
+            && self.radius_box.is_none()
+            && self.radius_field.is_none()
+            && self.radius_selector.is_none()
+            && self.size_field.is_none()
+            && self.size_selector.is_none()
+            && self.border.is_none()
+            && self.depth.is_none()
+            && self.noise.is_none()
+    }
+
     pub fn is_default(&self) -> bool {
         *self == Self::default()
     }
 
+    /// Vuelve al tema tal cual viene (conserva fondo, botones y esquinas
+    /// viejos de las plantillas).
+    pub fn reset_theme(&mut self) {
+        *self = Self {
+            buttons: std::mem::take(&mut self.buttons),
+            corners: std::mem::take(&mut self.corners),
+            background: std::mem::take(&mut self.background),
+            ..Self::default()
+        };
+    }
+
+    /// Color que se ve de `key` con el tema `theme`: el cambiado o el del tema.
+    pub fn color(&self, theme: &str, key: &str) -> String {
+        if let Some(c) = self.colors.get(key) {
+            return c.clone();
+        }
+        let i = color_index(key).unwrap_or(0);
+        let base = theme_base(theme);
+        // Un color de texto que no se cambió, sobre un color que sí: se calcula.
+        if let Some(bg) = key.strip_suffix("-content") {
+            if let Some(c) = self.colors.get(bg) {
+                return readable_on(c).to_string();
+            }
+        }
+        base.colors[i].to_string()
+    }
+
+    /// Cambia un color. `None` lo deja como lo trae el tema. Los colores de
+    /// texto (`…-content`) que no se eligieron a mano se calculan solos.
+    pub fn set_color(&mut self, key: &str, hex: Option<&str>) {
+        if color_index(key).is_none() {
+            return;
+        }
+        match hex.and_then(normalize_hex) {
+            Some(h) => {
+                self.colors.insert(key.to_string(), h);
+            }
+            None => {
+                self.colors.remove(key);
+            }
+        }
+    }
+
+    pub fn radius(&self, theme: &str, which: Corner) -> u8 {
+        let b = theme_base(theme);
+        match which {
+            Corner::Box => self.radius_box.unwrap_or(b.radius_box),
+            Corner::Field => self.radius_field.unwrap_or(b.radius_field),
+            Corner::Selector => self.radius_selector.unwrap_or(b.radius_selector),
+        }
+    }
+
+    pub fn set_radius(&mut self, which: Corner, px: u8) {
+        let px = Some(px.min(MAX_RADIUS));
+        match which {
+            Corner::Box => self.radius_box = px,
+            Corner::Field => self.radius_field = px,
+            Corner::Selector => self.radius_selector = px,
+        }
+        // Las formas viejas ya no mandan.
+        self.buttons.clear();
+        self.corners.clear();
+    }
+
     /// Variables CSS para la raíz de la tienda (`.mk-store`): cambian los
-    /// radios del tema (daisyUI) y el fondo.
+    /// radios, los colores y las medidas del tema (daisyUI) y el fondo.
     pub fn css_vars(&self) -> String {
         let mut s = String::new();
         if let Some(r) = css_of(BUTTON_SHAPES, &self.buttons) {
@@ -254,8 +376,75 @@ impl StoreStyle {
         if let Some(r) = css_of(CORNERS, &self.corners) {
             s.push_str(&format!("--radius-box:{r}; "));
         }
+        for (key, hex) in &self.colors {
+            if color_index(key).is_some() && normalize_hex(hex).is_some() {
+                s.push_str(&format!("--color-{key}:{hex}; "));
+                if !key.ends_with("-content") && !key.starts_with("base-") {
+                    let ck = format!("{key}-content");
+                    if !self.colors.contains_key(&ck) {
+                        s.push_str(&format!("--color-{ck}:{}; ", readable_on(hex)));
+                    }
+                }
+            }
+        }
+        if self.dark {
+            s.push_str("color-scheme:dark; ");
+        }
+        for (name, v) in [
+            ("--radius-box", self.radius_box),
+            ("--radius-field", self.radius_field),
+            ("--radius-selector", self.radius_selector),
+        ] {
+            if let Some(px) = v {
+                s.push_str(&format!("{name}:{}; ", rem(f32::from(px))));
+            }
+        }
+        if let Some(v) = self.size_field {
+            s.push_str(&format!("--size-field:{}; ", rem(v)));
+        }
+        if let Some(v) = self.size_selector {
+            s.push_str(&format!("--size-selector:{}; ", rem(v)));
+        }
+        if let Some(v) = self.border {
+            s.push_str(&format!("--border:{v}px; "));
+        }
+        if let Some(v) = self.depth {
+            s.push_str(&format!("--depth:{}; ", u8::from(v)));
+        }
+        if let Some(v) = self.noise {
+            s.push_str(&format!("--noise:{}; ", u8::from(v)));
+        }
         let bg = css_of(BACKGROUNDS, &self.background).unwrap_or("var(--color-base-200)");
         s.push_str(&format!("--mk-bg:{bg}"));
+        s
+    }
+
+    /// El tema en CSS, para copiarlo (botón "CSS" del editor).
+    pub fn theme_css(&self, theme: &str) -> String {
+        let b = theme_base(theme);
+        let mut s = format!(
+            "[data-theme=\"{}\"] {{\n  color-scheme: {};\n",
+            if self.name.trim().is_empty() {
+                "mi-tema"
+            } else {
+                self.name.trim()
+            },
+            if self.dark || b.dark { "dark" } else { "light" }
+        );
+        for (k, _) in COLOR_KEYS {
+            s.push_str(&format!("  --color-{k}: {};\n", self.color(theme, k)));
+        }
+        s.push_str(&format!(
+            "  --radius-box: {};\n  --radius-field: {};\n  --radius-selector: {};\n  --size-field: {};\n  --size-selector: {};\n  --border: {}px;\n  --depth: {};\n  --noise: {};\n}}",
+            rem(f32::from(self.radius(theme, Corner::Box))),
+            rem(f32::from(self.radius(theme, Corner::Field))),
+            rem(f32::from(self.radius(theme, Corner::Selector))),
+            rem(self.size_field.unwrap_or(b.size_field)),
+            rem(self.size_selector.unwrap_or(b.size_selector)),
+            self.border.unwrap_or(b.border),
+            u8::from(self.depth.unwrap_or(b.depth)),
+            u8::from(self.noise.unwrap_or(b.noise)),
+        ));
         s
     }
 
@@ -269,7 +458,43 @@ impl StoreStyle {
         if !BACKGROUNDS.iter().any(|(k, ..)| *k == self.background) {
             errors.push("Fondo: Elegí uno de los colores.".into());
         }
+        if self
+            .colors
+            .iter()
+            .any(|(k, v)| color_index(k).is_none() || normalize_hex(v).as_deref() != Some(v))
+        {
+            errors.push("Colores: alguno no es un color válido.".into());
+        }
+        let radii = [self.radius_box, self.radius_field, self.radius_selector];
+        if radii.iter().flatten().any(|r| *r > MAX_RADIUS) {
+            errors.push(format!("Esquinas: hasta {MAX_RADIUS} px."));
+        }
+        let (lo, hi, _) = SIZE_RANGE;
+        if [self.size_field, self.size_selector]
+            .iter()
+            .flatten()
+            .any(|v| !(lo..=hi).contains(v))
+        {
+            errors.push(format!("Tamaños: entre {lo} y {hi} px."));
+        }
+        if self.border.is_some_and(|b| !(0.0..=4.0).contains(&b)) {
+            errors.push("Bordes: entre 0 y 4 px.".into());
+        }
+        if self.name.chars().count() > 40 {
+            errors.push("Nombre del tema: hasta 40 letras.".into());
+        }
     }
+}
+
+/// Las tres familias de esquinas del tema.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Corner {
+    /// Tarjetas, ventanas, avisos.
+    Box,
+    /// Botones, campos, pestañas.
+    Field,
+    /// Casillas, interruptores, etiquetas.
+    Selector,
 }
 
 #[cfg(test)]
@@ -327,6 +552,7 @@ mod tests {
             buttons: "pill".into(),
             corners: "square".into(),
             background: "base".into(),
+            ..StoreStyle::default()
         };
         let css = s.css_vars();
         assert!(css.contains("--radius-field:999px"));
@@ -339,6 +565,52 @@ mod tests {
         }
         .errors(&mut e);
         assert_eq!(e.len(), 1);
+    }
+
+    #[test]
+    fn own_theme_changes_colors_with_readable_text_and_sizes() {
+        let mut s = StoreStyle::default();
+        assert!(s.theme_is_default());
+        s.set_color("primary", Some("#FFD400"));
+        s.set_radius(Corner::Field, 32);
+        s.size_field = Some(5.0);
+        s.border = Some(1.5);
+        s.depth = Some(false);
+        let css = s.css_vars();
+        assert!(css.contains("--color-primary:#ffd400;"));
+        // Amarillo claro: el texto sale oscuro.
+        assert!(css.contains("--color-primary-content:#111111;"));
+        assert!(css.contains("--radius-field:2rem;"));
+        assert!(css.contains("--size-field:0.3125rem;"));
+        assert!(css.contains("--border:1.5px;"));
+        assert!(css.contains("--depth:0;"));
+        assert_eq!(s.color("light", "primary-content"), "#111111");
+        assert_eq!(s.color("light", "secondary"), "#f43098");
+        // Color de texto elegido a mano.
+        s.set_color("primary-content", Some("#ff0000"));
+        assert!(s.css_vars().contains("--color-primary-content:#ff0000;"));
+        let mut e = Vec::new();
+        s.errors(&mut e);
+        assert!(e.is_empty(), "{e:?}");
+        // Un documento con colores sin sentido no se acepta.
+        s.colors.insert("primary".into(), "rojo".into());
+        s.errors(&mut e);
+        assert_eq!(e.len(), 1);
+        s.reset_theme();
+        assert!(s.theme_is_default());
+        assert!(StoreStyle::default()
+            .theme_css("dark")
+            .contains("color-scheme: dark"));
+        // Los documentos de antes no cambian al guardarse.
+        let json = serde_json::to_string(&StoreStyle::default()).unwrap();
+        assert!(!json.contains("colors") && !json.contains("depth"));
+    }
+
+    #[test]
+    fn readable_text_follows_wcag_threshold() {
+        assert_eq!(readable_on("#ffffff"), "#111111");
+        assert_eq!(readable_on("#000000"), "#ffffff");
+        assert_eq!(readable_on("#422ad5"), "#ffffff");
     }
 
     #[test]

@@ -6,19 +6,19 @@
 //! resúmenes; las opciones nuevas se suman como una sección más.
 
 use domain::{
-    font_css, Side, StoreLayout, StoreStyle, BACKGROUNDS, BUTTON_SHAPES, CORNERS, FONT_PAIRS,
-    MAX_PAD, PAD_STEP, STORE_SIZES, THEMES, THEME_LABELS, WIDTH_PRESETS,
+    font_css, Side, StoreLayout, FONT_PAIRS, MAX_PAD, PAD_STEP, STORE_SIZES, WIDTH_PRESETS,
 };
 use leptos::prelude::*;
 
 use crate::icons::Icon;
+use crate::theme_panel::ThemePanel;
 use crate::{Actions, EditorState, Ui};
 
 /// Id del botón "Mi tienda" de la barra: vuelve el foco ahí al cerrar.
 pub(crate) const STORE_BUTTON_ID: &str = "mk-store-button";
 
 /// Clase de una opción con dibujito.
-fn tile(active: bool) -> &'static str {
+pub(crate) fn tile(active: bool) -> &'static str {
     if active {
         "flex flex-col items-center gap-1 rounded-field border-2 border-primary bg-primary/10 p-1.5 text-primary"
     } else {
@@ -28,7 +28,7 @@ fn tile(active: bool) -> &'static str {
 
 /// Título de una sección.
 #[component]
-fn Section(title: &'static str, id: &'static str, children: Children) -> impl IntoView {
+pub(crate) fn Section(title: &'static str, id: &'static str, children: Children) -> impl IntoView {
     view! {
         <section class="mt-3" aria-labelledby=id>
             <h3 id=id class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">{title}</h3>
@@ -75,46 +75,14 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto px-3 pb-4">
-                <Colors/>
+                <ThemePanel/>
+                <div class="mt-5 border-t border-base-300"></div>
                 <Letters/>
                 <Margins/>
                 <Width/>
-                <Buttons/>
-                <Corners/>
-                <Background/>
                 <ProductCard/>
             </div>
         </aside>
-    }
-}
-
-#[component]
-fn Colors() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    view! {
-        <Section title="Colores" id="mk-dr-colors">
-            <div class="grid grid-cols-6 gap-1" role="group" aria-labelledby="mk-dr-colors">
-                {THEMES.iter().zip(THEME_LABELS).map(|(t, l)| {
-                    let active = move || state.doc.with(|d| d.theme == *t);
-                    view! {
-                        <button
-                            type="button"
-                            class=move || tile(active())
-                            aria-pressed=move || active().to_string()
-                            title=*l
-                            on:click=move |_| state.apply(|d| d.theme = (*t).to_string())
-                        >
-                            <span data-theme=*t class="flex h-8 w-full items-end gap-0.5 rounded-[3px] border border-base-content/10 bg-base-100 p-1" aria-hidden="true">
-                                <span class="h-2 w-2 rounded-full bg-primary"></span>
-                                <span class="h-2 w-2 rounded-full bg-secondary"></span>
-                                <span class="h-2 w-2 rounded-full bg-accent"></span>
-                            </span>
-                            <span class="w-full truncate text-center text-[10px] font-medium leading-tight">{*l}</span>
-                        </button>
-                    }
-                }).collect_view()}
-            </div>
-        </Section>
     }
 }
 
@@ -338,106 +306,6 @@ fn Width() -> impl IntoView {
                     {format!("{w} px, elegido arrastrando los bordes")}
                 </p>
             })}
-        </Section>
-    }
-}
-
-/// Opciones de [`StoreStyle`] que se dibujan con una muestra en el tema de la
-/// tienda: los botones y las esquinas.
-#[component]
-fn StyleTiles(
-    title: &'static str,
-    id: &'static str,
-    table: &'static [(&'static str, &'static str, &'static str)],
-    get: fn(&StoreStyle) -> &String,
-    put: fn(&mut StoreStyle, String),
-    sample: fn(&'static str) -> AnyView,
-) -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let theme = move || state.doc.with(|d| d.theme.clone());
-    view! {
-        <Section title=title id=id>
-            <div class="grid grid-cols-4 gap-1.5" role="group" aria-labelledby=id>
-                {table.iter().map(|(key, name, radius)| {
-                    let active = move || state.doc.with(|d| get(&d.style) == key);
-                    view! {
-                        <button
-                            type="button"
-                            class=move || tile(active())
-                            aria-pressed=move || active().to_string()
-                            on:click=move |_| state.apply(|d| put(&mut d.style, (*key).to_string()))
-                        >
-                            <span data-theme=theme class="flex h-7 items-center bg-transparent" aria-hidden="true">{sample(radius)}</span>
-                            <span class="w-full truncate text-center text-[11px] font-medium">{*name}</span>
-                        </button>
-                    }
-                }).collect_view()}
-            </div>
-        </Section>
-    }
-}
-
-#[component]
-fn Buttons() -> impl IntoView {
-    view! {
-        <StyleTiles
-            title="Botones"
-            id="mk-dr-buttons"
-            table=BUTTON_SHAPES
-            get=|s| &s.buttons
-            put=|s, v| s.buttons = v
-            sample=|r| {
-                let style = if r.is_empty() { String::new() } else { format!("border-radius:{r}") };
-                view! { <span class="btn btn-primary btn-xs pointer-events-none" style=style>"Comprar"</span> }.into_any()
-            }
-        />
-    }
-}
-
-#[component]
-fn Corners() -> impl IntoView {
-    view! {
-        <StyleTiles
-            title="Esquinas"
-            id="mk-dr-corners"
-            table=CORNERS
-            get=|s| &s.corners
-            put=|s, v| s.corners = v
-            sample=|r| {
-                let r = if r.is_empty() { "var(--radius-box)" } else { r };
-                view! { <span class="h-6 w-10 border-2 border-primary bg-primary/15" style=format!("border-radius:min({r}, 0.75rem)")></span> }.into_any()
-            }
-        />
-    }
-}
-
-#[component]
-fn Background() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let theme = move || state.doc.with(|d| d.theme.clone());
-    view! {
-        <Section title="Fondo" id="mk-dr-bg">
-            <div class="grid grid-cols-6 gap-1.5" role="group" aria-labelledby="mk-dr-bg">
-                {BACKGROUNDS.iter().map(|(key, name, css)| {
-                    let active = move || state.doc.with(|d| d.style.background == *key);
-                    view! {
-                        <button
-                            type="button"
-                            class=move || if active() {
-                                "rounded-field border-2 border-primary p-0.5 ring-2 ring-primary/20"
-                            } else {
-                                "rounded-field border-2 border-base-300 p-0.5 transition-colors hover:border-primary"
-                            }
-                            aria-pressed=move || active().to_string()
-                            aria-label=*name
-                            title=*name
-                            on:click=move |_| state.apply(|d| d.style.background = (*key).to_string())
-                        >
-                            <span data-theme=theme class="block h-7 rounded-[3px] border border-base-content/10" style=format!("background:{css}")></span>
-                        </button>
-                    }
-                }).collect_view()}
-            </div>
         </Section>
     }
 }
