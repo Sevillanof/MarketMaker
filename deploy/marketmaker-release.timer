@@ -1,14 +1,17 @@
-# Cada 2 minutos se fija si hay una versión nueva de main ya compilada.
-# Activarlo (como root):
+# Cada minuto se fija si GitHub terminó de compilar una versión nueva de main
+# y, si la hay, la instala (deploy/release.sh).
+# Instalar (como root, una vez):
 #   cp /opt/marketmaker/src/deploy/marketmaker-release.{service,timer} /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now marketmaker-release.timer
+# Ver qué hizo: journalctl -u marketmaker-release -n 50
 # Apagarlo: systemctl disable --now marketmaker-release.timer
 [Unit]
-Description=MarketMaker: buscar versiones nuevas cada 2 minutos
+Description=MarketMaker: buscar versiones nuevas de main cada minuto
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=2min
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
 
 [Install]
 WantedBy=timers.target

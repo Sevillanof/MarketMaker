@@ -22,26 +22,31 @@ con `DATABASE_URL`):
     RESEND_API_KEY=...
     EMAIL_FROM="MarketMaker <hola@mkr.com.ar>"   # con comillas: si no, se deja de leer el archivo ahí
 
-## Cada actualización
+## Cada actualización (automática)
 
 GitHub compila la app cada vez que algo entra a `main` (ver
-`.github/workflows/vps-build.yml`, tarda unos minutos) y deja la versión
-lista en Releases como `vps-<commit>`. La VPS solo la baja y reinicia:
-
-    sudo -iu marketmaker bash -c 'cd src && git pull -q --ff-only && deploy/release.sh'
-
-- `deploy/release.sh` instala la última de `main` (menos de un minuto).
-- `deploy/release.sh deploy abc1234` instala esa versión.
-- `deploy/release.sh rollback` vuelve a la anterior.
-- `deploy/release.sh list` muestra las guardadas y cuál anda.
+`.github/workflows/vps-build.yml`, unos 10 minutos) y deja la versión lista
+en Releases como `vps-<commit>`. En la VPS, `marketmaker-release.timer` se
+fija cada minuto si hay una nueva y la instala con `deploy/release.sh`. No
+hace falta entrar por SSH ni guardar ninguna clave en GitHub (el repo es
+público). Ver qué hizo: `journalctl -u marketmaker-release -n 50`.
 
 Cada versión queda en `/opt/marketmaker/releases/<commit>/`; `current/server`
 y `current/site` apuntan a la que anda (`current/release`). `.env.local` sigue
 en `current/`. Si la versión nueva no responde en 40 segundos, vuelve sola a
-la anterior. Se guardan las últimas 5.
+la anterior y no la reintenta. Se guardan las últimas 5.
 
-Para que se instale sola cada vez que algo entra a `main`, activar el timer
-(ver `marketmaker-release.timer`).
+A mano (como marketmaker), si hace falta:
+
+    sudo -iu marketmaker bash -c 'cd src && git pull -q --ff-only && deploy/release.sh'
+
+- `deploy/release.sh` instala la última de `main`.
+- `deploy/release.sh deploy abc1234` instala esa versión.
+- `deploy/release.sh rollback` vuelve a la anterior.
+- `deploy/release.sh list` muestra las guardadas y cuál anda.
+
+Después de un `rollback`, la versión que se dejó queda marcada como fallida y
+el timer no la vuelve a instalar; sigue con la próxima que entre a `main`.
 
 ### Respaldo: compilar en la VPS
 

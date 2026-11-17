@@ -22,6 +22,13 @@ KEEP=5
 URL=${MM_URL:-https://github.com/$REPO/releases}
 
 mkdir -p "$REL"
+# Una instalación por vez (el timer y una a mano no se pisan).
+exec 9>"$REL/.lock"
+if [ "${AUTO:-}" = 1 ]; then
+  flock -n 9 || exit 0
+else
+  flock -w 600 9 || { echo "Hay otra instalación en curso hace más de 10 minutos."; exit 1; }
+fi
 rm -rf "$REL"/.bajando-*
 current() { [ -L "$CUR/release" ] && basename "$(readlink "$CUR/release")" || true; }
 
@@ -82,7 +89,7 @@ activate() {
   # hash.txt se lee junto al servidor real (releases/<commit>/hash.txt).
   rm -f "$CUR/hash.txt"
   [ -n "$prev" ] && [ "$prev" != "$ver" ] && link release.prev "$REL/$prev"
-  sudo systemctl restart marketmaker
+  sudo systemctl restart marketmaker 9>&-
   if healthy; then
     rm -f "$REL/$ver.fallo"
     touch "$REL/$ver"
@@ -93,7 +100,7 @@ activate() {
   if [ -n "$prev" ] && [ "$prev" != "$ver" ] && [ -x "$REL/$prev/server" ]; then
     echo "La versión $ver no respondió. Vuelvo a $prev."
     link release "$REL/$prev"
-    sudo systemctl restart marketmaker
+    sudo systemctl restart marketmaker 9>&-
     healthy && echo "MarketMaker andando otra vez con $prev." || echo "Tampoco responde $prev: mirar journalctl -u marketmaker."
   else
     echo "La versión $ver no respondió: mirar journalctl -u marketmaker."
@@ -116,7 +123,8 @@ case "${1:-deploy}" in
     ver=${2:-$(curl -fsSL --retry 3 "$URL/latest/download/version.txt")}
     [[ $ver =~ ^([0-9a-f]{7,40}|local)$ ]] || { echo "Versión rara: '$ver'"; exit 1; }
     if [ "$ver" = "$(current)" ] && [ "$(readlink "$CUR/server" || true)" = release/server ]; then
-      echo "Ya está andando $ver."; exit 0
+      [ "${AUTO:-}" = 1 ] || echo "Ya está andando $ver."
+      exit 0
     fi
     # Con --auto (el timer) no se reintenta una versión que ya falló.
     if [ "${AUTO:-}" = 1 ] && [ -e "$REL/$ver.fallo" ]; then
@@ -129,6 +137,9 @@ case "${1:-deploy}" in
   rollback)
     [ -L "$CUR/release.prev" ] || { echo "No hay versión anterior guardada."; exit 1; }
     prev=$(basename "$(readlink "$CUR/release.prev")")
+    # La que se deja queda marcada: el timer no la vuelve a instalar sola.
+    cur=$(current)
+    [ -n "$cur" ] && touch "$REL/$cur.fallo"
     activate "$prev"
     ;;
   list)
