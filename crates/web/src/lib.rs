@@ -266,7 +266,7 @@ fn EditorPage() -> impl IntoView {
         <Title text="Editor · MarketMaker"/>
         // El editor es solo para computadora; en el celular, un aviso.
         <EditorOnDesktop panel/>
-        <div class="max-lg:hidden">
+        <div class="max-[799px]:hidden">
         <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
             {move || Suspend::new(async move {
                 // Sin cuenta, a Entrar; con una cuenta que no es dueña, un aviso.
@@ -292,12 +292,12 @@ fn EditorPage() -> impl IntoView {
     .into_any()
 }
 
-/// En pantallas chicas: el diseño se edita en una computadora; Productos y
+/// En pantallas de menos de 800 px: el diseño se edita en una computadora; Productos y
 /// Pedidos sí se pueden usar desde el celular.
 #[component]
 fn EditorOnDesktop(panel: String) -> impl IntoView {
     view! {
-        <div data-theme="light" class="min-h-screen bg-base-200 px-4 py-12 text-base-content lg:hidden">
+        <div data-theme="light" class="min-h-screen bg-base-200 px-4 py-12 text-base-content min-[800px]:hidden">
             <div class="card mx-auto max-w-md bg-base-100 shadow-sm"><div class="card-body gap-3">
                 <h1 class="card-title text-2xl">"Para diseñar tu tienda, usá una computadora"</h1>
                 <p class="text-base-content/75">"El editor necesita una pantalla grande. Desde el celular podés cargar productos y atender tus pedidos."</p>

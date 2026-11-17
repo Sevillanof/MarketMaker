@@ -999,7 +999,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
 
     // Antes de publicar: si quedan textos o productos de ejemplo, se avisa
     // y la persona elige (ver `check_publish`).
-    let publish_check = RwSignal::new(None::<String>);
+    let publish_check = RwSignal::new(None::<Vec<domain::PlaceholderNode>>);
     let examples = products.with_value(|p| p.iter().filter(|p| p.example).count());
 
     // Publicar: guarda lo que falte y después publica esa versión.
@@ -1017,30 +1017,11 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     };
 
     let check_publish = move || {
-        let texts = state.doc.with_untracked(domain::placeholders_left);
-        let mut parts = Vec::new();
-        match texts {
-            0 => {}
-            1 => parts.push("1 texto de ejemplo sin cambiar".to_string()),
-            n => parts.push(format!("{n} textos de ejemplo sin cambiar")),
-        }
-        match examples {
-            0 => {}
-            1 => parts.push("1 producto de ejemplo, que tus clientes no van a ver".to_string()),
-            n => parts.push(format!("{n} productos de ejemplo, que tus clientes no van a ver")),
-        }
-        if parts.is_empty() {
+        let items = state.doc.with_untracked(domain::placeholder_nodes);
+        if items.is_empty() && examples == 0 {
             publish_now();
         } else {
-            publish_check.set(Some(format!("Antes de publicar: quedan {}.", parts.join(" y "))));
-            request_animation_frame(|| {
-                if let Some(el) = document()
-                    .get_element_by_id("mk-publish-anyway")
-                    .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
-                {
-                    _ = el.focus();
-                }
-            });
+            publish_check.set(Some(items));
         }
     };
 
@@ -1238,7 +1219,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
 
     view! {
         <div data-theme="light" class="flex h-screen flex-col bg-base-200 text-base-content">
-            <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4">
+            <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4 max-[1099px]:gap-1.5 max-[1099px]:px-2">
                 <h1 class="sr-only">"Editor de tu tienda"</h1>
                 {use_context::<PanelLink>().map(|PanelLink(href)| view! {
                     <a href=href class="btn btn-ghost btn-square h-11 w-11" aria-label="Volver a tus tiendas"
@@ -1258,7 +1239,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                             on:click=move |_| ui.preview.set(false)
                         >
                             <Icon name="pencil"/>
-                            "Editar"
+                            <span class="max-[1099px]:sr-only">"Editar"</span>
                         </button>
                         <button
                             type="button"
@@ -1271,7 +1252,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                             }
                         >
                             <Icon name="eye"/>
-                            "Vista previa"
+                            <span class="max-[1099px]:sr-only">"Vista previa"</span>
                         </button>
                     </div>
                 </div>
@@ -1301,7 +1282,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                 </div>
                 <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
                 <span
-                    class="flex items-center gap-1.5 whitespace-nowrap text-sm"
+                    class="flex items-center gap-1.5 whitespace-nowrap text-sm max-[1099px]:[&_span:not([aria-hidden])]:sr-only"
                     role="status"
                     title=move || if state.unpublished() {
                         "Tus cambios se guardan solos. Tus clientes ven la última versión que publicaste."
@@ -1349,13 +1330,9 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     {move || if publish.pending().get() || publish_after.get() { "Publicando…" } else { "Publicar" }}
                 </button>
             </header>
-            {move || publish_check.get().map(|text| view! {
-                <div class="flex flex-wrap items-center gap-3 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm" role="region" aria-label="Antes de publicar">
-                    <span class="grow">{text}</span>
-                    <button id="mk-publish-anyway" type="button" class="btn btn-xs btn-primary"
-                        on:click=move |_| { publish_check.set(None); publish_now(); }>"Publicar igual"</button>
-                    <button type="button" class="btn btn-xs btn-ghost" on:click=move |_| publish_check.set(None)>"Seguir editando"</button>
-                </div>
+            {move || publish_check.get().map(|items| view! {
+                <PublishCheck items examples check=publish_check
+                    publish=Callback::new(move |_| { publish_check.set(None); publish_now(); })/>
             })}
             {move || recover.get().map(|doc| {
                 let doc = StoredValue::new(doc);
@@ -1602,5 +1579,81 @@ mod tests {
             problems(&doc)[0].text,
             "Carrusel › Diapositivas 2 › Enlace del botón: Escribí una dirección que empiece con https://, http:// o /."
         );
+    }
+}
+
+/// Ventana de antes de publicar: avisa que quedan textos de ejemplo, uno por
+/// fila. Tocar una fila lleva a ese bloque (cambiando de página si hace falta).
+#[component]
+fn PublishCheck(
+    items: Vec<domain::PlaceholderNode>,
+    examples: usize,
+    check: RwSignal<Option<Vec<domain::PlaceholderNode>>>,
+    publish: Callback<()>,
+) -> impl IntoView {
+    let actions = expect_context::<Actions>();
+    let dialog_ref = NodeRef::<leptos::html::Dialog>::new();
+    Effect::new(move |_| {
+        if let Some(d) = dialog_ref.get() {
+            if !d.open() {
+                _ = d.show_modal();
+            }
+        }
+    });
+    let n = items.len();
+    let first = items.first().map(|i| i.id.clone());
+    let rows = items
+        .into_iter()
+        .map(|i| {
+            let id = i.id.clone();
+            view! {
+                <li>
+                    <button type="button"
+                        class="flex w-full items-center gap-3 rounded-box border border-base-300 border-l-4 border-l-warning bg-base-100 px-3 py-2.5 text-left hover:bg-base-200"
+                        on:click=move |_| { check.set(None); actions.go_to(&id); }>
+                        <span class="shrink-0 text-sm font-semibold">{i.widget}</span>
+                        <span class="min-w-0 grow truncate text-sm text-base-content/60">{i.text.clone()}</span>
+                        <Icon name="arrow-left" class="h-4 w-4 shrink-0 rotate-180 text-base-content/60"/>
+                    </button>
+                </li>
+            }
+        })
+        .collect_view();
+    // Sin textos pero con productos de ejemplo: se avisa en una línea.
+    let title = if n == 0 {
+        if examples == 1 { "Queda 1 producto de ejemplo".to_string() } else { format!("Quedan {examples} productos de ejemplo") }
+    } else if n == 1 {
+        "Hay 1 texto sin cambiar".to_string()
+    } else {
+        format!("Hay {n} textos sin cambiar")
+    };
+    view! {
+        <dialog node_ref=dialog_ref class="modal" aria-labelledby="mk-pc-title"
+            on:close=move |_| check.set(None)>
+            <div class="modal-box max-w-sm border-t-4 border-warning" role="alertdialog">
+                <div class="mb-3 flex items-center gap-3">
+                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-warning/20 text-warning">
+                        <Icon name="alert" class="h-5 w-5"/>
+                    </span>
+                    <h2 id="mk-pc-title" class="text-lg font-extrabold">{title}</h2>
+                </div>
+                <ul class="flex flex-col gap-2">{rows}</ul>
+                <div class="modal-action">
+                    <button type="button" id="mk-publish-anyway" class="btn btn-ghost"
+                        on:click=move |_| publish.run(())>"Publicar igual"</button>
+                    {match first {
+                        Some(id) => view! {
+                            <button type="button" class="btn btn-primary" autofocus
+                                on:click=move |_| { check.set(None); actions.go_to(&id); }>"Corregir"</button>
+                        }.into_any(),
+                        None => view! {
+                            <button type="button" class="btn btn-primary" autofocus
+                                on:click=move |_| check.set(None)>"Seguir editando"</button>
+                        }.into_any(),
+                    }}
+                </div>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
     }
 }
