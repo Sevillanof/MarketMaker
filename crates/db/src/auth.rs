@@ -580,3 +580,140 @@ pub async fn store_logo_id(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Option<U
         .fetch_one(pool)
         .await
 }
+
+// ---------------------------------------------------------------------------
+// Whitelist: quién puede tener cuenta (se suma a ALLOWED_EMAILS).
+// ---------------------------------------------------------------------------
+
+/// Los emails agregados y los quitados desde la web.
+pub async fn load_allowlist(pool: &PgPool) -> sqlx::Result<(Vec<String>, Vec<String>)> {
+    let rows: Vec<(String, String)> = sqlx::query_as("SELECT email, status FROM allowed_emails")
+        .fetch_all(pool)
+        .await?;
+    let mut allowed = Vec::new();
+    let mut removed = Vec::new();
+    for (email, status) in rows {
+        if status == "allowed" {
+            allowed.push(email);
+        } else {
+            removed.push(email);
+        }
+    }
+    Ok((allowed, removed))
+}
+
+/// Habilita `email` (ya normalizado). Si estaba quitado, vuelve a entrar.
+pub async fn allow_email(pool: &PgPool, email: &str, by: Uuid) -> sqlx::Result<()> {
+    sqlx::query(
+        "INSERT INTO allowed_emails (email, status, added_by) VALUES ($1, 'allowed', $2)
+         ON CONFLICT (email) DO UPDATE
+           SET status = 'allowed', added_by = $2, created_at = now(), updated_at = now()",
+    )
+    .bind(email)
+    .bind(by)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Quita `email` de la lista. Queda anotado para que tampoco valga si viene
+/// de `ALLOWED_EMAILS`.
+pub async fn disallow_email(pool: &PgPool, email: &str, by: Uuid) -> sqlx::Result<()> {
+    sqlx::query(
+        "INSERT INTO allowed_emails (email, status, added_by) VALUES ($1, 'removed', $2)
+         ON CONFLICT (email) DO UPDATE
+           SET status = 'removed', added_by = $2, updated_at = now()",
+    )
+    .bind(email)
+    .bind(by)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Una persona de la lista con lo que sabemos de su cuenta.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AllowlistMember {
+    pub email: String,
+    pub name: String,
+    pub avatar_id: Option<Uuid>,
+    /// Tiene cuenta.
+    pub has_account: bool,
+    /// Segundos desde que creó la cuenta / desde que entró por última vez.
+    pub joined: Option<i64>,
+    pub last_seen: Option<i64>,
+    /// Cuándo la agregaron a la lista (solo si fue desde la web).
+    pub added: Option<i64>,
+    /// (slug, nombre)
+    pub stores: Vec<(String, String)>,
+    pub orders: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct MemberRow {
+    email: String,
+    name: Option<String>,
+    avatar_id: Option<Uuid>,
+    user_id: Option<Uuid>,
+    joined: Option<i64>,
+    last_seen: Option<i64>,
+    added: Option<i64>,
+}
+
+/// Datos de cada email de `emails`, en el mismo orden.
+pub async fn allowlist_members(
+    pool: &PgPool,
+    emails: &[String],
+) -> sqlx::Result<Vec<AllowlistMember>> {
+    let rows: Vec<MemberRow> = sqlx::query_as(
+        "SELECT e.email, u.name, u.avatar_id, u.id AS user_id, extract(epoch FROM now() - u.created_at)::bigint AS joined,
+                (SELECT extract(epoch FROM now() - max(s.created_at))::bigint FROM sessions s WHERE s.user_id = u.id) AS last_seen,
+                extract(epoch FROM now() - a.created_at)::bigint AS added
+         FROM unnest($1::text[]) WITH ORDINALITY AS e(email, n)
+         LEFT JOIN users u ON u.email = e.email
+         LEFT JOIN allowed_emails a ON a.email = e.email AND a.status = 'allowed'
+         ORDER BY e.n",
+    )
+    .bind(emails)
+    .fetch_all(pool)
+    .await?;
+    let ids: Vec<Uuid> = rows.iter().filter_map(|r| r.user_id).collect();
+    let stores: Vec<(Uuid, String, String)> = sqlx::query_as(
+        "SELECT m.user_id, t.slug, t.name FROM memberships m
+         JOIN tenants t ON t.id = m.tenant_id
+         WHERE m.user_id = ANY($1) ORDER BY t.created_at DESC, t.slug",
+    )
+    .bind(&ids)
+    .fetch_all(pool)
+    .await?;
+    let orders: Vec<(Uuid, i64)> = sqlx::query_as(
+        "SELECT m.user_id, count(o.id) FROM memberships m
+         JOIN orders o ON o.tenant_id = m.tenant_id
+           AND o.status IN ('paid', 'shipped', 'delivered')
+         WHERE m.user_id = ANY($1) GROUP BY m.user_id",
+    )
+    .bind(&ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| AllowlistMember {
+            has_account: r.user_id.is_some(),
+            name: r.name.unwrap_or_default(),
+            avatar_id: r.avatar_id,
+            joined: r.joined,
+            last_seen: r.last_seen,
+            added: r.added,
+            stores: stores
+                .iter()
+                .filter(|(u, ..)| Some(*u) == r.user_id)
+                .map(|(_, s, n)| (s.clone(), n.clone()))
+                .collect(),
+            orders: orders
+                .iter()
+                .find(|(u, _)| Some(*u) == r.user_id)
+                .map_or(0, |(_, n)| *n),
+            email: r.email,
+        })
+        .collect())
+}

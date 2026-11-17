@@ -71,8 +71,37 @@ mod ssr {
             .is_some_and(|v| matches!(v.trim().to_lowercase().as_str(), "true" | "1" | "si" | "sí"))
     }
 
+    /// Lo que se agregó y se quitó desde la Whitelist de la web (tabla
+    /// `allowed_emails`). Se carga al arrancar y cada vez que cambia.
+    static WEB_LIST: std::sync::LazyLock<std::sync::RwLock<(HashSet<String>, HashSet<String>)>> =
+        std::sync::LazyLock::new(Default::default);
+
+    /// Vuelve a leer la Whitelist de la base de datos.
+    pub async fn refresh_allowlist(pool: &db::Pool) -> Result<(), ServerFnError> {
+        let (added, removed) = db::auth::load_allowlist(pool).await.map_err(internal)?;
+        if let Ok(mut list) = WEB_LIST.write() {
+            *list = (added.into_iter().collect(), removed.into_iter().collect());
+        }
+        Ok(())
+    }
+
+    /// Emails que pueden tener cuenta: `ALLOWED_EMAILS` del servidor más los
+    /// agregados desde la Whitelist, menos los quitados ahí. Los administradores
+    /// siempre están.
     pub fn allowed_emails() -> HashSet<String> {
-        email_list("ALLOWED_EMAILS")
+        let mut all = email_list("ALLOWED_EMAILS");
+        if let Ok(list) = WEB_LIST.read() {
+            all.extend(list.0.iter().cloned());
+            all.retain(|e| !list.1.contains(e));
+        }
+        all.extend(email_list("ADMIN_EMAILS"));
+        all
+    }
+
+    /// Los emails de `ALLOWED_EMAILS` / `ADMIN_EMAILS` / agregados, sin los
+    /// quitados, para listarlos en la Whitelist.
+    pub fn admin_emails() -> HashSet<String> {
+        email_list("ADMIN_EMAILS")
     }
 
     /// `ADMIN_EMAILS` (en `.env.local`): quien administra MarketMaker. Una
@@ -340,7 +369,10 @@ pub async fn sign_out() -> Result<(), ServerFnError> {
     use crate::server::internal;
     if let Some(token) = session_token() {
         let pool = crate::server::pool()?;
-        match db::auth::session_user(&pool, &token).await.map_err(internal)? {
+        match db::auth::session_user(&pool, &token)
+            .await
+            .map_err(internal)?
+        {
             Some(user) => db::auth::delete_other_sessions(&pool, user.id, None)
                 .await
                 .map_err(internal)?,

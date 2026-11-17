@@ -47,11 +47,13 @@ pub async fn load_panel_nav() -> Result<Option<PanelNav>, ServerFnError> {
             slug: r.slug,
         })
         .collect();
+    let is_admin = crate::auth::is_admin(&user.email);
     Ok(Some(PanelNav {
         email: user.email,
         name: user.name,
         avatar: user.avatar_id.map(domain::avatar_url),
         stores,
+        is_admin,
     }))
 }
 
@@ -258,6 +260,9 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
         }
     });
     let dialog = NodeRef::<leptos::html::Dialog>::new();
+    let whitelist = NodeRef::<leptos::html::Dialog>::new();
+    let whitelist_version = RwSignal::new(0u32);
+    let is_admin = nav.is_admin;
     let menu = NodeRef::<leptos::html::Details>::new();
     let open_dialog = move |_| {
         if let Some(m) = menu.get() {
@@ -393,12 +398,21 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                     <li><a href=format!("/cuenta?tienda={s}") class=if section == Section::Account { "bg-base-200" } else { "" }>
                         <ui::Icon class="size-[18px] text-base-content/60" name="user"/>"Mi cuenta"
                     </a></li>
+                    {is_admin.then(|| view! {
+                        <li><button type="button" on:click=move |_| {
+                            if let Some(m) = menu.get() { m.set_open(false); }
+                            crate::whitelist::open_whitelist(whitelist, whitelist_version);
+                        }>
+                            <ui::Icon class="size-[18px] text-base-content/60" name="shield"/>"Whitelist"
+                        </button></li>
+                    })}
                     <li class="mt-1 border-t border-base-300 pt-1"><button type="button" on:click=move |_| { out.dispatch(()); }>
                         <ui::Icon class="size-[18px] text-base-content/60" name="log-out"/>"Salir"
                     </button></li>
                 </ul>
             </div>
         </details>
+        {is_admin.then(|| view! { <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/> })}
         <dialog node_ref=dialog class="modal" aria-labelledby="crear-tienda-titulo">
             <div class="modal-box max-w-lg">
                 <crate::platform::NewStore first=false on_cancel=close_dialog/>
