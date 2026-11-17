@@ -24,7 +24,31 @@ con `DATABASE_URL`):
 
 ## Cada actualización
 
+GitHub compila la app cada vez que algo entra a `main` (ver
+`.github/workflows/vps-build.yml`, tarda unos minutos) y deja la versión
+lista en Releases como `vps-<commit>`. La VPS solo la baja y reinicia:
+
+    sudo -iu marketmaker bash -c 'cd src && git pull -q --ff-only && deploy/release.sh'
+
+- `deploy/release.sh` instala la última de `main` (menos de un minuto).
+- `deploy/release.sh deploy abc1234` instala esa versión.
+- `deploy/release.sh rollback` vuelve a la anterior.
+- `deploy/release.sh list` muestra las guardadas y cuál anda.
+
+Cada versión queda en `/opt/marketmaker/releases/<commit>/`; `current/server`
+y `current/site` apuntan a la que anda (`current/release`). `.env.local` sigue
+en `current/`. Si la versión nueva no responde en 40 segundos, vuelve sola a
+la anterior. Se guardan las últimas 5.
+
+Para que se instale sola cada vez que algo entra a `main`, activar el timer
+(ver `marketmaker-release.timer`).
+
+### Respaldo: compilar en la VPS
+
     sudo -iu marketmaker /opt/marketmaker/src/deploy/update.sh
 
 Baja `main`, compila con `cargo leptos build --release` y reinicia el servicio.
+Es lento y carga la VPS; sirve si GitHub no compiló. `release.sh` guarda esa
+compilación como versión `local` la próxima vez, para poder volver a ella.
+
 Logs: `journalctl -u marketmaker -f`.

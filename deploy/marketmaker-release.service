@@ -1,0 +1,13 @@
+# Instala sola la última versión compilada por GitHub (lo dispara
+# marketmaker-release.timer). Si una versión falla, vuelve a la anterior y no
+# la reintenta.
+[Unit]
+Description=MarketMaker: instalar la última versión de main
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=marketmaker
+Environment=AUTO=1
+ExecStart=/opt/marketmaker/src/deploy/release.sh

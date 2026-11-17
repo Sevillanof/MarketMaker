@@ -42,7 +42,11 @@ async fn main() {
         .connect_with(connect)
         .await
         .expect("no se pudo conectar a PostgreSQL");
-    sqlx::migrate!("../../migrations")
+    // Una versión anterior tiene que poder arrancar contra una base que ya
+    // tiene migraciones más nuevas (volver atrás con deploy/release.sh).
+    let mut migrator = sqlx::migrate!("../../migrations");
+    migrator.set_ignore_missing(true);
+    migrator
         .run(&pool)
         .await
         .expect("no se pudieron aplicar las migraciones");
