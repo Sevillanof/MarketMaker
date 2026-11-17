@@ -52,8 +52,9 @@ enum CodeFor {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Step {
-    Email,
-    Password,
+    /// Email y contraseña juntos.
+    SignIn,
+    /// Nombre, email y contraseña (solo invitados).
     Create,
     Code(CodeFor),
 }
@@ -89,8 +90,9 @@ pub fn Logo(#[prop(optional, into)] class: String) -> impl IntoView {
     }
 }
 
-/// `/entrar`: primero el email; si ya tiene cuenta, la contraseña; si es
-/// nuevo e invitado, nombre y contraseña y ya está adentro.
+/// `/entrar`: una tarjeta sobre el fondo oscuro de la plataforma, con email y
+/// contraseña en la misma pantalla (así el navegador completa los dos). Crear
+/// cuenta (solo invitados) y los códigos por email son pasos aparte.
 #[component]
 pub fn SignInPage() -> impl IntoView {
     let query = use_query_map();
@@ -100,46 +102,33 @@ pub fn SignInPage() -> impl IntoView {
         None if crate::site::current_site() == domain::Site::Platform => "/".to_string(),
         None => "/editor".to_string(),
     };
+    // `/entrar?crear`: los botones "Crear cuenta" abren directo ese paso.
+    let create = query.read_untracked().get("crear").is_some();
     let me = Resource::new(|| (), |_| crate::auth::who_am_i());
     view! {
         <leptos_meta::Title text="Entrar · MarketMaker"/>
-        <div data-theme="light" class="grid min-h-screen bg-base-100 text-base-content lg:grid-cols-2">
-            <div class="flex flex-col px-6 py-8 sm:px-12 lg:px-16">
-                <a href="/" class="self-start text-lg"><Logo/></a>
-                <div class="mx-auto my-auto flex w-full max-w-sm flex-col gap-4 py-12">
-                    <Suspense fallback=|| view! { <ui::Skeleton class="h-56 w-full"/> }>
+        <div class="relative isolate flex min-h-dvh flex-col overflow-x-hidden bg-[#110e1c] text-white">
+            <div class="pointer-events-none absolute inset-x-0 -top-72 -z-10 h-[800px] bg-[radial-gradient(closest-side,rgba(106,85,240,.45),transparent)]" aria-hidden="true"></div>
+            <header class="flex items-center justify-between px-5 py-5 sm:px-10 sm:py-6">
+                <a href="/" class="text-lg"><Logo/></a>
+                <a href="/" class="text-sm text-white/65 hover:text-white">"← Volver al inicio"</a>
+            </header>
+            <main class="flex flex-1 flex-col items-center px-4 pt-2 pb-12 sm:justify-center sm:pt-6">
+                <div data-theme="light" class="w-full max-w-[420px] rounded-[20px] bg-base-100 px-6 pt-7 pb-6 text-base-content shadow-[0_30px_80px_-20px_rgba(0,0,0,.6)] sm:px-9 sm:pt-9 sm:pb-7">
+                    <Suspense fallback=|| view! { <ui::Skeleton class="h-80 w-full"/> }>
                         {move || Suspend::new(async move {
                             match me.await {
                                 Ok(Some(me)) => view! { <AlreadyIn me next=next()/> }.into_any(),
-                                _ => view! { <SignInForm next=next()/> }.into_any(),
+                                _ => view! { <SignInForm next=next() create/> }.into_any(),
                             }
                         })}
                     </Suspense>
                 </div>
-                <a href="/" class="self-start text-sm text-base-content/60 hover:text-base-content">"← Volver al inicio"</a>
-            </div>
-            <SidePanel/>
-        </div>
-    }
-}
-
-/// La mitad oscura de Entrar: una tienda de muestra y una frase.
-#[component]
-fn SidePanel() -> impl IntoView {
-    view! {
-        <div class="relative hidden overflow-hidden bg-[#110e1c] p-12 text-white lg:flex lg:flex-col lg:justify-end" aria-hidden="true">
-            <div class="pointer-events-none absolute -top-48 -right-48 size-[600px] rounded-full bg-[radial-gradient(closest-side,rgba(106,85,240,.6),transparent)]"></div>
-            <div class="absolute top-16 right-14 left-14 -rotate-2 rounded-2xl bg-white p-4 text-[#16131f] shadow-2xl">
-                <div class="mb-3 flex justify-between text-sm font-extrabold"><span>"Huerta Nativa"</span><span>"Carrito · 2"</span></div>
-                <div class="flex h-28 items-end rounded-xl bg-gradient-to-r from-[#203a2c] to-[#3e6b52] p-4 text-xl font-extrabold text-white">"Plantas que duran"</div>
-                <div class="mt-3 grid grid-cols-4 gap-2">
-                    {[4, 2, 3, 6].into_iter().map(|n| view! {
-                        <img src=format!("/img/product-{n}.webp") alt="" class="aspect-square w-full rounded-lg object-cover"/>
-                    }).collect_view()}
-                </div>
-            </div>
-            <p class="relative text-2xl leading-snug font-bold tracking-tight">"Tu tienda, tu dirección,"<br/>"tus ventas."</p>
-            <p class="relative mt-2 text-white/60">"tunombre.mkr.com.ar"</p>
+                <p class="mt-6 max-w-[480px] text-center text-sm text-white/60">
+                    <b class="font-semibold text-white/85">"¿Venís a comprar?"</b>
+                    " No necesitás cuenta: entrá directo a la tienda."
+                </p>
+            </main>
         </div>
     }
 }
@@ -154,27 +143,31 @@ fn AlreadyIn(me: Me, next: String) -> impl IntoView {
         }
     });
     let hello = if me.name.is_empty() {
-        "Ya entraste".to_string()
+        "Ya iniciaste sesión".to_string()
     } else {
         format!("Hola, {}", me.name)
     };
     view! {
-        <h1 class="text-3xl font-extrabold tracking-tight">{hello}</h1>
-        <p>"Estás con la cuenta " <strong>{me.email.clone()}</strong> "."</p>
-        {(!me.can_edit && !platform).then(|| view! {
-            <div role="alert" class="alert alert-warning">"Tu cuenta no puede editar esta tienda."</div>
-        })}
-        <div class="flex flex-wrap gap-2">
-            {(me.can_edit || platform).then(|| view! { <a class="btn btn-primary" href=next.clone()>"Seguir"</a> })}
-            {platform.then(|| view! { <a class="btn btn-ghost" href="/cuenta">"Mi cuenta"</a> })}
-            {(!platform).then(|| view! { <a class="btn btn-ghost" href="/">"Ver la tienda"</a> })}
-            <button class="btn btn-ghost" on:click=move |_| { out.dispatch(()); }>"Salir"</button>
+        <div class="flex flex-col gap-4">
+            <h1 class="text-[28px] leading-tight font-extrabold tracking-tight">{hello}</h1>
+            <p class="-mt-2 text-base-content/70">"Estás con la cuenta " <strong class="text-base-content">{me.email.clone()}</strong> "."</p>
+            {(!me.can_edit && !platform).then(|| view! {
+                <FieldNote ok=false text="Tu cuenta no puede editar esta tienda."/>
+            })}
+            {(me.can_edit || platform).then(|| view! {
+                <a class="btn btn-primary h-12" href=next.clone()>{if platform { "Ir a mis tiendas" } else { "Ir al editor" }}</a>
+            })}
+            <div class="flex flex-wrap justify-center gap-2">
+                {platform.then(|| view! { <a class="btn btn-ghost btn-sm" href="/cuenta">"Mi cuenta"</a> })}
+                {(!platform).then(|| view! { <a class="btn btn-ghost btn-sm" href="/">"Ver la tienda"</a> })}
+                <button class="btn btn-ghost btn-sm" on:click=move |_| { out.dispatch(()); }>"Cerrar sesión"</button>
+            </div>
         </div>
     }
 }
 
 /// Campo de contraseña con "Mostrar" y, si `meter`, la barrita de qué tan
-/// buena es.
+/// buena es. `extra` va a la derecha de la etiqueta; `note`, debajo del campo.
 #[component]
 fn PasswordField(
     value: RwSignal<String>,
@@ -183,6 +176,8 @@ fn PasswordField(
     #[prop(optional)] meter: bool,
     #[prop(optional)] autofocus: bool,
     #[prop(optional)] extra: Option<AnyView>,
+    #[prop(optional, into)] bad: Signal<bool>,
+    #[prop(optional)] note: Option<AnyView>,
 ) -> impl IntoView {
     let show = RwSignal::new(false);
     let id = format!("pw-{}", label.to_lowercase().replace(' ', "-"));
@@ -193,18 +188,20 @@ fn PasswordField(
                 <label for=id.clone() class="text-sm font-semibold">{label}</label>
                 {extra}
             </div>
-            <div class="input flex w-full items-center gap-2 pr-1">
-                <input id=id type=move || if show.get() { "text" } else { "password" }
-                    class="grow" required minlength=domain::PASSWORD_MIN.to_string() maxlength=domain::PASSWORD_MAX.to_string()
-                    autocomplete=autocomplete data-autofocus=autofocus.then_some("")
+            <div class=move || format!("input h-12 flex w-full items-center gap-2 pr-1 {}", if bad.get() { "input-error" } else { "" })>
+                <input id=id name=autocomplete.clone() type=move || if show.get() { "text" } else { "password" }
+                    class="grow text-base" required minlength=domain::PASSWORD_MIN.to_string() maxlength=domain::PASSWORD_MAX.to_string()
+                    autocomplete=autocomplete enterkeyhint="go" data-autofocus=autofocus.then_some("")
+                    aria-invalid=move || bad.get().then_some("true")
                     prop:value=move || value.get()
                     on:input=move |ev| value.set(event_target_value(&ev))/>
-                <button type="button" class="btn btn-ghost btn-xs text-base-content/60"
+                <button type="button" class="btn btn-ghost btn-sm text-base-content/60"
                     aria-pressed=move || show.get().to_string()
                     on:click=move |_| show.update(|s| *s = !*s)>
                     {move || if show.get() { "Ocultar" } else { "Mostrar" }}
                 </button>
             </div>
+            {note}
             {meter.then(|| view! {
                 <div class="mt-1 flex gap-1" aria-hidden="true">
                     {(1..=4u8).map(|i| view! {
@@ -230,15 +227,26 @@ fn PasswordField(
     }
 }
 
+/// Qué campo tiene el aviso de error, para mostrarlo justo debajo.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Spot {
+    Email,
+    Name,
+    Password,
+    Code,
+    /// Al pie del formulario (problemas de conexión, límites).
+    Form,
+}
+
 #[component]
-fn SignInForm(next: String) -> impl IntoView {
+fn SignInForm(next: String, create: bool) -> impl IntoView {
     let next = StoredValue::new(next);
-    let step = RwSignal::new(Step::Email);
+    let step = RwSignal::new(if create { Step::Create } else { Step::SignIn });
     let email = RwSignal::new(String::new());
     let name = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let code = RwSignal::new(String::new());
-    let problem = RwSignal::new(None::<String>);
+    let problem = RwSignal::new(None::<(Spot, String)>);
     let info = RwSignal::new(None::<String>);
     // Para qué es el próximo código que se pide.
     let code_for = RwSignal::new(CodeFor::Login);
@@ -267,8 +275,11 @@ fn SignInForm(next: String) -> impl IntoView {
             || check.pending().get()
             || finish.pending().get()
     };
+    let fail = move |spot: Spot, text: &str| problem.set(Some((spot, text.to_string())));
     // Al escribir de nuevo, el aviso de error anterior se va.
     Effect::new(move |prev: Option<()>| {
+        email.track();
+        name.track();
         password.track();
         code.track();
         if prev.is_some() {
@@ -280,34 +291,51 @@ fn SignInForm(next: String) -> impl IntoView {
         step.set(s);
         focus_first();
     };
+    // Revisa el email antes de mandarlo; si no sirve, deja el aviso debajo.
+    let email_ok = move || {
+        let e = email.get_untracked();
+        if e.trim().is_empty() {
+            fail(Spot::Email, "Escribí tu email.");
+            false
+        } else if !domain::looks_like_email(e.trim()) {
+            fail(
+                Spot::Email,
+                "El email no es válido. Revisalo (por ejemplo, ana@correo.com).",
+            );
+            false
+        } else {
+            true
+        }
+    };
     let send_code = move |purpose: CodeFor| {
+        info.set(None);
+        if email.get_untracked().trim().is_empty() {
+            fail(Spot::Email, "Escribí tu email y te mandamos el código.");
+            return;
+        }
+        if !email_ok() {
+            return;
+        }
         code_for.set(purpose);
         problem.set(None);
         ask.dispatch(email.get_untracked());
     };
 
+    // Contraseña no aceptada: si el email ni siquiera tiene cuenta, se lo
+    // decimos y lo llevamos a crearla (el email ya se puede consultar con
+    // `lookup_email`, que tiene su propio límite).
+    let wrong_password = "El email o la contraseña no son correctos. Probá de nuevo o recuperala con \"¿La olvidaste?\".";
     Effect::new(move |_| {
         let Some(result) = lookup.value().get() else {
             return;
         };
         match result {
-            Ok(EmailLookup::Existing) => {
-                name.set(String::new());
-                password.set(String::new());
-                goto(Step::Password);
-            }
-            Ok(EmailLookup::TooMany) => problem.set(Some(
-                "Hiciste muchas consultas seguidas. Esperá un minuto y probá de nuevo.".into(),
-            )),
-            Ok(EmailLookup::New) => {
-                password.set(String::new());
-                goto(Step::Create);
-            }
-            Ok(EmailLookup::BadEmail) => problem.set(Some(
-                "El email no es válido. Revisalo (por ejemplo, ana@correo.com).".into(),
-            )),
-            Ok(EmailLookup::NotAllowed) => problem.set(Some(NOT_ALLOWED.into())),
-            Err(_) => problem.set(Some(CONNECTION.into())),
+            Ok(EmailLookup::New) => fail(
+                Spot::Email,
+                "Este email todavía no tiene una cuenta. Si te invitaron, creala con \"Creá tu cuenta\".",
+            ),
+            Ok(EmailLookup::NotAllowed) => fail(Spot::Email, NOT_ALLOWED),
+            _ => fail(Spot::Password, wrong_password),
         }
     });
     Effect::new(move |_| {
@@ -316,12 +344,18 @@ fn SignInForm(next: String) -> impl IntoView {
         };
         match result {
             Ok(PasswordSignIn::In { next }) => go(&next),
-            Ok(PasswordSignIn::Wrong) => problem.set(Some("La contraseña no es correcta. Probá de nuevo o recuperala con \"¿Olvidaste tu contraseña?\".".into())),
-            Ok(PasswordSignIn::Locked { minutes }) => problem.set(Some(format!(
+            Ok(PasswordSignIn::Wrong) => {
+                lookup.dispatch(email.get_untracked());
+            }
+            Ok(PasswordSignIn::Locked { minutes }) => problem.set(Some((Spot::Password, format!(
                 "Hubo demasiados intentos seguidos. Esperá {minutes} minutos o entrá con un código por email."
-            ))),
-            Ok(PasswordSignIn::NoPassword) => send_code(CodeFor::Reset),
-            Err(_) => problem.set(Some(CONNECTION.into())),
+            )))),
+            Ok(PasswordSignIn::NoPassword) => {
+                info.set(Some("Tu cuenta todavía no tiene contraseña. Te mandamos un código para que elijas una.".into()));
+                code_for.set(CodeFor::Reset);
+                ask.dispatch(email.get_untracked());
+            }
+            Err(_) => fail(Spot::Form, CONNECTION),
         }
     });
     Effect::new(move |_| {
@@ -336,15 +370,13 @@ fn SignInForm(next: String) -> impl IntoView {
                 }
                 goto(Step::Code(code_for.get_untracked()));
             }
-            Ok(CodeRequest::BadEmail) => {
-                problem.set(Some("El email no es válido. Revisalo.".into()))
-            }
-            Ok(CodeRequest::NotAllowed) => problem.set(Some(NOT_ALLOWED.into())),
-            Ok(CodeRequest::TooMany) => problem.set(Some(
-                "Se pidieron demasiados códigos seguidos. Esperá unos minutos y probá de nuevo."
-                    .into(),
-            )),
-            Err(_) => problem.set(Some(CONNECTION.into())),
+            Ok(CodeRequest::BadEmail) => fail(Spot::Email, "El email no es válido. Revisalo."),
+            Ok(CodeRequest::NotAllowed) => fail(Spot::Email, NOT_ALLOWED),
+            Ok(CodeRequest::TooMany) => fail(
+                Spot::Form,
+                "Se pidieron demasiados códigos seguidos. Esperá unos minutos y probá de nuevo.",
+            ),
+            Err(_) => fail(Spot::Form, CONNECTION),
         }
     });
     let wrong_code = move |left: u32| {
@@ -361,9 +393,9 @@ fn SignInForm(next: String) -> impl IntoView {
         };
         match result {
             Ok(CodeCheck::In { next }) => go(&next),
-            Ok(CodeCheck::Wrong { left }) => problem.set(Some(wrong_code(left))),
-            Ok(CodeCheck::Expired) => problem.set(Some(expired.into())),
-            Err(_) => problem.set(Some(CONNECTION.into())),
+            Ok(CodeCheck::Wrong { left }) => problem.set(Some((Spot::Code, wrong_code(left)))),
+            Ok(CodeCheck::Expired) => fail(Spot::Code, expired),
+            Err(_) => fail(Spot::Form, CONNECTION),
         }
     });
     Effect::new(move |_| {
@@ -375,14 +407,17 @@ fn SignInForm(next: String) -> impl IntoView {
             Ok(AccountCreation::NeedsCode) => send_code(CodeFor::NewAccount),
             Ok(AccountCreation::Exists) => {
                 password.set(String::new());
-                goto(Step::Password);
+                goto(Step::SignIn);
                 info.set(Some(
                     "Este email ya tiene una cuenta. Entrá con tu contraseña.".into(),
                 ));
             }
-            Ok(AccountCreation::Weak { reason }) => problem.set(Some(reason)),
-            Ok(AccountCreation::NotAllowed) => problem.set(Some(NOT_ALLOWED.into())),
-            Err(_) => problem.set(Some(CONNECTION.into())),
+            Ok(AccountCreation::Weak { reason }) => problem.set(Some((Spot::Password, reason))),
+            Ok(AccountCreation::NotAllowed) => fail(
+                Spot::Email,
+                "Este email no tiene una invitación. Revisá que sea el mismo al que te escribimos.",
+            ),
+            Err(_) => fail(Spot::Form, CONNECTION),
         }
     });
     Effect::new(move |_| {
@@ -391,122 +426,140 @@ fn SignInForm(next: String) -> impl IntoView {
         };
         match result {
             Ok(SetPassword::In { next }) => go(&next),
-            Ok(SetPassword::Wrong { left }) => problem.set(Some(wrong_code(left))),
-            Ok(SetPassword::Expired) => problem.set(Some(expired.into())),
-            Ok(SetPassword::Weak { reason }) => problem.set(Some(reason)),
-            Ok(SetPassword::NotAllowed) => problem.set(Some(NOT_ALLOWED.into())),
-            Err(_) => problem.set(Some(CONNECTION.into())),
+            Ok(SetPassword::Wrong { left }) => problem.set(Some((Spot::Code, wrong_code(left)))),
+            Ok(SetPassword::Expired) => fail(Spot::Code, expired),
+            Ok(SetPassword::Weak { reason }) => problem.set(Some((Spot::Password, reason))),
+            Ok(SetPassword::NotAllowed) => fail(Spot::Form, NOT_ALLOWED),
+            Err(_) => fail(Spot::Form, CONNECTION),
         }
     });
 
-    let alert = move || {
-        problem
-            .get()
-            .map(|p| view! { <FieldNote ok=false text=p/> })
-    };
-    let shown_email = move || email.get().trim().to_lowercase();
-    // El email elegido, con "Cambiar" para volver al primer paso.
-    let chip = move |initial: bool| {
-        view! {
-            <div class="flex items-center gap-3 rounded-xl bg-base-200 px-3 py-2.5 text-sm">
-                <span class=if initial { "grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#ffb547] to-[#ff7a59] font-bold text-white" } else { "grid size-8 shrink-0 place-items-center rounded-full bg-base-300 font-bold text-base-content/60" } aria-hidden="true">
-                    {move || if initial { name.get().chars().next().or(shown_email().chars().next()).unwrap_or('?').to_uppercase().to_string() } else { "?".to_string() }}
-                </span>
-                <span class="min-w-0 grow truncate">{shown_email}</span>
-                <button type="button" class="link link-primary font-semibold no-underline" on:click=move |_| { info.set(None); goto(Step::Email) }>"Cambiar"</button>
-            </div>
+    // El aviso de error, si es para este lugar.
+    let note_at = move |spot: Spot| {
+        move || {
+            problem
+                .get()
+                .filter(|(s, _)| *s == spot)
+                .map(|(_, p)| view! { <FieldNote ok=false text=p/> })
         }
     };
+    let bad = move |spot: Spot| {
+        Signal::derive(move || problem.with(|p| matches!(p, Some((s, _)) if *s == spot)))
+    };
+    let shown_email = move || email.get().trim().to_lowercase();
     let submit_btn = move |label: &'static str, busy_label: &'static str| {
         view! {
-            <button class="btn btn-primary h-12" type="submit" disabled=busy>
+            <button class="btn btn-primary h-12 text-[15px] shadow-[0_8px_20px_-8px_rgba(67,48,214,.7)]" type="submit" disabled=busy>
                 {move || if busy() { busy_label } else { label }}
             </button>
         }
     };
+    let heading = |title: &'static str, sub: &'static str| {
+        view! {
+            <div>
+                <h1 class="text-[28px] leading-tight font-extrabold tracking-tight">{title}</h1>
+                <p class="mt-1.5 text-[15px] text-base-content/70">{sub}</p>
+            </div>
+        }
+    };
+    let email_field = move |autofocus: bool| {
+        view! {
+            <div class="flex flex-col gap-1.5">
+                <label for="email" class="text-sm font-semibold">"Email"</label>
+                <input id="email" type="email" name="email" required autocomplete="username"
+                    spellcheck="false" enterkeyhint="next" data-autofocus=autofocus.then_some("")
+                    class=move || format!("input h-12 w-full text-base {}", if bad(Spot::Email).get() { "input-error" } else { "" })
+                    aria-invalid=move || bad(Spot::Email).get().then_some("true")
+                    placeholder="ana@correo.com"
+                    prop:value=move || email.get()
+                    on:input=move |ev| email.set(event_target_value(&ev))/>
+                {note_at(Spot::Email)}
+            </div>
+        }
+    };
+    let link = "text-sm font-semibold text-primary hover:underline disabled:opacity-50";
 
     move || {
         match step.get() {
-        Step::Email => view! {
-            <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
+        Step::SignIn => view! {
+            <form class="flex flex-col gap-6" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                 ev.prevent_default();
                 info.set(None);
-                let e = email.get_untracked();
-                if e.trim().is_empty() {
-                    problem.set(Some("Escribí tu email.".into()));
+                if !email_ok() {
                     return;
                 }
-                if !domain::looks_like_email(e.trim()) {
-                    problem.set(Some("El email no es válido. Revisalo (por ejemplo, ana@correo.com).".into()));
-                    return;
-                }
-                problem.set(None);
-                lookup.dispatch(e);
-            }>
-                <h1 class="text-3xl font-extrabold tracking-tight">"Entrá o creá tu cuenta"</h1>
-                <p class="-mt-2 text-base-content/70">"Con el mismo email para las dos cosas."</p>
-                <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold">"Email"</span>
-                    <input type="email" name="email" required autocomplete="email" data-autofocus=""
-                        class="input w-full" placeholder="ana@correo.com"
-                        prop:value=move || email.get()
-                        on:input=move |ev| email.set(event_target_value(&ev))/>
-                </label>
-                {alert}
-                {submit_btn("Seguir", "Buscando…")}
-                <p class="text-xs text-base-content/60">"Para comprar en una tienda no hace falta cuenta. Esto es para quien arma y maneja su tienda."</p>
-            </form>
-        }.into_any(),
-        Step::Password => view! {
-            <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
-                ev.prevent_default();
                 if password.get_untracked().is_empty() {
-                    problem.set(Some("Escribí tu contraseña.".into()));
+                    fail(Spot::Password, "Escribí tu contraseña.");
                     return;
                 }
                 problem.set(None);
                 login.dispatch((email.get_untracked(), password.get_untracked(), next.get_value()));
             }>
-                <h1 class="text-3xl font-extrabold tracking-tight">
-                    {move || if name.get().is_empty() { "Hola de nuevo".to_string() } else { format!("Hola de nuevo, {}", name.get()) }}
-                </h1>
-                {chip(true)}
-                {move || info.get().map(|i| view! { <p role="status" class="-mt-1 text-sm text-base-content/70">{i}</p> })}
-                <PasswordField value=password label="Contraseña" autocomplete="current-password" autofocus=true
-                    extra=view! {
-                        <button type="button" class="link link-primary text-sm font-semibold no-underline" disabled=busy
-                            on:click=move |_| send_code(CodeFor::Reset)>"¿Olvidaste tu contraseña?"</button>
-                    }.into_any()/>
-                {alert}
-                {submit_btn("Entrar", "Entrando…")}
-                <button type="button" class="link text-center text-sm text-base-content/70 no-underline hover:text-base-content" disabled=busy
-                    on:click=move |_| send_code(CodeFor::Login)>"Iniciar sesión con un código por email"</button>
+                {heading("Entrá a tu cuenta", "Para manejar tus tiendas, productos y pedidos.")}
+                <div class="flex flex-col gap-4">
+                    {move || info.get().map(|i| view! { <FieldNote ok=true text=i/> })}
+                    {email_field(true)}
+                    <PasswordField value=password label="Contraseña" autocomplete="current-password"
+                        bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()
+                        extra=view! {
+                            <button type="button" class=link disabled=busy
+                                on:click=move |_| send_code(CodeFor::Reset)>"¿La olvidaste?"</button>
+                        }.into_any()/>
+                    {note_at(Spot::Form)}
+                    {submit_btn("Entrar", "Entrando…")}
+                    <div class="flex items-center gap-3 text-[13px] text-base-content/50 before:h-px before:flex-1 before:bg-base-300 after:h-px after:flex-1 after:bg-base-300">"o"</div>
+                    <button type="button" class="btn h-12 border-base-300 bg-base-100 text-[15px] font-semibold shadow-none hover:bg-base-200" disabled=busy
+                        on:click=move |_| send_code(CodeFor::Login)>
+                        <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                        "Entrar con un código por email"
+                    </button>
+                </div>
+                <p class="border-t border-base-300 pt-5 text-center text-sm text-base-content/70">
+                    "¿Te invitaron a MarketMaker? "
+                    <button type="button" class=link on:click=move |_| { info.set(None); password.set(String::new()); goto(Step::Create) }>"Creá tu cuenta"</button>
+                </p>
             </form>
         }.into_any(),
         Step::Create => view! {
-            <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
+            <form class="flex flex-col gap-6" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                 ev.prevent_default();
+                if name.get_untracked().trim().is_empty() {
+                    fail(Spot::Name, "Escribí tu nombre.");
+                    return;
+                }
+                if !email_ok() {
+                    return;
+                }
                 if let Some(reason) = domain::password_problem(&password.get_untracked()) {
-                    problem.set(Some(reason));
+                    problem.set(Some((Spot::Password, reason)));
                     return;
                 }
                 problem.set(None);
                 create.dispatch((email.get_untracked(), name.get_untracked(), password.get_untracked(), next.get_value()));
             }>
-                <h1 class="text-3xl font-extrabold tracking-tight">"Creá tu cuenta"</h1>
-                {chip(false)}
-                <label class="flex flex-col gap-1.5">
-                    <span class="text-sm font-semibold">"¿Cómo te llamás?"</span>
-                    <input type="text" name="name" autocomplete="given-name" data-autofocus=""
-                        maxlength=domain::ACCOUNT_NAME_MAX.to_string()
-                        class="input w-full" placeholder="Ana"
-                        prop:value=move || name.get()
-                        on:input=move |ev| name.set(event_target_value(&ev))/>
-                </label>
-                <PasswordField value=password label="Elegí una contraseña" autocomplete="new-password" meter=true/>
-                {alert}
-                {submit_btn("Crear cuenta", "Creando cuenta…")}
-                <p class="text-xs text-base-content/60">"Al crear la cuenta aceptás los "<a class="link" href="/terminos" target="_blank">"términos"</a>" y la "<a class="link" href="/privacidad" target="_blank">"política de privacidad"</a>"."</p>
+                <div class="flex flex-col gap-3">
+                    <button type="button" class="self-start text-sm text-base-content/70 hover:text-base-content"
+                        on:click=move |_| { password.set(String::new()); goto(Step::SignIn) }>"← Ya tengo cuenta"</button>
+                    {heading("Creá tu cuenta", "Por ahora MarketMaker es solo con invitación. Usá el email al que te llegó.")}
+                </div>
+                <div class="flex flex-col gap-4">
+                    <div class="flex flex-col gap-1.5">
+                        <label for="name" class="text-sm font-semibold">"Tu nombre"</label>
+                        <input id="name" type="text" name="name" autocomplete="given-name" data-autofocus=""
+                            enterkeyhint="next" maxlength=domain::ACCOUNT_NAME_MAX.to_string()
+                            class=move || format!("input h-12 w-full text-base {}", if bad(Spot::Name).get() { "input-error" } else { "" })
+                            placeholder="Ana"
+                            prop:value=move || name.get()
+                            on:input=move |ev| name.set(event_target_value(&ev))/>
+                        {note_at(Spot::Name)}
+                    </div>
+                    {email_field(false)}
+                    <PasswordField value=password label="Elegí una contraseña" autocomplete="new-password" meter=true
+                        bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()/>
+                    {note_at(Spot::Form)}
+                    {submit_btn("Crear cuenta", "Creando cuenta…")}
+                    <p class="text-xs text-base-content/60">"Al crear la cuenta aceptás los "<a class="link" href="/terminos" target="_blank">"términos"</a>" y la "<a class="link" href="/privacidad" target="_blank">"política de privacidad"</a>"."</p>
+                </div>
             </form>
         }.into_any(),
         Step::Code(purpose) => {
@@ -519,8 +572,14 @@ fn SignInForm(next: String) -> impl IntoView {
                 <form class="flex flex-col gap-4" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                     ev.prevent_default();
                     if code.get_untracked().trim().is_empty() {
-                        problem.set(Some("Escribí el código que te mandamos.".into()));
+                        fail(Spot::Code, "Escribí el código que te mandamos.");
                         return;
+                    }
+                    if purpose == CodeFor::Reset {
+                        if let Some(reason) = domain::password_problem(&password.get_untracked()) {
+                            problem.set(Some((Spot::Password, reason)));
+                            return;
+                        }
                     }
                     problem.set(None);
                     let (e, c, n) = (email.get_untracked(), code.get_untracked(), next.get_value());
@@ -529,32 +588,35 @@ fn SignInForm(next: String) -> impl IntoView {
                         _ => { finish.dispatch((e, c, name.get_untracked(), password.get_untracked(), n)); }
                     }
                 }>
-                    <h1 class="text-3xl font-extrabold tracking-tight">{title}</h1>
-                    {move || info.get().map(|i| view! { <p role="status" class="text-sm text-base-content/70">{i}</p> })}
-                    <p class="text-base-content/80">
+                    <h1 class="text-[28px] leading-tight font-extrabold tracking-tight">{title}</h1>
+                    {move || info.get().map(|i| view! { <p role="status" class="-mt-2 text-sm text-base-content/70">{i}</p> })}
+                    <p class="-mt-1 text-base-content/80">
                         "Te mandamos un código de 6 números a " <strong>{shown_email}</strong> ". Vence en 10 minutos."
                     </p>
                     {cfg!(debug_assertions).then(|| view! {
                         <p class="text-sm text-base-content/70">"En desarrollo el código no se manda por email: aparece en la terminal donde corre el servidor."</p>
                     })}
-                    <label class="flex flex-col gap-1.5">
-                        <span class="text-sm font-semibold">"Código"</span>
-                        <input type="text" name="code" required data-autofocus=""
-                            inputmode="numeric" autocomplete="one-time-code" maxlength="7"
-                            class="input w-full font-mono text-2xl tracking-[0.4em]" placeholder="000000"
+                    <div class="flex flex-col gap-1.5">
+                        <label for="code" class="text-sm font-semibold">"Código"</label>
+                        <input id="code" type="text" name="code" required data-autofocus=""
+                            inputmode="numeric" autocomplete="one-time-code" maxlength="7" enterkeyhint="go"
+                            class=move || format!("input h-14 w-full font-mono text-2xl tracking-[0.4em] {}", if bad(Spot::Code).get() { "input-error" } else { "" })
+                            placeholder="000000"
                             prop:value=move || code.get()
                             on:input=move |ev| code.set(event_target_value(&ev))/>
-                    </label>
+                        {note_at(Spot::Code)}
+                    </div>
                     {(purpose == CodeFor::Reset).then(|| view! {
-                        <PasswordField value=password label="Contraseña nueva" autocomplete="new-password" meter=true/>
+                        <PasswordField value=password label="Contraseña nueva" autocomplete="new-password" meter=true
+                            bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()/>
                     })}
-                    {alert}
+                    {note_at(Spot::Form)}
                     {submit_btn(button, "Revisando…")}
-                    <div class="flex flex-wrap gap-2 text-sm">
-                        <button type="button" class="btn btn-ghost btn-sm" disabled=busy
+                    <div class="flex flex-wrap justify-center gap-x-5 gap-y-2">
+                        <button type="button" class=link disabled=busy
                             on:click=move |_| send_code(purpose)>"Mandame otro código"</button>
-                        <button type="button" class="btn btn-ghost btn-sm"
-                            on:click=move |_| { info.set(None); goto(Step::Email) }>"Usar otro email"</button>
+                        <button type="button" class=link
+                            on:click=move |_| { info.set(None); goto(Step::SignIn) }>"Usar otro email"</button>
                     </div>
                 </form>
             }.into_any()
