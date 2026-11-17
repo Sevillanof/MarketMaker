@@ -10,7 +10,7 @@ use domain::{
 };
 use leptos::prelude::*;
 
-use crate::store_drawer::{tile, Section};
+use crate::store_drawer::{tile, Letters, Margins, Section};
 use crate::EditorState;
 
 /// Id del selector de color (un solo `popover` para todas las muestras).
@@ -64,6 +64,7 @@ pub(crate) fn ThemePanel() -> impl IntoView {
     view! {
         <Name/>
         <Presets/>
+        <Letters/>
         <Colors/>
         <Corners/>
         <Effects/>
@@ -339,6 +340,7 @@ fn Corners() -> impl IntoView {
             <RadiusRow which=Corner::Box title="Cajas" hint="tarjeta, ventana, aviso"/>
             <RadiusRow which=Corner::Field title="Campos" hint="botón, campo, pestaña"/>
             <RadiusRow which=Corner::Selector title="Selectores" hint="casilla, interruptor, etiqueta"/>
+            <Margins/>
         </Section>
     }
 }
