@@ -43,7 +43,7 @@ pub(crate) fn StoreMenu() -> impl IntoView {
             </span>
             <span class="flex flex-col items-start leading-tight">
                 <span class="text-[0.9375rem] font-bold">"Mi tienda"</span>
-                <span class="text-xs text-base-content/75">"Ajustes de toda la tienda"</span>
+                <span class="text-xs text-base-content/75 max-[1099px]:hidden">"Ajustes de toda la tienda"</span>
             </span>
             {move || if open() {
                 view! { <Icon name="close" class="h-3.5 w-3.5"/> }
@@ -121,7 +121,7 @@ fn NewPageMenu() -> impl IntoView {
     view! {
         <details node_ref=menu class="dropdown">
             <summary class="btn btn-ghost btn-sm gap-1" title="Crear una página nueva">
-                <Icon name="plus" class="h-4 w-4"/>"Nueva página"
+                <Icon name="plus" class="h-4 w-4"/><span class="max-[1099px]:sr-only">"Nueva página"</span>
             </summary>
             <ul class="dropdown-content menu z-50 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
                 {domain::PAGE_TEMPLATES

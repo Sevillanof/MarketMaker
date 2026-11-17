@@ -1219,7 +1219,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
 
     view! {
         <div data-theme="light" class="flex h-screen flex-col bg-base-200 text-base-content">
-            <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4">
+            <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4 max-[1099px]:gap-1.5 max-[1099px]:px-2">
                 <h1 class="sr-only">"Editor de tu tienda"</h1>
                 {use_context::<PanelLink>().map(|PanelLink(href)| view! {
                     <a href=href class="btn btn-ghost btn-square h-11 w-11" aria-label="Volver a tus tiendas"
@@ -1239,7 +1239,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                             on:click=move |_| ui.preview.set(false)
                         >
                             <Icon name="pencil"/>
-                            "Editar"
+                            <span class="max-[1099px]:sr-only">"Editar"</span>
                         </button>
                         <button
                             type="button"
@@ -1252,7 +1252,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                             }
                         >
                             <Icon name="eye"/>
-                            "Vista previa"
+                            <span class="max-[1099px]:sr-only">"Vista previa"</span>
                         </button>
                     </div>
                 </div>
@@ -1282,7 +1282,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                 </div>
                 <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
                 <span
-                    class="flex items-center gap-1.5 whitespace-nowrap text-sm"
+                    class="flex items-center gap-1.5 whitespace-nowrap text-sm max-[1099px]:[&_span:not([aria-hidden])]:sr-only"
                     role="status"
                     title=move || if state.unpublished() {
                         "Tus cambios se guardan solos. Tus clientes ven la última versión que publicaste."
