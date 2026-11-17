@@ -25,6 +25,7 @@ reqwest = { version = "0.13", optional = true }
 rand = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 dotenvy = { workspace = true, optional = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 web-sys = { workspace = true }
 

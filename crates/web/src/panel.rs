@@ -423,6 +423,11 @@ fn SideNav(
                         <ui::Icon class="size-[18px] text-base-content/60" name="user"/>"Mi cuenta"
                     </a></li>
                     {is_admin.then(|| view! {
+                        <li><a href="/admin/uso">
+                            <ui::Icon class="size-[18px] text-base-content/60" name="chart"/>"Uso y abandono"
+                        </a></li>
+                    })}
+                    {is_admin.then(|| view! {
                         <li><button type="button" on:click=move |_| {
                             if let Some(m) = account_menu.get() { m.set_open(false); }
                             // daisyUI mantiene abierto el menú mientras tiene el foco.

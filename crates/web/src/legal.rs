@@ -102,6 +102,7 @@ pub fn PrivacyPage() -> impl IntoView {
                 <li>"Para que funcionen las cuentas, las tiendas y las compras."</li>
                 <li>"Para mandar los emails necesarios: códigos para entrar, confirmaciones de pedidos y avisos de ventas."</li>
                 <li>"Para frenar abusos (por ejemplo, intentos de entrar en serie o pedidos falsos)."</li>
+                <li>"Para saber dónde se traba la gente y mejorar MarketMaker: anotamos qué pantallas se visitan, con un código al azar que cambia todos los días. No guardamos tu nombre, tu email, tu IP ni lo que escribís, no usamos cookies para esto y lo borramos a los 90 días. Si tu navegador pide no ser seguido (DNT o GPC), no anotamos nada."</li>
             </ul>
             <p>"No vendemos datos personales ni los usamos para publicidad."</p>
 

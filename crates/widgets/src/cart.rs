@@ -27,6 +27,8 @@ pub struct Cart {
     removed: RwSignal<Option<Removed>>,
     /// Ya se leyó del navegador (antes de hidratar el carrito está vacío).
     pub ready: RwSignal<bool>,
+    /// Avisa de uso (ver [`crate::UsageHook`]); solo en la tienda real.
+    hook: Option<crate::UsageHook>,
 }
 
 /// Un producto recién quitado: qué, cuántos y en qué lugar estaba.
@@ -60,6 +62,7 @@ impl Cart {
             open: RwSignal::new(false),
             removed: RwSignal::new(None),
             ready: RwSignal::new(false),
+            hook: use_context::<crate::UsageHook>(),
         };
         let ready = cart.ready;
         let loaded = StoredValue::new(false);
@@ -112,6 +115,11 @@ impl Cart {
             add_line(ls, id, n);
             clamp_line(ls, id, max);
         });
+        if n > 0 {
+            if let Some(h) = self.hook {
+                h.0.run("carrito");
+            }
+        }
     }
 
     /// Deja `n` unidades de un producto; con 0 lo quita.

@@ -86,6 +86,7 @@ pub async fn publish_page(slug: String, version: u32) -> Result<u32, ServerFnErr
         .await
         .map_err(internal)?
     {
+        crate::analytics::record_event("publico", None).await;
         Ok(version)
     } else {
         Err(ServerFnError::new(

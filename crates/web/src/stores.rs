@@ -107,6 +107,7 @@ pub async fn create_store(
             suggestion: free_slug(&pool, &slug).await?,
         });
     }
+    crate::analytics::record_event("tienda_creada", None).await;
     warm_certificate(&slug).await;
     Ok(NewStoreOutcome::Created {
         open: pass_url(&pool, user.id, &slug).await?,

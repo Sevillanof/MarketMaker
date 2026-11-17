@@ -29,6 +29,13 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     // Tocar un producto abre su ficha (ver `widgets::ProductDialog`).
     let open = RwSignal::new(None::<String>);
     provide_context(OpenProduct(open));
+    if let Some(hook) = use_context::<widgets::UsageHook>() {
+        Effect::new(move |_| {
+            if open.get().is_some() {
+                hook.0.run("producto");
+            }
+        });
+    }
     // Lo que el comprador eligió en los filtros por etiqueta (ver `widgets::tags`).
     ProductFilter::provide();
     // Carrito del comprador, guardado en su navegador (ver `widgets::cart`).
