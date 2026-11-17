@@ -37,3 +37,9 @@ default = []
 hydrate = ["leptos/hydrate"]
 ssr = ["leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr", "dep:leptos_axum", "dep:db", "dep:dotenvy", "dep:media", "dep:axum", "dep:tokio", "dep:uuid", "dep:reqwest", "dep:rand", "dep:hex"]
 
+
+[dev-dependencies]
+sqlx.workspace = true
+tokio = { workspace = true }
+axum.workspace = true
+uuid.workspace = true

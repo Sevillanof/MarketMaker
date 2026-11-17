@@ -4805,6 +4805,7 @@ dependencies = [
  "rand 0.9.5",
  "reqwest",
  "serde_json",
+ "sqlx",
  "storefront",
  "thiserror 2.0.21",
  "tokio",

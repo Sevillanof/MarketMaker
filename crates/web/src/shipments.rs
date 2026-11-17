@@ -199,7 +199,18 @@ pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> usize {
 /// creados en los últimos 30 días que todavía no se entregaron).
 pub async fn track_loop(pool: db::Pool) {
     const EVERY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+    match db::orders::recover_stuck_shipments(&pool).await {
+        Ok(0) => {}
+        Ok(n) => leptos::logging::warn!("Andreani: {n} envío(s) quedaron a medias y pasaron a \"falló\""),
+        Err(e) => leptos::logging::warn!("Andreani: no se pudieron revisar los envíos a medias: {e}"),
+    }
     loop {
+        // Pagados que nunca llegaron a crearse (reinicio justo después del pago).
+        if let Ok(waiting) = db::orders::shipments_waiting(&pool).await {
+            for (tenant, order) in waiting {
+                ship_order(&pool, tenant, order).await;
+            }
+        }
         tokio::time::sleep(EVERY).await;
         let pending = match db::orders::shipments_to_track(&pool).await {
             Ok(p) => p,

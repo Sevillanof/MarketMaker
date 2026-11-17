@@ -616,3 +616,32 @@ pub async fn shipments_to_track(pool: &PgPool) -> sqlx::Result<Vec<(Uuid, Uuid)>
     .fetch_all(pool)
     .await
 }
+
+/// Al arrancar el servidor: los envíos que quedaron "creándose" cuando se
+/// cortó (un deploy, una caída) pasan a "falló", para que el dueño vea el
+/// aviso y pueda reintentar. Devuelve cuántos eran.
+pub async fn recover_stuck_shipments(pool: &PgPool) -> sqlx::Result<u64> {
+    let msg = "Se cortó mientras se creaba el envío. Antes de reintentar, fijate en Andreani si se creó igual.";
+    let done = sqlx::query(
+        "UPDATE orders SET shipment = jsonb_set(jsonb_set(shipment, '{state}', '\"Failed\"'), '{error}', to_jsonb($1::text))
+         WHERE shipment->>'state' = 'Creating'",
+    )
+    .bind(msg)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected())
+}
+
+/// Pedidos pagados por Andreani cuyo envío nunca se llegó a crear (el
+/// servidor se reinició justo después del pago). Se les da 2 minutos de ventaja.
+pub async fn shipments_waiting(pool: &PgPool) -> sqlx::Result<Vec<(Uuid, Uuid)>> {
+    sqlx::query_as(
+        "SELECT tenant_id, id FROM orders
+         WHERE shipment->>'state' = 'Waiting'
+           AND status IN ('paid', 'shipped', 'delivered')
+           AND COALESCE(paid_at, updated_at) < now() - interval '2 minutes'
+           AND created_at > now() - interval '30 days'",
+    )
+    .fetch_all(pool)
+    .await
+}
