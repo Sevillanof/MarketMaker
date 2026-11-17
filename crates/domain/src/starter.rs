@@ -124,6 +124,47 @@ pub fn placeholders_left(doc: &PageDoc) -> usize {
     n
 }
 
+/// Un bloque con un texto de ejemplo sin cambiar.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlaceholderNode {
+    pub id: String,
+    pub layer: crate::Layer,
+    /// El bloque, por ejemplo "Banner".
+    pub widget: &'static str,
+    /// El primer texto de ejemplo que tiene.
+    pub text: String,
+}
+
+/// Los bloques de `doc` que tienen textos de ejemplo sin cambiar, en el
+/// orden de la tienda (Inicio primero), para llevar a cada uno desde el
+/// aviso de antes de publicar.
+pub fn placeholder_nodes(doc: &PageDoc) -> Vec<PlaceholderNode> {
+    fn first(v: &serde_json::Value) -> Option<String> {
+        match v {
+            serde_json::Value::String(s) if is_placeholder(s) => Some(s.trim().to_string()),
+            serde_json::Value::Array(a) => a.iter().find_map(first),
+            serde_json::Value::Object(o) => o.values().find_map(first),
+            _ => None,
+        }
+    }
+    let mut layers: Vec<crate::Layer> = (0..=doc.pages.len()).map(crate::Layer::Page).collect();
+    layers.push(crate::Layer::ProductModal);
+    let mut out = Vec::new();
+    for layer in layers {
+        for n in doc.layer(layer) {
+            if let Some(text) = serde_json::to_value(&n.widget).ok().as_ref().and_then(first) {
+                out.push(PlaceholderNode {
+                    id: n.id.clone(),
+                    layer,
+                    widget: n.widget.label(),
+                    text,
+                });
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,6 +177,9 @@ mod tests {
         assert!(json.contains("La Huerta"));
         assert!(!json.contains("Mi tienda"));
         assert_eq!(placeholders_left(&doc), 3);
+        let nodes = placeholder_nodes(&doc);
+        assert_eq!(nodes.len(), 3, "{nodes:?}");
+        assert!(nodes.iter().all(|n| n.layer == crate::Layer::Page(0)));
         let mut faq = doc.clone();
         faq.nodes
             .push(Node::new("f", Widget::defaults("Faq").unwrap()));

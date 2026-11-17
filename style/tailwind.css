@@ -1555,3 +1555,23 @@ dialog.mk-cart::backdrop {
     min-height: calc(var(--h) * 8px - 16px);
   }
 }
+
+/* Ventana de antes de publicar (editor): un <dialog> modal centrado. El
+   navegador pone el fondo inerte, el foco y Esc; acá solo la forma y que
+   el scroll no se pase a la página de atrás. */
+dialog.mk-publish-check {
+  margin: auto;
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1.25rem;
+  border: 0;
+  border-radius: var(--radius-box);
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
+  overscroll-behavior: contain;
+}
+dialog.mk-publish-check::backdrop {
+  background: rgb(0 0 0 / 0.45);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}

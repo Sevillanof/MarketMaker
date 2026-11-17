@@ -999,7 +999,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
 
     // Antes de publicar: si quedan textos o productos de ejemplo, se avisa
     // y la persona elige (ver `check_publish`).
-    let publish_check = RwSignal::new(None::<String>);
+    let publish_check = RwSignal::new(None::<Vec<domain::PlaceholderNode>>);
     let examples = products.with_value(|p| p.iter().filter(|p| p.example).count());
 
     // Publicar: guarda lo que falte y después publica esa versión.
@@ -1017,30 +1017,11 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     };
 
     let check_publish = move || {
-        let texts = state.doc.with_untracked(domain::placeholders_left);
-        let mut parts = Vec::new();
-        match texts {
-            0 => {}
-            1 => parts.push("1 texto de ejemplo sin cambiar".to_string()),
-            n => parts.push(format!("{n} textos de ejemplo sin cambiar")),
-        }
-        match examples {
-            0 => {}
-            1 => parts.push("1 producto de ejemplo, que tus clientes no van a ver".to_string()),
-            n => parts.push(format!("{n} productos de ejemplo, que tus clientes no van a ver")),
-        }
-        if parts.is_empty() {
+        let items = state.doc.with_untracked(domain::placeholder_nodes);
+        if items.is_empty() && examples == 0 {
             publish_now();
         } else {
-            publish_check.set(Some(format!("Antes de publicar: quedan {}.", parts.join(" y "))));
-            request_animation_frame(|| {
-                if let Some(el) = document()
-                    .get_element_by_id("mk-publish-anyway")
-                    .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
-                {
-                    _ = el.focus();
-                }
-            });
+            publish_check.set(Some(items));
         }
     };
 
@@ -1349,13 +1330,9 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     {move || if publish.pending().get() || publish_after.get() { "Publicando…" } else { "Publicar" }}
                 </button>
             </header>
-            {move || publish_check.get().map(|text| view! {
-                <div class="flex flex-wrap items-center gap-3 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm" role="region" aria-label="Antes de publicar">
-                    <span class="grow">{text}</span>
-                    <button id="mk-publish-anyway" type="button" class="btn btn-xs btn-primary"
-                        on:click=move |_| { publish_check.set(None); publish_now(); }>"Publicar igual"</button>
-                    <button type="button" class="btn btn-xs btn-ghost" on:click=move |_| publish_check.set(None)>"Seguir editando"</button>
-                </div>
+            {move || publish_check.get().map(|items| view! {
+                <PublishCheck items examples check=publish_check
+                    publish=Callback::new(move |_| { publish_check.set(None); publish_now(); })/>
             })}
             {move || recover.get().map(|doc| {
                 let doc = StoredValue::new(doc);
@@ -1602,5 +1579,76 @@ mod tests {
             problems(&doc)[0].text,
             "Carrusel › Diapositivas 2 › Enlace del botón: Escribí una dirección que empiece con https://, http:// o /."
         );
+    }
+}
+
+/// Ventana de antes de publicar: lista los textos de ejemplo que siguen sin
+/// cambiar y lleva a cada bloque (cambiando de página si hace falta).
+#[component]
+fn PublishCheck(
+    items: Vec<domain::PlaceholderNode>,
+    examples: usize,
+    check: RwSignal<Option<Vec<domain::PlaceholderNode>>>,
+    publish: Callback<()>,
+) -> impl IntoView {
+    let actions = expect_context::<Actions>();
+    let state = expect_context::<EditorState>();
+    let dialog_ref = NodeRef::<leptos::html::Dialog>::new();
+    Effect::new(move |_| {
+        if let Some(d) = dialog_ref.get() {
+            if !d.open() {
+                _ = d.show_modal();
+            }
+        }
+    });
+    let first = items.first().map(|n| n.id.clone());
+    let has_items = !items.is_empty();
+    let rows = items
+        .into_iter()
+        .map(|n| {
+            let place = state.doc.with_untracked(|d| match n.layer {
+                Layer::Page(i) => format!("página {}", d.page_name(i)),
+                Layer::ProductModal => "ficha del producto".to_string(),
+            });
+            let id = n.id.clone();
+            view! {
+                <li>
+                    <button type="button" class="link link-primary text-left"
+                        on:click=move |_| { check.set(None); actions.go_to(&id); }>
+                        <span class="font-semibold">{n.widget}</span>": “"{n.text.clone()}"”"
+                    </button>
+                    <span class="block text-xs text-base-content/60">{place}</span>
+                </li>
+            }
+        })
+        .collect_view();
+    view! {
+        <dialog node_ref=dialog_ref class="mk-publish-check" aria-labelledby="mk-pc-title"
+            on:close=move |_| check.set(None)>
+            <h2 id="mk-pc-title" class="text-lg font-bold">
+                {if has_items { "Te quedaron textos de ejemplo" } else { "Antes de publicar" }}
+            </h2>
+            {has_items.then(|| view! {
+                <p class="mt-1 text-sm text-base-content/70">"Tus clientes los van a ver tal cual. Tocá uno para ir a ese bloque:"</p>
+                <ul class="mt-3 flex flex-col gap-3 text-sm">{rows}</ul>
+            })}
+            {(examples > 0).then(|| view! {
+                <p class="mt-3 text-sm text-base-content/70">
+                    {if examples == 1 { "También queda 1 producto de ejemplo, que tus clientes no van a ver.".to_string() }
+                     else { format!("También quedan {examples} productos de ejemplo, que tus clientes no van a ver.") }}
+                </p>
+            })}
+            <form method="dialog" class="mt-5 flex flex-wrap justify-end gap-2">
+                <button type="button" id="mk-publish-anyway" class="btn btn-sm"
+                    on:click=move |_| publish.run(())>"Publicar igual"</button>
+                {first.map(|id| view! {
+                    <button type="button" class="btn btn-sm btn-primary" autofocus
+                        on:click=move |_| { check.set(None); actions.go_to(&id); }>"Ir al primero"</button>
+                })}
+                {(!has_items).then(|| view! {
+                    <button type="submit" class="btn btn-sm btn-primary" autofocus>"Seguir editando"</button>
+                })}
+            </form>
+        </dialog>
     }
 }
