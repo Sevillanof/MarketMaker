@@ -135,93 +135,105 @@ pub(crate) fn Letters() -> impl IntoView {
     }
 }
 
-/// Margen de cada lado (entre el borde de la pantalla y los bloques).
-/// Con "Iguales" un solo deslizador mueve los cuatro; con "Cada lado" hay un
-/// campo por lado.
+/// Márgenes de la tienda: una cruz con un campo por lado alrededor de una
+/// mini pantalla. La mini pantalla tiene la forma real de la ventana de quien
+/// edita y el recuadro azul muestra el contenido a esa escala.
 #[component]
 pub(crate) fn Margins() -> impl IntoView {
     let state = expect_context::<EditorState>();
     let layout = Memo::new(move |_| state.doc.with(|d| d.layout.clone()));
-    let linked = RwSignal::new(layout.with_untracked(StoreLayout::pads_equal));
-    let set_all = move |px: i32| {
-        state.apply_grouped(Some("pad-all"), |d| d.layout.set_all_pads(px));
+    // Tamaño real de la ventana (ancho y alto), para dibujar a escala.
+    let screen = RwSignal::new((1440.0_f64, 900.0_f64));
+    let measure = move || {
+        let w = document()
+            .document_element()
+            .map_or(0.0, |r| f64::from(r.client_width()));
+        let h = window()
+            .inner_height()
+            .ok()
+            .and_then(|h| h.as_f64())
+            .unwrap_or(0.0);
+        if w > 0.0 && h > 0.0 {
+            screen.set((w, h));
+        }
+    };
+    Effect::new(move |_| measure());
+    let _ = window_event_listener(leptos::ev::resize, move |_| measure());
+    let field = move |s: Side| {
+        view! {
+            <div class="mk-step">
+                <button
+                    type="button"
+                    aria-label=format!("Menos margen {}", s.label().to_lowercase())
+                    on:click=move |_| {
+                        let px = i32::from(layout.with_untracked(|l| l.pad(s))) - i32::from(PAD_STEP) / 2;
+                        state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
+                    }
+                >"\u{2212}"</button>
+                <input
+                    type="number"
+                    min="0"
+                    max=MAX_PAD
+                    step=PAD_STEP / 2
+                    aria-label=format!("Margen {} en píxeles", s.label().to_lowercase())
+                    prop:value=move || layout.with(|l| l.pad(s)).to_string()
+                    on:change=move |ev| {
+                        if let Ok(px) = event_target_value(&ev).trim().parse::<i32>() {
+                            state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
+                        }
+                    }
+                />
+                <button
+                    type="button"
+                    aria-label=format!("Más margen {}", s.label().to_lowercase())
+                    on:click=move |_| {
+                        let px = i32::from(layout.with_untracked(|l| l.pad(s))) + i32::from(PAD_STEP) / 2;
+                        state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
+                    }
+                >"+"</button>
+            </div>
+        }
     };
     view! {
         <div class="mt-2.5">
             <p class="mb-1 flex items-baseline gap-1.5">
                 <span class="text-xs font-semibold" id="mk-dr-margins">"Márgenes"</span>
                 <span class="text-[10.5px] text-base-content/55">"borde de la pantalla"</span>
+                <button
+                    type="button"
+                    class="ml-auto text-[11px] font-semibold text-primary hover:underline"
+                    prop:disabled=move || layout.with(|l| *l == StoreLayout::fresh())
+                    on:click=move |_| state.apply(|d| d.layout = StoreLayout::fresh())
+                >"Valores iniciales"</button>
             </p>
-            <div class="mk-seg" role="group" aria-labelledby="mk-dr-margins">
-                <button
-                    type="button"
-                    class:is-active=move || linked.get()
-                    aria-pressed=move || linked.get().to_string()
-                    on:click=move |_| {
-                        if !linked.get_untracked() {
-                            let px = layout.with_untracked(|l| l.pad_top);
-                            linked.set(true);
-                            state.apply(|d| d.layout.set_all_pads(i32::from(px)));
-                        }
+            <div class="mk-cross" role="group" aria-labelledby="mk-dr-margins">
+                <div class="mk-cross-t">{field(Side::Top)}</div>
+                <div class="mk-cross-l">{field(Side::Left)}</div>
+                <div
+                    class="mk-cross-pg"
+                    aria-hidden="true"
+                    style=move || {
+                        let (w, h) = screen.get();
+                        let l = layout.get();
+                        let pct = |px: u16, of: f64| (f64::from(px) / of * 100.0).min(45.0);
+                        format!(
+                            "aspect-ratio:{w:.0}/{h:.0}; --t:{:.2}%; --r:{:.2}%; --b:{:.2}%; --l:{:.2}%",
+                            pct(l.pad_top, h),
+                            pct(l.pad_right, w),
+                            pct(l.pad_bottom, h),
+                            pct(l.pad_left, w),
+                        )
                     }
-                >"Iguales"</button>
-                <button
-                    type="button"
-                    class:is-active=move || !linked.get()
-                    aria-pressed=move || (!linked.get()).to_string()
-                    on:click=move |_| linked.set(false)
-                >"Cada lado"</button>
+                ></div>
+                <div class="mk-cross-r">{field(Side::Right)}</div>
+                <div class="mk-cross-b">{field(Side::Bottom)}</div>
             </div>
-            <Show
-                when=move || linked.get()
-                fallback=move || view! {
-                    <div class="mt-1.5 grid grid-cols-4 gap-1">
-                        {Side::ALL.iter().map(|s| {
-                            let s = *s;
-                            view! {
-                                <label class="min-w-0">
-                                    <span class="block truncate text-[10px] text-base-content/60">{s.label()}</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max=MAX_PAD
-                                        step=PAD_STEP
-                                        class="mk-num"
-                                        prop:value=move || layout.with(|l| l.pad(s)).to_string()
-                                        on:change=move |ev| {
-                                            if let Ok(px) = event_target_value(&ev).trim().parse::<i32>() {
-                                                state.apply(|d| d.layout.set_pad(s, px));
-                                            }
-                                        }
-                                    />
-                                </label>
-                            }
-                        }).collect_view()}
-                    </div>
-                }
-            >
-                <div class="mt-1.5 flex items-center gap-3 rounded-box bg-base-200/70 px-3 py-1.5">
-                    <input
-                        type="range"
-                        min="0"
-                        max=MAX_PAD
-                        step=PAD_STEP
-                        class="range range-xs min-w-0 flex-1"
-                        aria-label="Margen de todos los lados"
-                        aria-valuetext=move || format!("{} píxeles", layout.with(|l| l.pad_top))
-                        prop:value=move || layout.with(|l| l.pad_top).to_string()
-                        on:input=move |ev| {
-                            if let Ok(px) = event_target_value(&ev).parse::<i32>() {
-                                set_all(px);
-                            }
-                        }
-                    />
-                    <span class="w-12 shrink-0 text-right text-sm font-bold leading-none">
-                        {move || layout.with(|l| l.pad_top)}
-                        <span class="ml-0.5 text-[10px] font-semibold text-base-content/55">"px"</span>
-                    </span>
-                </div>
-            </Show>
+            <p class="mt-1 text-center text-[10.5px] text-base-content/55">
+                {move || {
+                    let (w, h) = screen.get();
+                    format!("Tu pantalla: {w:.0} \u{d7} {h:.0} px")
+                }}
+            </p>
         </div>
     }
 }

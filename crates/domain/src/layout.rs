@@ -33,6 +33,10 @@ pub const WIDTH_STEP: u16 = 40;
 
 /// Margen que viene de fábrica en cada lado, en px.
 pub const DEFAULT_PAD: u16 = 16;
+/// Márgenes de una tienda nueva: arriba y abajo, en px.
+pub const FRESH_PAD_Y: u16 = 8;
+/// Márgenes de una tienda nueva: a los costados, en px.
+pub const FRESH_PAD_X: u16 = 24;
 /// Margen máximo de un lado, en px.
 pub const MAX_PAD: u16 = 160;
 /// Los botones − y + del margen suman o restan de a estos píxeles.
@@ -113,6 +117,19 @@ pub fn snap_width(px: f64) -> u16 {
 impl StoreLayout {
     pub fn is_default(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Los valores de una tienda nueva (y de "Valores iniciales"): ancho
+    /// completo, 8 px arriba y abajo, 24 px a los costados. `default()` sigue
+    /// siendo el de siempre, para que las tiendas ya hechas no cambien.
+    pub fn fresh() -> Self {
+        Self {
+            pad_top: FRESH_PAD_Y,
+            pad_right: FRESH_PAD_X,
+            pad_bottom: FRESH_PAD_Y,
+            pad_left: FRESH_PAD_X,
+            max_width: 0,
+        }
     }
 
     pub fn is_full(&self) -> bool {
@@ -500,6 +517,28 @@ pub enum Corner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fresh_layout_is_full_width_and_old_docs_keep_their_look() {
+        let f = StoreLayout::fresh();
+        assert!(f.is_full());
+        assert_eq!(
+            (f.pad_top, f.pad_bottom, f.pad_left, f.pad_right),
+            (8, 8, 24, 24)
+        );
+        assert!(!f.is_default());
+        let mut e = Vec::new();
+        f.errors(&mut e);
+        assert!(e.is_empty());
+        // Un documento nuevo guarda sus márgenes; uno viejo, sin "layout",
+        // sigue con los de siempre.
+        let json = serde_json::to_string(&crate::PageDoc::default()).unwrap();
+        assert!(json.contains("\"layout\""));
+        let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        v.as_object_mut().unwrap().remove("layout");
+        let old: crate::PageDoc = serde_json::from_value(v).unwrap();
+        assert_eq!(old.layout, StoreLayout::default());
+    }
 
     #[test]
     fn default_keeps_the_old_look_and_validates() {

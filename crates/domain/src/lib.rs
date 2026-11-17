@@ -174,7 +174,7 @@ impl Default for PageDoc {
             schema: SCHEMA_VERSION,
             theme: THEMES[0].to_string(),
             typography: Typography::default(),
-            layout: StoreLayout::default(),
+            layout: StoreLayout::fresh(),
             style: StoreStyle::default(),
             nodes: Vec::new(),
             product_modal: ProductModal::default(),
