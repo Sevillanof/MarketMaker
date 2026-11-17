@@ -11,7 +11,7 @@ use domain::{
 use leptos::prelude::*;
 
 use crate::store_drawer::{tile, Letters, Margins, Section};
-use crate::EditorState;
+use crate::{EditorState, Ui};
 
 /// Id del selector de color (un solo `popover` para todas las muestras).
 const POP_ID: &str = "mk-colorpop";
@@ -307,6 +307,7 @@ fn ColorPopover() -> impl IntoView {
 #[component]
 fn RadiusRow(which: Corner, title: &'static str, hint: &'static str) -> impl IntoView {
     let state = expect_context::<EditorState>();
+    let ui = expect_context::<Ui>();
     view! {
         <div class="mt-2.5 first:mt-0">
             <p class="mb-1 flex items-baseline gap-1.5">
@@ -324,7 +325,14 @@ fn RadiusRow(which: Corner, title: &'static str, hint: &'static str) -> impl Int
                             style=format!("--r:{}px", f32::from(px) * 0.75)
                             aria-pressed=move || active().to_string()
                             aria-label=format!("{title}: {px} px")
-                            on:click=move |_| state.apply(|d| d.style.set_radius(which, px))
+                            on:click=move |_| {
+                                state.apply(|d| d.style.set_radius(which, px));
+                                ui.flash_changed(match which {
+                                    Corner::Box => "box",
+                                    Corner::Field => "field",
+                                    Corner::Selector => "selector",
+                                });
+                            }
                         ></button>
                     }
                 }).collect_view()}
@@ -375,6 +383,7 @@ fn SwitchRow(
 #[component]
 fn Effects() -> impl IntoView {
     let state = expect_context::<EditorState>();
+    let ui = expect_context::<Ui>();
     view! {
         <Section title="Efectos" id="mk-th-effects">
             <SwitchRow
@@ -382,14 +391,20 @@ fn Effects() -> impl IntoView {
                 title="Relieve"
                 hint="Profundidad en campos y selectores"
                 checked=Signal::derive(move || state.doc.with(|d| d.style.depth.unwrap_or_else(|| theme_base(&d.theme).depth)))
-                on_change=Callback::new(move |on| state.apply(|d| d.style.depth = Some(on)))
+                on_change=Callback::new(move |on| {
+                    state.apply(|d| d.style.depth = Some(on));
+                    ui.flash_changed("field selector");
+                })
             />
             <SwitchRow
                 id="mk-th-noise"
                 title="Textura"
                 hint="Grano en campos y selectores"
                 checked=Signal::derive(move || state.doc.with(|d| d.style.noise.unwrap_or_else(|| theme_base(&d.theme).noise)))
-                on_change=Callback::new(move |on| state.apply(|d| d.style.noise = Some(on)))
+                on_change=Callback::new(move |on| {
+                    state.apply(|d| d.style.noise = Some(on));
+                    ui.flash_changed("field selector");
+                })
             />
         </Section>
     }
@@ -456,6 +471,7 @@ fn SizeCard(
 #[component]
 fn Sizes() -> impl IntoView {
     let state = expect_context::<EditorState>();
+    let ui = expect_context::<Ui>();
     view! {
         <Section title="Tamaños" id="mk-th-sizes">
             <SizeCard
@@ -463,14 +479,20 @@ fn Sizes() -> impl IntoView {
                 hint="botón, campo, pestaña"
                 bars=[10, 16, 22, 28, 34]
                 value=Signal::derive(move || state.doc.with(|d| d.style.size_field.unwrap_or_else(|| theme_base(&d.theme).size_field)))
-                on_change=Callback::new(move |v| state.apply_grouped(Some("size-field"), |d| d.style.size_field = Some(v)))
+                on_change=Callback::new(move |v| {
+                    state.apply_grouped(Some("size-field"), |d| d.style.size_field = Some(v));
+                    ui.flash_changed("field");
+                })
             />
             <SizeCard
                 title="Selectores"
                 hint="casilla, interruptor, etiqueta"
                 bars=[8, 12, 16, 20, 26]
                 value=Signal::derive(move || state.doc.with(|d| d.style.size_selector.unwrap_or_else(|| theme_base(&d.theme).size_selector)))
-                on_change=Callback::new(move |v| state.apply_grouped(Some("size-selector"), |d| d.style.size_selector = Some(v)))
+                on_change=Callback::new(move |v| {
+                    state.apply_grouped(Some("size-selector"), |d| d.style.size_selector = Some(v));
+                    ui.flash_changed("selector");
+                })
             />
         </Section>
     }
@@ -479,6 +501,7 @@ fn Sizes() -> impl IntoView {
 #[component]
 fn Borders() -> impl IntoView {
     let state = expect_context::<EditorState>();
+    let ui = expect_context::<Ui>();
     let value = move || {
         state.doc.with(|d| {
             d.style
@@ -514,6 +537,7 @@ fn Borders() -> impl IntoView {
                         if let Ok(i) = event_target_value(&ev).parse::<usize>() {
                             let v = BORDER_STEPS[i.min(4)];
                             state.apply_grouped(Some("border"), |d| d.style.border = Some(v));
+                            ui.flash_changed("box field selector");
                         }
                     }
                 />
