@@ -44,21 +44,30 @@ pub const SHIPPING_NOTE_MAX: usize = 120;
 pub const SHIPPING_MAX_CENTS: i64 = 1_000_000_000;
 
 /// Limpia los ajustes de entrega y devuelve los problemas (vacío si están bien).
-pub fn tidy_delivery(d: &mut DeliverySettings) -> Vec<String> {
+pub fn tidy_delivery(d: &mut DeliverySettings) -> Vec<FieldError> {
     d.pickup_address = clip(d.pickup_address.trim(), PICKUP_ADDRESS_MAX);
     d.pickup_hours = clip(d.pickup_hours.trim(), PICKUP_HOURS_MAX);
     d.shipping_note = clip(d.shipping_note.trim(), SHIPPING_NOTE_MAX);
     let mut errors = Vec::new();
     if !d.pickup_enabled && !d.shipping_enabled {
-        errors.push("Elegí al menos una forma de entrega: retiro o envío.".to_string());
+        errors.push(FieldError {
+            field: "type".into(),
+            message: "Elegí al menos una forma de entrega: retiro o envío.".into(),
+        });
     }
     if d.pickup_enabled && d.pickup_address.is_empty() {
-        errors.push("Poné la dirección donde se retiran los pedidos.".to_string());
+        errors.push(FieldError {
+            field: "address".into(),
+            message: "Poné la dirección donde se retiran los pedidos.".into(),
+        });
     }
     if d.shipping_cents
         .is_some_and(|c| !(0..=SHIPPING_MAX_CENTS).contains(&c))
     {
-        errors.push("El costo del envío no parece correcto.".to_string());
+        errors.push(FieldError {
+            field: "cost".into(),
+            message: "El costo del envío no parece correcto.".into(),
+        });
     }
     errors
 }

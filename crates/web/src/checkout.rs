@@ -107,12 +107,6 @@ async fn andreani_quote(
         .map(|(id, q)| (id.clone(), (*q).min(widgets::cart::MAX_QTY)))
         .collect();
     sorted.sort();
-    let key = format!("{tenant}|{cp}|{sorted:?}");
-    if let Some((at, q)) = quote_cache().lock().unwrap().get(&key) {
-        if at.elapsed() < TTL {
-            return Ok(q.clone());
-        }
-    }
     let ids: Vec<uuid::Uuid> = sorted
         .iter()
         .filter_map(|(id, _)| uuid::Uuid::parse_str(id).ok())
@@ -132,6 +126,20 @@ async fn andreani_quote(
     }
     if items.is_empty() {
         return Ok(problem(cp, "Tu carrito está vacío."));
+    }
+    // La clave incluye lo que cambia el precio del envío: productos (precio y
+    // paquete), origen y servicios. Si el dueño cambia algo, se cotiza de nuevo.
+    let key = format!(
+        "{tenant}|{cp}|{:?}|{}|{:?}|{:?}",
+        items.iter().map(|l| (l.parcel, l.unit_cents, l.qty)).collect::<Vec<_>>(),
+        settings.origin.postal_code,
+        settings.services,
+        acc.contracts.0.iter().map(|c| c.service).collect::<Vec<_>>(),
+    );
+    if let Some((at, q)) = quote_cache().lock().unwrap().get(&key) {
+        if at.elapsed() < TTL {
+            return Ok(q.clone());
+        }
     }
     let available = domain::contract_services(&acc.contracts.0);
     let bigger = items.iter().any(|l| l.parcel.is_bigger());
@@ -189,6 +197,35 @@ pub async fn quote_shipping(
     andreani_quote(&crate::server::pool()?, tenant.id, &postal_code, &lines).await
 }
 
+/// Sucursales cerca de un código postal, guardadas 15 minutos: el comprador
+/// las ve al elegir y se vuelven a mirar al confirmar el pedido.
+#[cfg(feature = "ssr")]
+async fn andreani_branches(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+    cp: &str,
+) -> Result<Vec<AndreaniBranch>, crate::andreani::Error> {
+    type Cache = std::sync::Mutex<
+        std::collections::HashMap<String, (std::time::Instant, Vec<AndreaniBranch>)>,
+    >;
+    static CACHE: std::sync::OnceLock<Cache> = std::sync::OnceLock::new();
+    const TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+    let cache = CACHE.get_or_init(Default::default);
+    let key = format!("{tenant}|{cp}");
+    if let Some((at, b)) = cache.lock().unwrap().get(&key) {
+        if at.elapsed() < TTL {
+            return Ok(b.clone());
+        }
+    }
+    let b = crate::andreani::branches(pool, tenant, cp).await?;
+    if !b.is_empty() {
+        let mut c = cache.lock().unwrap();
+        c.retain(|_, (at, _)| at.elapsed() < TTL);
+        c.insert(key, (std::time::Instant::now(), b.clone()));
+    }
+    Ok(b)
+}
+
 /// "Finalizar compra": las sucursales de Andreani cerca de `postal_code`.
 #[server]
 pub async fn find_branches(postal_code: String) -> Result<Vec<AndreaniBranch>, ServerFnError> {
@@ -199,7 +236,7 @@ pub async fn find_branches(postal_code: String) -> Result<Vec<AndreaniBranch>, S
     if andreani_ready(&crate::server::pool()?, tenant.id).await?.is_none() {
         return Ok(Vec::new());
     }
-    crate::andreani::branches(&crate::server::pool()?, tenant.id, &cp).await.map_err(|e| {
+    andreani_branches(&crate::server::pool()?, tenant.id, &cp).await.map_err(|e| {
         leptos::logging::warn!("Andreani: sucursales de {cp}: {e}");
         ServerFnError::new("No pudimos traer las sucursales de Andreani. Probá de nuevo en un momento.")
     })
@@ -350,9 +387,16 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             error: String::new(),
         };
         if svc.needs_branch() {
-            let branches = crate::andreani::branches(&pool, tenant.id, &form.postal_code)
-                .await
-                .unwrap_or_default();
+            let branches = match andreani_branches(&pool, tenant.id, &q.postal_code).await {
+                Ok(b) => b,
+                Err(e) => {
+                    leptos::logging::warn!("Andreani: sucursales al confirmar: {e}");
+                    return invalid(
+                        "branch",
+                        "No pudimos confirmar la sucursal con Andreani. Probá de nuevo en un momento.",
+                    );
+                }
+            };
             let Some(b) = branches.into_iter().find(|b| b.code == form.branch) else {
                 return invalid("branch", "Elegí la sucursal donde lo retirás.");
             };
@@ -614,6 +658,58 @@ fn step_of(field: &str) -> u8 {
     }
 }
 
+const BUYER_KEY: &str = "mk-comprador";
+
+fn buyer_storage() -> Option<leptos::web_sys::Storage> {
+    window().local_storage().ok().flatten()
+}
+
+/// Guarda en este navegador los datos de contacto y de envío que escribe el
+/// comprador, así no los vuelve a escribir si el pago falla o si vuelve a la
+/// tienda. No guarda la forma de pago ni la nota.
+fn remember_buyer(f: &Fields) {
+    let (name, email, phone, address, city, postal, dni) = (
+        f.name, f.email, f.phone, f.address, f.city, f.postal, f.dni,
+    );
+    // Después de hidratar: recupera lo guardado en los campos vacíos.
+    Effect::new(move |_| {
+        let Some(raw) = buyer_storage().and_then(|s| s.get_item(BUYER_KEY).ok().flatten()) else {
+            return;
+        };
+        let Ok(v) = serde_json::from_str::<std::collections::HashMap<String, String>>(&raw) else {
+            return;
+        };
+        for (sig, key) in [
+            (name, "name"), (email, "email"), (phone, "phone"), (address, "address"),
+            (city, "city"), (postal, "postal"), (dni, "dni"),
+        ] {
+            if sig.get_untracked().is_empty() {
+                if let Some(x) = v.get(key) {
+                    sig.set(x.clone());
+                }
+            }
+        }
+    });
+    Effect::new(move |prev: Option<()>| {
+        let v = serde_json::json!({
+            "name": name.get(), "email": email.get(), "phone": phone.get(),
+            "address": address.get(), "city": city.get(), "postal": postal.get(), "dni": dni.get(),
+        });
+        // La primera vez corre antes de recuperar: no pisa lo guardado con vacío.
+        if prev.is_some() {
+            if let Some(s) = buyer_storage() {
+                _ = s.set_item(BUYER_KEY, &v.to_string());
+            }
+        }
+    });
+}
+
+fn forget_buyer() {
+    if let Some(s) = buyer_storage() {
+        _ = s.remove_item(BUYER_KEY);
+    }
+}
+
 #[component]
 fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     let cart = Cart::provide(view.products.clone());
@@ -637,6 +733,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         dni: RwSignal::new(String::new()),
         quote: RwSignal::new(None),
     };
+    remember_buyer(&f);
     let has_andreani = d.with_value(|d| !d.andreani.is_empty());
     let lines_now = move || -> Vec<(String, u32)> {
         cart.items()
@@ -705,6 +802,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     Effect::new(move |_| match place.value().get() {
         Some(Ok(PlaceOrder::Placed { id, .. })) => {
             cart.clear();
+            forget_buyer();
             _ = window().location().set_href(&format!("/pedido/{id}"));
         }
         // El carrito queda como está hasta que Mercado Pago apruebe el pago:
