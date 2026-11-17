@@ -822,9 +822,7 @@ impl Form {
             0
         } else {
             domain::parse_price(&price).unwrap_or_else(|| {
-                errors.push(
-                    "El precio tiene que ser un número, como 45.999 o 45.999,90.".to_string(),
-                );
+                errors.extend(domain::price_problem(&price, "El precio"));
                 0
             })
         };
@@ -833,9 +831,7 @@ impl Form {
             0
         } else {
             domain::parse_price(&was).unwrap_or_else(|| {
-                errors.push(
-                    "El precio anterior tiene que ser un número, o quedar vacío.".to_string(),
-                );
+                errors.extend(domain::price_problem(&was, "El precio anterior"));
                 0
             })
         };
@@ -847,7 +843,7 @@ impl Form {
                 Ok(n) => Some(n),
                 Err(_) => {
                     errors.push(
-                        "La cantidad tiene que ser un número entero, como 5, o quedar vacía."
+                        "La cantidad tiene que ser un número entero, como 5, sin signo menos, o quedar vacía."
                             .to_string(),
                     );
                     None
@@ -1086,7 +1082,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <a class="btn btn-ghost btn-sm" href=list_href>"← Productos"</a>
-            <h1 class="grow truncate text-3xl font-bold">{title}</h1>
+            <h1 class="min-w-0 grow truncate text-3xl font-bold">{title}</h1>
             <span class="text-sm text-base-content/60" role="status" aria-live="polite">
                 {move || if save.pending().get() { "Guardando…" } else if saved.get() && !dirty.get() { "Guardado ✓" } else { "" }}
             </span>
