@@ -124,10 +124,22 @@ async fn main() {
             }
         }),
     );
-    for dir in ["fonts", "img"] {
+    // Fotos y fuentes propias: no llevan versión en el nombre, así que no
+    // pueden ser `immutable`, pero el navegador las reusa un día sin preguntar
+    // (en el celular con red lenta cada pregunta es una espera por foto) y
+    // una semana más mientras revisa en segundo plano.
+    for (dir, cache) in [
+        ("fonts", "public, max-age=2592000"),
+        ("img", "public, max-age=86400, stale-while-revalidate=604800"),
+    ] {
         app = app.nest_service(
             &format!("/{dir}"),
-            ServeDir::new(format!("{site_root}/{dir}")),
+            Router::new()
+                .fallback_service(ServeDir::new(format!("{site_root}/{dir}")))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static(cache),
+                )),
         );
     }
     // Los .js no se guardan como immutable aunque tengan versión en el
@@ -135,7 +147,10 @@ async fn main() {
     // de escribirlos (ver deploy/hash-js.sh). Son chicos; el navegador
     // pregunta y casi siempre recibe un 304.
     let pkg = Router::new()
-        .fallback_service(ServeDir::new(format!("{site_root}/pkg")))
+        // Si al lado de cada archivo hay un `.br` (lo arma `deploy/brotli-pkg.sh`),
+        // se sirve ese: el programa de la página (WASM) baja de ~2 MB (gzip)
+        // a ~1,4 MB en el celular.
+        .fallback_service(ServeDir::new(format!("{site_root}/pkg")).precompressed_br())
         .layer(axum::middleware::map_response(
             move |uri: axum::http::Uri, mut res: axum::response::Response| async move {
                 let cache = if hashed && !uri.path().ends_with(".js") {

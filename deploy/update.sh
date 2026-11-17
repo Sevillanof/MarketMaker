@@ -19,6 +19,7 @@ command -v cargo-leptos >/dev/null || cargo install --locked cargo-leptos
 
 cargo leptos build --release --split
 deploy/hash-js.sh target/release/hash.txt target/site/pkg
+deploy/brotli-pkg.sh target/site/pkg
 # Si estaba andando una versión de release.sh, se reemplaza por esta (y
 # release.sh la guarda como "local" la próxima vez, para poder volver).
 rm -f "$OUT/release"

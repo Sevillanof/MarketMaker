@@ -41,6 +41,8 @@ jobs:
         run: |
           cargo leptos build --release --split
           deploy/hash-js.sh target/release/hash.txt target/site/pkg
+          command -v brotli >/dev/null || sudo apt-get install -y -qq brotli
+          deploy/brotli-pkg.sh target/site/pkg
 
       - name: Armar el paquete
         run: |

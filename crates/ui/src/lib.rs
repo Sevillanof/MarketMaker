@@ -58,6 +58,10 @@ pub fn Image(
     /// Encuadre de la foto en este producto (punto a la vista y zoom).
     #[prop(optional_no_strip)]
     fit: Option<domain::PhotoFit>,
+    /// Foto de la primera pantalla (banner de arriba): se pide enseguida y
+    /// con prioridad, sin esperar a que el navegador decida si está a la vista.
+    #[prop(optional)]
+    eager: bool,
 ) -> impl IntoView {
     if src.is_empty() {
         return view! {
@@ -72,7 +76,7 @@ pub fn Image(
     };
     view! {
         <div class="mk-img skeleton h-full w-full overflow-hidden rounded-none">
-            <Picture src alt class style=fit.map(|f| f.css())/>
+            <Picture src alt class style=fit.map(|f| f.css()) eager/>
         </div>
     }
     .into_any()
@@ -89,6 +93,9 @@ pub fn Picture(
     /// Estilo en línea del `<img>` (por ejemplo, el encuadre de la foto).
     #[prop(optional_no_strip)]
     style: Option<String>,
+    /// Ver [`Image`]: sin carga diferida y con prioridad alta.
+    #[prop(optional)]
+    eager: bool,
 ) -> impl IntoView {
     // Las fotos de Mis fotos vienen en tres anchos: el navegador elige.
     let (avif, webp) = match srcsets(&src) {
@@ -107,7 +114,8 @@ pub fn Picture(
                 sizes=sizes
                 alt=alt
                 draggable="false"
-                loading="lazy"
+                loading=if eager { "eager" } else { "lazy" }
+                fetchpriority=eager.then_some("high")
                 decoding="async"
                 onload="var s=this.closest('.skeleton');if(s)s.dataset.state='ok'"
                 onerror="var s=this.closest('.skeleton');if(s)s.dataset.state='error'"
