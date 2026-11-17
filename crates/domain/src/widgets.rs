@@ -31,6 +31,11 @@ pub enum Widget {
     Image(ImageProps),
     Contact(ContactProps),
     Footer(FooterProps),
+    Announcement(AnnouncementProps),
+    Stats(StatsProps),
+    Steps(StepsProps),
+    ProductCarousel(ProductCarouselProps),
+    Social(SocialProps),
     // Bloques de la ficha del producto: muestran el producto que se abrió.
     ProductImage(ProductImageProps),
     ProductName(ProductNameProps),
@@ -119,15 +124,23 @@ pub struct FeaturedProductProps {
     pub show_price: bool,
 }
 
-/// Enlace con texto, usado en la navbar y el footer.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+/// Enlace con texto, usado en la navbar y el footer. En la navbar puede
+/// tener `children`: las opciones de un desplegable.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct LinkItem {
     pub label: String,
     pub href: String,
+    /// Opciones del desplegable (solo en el menú superior).
+    pub children: Vec<LinkItem>,
+    /// Foto del panel ancho del desplegable (solo en el menú superior).
+    pub image_url: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct NavbarProps {
+    /// Cómo se abre un enlace con opciones: `list` (lista) o `panel` (panel ancho).
+    #[serde(default = "variant_list")]
+    pub menu: String,
     pub brand: String,
     pub logo_url: String,
     pub links: Vec<LinkItem>,
@@ -288,6 +301,96 @@ pub struct ContactProps {
     pub address: String,
 }
 
+/// Estilo por defecto de los widgets con variantes (`a`, `b` o `c`).
+fn variant_a() -> String {
+    "a".to_string()
+}
+
+fn variant_list() -> String {
+    "list".to_string()
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AnnouncementItem {
+    pub text: String,
+    pub link_label: String,
+    pub link_href: String,
+}
+
+/// Franja fina con un mensaje corto. Estilos: `a` simple, `b` varios
+/// mensajes que rotan, `c` con botón para cerrarla.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AnnouncementProps {
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    pub items: Vec<AnnouncementItem>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StatItem {
+    pub value: String,
+    pub label: String,
+    #[serde(default)]
+    pub icon: String,
+}
+
+/// Números grandes que dan confianza. Estilos: `a` en una caja, `b` sin
+/// caja, `c` tarjetas con ícono.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StatsProps {
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    pub items: Vec<StatItem>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StepItem {
+    pub title: String,
+    pub text: String,
+}
+
+/// «Cómo comprar» en pasos. Estilos: `a` en línea con números, `b` línea
+/// de pasos (solo títulos), `c` tarjetas con número grande.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StepsProps {
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    pub title: String,
+    pub items: Vec<StepItem>,
+}
+
+/// Los productos en una fila que se desliza. Estilos: `a` flechas arriba a
+/// la derecha, `b` flechas a los costados, `c` sin caja y con la última
+/// tarjeta asomando.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ProductCarouselProps {
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    pub title: String,
+    pub limit: i64,
+    #[serde(default)]
+    pub link_label: String,
+    #[serde(default)]
+    pub link_href: String,
+}
+
+/// Redes de la tienda y botón de WhatsApp. WhatsApp e Instagram salen de
+/// "Datos de la tienda". Estilos: `a` íconos + botón flotante redondo, `b`
+/// botón flotante con texto, `c` franja de redes con el usuario.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SocialProps {
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    pub title: String,
+    #[serde(default)]
+    pub facebook: String,
+    #[serde(default)]
+    pub tiktok: String,
+    /// Texto del botón flotante con texto (estilo `b`).
+    #[serde(default)]
+    pub label: String,
+}
+
 /// Tipos de widget disponibles, con su nombre para mostrar, en el orden de la paleta.
 pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Navbar", "Menú superior"),
@@ -313,6 +416,11 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Image", "Imagen"),
     ("Contact", "Contacto"),
     ("Footer", "Pie de página"),
+    ("Announcement", "Barra de anuncio"),
+    ("Stats", "Cifras destacadas"),
+    ("Steps", "Pasos"),
+    ("ProductCarousel", "Carrusel de productos"),
+    ("Social", "Redes y WhatsApp"),
     ("ProductImage", "Foto del producto"),
     ("ProductName", "Nombre del producto"),
     ("ProductPrice", "Precio del producto"),
@@ -444,6 +552,28 @@ const LINK_ITEM: &[Field] = &[
     field("label", "Texto", text(30)),
     field("href", "Enlace", FieldKind::Url),
 ];
+pub const NAV_MENU_OPTIONS: &[(&str, &str)] = &[
+    ("list", "Lista simple"),
+    ("panel", "Panel ancho con foto"),
+];
+const SUBLINK_ITEM: &[Field] = &[
+    field("label", "Texto", text(30)),
+    field("href", "Enlace", FieldKind::Url),
+];
+const NAV_LINK_ITEM: &[Field] = &[
+    field("label", "Texto", text(30)),
+    field("href", "Enlace", FieldKind::Url),
+    adv(
+        "children",
+        "Opciones del desplegable",
+        FieldKind::List {
+            item: SUBLINK_ITEM,
+            min: 0,
+            max: 9,
+        },
+    ),
+    adv("image_url", "Foto del panel ancho", FieldKind::Url),
+];
 const NAVBAR_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
     field("logo_url", "Logo", FieldKind::Url),
@@ -451,9 +581,16 @@ const NAVBAR_FIELDS: &[Field] = &[
         "links",
         "Enlaces",
         FieldKind::List {
-            item: LINK_ITEM,
+            item: NAV_LINK_ITEM,
             min: 0,
             max: 8,
+        },
+    ),
+    adv(
+        "menu",
+        "Desplegable",
+        FieldKind::Select {
+            options: NAV_MENU_OPTIONS,
         },
     ),
     adv("button_label", "Texto del botón", text(30)),
@@ -676,6 +813,137 @@ const FOOTER_FIELDS: &[Field] = &[
     field("legal", "Texto legal", text(120)),
 ];
 
+pub const VARIANT_ANNOUNCEMENT: &[(&str, &str)] = &[
+    ("a", "Simple (muestra el primer mensaje)"),
+    ("b", "Mensajes que rotan"),
+    ("c", "Con botón para cerrarla"),
+];
+const ANNOUNCEMENT_ITEM: &[Field] = &[
+    field("text", "Mensaje", text(100)),
+    field("link_label", "Texto del enlace", text(30)),
+    field("link_href", "Enlace", FieldKind::Url),
+];
+const ANNOUNCEMENT_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_ANNOUNCEMENT,
+        },
+    ),
+    field(
+        "items",
+        "Mensajes",
+        FieldKind::List {
+            item: ANNOUNCEMENT_ITEM,
+            min: 1,
+            max: 5,
+        },
+    ),
+];
+
+pub const VARIANT_STATS: &[(&str, &str)] = &[
+    ("a", "En una caja"),
+    ("b", "Sin caja, centradas"),
+    ("c", "Tarjetas con ícono"),
+];
+const STAT_ITEM: &[Field] = &[
+    field("value", "Número", text(12)),
+    field("label", "Qué mide", text(60)),
+    adv(
+        "icon",
+        "Ícono (estilo tarjetas)",
+        FieldKind::Select {
+            options: BENEFIT_ICON_OPTIONS,
+        },
+    ),
+];
+const STATS_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_STATS,
+        },
+    ),
+    field(
+        "items",
+        "Cifras",
+        FieldKind::List {
+            item: STAT_ITEM,
+            min: 2,
+            max: 4,
+        },
+    ),
+];
+
+pub const VARIANT_STEPS: &[(&str, &str)] = &[
+    ("a", "En línea con números"),
+    ("b", "Línea de pasos (solo títulos)"),
+    ("c", "Tarjetas con número grande"),
+];
+const STEP_ITEM: &[Field] = &[
+    field("title", "Título", text(40)),
+    field("text", "Texto", text(100)),
+];
+const STEPS_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_STEPS,
+        },
+    ),
+    field("title", "Título", text(80)),
+    field(
+        "items",
+        "Pasos",
+        FieldKind::List {
+            item: STEP_ITEM,
+            min: 2,
+            max: 5,
+        },
+    ),
+];
+
+pub const VARIANT_PRODUCT_CAROUSEL: &[(&str, &str)] = &[
+    ("a", "Flechas arriba a la derecha"),
+    ("b", "Flechas a los costados"),
+    ("c", "Sin caja, la última tarjeta asoma"),
+];
+const PRODUCT_CAROUSEL_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_PRODUCT_CAROUSEL,
+        },
+    ),
+    field("title", "Título", text(80)),
+    field("limit", "Cantidad de productos", FieldKind::Number { min: 2, max: 24 }),
+    adv("link_label", "Texto de «Ver todos»", text(30)),
+    adv("link_href", "Enlace de «Ver todos»", FieldKind::Url),
+];
+
+pub const VARIANT_SOCIAL: &[(&str, &str)] = &[
+    ("a", "Íconos y botón flotante de WhatsApp"),
+    ("b", "Botón flotante con texto"),
+    ("c", "Franja de redes con usuario"),
+];
+const SOCIAL_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_SOCIAL,
+        },
+    ),
+    field("title", "Título", text(40)),
+    field("label", "Texto del botón flotante", text(30)),
+    adv("facebook", "Facebook (enlace)", FieldKind::Url),
+    adv("tiktok", "TikTok (enlace)", FieldKind::Url),
+];
+
 // ---------------------------------------------------------------------------
 // Límites de tamaño
 
@@ -716,6 +984,11 @@ impl Widget {
             Widget::Image(_) => "Image",
             Widget::Contact(_) => "Contact",
             Widget::Footer(_) => "Footer",
+            Widget::Announcement(_) => "Announcement",
+            Widget::Stats(_) => "Stats",
+            Widget::Steps(_) => "Steps",
+            Widget::ProductCarousel(_) => "ProductCarousel",
+            Widget::Social(_) => "Social",
             Widget::ProductImage(_) => "ProductImage",
             Widget::ProductName(_) => "ProductName",
             Widget::ProductPrice(_) => "ProductPrice",
@@ -740,12 +1013,12 @@ impl Widget {
         match self {
             Widget::Banner(_) => limits(16, 48, 24, 96, 48, 48),
             Widget::Text(_) => limits(8, 48, 12, 96, 24, 24),
-            Widget::ProductGrid(_) => limits(12, 48, 36, 144, 48, 60),
+            Widget::ProductGrid(_) => limits(12, 48, 36, 144, 48, 96),
             Widget::TagFilter(_) => limits(12, 48, 7, 24, 48, 9),
             Widget::TagList(_) => limits(8, 24, 20, 144, 12, 44),
             Widget::TagCircles(_) => limits(12, 48, 15, 36, 48, 19),
             Widget::TagSearch(_) => limits(16, 48, 7, 16, 48, 9),
-            Widget::TagTabs(_) => limits(12, 48, 36, 144, 48, 64),
+            Widget::TagTabs(_) => limits(12, 48, 36, 144, 48, 96),
             Widget::FeaturedProduct(_) => limits(8, 24, 36, 96, 12, 48),
             Widget::Navbar(_) => limits(24, 48, 12, 24, 48, 12),
             Widget::Carousel(_) => limits(24, 48, 36, 96, 48, 48),
@@ -761,6 +1034,11 @@ impl Widget {
             Widget::Image(_) => limits(4, 48, 12, 120, 16, 36),
             Widget::Contact(_) => limits(24, 48, 36, 96, 48, 52),
             Widget::Footer(_) => limits(24, 48, 14, 60, 48, 18),
+            Widget::Announcement(_) => limits(24, 48, 4, 12, 48, 5),
+            Widget::Stats(_) => limits(16, 48, 10, 40, 48, 16),
+            Widget::Steps(_) => limits(16, 48, 16, 60, 48, 28),
+            Widget::ProductCarousel(_) => limits(16, 48, 36, 120, 48, 58),
+            Widget::Social(_) => limits(12, 48, 4, 40, 48, 12),
             Widget::ProductImage(_) => limits(8, 48, 12, 120, 24, 52),
             Widget::ProductName(_) => limits(8, 48, 5, 24, 24, 9),
             Widget::ProductPrice(_) => limits(6, 48, 4, 16, 24, 6),
@@ -792,6 +1070,11 @@ impl Widget {
             Widget::Image(_) => IMAGE_FIELDS,
             Widget::Contact(_) => CONTACT_FIELDS,
             Widget::Footer(_) => FOOTER_FIELDS,
+            Widget::Announcement(_) => ANNOUNCEMENT_FIELDS,
+            Widget::Stats(_) => STATS_FIELDS,
+            Widget::Steps(_) => STEPS_FIELDS,
+            Widget::ProductCarousel(_) => PRODUCT_CAROUSEL_FIELDS,
+            Widget::Social(_) => SOCIAL_FIELDS,
             Widget::ProductImage(_) => PRODUCT_IMAGE_FIELDS,
             Widget::ProductName(_) | Widget::ProductPrice(_) | Widget::ProductDescription(_) => &[],
             Widget::ProductButton(_) => PRODUCT_BUTTON_FIELDS,
@@ -805,6 +1088,7 @@ impl Widget {
         let link = |label: &str, href: &str| LinkItem {
             label: s(label),
             href: s(href),
+            ..LinkItem::default()
         };
         let widget = match type_name {
             "Banner" => Widget::Banner(BannerProps {
@@ -852,6 +1136,7 @@ impl Widget {
                 show_price: true,
             }),
             "Navbar" => Widget::Navbar(NavbarProps {
+                menu: s("list"),
                 brand: s("Nombre de tu tienda"),
                 logo_url: s("/img/logo.svg"),
                 links: vec![link("Inicio", "/")],
@@ -1020,6 +1305,77 @@ impl Widget {
                 description: s("Una frase corta sobre tu tienda."),
                 links: vec![link("Inicio", "/")],
                 legal: s("© Nombre de tu tienda"),
+            }),
+            "Announcement" => Widget::Announcement(AnnouncementProps {
+                variant: s("a"),
+                items: vec![
+                    AnnouncementItem {
+                        text: s("Escribí acá un mensaje corto, por ejemplo tu envío gratis"),
+                        link_label: s("Ver productos"),
+                        link_href: s("/"),
+                    },
+                    AnnouncementItem {
+                        text: s("Escribí acá otro mensaje, por ejemplo tus cuotas"),
+                        link_label: String::new(),
+                        link_href: String::new(),
+                    },
+                ],
+            }),
+            "Stats" => Widget::Stats(StatsProps {
+                variant: s("a"),
+                items: vec![
+                    StatItem {
+                        value: s("+500"),
+                        label: s("Contá acá qué logro mostrar"),
+                        icon: s("truck"),
+                    },
+                    StatItem {
+                        value: s("98%"),
+                        label: s("Contá acá qué logro mostrar"),
+                        icon: s("star"),
+                    },
+                    StatItem {
+                        value: s("24 hs"),
+                        label: s("Contá acá qué logro mostrar"),
+                        icon: s("clock"),
+                    },
+                ],
+            }),
+            "Steps" => Widget::Steps(StepsProps {
+                variant: s("a"),
+                title: s("Comprar es muy fácil"),
+                items: vec![
+                    StepItem {
+                        title: s("Elegí"),
+                        text: s("Mirá el catálogo y sumá al carrito."),
+                    },
+                    StepItem {
+                        title: s("Pagá"),
+                        text: s("Contá acá cómo te pueden pagar."),
+                    },
+                    StepItem {
+                        title: s("Lo preparamos"),
+                        text: s("Contá acá cuánto tardás en despachar."),
+                    },
+                    StepItem {
+                        title: s("Recibilo"),
+                        text: s("Contá acá cómo les llega el pedido."),
+                    },
+                ],
+            }),
+            "ProductCarousel" => Widget::ProductCarousel(ProductCarouselProps {
+                variant: s("a"),
+                title: s("Lo más vendido"),
+                limit: 8,
+                link_label: String::new(),
+                link_href: String::new(),
+            }),
+            "Social" => Widget::Social(SocialProps {
+                variant: s("a"),
+                title: s("Seguinos"),
+                facebook: String::new(),
+                tiktok: String::new(),
+                label: s("¿Dudas? Escribinos"),
             }),
             "ProductImage" => Widget::ProductImage(ProductImageProps { fit: s("cover") }),
             "ProductName" => Widget::ProductName(ProductNameProps {}),

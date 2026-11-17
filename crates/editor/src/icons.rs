@@ -54,6 +54,11 @@ fn path(name: &str) -> &'static str {
         "logos" => "M4 8h4v8H4zM10 6h4v12h-4zM16 9h4v6h-4z",
         "footer" => "M3 4h18v16H3zM3 14h18M6 17h4M13 17h5",
         "contact" => "M3 5h18v14H3zM3 7l9 6 9-6",
+        "announce" => "M3 9h18v6H3zM7 12h6",
+        "stats" => "M4 20V10M10 20V4M16 20v-7M22 20H2",
+        "steps" => "M5 5a2 2 0 1 0 0 .01M12 12a2 2 0 1 0 0 .01M19 19a2 2 0 1 0 0 .01M7 6l3 4M14 13l3 4",
+        "rail" => "M2 7h6v10H2zM10 7h6v10h-6zM18 7h4v10h-4zM15 3l-2 2 2 2",
+        "social" => "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16",
         _ => "M4 4h16v16H4z",
     }
 }

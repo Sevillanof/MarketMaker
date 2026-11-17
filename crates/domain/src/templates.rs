@@ -75,6 +75,7 @@ fn link(label: &str, href: &str) -> LinkItem {
     LinkItem {
         label: s(label),
         href: s(href),
+        ..LinkItem::default()
     }
 }
 
@@ -197,6 +198,7 @@ fn navbar(links: Vec<LinkItem>, button: (&str, &str)) -> Widget {
         links,
         button_label: s(button.0),
         button_href: s(button.1),
+        menu: s("list"),
     })
 }
 
@@ -362,7 +364,8 @@ fn vidriera(name: &str) -> PageDoc {
             vec![block(Widget::ProductGrid(ProductGridProps {
                 title: s("Novedades"),
                 limit: 4,
-            }))],
+            }))
+            .h(60)],
             vec![
                 block(card(
                     "/img/card.webp",
