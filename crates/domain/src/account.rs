@@ -64,8 +64,12 @@ pub enum PasswordSignIn {
     /// Muchos intentos fallidos: tiene que esperar `minutes` minutos o
     /// entrar con un código.
     Locked { minutes: u32 },
-    /// La cuenta todavía no tiene contraseña: tiene que elegir una con un código.
+    /// La cuenta todavía no tiene contraseña: la elige una sola vez con el
+    /// enlace que le mandamos por email (así confirma que el email es suyo).
     NoPassword,
+    /// La cuenta del administrador no tenía contraseña y la que escribió no sirve
+    /// para estrenarla; el texto dice por qué.
+    Weak { reason: String },
 }
 
 /// Resultado de escribir el código y la contraseña nueva (crear la cuenta o
@@ -286,6 +290,40 @@ pub fn normalize_code(raw: &str) -> Option<String> {
         .filter(|c| !c.is_whitespace() && *c != '-')
         .collect();
     (digits.len() == 6 && digits.chars().all(|c| c.is_ascii_digit())).then_some(digits)
+}
+
+/// El enlace del email para elegir contraseña: `/entrar?recuperar=…&codigo=…`
+/// (y `&nuevo` si es para confirmar una cuenta nueva). `base` sin `/` final.
+pub fn password_link(base: &str, email: &str, code: &str, new_account: bool) -> String {
+    let enc = |v: &str| {
+        v.bytes()
+            .map(|b| match b {
+                b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'-' | b'_' | b'@' => {
+                    (b as char).to_string()
+                }
+                _ => format!("%{b:02X}"),
+            })
+            .collect::<String>()
+    };
+    let base = base.trim_end_matches('/');
+    let extra = if new_account { "&nuevo" } else { "" };
+    format!(
+        "{base}/entrar?recuperar={}&codigo={}{extra}",
+        enc(email),
+        enc(code)
+    )
+}
+
+#[cfg(test)]
+mod password_link_tests {
+    #[test]
+    fn encodes_email_and_code() {
+        assert_eq!(
+            super::password_link("https://mkr.com.ar/", "ana+x@correo.com", "123456", false),
+            "https://mkr.com.ar/entrar?recuperar=ana%2Bx@correo.com&codigo=123456"
+        );
+        assert!(super::password_link("http://a", "a@b.c", "1", true).ends_with("&nuevo"));
+    }
 }
 
 /// Adónde volver después de entrar. Solo direcciones de este mismo sitio

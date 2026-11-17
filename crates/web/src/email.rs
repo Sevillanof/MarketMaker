@@ -266,7 +266,11 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
     let place = match o.delivery {
         Delivery::Pickup => "Retira en el local".to_string(),
         Delivery::Shipping => format!("Envío a domicilio · {}", o.city),
-        Delivery::Andreani(s) => format!("{} · {}", s.label(), o.destination().unwrap_or_default()),
+        Delivery::Andreani(s) => format!(
+            "{} · {}",
+            s.label(),
+            o.destination().unwrap_or_default()
+        ),
     };
     let notes = if o.notes.is_empty() {
         String::new()
@@ -378,6 +382,36 @@ pub fn login_code(to: &str, code: &str) -> Email {
         html,
         text: format!(
             "Tu código de MarketMaker: {code}\nVence en {} minutos. Si no lo pediste, ignorá este email.\n",
+            db::auth::CODE_MINUTES
+        ),
+    }
+}
+
+/// El enlace para elegir la contraseña (se la olvidó, o confirma una cuenta
+/// nueva del registro abierto).
+pub fn password_link(to: &str, url: &str, new_account: bool) -> Email {
+    let (title, label) = if new_account {
+        ("Confirmá tu cuenta de MarketMaker", "Elegir mi contraseña")
+    } else {
+        ("Elegí una contraseña nueva", "Elegir contraseña nueva")
+    };
+    let html = frame(
+        "MarketMaker",
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">{title}</h1>
+<p style="margin:0 0 16px;color:#52525b">Tocá el botón para elegir tu contraseña. El enlace vence en {} minutos.</p>
+{}
+<p style="margin:16px 0 0;color:#52525b">Si no lo pediste, ignorá este email: tu cuenta sigue igual.</p>"#,
+            db::auth::CODE_MINUTES,
+            button(url, label)
+        ),
+    );
+    Email {
+        to: vec![to.to_string()],
+        subject: title.to_string(),
+        html,
+        text: format!(
+            "{title}\n\nAbrí este enlace para elegir tu contraseña (vence en {} minutos):\n{url}\n\nSi no lo pediste, ignorá este email.\n",
             db::auth::CODE_MINUTES
         ),
     }
