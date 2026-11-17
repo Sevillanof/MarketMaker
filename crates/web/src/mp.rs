@@ -10,6 +10,11 @@
 //!   servidor (por ejemplo un túnel de cloudflared) para los avisos de pago.
 //!   Sin ella se usa la de `MP_REDIRECT_URL` si es https (producción); si
 //!   tampoco, el pago se confirma cuando el comprador vuelve a la tienda.
+//! - `MP_SANDBOX_STORES` (opcional, ej. `pruebas`), `MP_SANDBOX_CLIENT_ID` y
+//!   `MP_SANDBOX_CLIENT_SECRET`: esas tiendas usan otra aplicación, creada por
+//!   una cuenta de prueba "integradora". Mercado Pago no deja pagar si la
+//!   aplicación es de una cuenta real y el vendedor es de prueba.
+//!
 //! Para probar se vinculan cuentas de prueba de Mercado Pago (vendedor y
 //! comprador): sus llaves ya son de prueba. No se piden llaves `TEST-`
 //! (`test_token`): Checkout Pro con esas llaves falla al pagar.
@@ -66,6 +71,26 @@ pub fn config() -> Option<Config> {
         auth_url: env("MP_AUTH_URL").unwrap_or_else(|| "https://auth.mercadopago.com.ar".into()),
         api_url: env("MP_API_URL").unwrap_or_else(|| "https://api.mercadopago.com".into()),
     })
+}
+
+/// La aplicación que usa una tienda: la de prueba si está en
+/// `MP_SANDBOX_STORES`; si no, la de siempre. Una tienda de prueba sin la
+/// aplicación de prueba configurada no cobra (nunca usa la real).
+pub fn config_for(slug: &str) -> Option<Config> {
+    let mut c = config()?;
+    let sandbox = env("MP_SANDBOX_STORES")
+        .is_some_and(|v| v.split(',').any(|s| s.trim() == slug));
+    if sandbox {
+        c.client_id = env("MP_SANDBOX_CLIENT_ID")?;
+        c.client_secret = env("MP_SANDBOX_CLIENT_SECRET")?;
+    }
+    Some(c)
+}
+
+/// Como [`config_for`], buscando la dirección de la tienda.
+async fn config_of(pool: &db::Pool, tenant: Uuid) -> Option<Config> {
+    let slug = db::mp::slug_of(pool, tenant).await.ok().flatten()?;
+    config_for(&slug)
 }
 
 fn http() -> &'static reqwest::Client {
@@ -158,7 +183,7 @@ pub async fn token(pool: &db::Pool, tenant: Uuid) -> Result<Option<String>, Stri
         return Ok(None);
     };
     if creds.expiring && !creds.refresh_token.is_empty() {
-        if let Some(c) = config() {
+        if let Some(c) = config_of(pool, tenant).await {
             let r = call(
                 reqwest::Method::POST,
                 &format!("{}/oauth/token", c.api_url),
@@ -366,7 +391,7 @@ async fn linked(
         // Tocó "Cancelar" en Mercado Pago.
         return fail(Some(&slug), "cancelado");
     };
-    let Some(c) = config() else {
+    let Some(c) = config_for(&slug) else {
         return fail(Some(&slug), "configuracion");
     };
     let body = json!({
