@@ -166,6 +166,25 @@ pub fn parse_price(text: &str) -> Option<i64> {
     units.checked_mul(100)?.checked_add(cents)
 }
 
+/// Por qué no sirve un precio escrito (para mostrarlo bajo el campo), o
+/// `None` si se entiende bien. `campo` es "El precio" o "El precio anterior".
+pub fn price_problem(text: &str, campo: &str) -> Option<String> {
+    if parse_price(text).is_some() {
+        return None;
+    }
+    let t = text.trim();
+    let msg = if t.starts_with('-') {
+        format!("{campo} no puede ser negativo.")
+    } else if t.split_once(',').is_some_and(|(_, d)| d.trim().len() > 2) {
+        format!("{campo} usa punto para los miles y coma para los centavos, como 45.999,90.")
+    } else if t.chars().filter(char::is_ascii_digit).count() > 15 {
+        format!("{campo} es demasiado grande.")
+    } else {
+        format!("{campo} tiene que ser un número, como 45.999 o 45.999,90.")
+    };
+    Some(msg)
+}
+
 /// Precio para escribir en un campo: `45.999,90` (sin `$`).
 pub fn price_input(cents: i64) -> String {
     let cents = cents.max(0);
@@ -485,6 +504,10 @@ mod tests {
         assert_eq!(parse_price("1.000.000"), Some(100_000_000));
         assert_eq!(parse_price(""), None);
         assert_eq!(parse_price("12,345"), None);
+        assert!(price_problem("-500", "El precio").unwrap().contains("negativo"));
+        assert!(price_problem("1,999", "El precio").unwrap().contains("miles"));
+        assert!(price_problem("9999999999999999999", "El precio").unwrap().contains("grande"));
+        assert!(price_problem("45.999,90", "El precio").is_none());
         assert_eq!(parse_price("doce"), None);
         assert_eq!(price_input(4_599_990), "45.999,90");
         assert_eq!(price_input(4_599_900), "45.999");
