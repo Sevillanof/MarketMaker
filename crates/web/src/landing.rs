@@ -63,7 +63,7 @@ fn Hero(demo: String) -> impl IntoView {
                     </div>
                     <div class="ml-auto flex gap-2.5">
                         <a href="/entrar" class="btn btn-sm h-9 rounded-lg border-white/20 bg-transparent px-4 text-white hover:bg-white/10">"Entrar"</a>
-                        <a href="/entrar" class="btn btn-sm h-9 rounded-lg border-0 bg-white px-4 text-[#110e1c] hover:bg-white/90">"Crear cuenta"</a>
+                        <a href="/entrar?crear" class="btn btn-sm h-9 rounded-lg border-0 bg-white px-4 text-[#110e1c] hover:bg-white/90">"Crear cuenta"</a>
                     </div>
                 </nav>
             </header>
@@ -80,7 +80,7 @@ fn Hero(demo: String) -> impl IntoView {
                     "Armala arrastrando bloques, cargá tus productos y compartí tu dirección. Para emprendedores de toda la Argentina."
                 </p>
                 <div class="mt-9 mb-16 flex flex-wrap justify-center gap-3">
-                    <a href="/entrar" class="btn btn-primary btn-lg h-[52px] rounded-xl px-7">"Crear mi tienda"</a>
+                    <a href="/entrar?crear" class="btn btn-primary btn-lg h-[52px] rounded-xl px-7">"Crear mi tienda"</a>
                     <a href=demo class="btn btn-lg h-[52px] rounded-xl border-white/20 bg-transparent px-7 text-white hover:bg-white/10">"Ver una tienda de ejemplo"</a>
                     <p class="w-full text-sm text-white/60">"Por ahora, solo con invitación."</p>
                 </div>
@@ -252,7 +252,7 @@ fn Included() -> impl IntoView {
                     <div class="text-white/70">"Para empezar"</div>
                     <div class="text-5xl font-extrabold tracking-[-0.04em] lg:text-6xl">"Gratis"</div>
                     <p class="mt-2 mb-6 text-white/70">"Sin tarjeta. Por ahora MarketMaker es solo por invitación: si tu email está en la lista, creás tu cuenta y tu tienda en un minuto."</p>
-                    <a href="/entrar" class="btn btn-lg h-[52px] w-full rounded-xl border-0 bg-white text-[#110e1c] hover:bg-white/90">"Crear mi cuenta"</a>
+                    <a href="/entrar?crear" class="btn btn-lg h-[52px] w-full rounded-xl border-0 bg-white text-[#110e1c] hover:bg-white/90">"Crear mi cuenta"</a>
                 </div>
             </div>
         </section>
