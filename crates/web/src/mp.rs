@@ -10,7 +10,9 @@
 //!   servidor (por ejemplo un túnel de cloudflared) para los avisos de pago.
 //!   Sin ella se usa la de `MP_REDIRECT_URL` si es https (producción); si
 //!   tampoco, el pago se confirma cuando el comprador vuelve a la tienda.
-//! - `MP_TEST=1`: pide credenciales de prueba al vincular.
+//! Para probar se vinculan cuentas de prueba de Mercado Pago (vendedor y
+//! comprador): sus llaves ya son de prueba. No se piden llaves `TEST-`
+//! (`test_token`): Checkout Pro con esas llaves falla al pagar.
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
@@ -28,7 +30,6 @@ pub struct Config {
     pub client_secret: String,
     pub redirect_url: String,
     pub public_url: Option<String>,
-    pub test: bool,
     auth_url: String,
     api_url: String,
 }
@@ -61,7 +62,6 @@ pub fn config() -> Option<Config> {
         client_secret: env("MP_CLIENT_SECRET")?,
         redirect_url,
         public_url,
-        test: env("MP_TEST").as_deref() == Some("1"),
         // Se pueden cambiar para probar sin el Mercado Pago real.
         auth_url: env("MP_AUTH_URL").unwrap_or_else(|| "https://auth.mercadopago.com.ar".into()),
         api_url: env("MP_API_URL").unwrap_or_else(|| "https://api.mercadopago.com".into()),
@@ -369,16 +369,13 @@ async fn linked(
     let Some(c) = config() else {
         return fail(Some(&slug), "configuracion");
     };
-    let mut body = json!({
+    let body = json!({
         "client_id": c.client_id,
         "client_secret": c.client_secret,
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": c.redirect_url,
     });
-    if c.test {
-        body["test_token"] = json!(true);
-    }
     let r = call(
         reqwest::Method::POST,
         &format!("{}/oauth/token", c.api_url),
