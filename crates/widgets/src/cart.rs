@@ -27,6 +27,9 @@ pub struct Cart {
     removed: RwSignal<Option<Removed>>,
     /// Ya se leyó del navegador (antes de hidratar el carrito está vacío).
     pub ready: RwSignal<bool>,
+    /// Hay un botón de carrito fijo en la página (el del encabezado). Si lo hay,
+    /// la barra de abajo solo aparece un momento al agregar.
+    pub nav: RwSignal<bool>,
     /// Avisa de uso (ver [`crate::UsageHook`]); solo en la tienda real.
     hook: Option<crate::UsageHook>,
 }
@@ -41,6 +44,9 @@ struct Removed {
     /// Distingue un quitar de otro, para que el aviso viejo no borre el nuevo.
     token: u32,
 }
+
+/// Cuánto se ve la barra de abajo después de agregar un producto.
+const BAR_MS: u64 = 5000;
 
 /// Cuánto dura el aviso "Quitaste … · Deshacer".
 const UNDO_MS: u64 = 6000;
@@ -62,6 +68,7 @@ impl Cart {
             open: RwSignal::new(false),
             removed: RwSignal::new(None),
             ready: RwSignal::new(false),
+            nav: RwSignal::new(false),
             hook: use_context::<crate::UsageHook>(),
         };
         let ready = cart.ready;
@@ -319,7 +326,11 @@ pub fn CartNavButton() -> impl IntoView {
             </span>
         }
         .into_any(),
-        Some(cart) => view! {
+        Some(cart) => {
+            // Avisa que el carrito ya tiene su botón fijo arriba.
+            Effect::new(move |_| cart.nav.set(true));
+            on_cleanup(move || cart.nav.set(false));
+            view! {
             <button
                 type="button"
                 class=move || if cart.count() == 0 {
@@ -339,8 +350,9 @@ pub fn CartNavButton() -> impl IntoView {
                     <span class="whitespace-nowrap">{format!("{} · {}", cart.count(), short_price(cart.total_cents()))}</span>
                 })}
             </button>
+            }
+            .into_any()
         }
-        .into_any(),
     }
 }
 
@@ -577,6 +589,32 @@ pub fn CartBar() -> impl IntoView {
         return ().into_any();
     };
     let has_items = Memo::new(move |_| cart.count() > 0);
+    // Con botón de carrito arriba, esta barra aparece solo unos segundos al agregar
+    // algo; sin él (el encabezado no está), queda fija para poder llegar al carrito.
+    let flash = RwSignal::new(false);
+    let prev = StoredValue::new(None::<u32>);
+    let token = StoredValue::new(0u32);
+    Effect::new(move |_| {
+        if !cart.ready.get() {
+            return;
+        }
+        let n = cart.count();
+        if prev.get_value().is_some_and(|p| n > p) {
+            flash.set(true);
+            token.update_value(|t| *t = t.wrapping_add(1));
+            let mine = token.get_value();
+            set_timeout(
+                move || {
+                    if token.get_value() == mine {
+                        flash.set(false);
+                    }
+                },
+                std::time::Duration::from_millis(BAR_MS),
+            );
+        }
+        prev.set_value(Some(n));
+    });
+    let shown = Memo::new(move |_| has_items.get() && (flash.get() || !cart.nav.get()));
     let thumbs = Memo::new(move |_| {
         cart.items()
             .into_iter()
@@ -586,7 +624,7 @@ pub fn CartBar() -> impl IntoView {
             .collect::<Vec<_>>()
     });
     view! {
-        <Show when=move || has_items.get()>
+        <Show when=move || shown.get()>
             // Lugar para que la barra no tape el final de la página.
             <div class="h-20" aria-hidden="true"></div>
             <div class="mk-cart-bar fixed inset-x-0 bottom-0 z-40 border-t border-base-300 bg-base-100 shadow-[0_-6px_24px_rgba(0,0,0,0.08)]">
