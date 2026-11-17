@@ -433,7 +433,7 @@ mod tests {
                 .clone()
         };
         assert_eq!(get(1), "Pagá en cuotas");
-        assert_eq!(get(0), "Envío gratis");
+        assert_eq!(get(0), "Envíos");
 
         let mut doc = doc_with(Widget::defaults("Banner").unwrap());
         set_text(&mut doc, "n1", &TextPath::Top("title"), "Nuevo título");
