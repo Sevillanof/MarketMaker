@@ -1447,3 +1447,54 @@ dialog.mk-cart::backdrop {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }
+
+/* Aviso de qué cambió: al tocar esquinas, tamaños, borde o relieve en
+   "Mi tienda", los elementos afectados del lienzo se iluminan un instante
+   (aparece y se va). El lienzo marca `data-flash` con lo cambiado y alterna
+   `data-fp` (0/1) para que la animación arranque de nuevo cada vez. */
+@keyframes mk-flash-a {
+  0%, 100% { outline-color: transparent; }
+  25% { outline-color: color-mix(in oklab, var(--color-primary) 85%, transparent); }
+}
+@keyframes mk-flash-edge-a {
+  0%, 100% { border-color: transparent; background-color: transparent; }
+  25% {
+    border-color: var(--color-primary);
+    background-color: color-mix(in oklab, var(--color-primary) 8%, transparent);
+  }
+}
+@keyframes mk-flash-edge-b {
+  0%, 100% { border-color: transparent; background-color: transparent; }
+  25% {
+    border-color: var(--color-primary);
+    background-color: color-mix(in oklab, var(--color-primary) 8%, transparent);
+  }
+}
+@keyframes mk-flash-b {
+  0%, 100% { outline-color: transparent; }
+  25% { outline-color: color-mix(in oklab, var(--color-primary) 85%, transparent); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mk-store[data-fp="0"][data-flash~="margins"] .mk-frame-outline {
+    border-style: solid;
+    animation: mk-flash-edge-a 0.7s ease-in-out;
+  }
+  .mk-store[data-fp="1"][data-flash~="margins"] .mk-frame-outline {
+    border-style: solid;
+    animation: mk-flash-edge-b 0.7s ease-in-out;
+  }
+  .mk-store[data-fp="0"][data-flash~="box"] :is(.card, .modal-box, .alert, .collapse, .stats),
+  .mk-store[data-fp="0"][data-flash~="field"] :is(.btn, .input, .select, .textarea, .tab, .join-item),
+  .mk-store[data-fp="0"][data-flash~="selector"] :is(.toggle, .checkbox, .radio, .badge, .kbd) {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    animation: mk-flash-a 0.7s ease-in-out;
+  }
+  .mk-store[data-fp="1"][data-flash~="box"] :is(.card, .modal-box, .alert, .collapse, .stats),
+  .mk-store[data-fp="1"][data-flash~="field"] :is(.btn, .input, .select, .textarea, .tab, .join-item),
+  .mk-store[data-fp="1"][data-flash~="selector"] :is(.toggle, .checkbox, .radio, .badge, .kbd) {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    animation: mk-flash-b 0.7s ease-in-out;
+  }
+}

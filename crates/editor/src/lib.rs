@@ -242,6 +242,10 @@ pub(crate) struct Ui {
     pub preview: RwSignal<bool>,
     /// El cajón "Mi tienda" está abierto en lugar de la lista de bloques.
     pub store_open: RwSignal<bool>,
+    /// Lo último que se cambió en "Mi tienda" (`"box"`, `"field"`, `"selector"`,
+    /// separados por espacios) y un contador: el lienzo resalta un instante
+    /// los elementos afectados. El contador reinicia la animación.
+    pub flash: RwSignal<(&'static str, u32)>,
     /// Bloque nuevo que se está arrastrando desde la paleta.
     pub new_drag: RwSignal<Option<NewDrag>>,
     /// El último apretar y soltar fue un arrastre: el clic que lo sigue no
@@ -281,6 +285,11 @@ impl NewDrag {
 }
 
 impl Ui {
+    /// Resalta un instante en el lienzo lo que acaba de cambiar.
+    pub fn flash_changed(&self, what: &'static str) {
+        self.flash.update(|f| *f = (what, f.1.wrapping_add(1)));
+    }
+
     fn toast(&self, text: impl Into<String>, undo: bool) {
         let seq = self.toast_seq.get_value() + 1;
         self.toast_seq.set_value(seq);
@@ -931,6 +940,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         announce: RwSignal::new(String::new()),
         preview: RwSignal::new(false),
         store_open: RwSignal::new(false),
+        flash: RwSignal::new(("", 0)),
         new_drag: RwSignal::new(None),
         swallow_click: StoredValue::new(false),
         block_drag: StoredValue::new(false),

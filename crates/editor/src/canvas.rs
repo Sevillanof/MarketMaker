@@ -1307,6 +1307,8 @@ pub(crate) fn Canvas(
             <div
                 data-theme=move || state.doc.with(|d| d.theme.clone())
                 class="mk-store relative min-h-full bg-base-200 text-base-content"
+                data-flash=move || ui.flash.get().0
+                data-fp=move || (ui.flash.get().1 % 2).to_string()
                 style=move || state.doc.with(|d| format!("{}; {}", d.typography.css_vars(), d.style.css_vars()))
             >
                 {move || (state.in_modal() && !ui.preview.get()).then(|| view! {

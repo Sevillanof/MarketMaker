@@ -143,6 +143,7 @@ pub(crate) fn Letters() -> impl IntoView {
 #[component]
 pub(crate) fn Margins() -> impl IntoView {
     let state = expect_context::<EditorState>();
+    let ui = expect_context::<Ui>();
     let layout = Memo::new(move |_| state.doc.with(|d| d.layout.clone()));
     // Tamaño real de la ventana (ancho y alto), para dibujar a escala.
     let screen = RwSignal::new((1440.0_f64, 900.0_f64));
@@ -163,110 +164,122 @@ pub(crate) fn Margins() -> impl IntoView {
     let _ = window_event_listener(leptos::ev::resize, move |_| measure());
     let field = move |s: Side| {
         view! {
-            <div class="mk-step">
-                <button
-                    type="button"
-                    aria-label=format!("Menos margen {}", s.label().to_lowercase())
-                    on:click=move |_| {
-                        let px = i32::from(layout.with_untracked(|l| l.pad(s))) - i32::from(PAD_STEP) / 2;
-                        state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
-                    }
-                >"\u{2212}"</button>
-                <input
-                    type="number"
-                    min="0"
-                    max=MAX_PAD
-                    step=PAD_STEP / 2
-                    aria-label=format!("Margen {} en píxeles", s.label().to_lowercase())
-                    prop:value=move || layout.with(|l| l.pad(s)).to_string()
-                    on:change=move |ev| {
-                        if let Ok(px) = event_target_value(&ev).trim().parse::<i32>() {
-                            state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
-                        }
-                    }
-                />
-                <button
-                    type="button"
-                    aria-label=format!("Más margen {}", s.label().to_lowercase())
-                    on:click=move |_| {
-                        let px = i32::from(layout.with_untracked(|l| l.pad(s))) + i32::from(PAD_STEP) / 2;
-                        state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
-                    }
-                >"+"</button>
-            </div>
+                   <div class="mk-step">
+                       <button
+                           type="button"
+                           aria-label=format!("Menos margen {}", s.label().to_lowercase())
+                           on:click=move |_| {
+                               let px = i32::from(layout.with_untracked(|l| l.pad(s))) - i32::from(PAD_STEP) / 2;
+                               {
+        state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
+        ui.flash_changed("margins");
         }
+                           }
+                       >"\u{2212}"</button>
+                       <input
+                           type="number"
+                           min="0"
+                           max=MAX_PAD
+                           step=PAD_STEP / 2
+                           aria-label=format!("Margen {} en píxeles", s.label().to_lowercase())
+                           prop:value=move || layout.with(|l| l.pad(s)).to_string()
+                           on:change=move |ev| {
+                               if let Ok(px) = event_target_value(&ev).trim().parse::<i32>() {
+                                   {
+        state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
+        ui.flash_changed("margins");
+        }
+                               }
+                           }
+                       />
+                       <button
+                           type="button"
+                           aria-label=format!("Más margen {}", s.label().to_lowercase())
+                           on:click=move |_| {
+                               let px = i32::from(layout.with_untracked(|l| l.pad(s))) + i32::from(PAD_STEP) / 2;
+                               {
+        state.apply_grouped(Some("pad"), |d| d.layout.set_pad(s, px));
+        ui.flash_changed("margins");
+        }
+                           }
+                       >"+"</button>
+                   </div>
+               }
     };
     view! {
-        <div class="mt-2.5">
-            <p class="mb-1 flex items-baseline gap-1.5">
-                <span class="text-xs font-semibold" id="mk-dr-margins">"Márgenes"</span>
-                <span class="text-[10.5px] text-base-content/55">"borde de la pantalla"</span>
-                <button
-                    type="button"
-                    class="ml-auto text-[11px] font-semibold text-primary hover:underline"
-                    prop:disabled=move || layout.with(|l| *l == StoreLayout::fresh())
-                    on:click=move |_| state.apply(|d| d.layout = StoreLayout::fresh())
-                >"Valores iniciales"</button>
-            </p>
-            <div class="mk-cross" role="group" aria-labelledby="mk-dr-margins">
-                <div class="mk-cross-t">{field(Side::Top)}</div>
-                <div class="mk-cross-l">{field(Side::Left)}</div>
-                <div
-                    class="mk-cross-pg"
-                    aria-hidden="true"
-                    style=move || {
-                        let (w, h) = screen.get();
-                        let l = layout.get();
-                        let pct = |px: u16, of: f64| (f64::from(px) / of * 100.0).min(45.0);
-                        format!(
-                            "aspect-ratio:{w:.0}/{h:.0}; --t:{:.2}%; --r:{:.2}%; --b:{:.2}%; --l:{:.2}%",
-                            pct(l.pad_top, h),
-                            pct(l.pad_right, w),
-                            pct(l.pad_bottom, h),
-                            pct(l.pad_left, w),
-                        )
-                    }
-                >
-                    <div class="mk-cross-in">
-                        {move || {
-                            // Ancho real del contenido, para que alto y ancho
-                            // de cada bloque guarden la proporción verdadera.
-                            let (w, _) = screen.get();
-                            let l = layout.get();
-                            let avail = (w - f64::from(l.pad_left) - f64::from(l.pad_right)).max(1.0);
-                            let content = if l.is_full() { avail } else { f64::from(l.max_width).min(avail) };
-                            let cols = f64::from(GRID_COLS);
-                            state
-                                .nodes()
-                                .into_iter()
-                                .map(|n| {
-                                    let px = |rows: f64| rows * f64::from(ROW_PX) / content * 100.0;
-                                    view! {
-                                        <i
-                                            class="mk-cross-bk"
-                                            style=format!(
-                                                "left:{:.2}%; width:{:.2}%; top:{:.2}cqw; height:{:.2}cqw",
-                                                f64::from(n.pos.x) / cols * 100.0,
-                                                f64::from(n.size.w) / cols * 100.0,
-                                                px(f64::from(n.pos.y)),
-                                                px(f64::from(n.size.h)),
-                                            )
-                                        ></i>
-                                    }
-                                })
-                                .collect_view()
-                        }}
-                    </div>
-                </div>
-                <div class="mk-cross-r">{field(Side::Right)}</div>
-                <div class="mk-cross-b">{field(Side::Bottom)}</div>
-            </div>
-            <p class="mt-1 text-center text-[10.5px] text-base-content/55">
-                {move || {
-                    let (w, h) = screen.get();
-                    format!("Tu pantalla: {w:.0} \u{d7} {h:.0} px")
-                }}
-            </p>
-        </div>
+           <div class="mt-2.5">
+               <p class="mb-1 flex items-baseline gap-1.5">
+                   <span class="text-xs font-semibold" id="mk-dr-margins">"Márgenes"</span>
+                   <span class="text-[10.5px] text-base-content/55">"borde de la pantalla"</span>
+                   <button
+                       type="button"
+                       class="ml-auto text-[11px] font-semibold text-primary hover:underline"
+                       prop:disabled=move || layout.with(|l| *l == StoreLayout::fresh())
+                       on:click=move |_| {
+    state.apply(|d| d.layout = StoreLayout::fresh());
+    ui.flash_changed("margins");
     }
+                   >"Valores iniciales"</button>
+               </p>
+               <div class="mk-cross" role="group" aria-labelledby="mk-dr-margins">
+                   <div class="mk-cross-t">{field(Side::Top)}</div>
+                   <div class="mk-cross-l">{field(Side::Left)}</div>
+                   <div
+                       class="mk-cross-pg"
+                       aria-hidden="true"
+                       style=move || {
+                           let (w, h) = screen.get();
+                           let l = layout.get();
+                           let pct = |px: u16, of: f64| (f64::from(px) / of * 100.0).min(45.0);
+                           format!(
+                               "aspect-ratio:{w:.0}/{h:.0}; --t:{:.2}%; --r:{:.2}%; --b:{:.2}%; --l:{:.2}%",
+                               pct(l.pad_top, h),
+                               pct(l.pad_right, w),
+                               pct(l.pad_bottom, h),
+                               pct(l.pad_left, w),
+                           )
+                       }
+                   >
+                       <div class="mk-cross-in">
+                           {move || {
+                               // Ancho real del contenido, para que alto y ancho
+                               // de cada bloque guarden la proporción verdadera.
+                               let (w, _) = screen.get();
+                               let l = layout.get();
+                               let avail = (w - f64::from(l.pad_left) - f64::from(l.pad_right)).max(1.0);
+                               let content = if l.is_full() { avail } else { f64::from(l.max_width).min(avail) };
+                               let cols = f64::from(GRID_COLS);
+                               state
+                                   .nodes()
+                                   .into_iter()
+                                   .map(|n| {
+                                       let px = |rows: f64| rows * f64::from(ROW_PX) / content * 100.0;
+                                       view! {
+                                           <i
+                                               class="mk-cross-bk"
+                                               style=format!(
+                                                   "left:{:.2}%; width:{:.2}%; top:{:.2}cqw; height:{:.2}cqw",
+                                                   f64::from(n.pos.x) / cols * 100.0,
+                                                   f64::from(n.size.w) / cols * 100.0,
+                                                   px(f64::from(n.pos.y)),
+                                                   px(f64::from(n.size.h)),
+                                               )
+                                           ></i>
+                                       }
+                                   })
+                                   .collect_view()
+                           }}
+                       </div>
+                   </div>
+                   <div class="mk-cross-r">{field(Side::Right)}</div>
+                   <div class="mk-cross-b">{field(Side::Bottom)}</div>
+               </div>
+               <p class="mt-1 text-center text-[10.5px] text-base-content/55">
+                   {move || {
+                       let (w, h) = screen.get();
+                       format!("Tu pantalla: {w:.0} \u{d7} {h:.0} px")
+                   }}
+               </p>
+           </div>
+       }
 }
