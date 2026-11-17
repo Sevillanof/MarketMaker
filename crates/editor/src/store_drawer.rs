@@ -92,38 +92,35 @@ fn Letters() -> impl IntoView {
     let typo = Memo::new(move |_| state.doc.with(|d| d.typography.clone()));
     view! {
         <Section title="Letras" id="mk-dr-letters">
-            <div class="grid grid-cols-4 gap-1.5" role="group" aria-label="Fuentes">
+            <div class="grid grid-cols-2 gap-1" role="group" aria-label="Fuentes">
                 {FONT_PAIRS.iter().map(|p| {
                     let active = move || typo.with(|t| t.heading == p.heading && t.body == p.body);
                     view! {
                         <button
                             type="button"
-                            class=move || tile(active())
+                            class="mk-chip"
                             aria-pressed=move || active().to_string()
                             on:click=move |_| state.apply(|d| {
                                 d.typography.heading = p.heading.into();
                                 d.typography.body = p.body.into();
                             })
                         >
-                            <span class="text-[22px] font-semibold leading-7" style=format!("font-family:{}", font_css(p.heading)) aria-hidden="true">"Aa"</span>
-                            <span class="w-full truncate text-center text-[11px] font-medium">{p.label}</span>
+                            <span class="text-base font-semibold leading-none" style=format!("font-family:{}", font_css(p.heading)) aria-hidden="true">"Aa"</span>
+                            <span class="min-w-0 truncate text-[11px] font-medium">{p.label}</span>
                         </button>
                     }
                 }).collect_view()}
             </div>
-            <div class="mt-1.5 grid grid-cols-3 gap-1.5" role="group" aria-label="Tamaño del texto">
-                {STORE_SIZES.iter().map(|(id, name, factor)| {
+            <div class="mk-seg mt-2" role="group" aria-label="Tamaño del texto">
+                {STORE_SIZES.iter().map(|(id, name, _)| {
                     let active = move || typo.with(|t| t.size == *id);
                     view! {
                         <button
                             type="button"
-                            class=move || tile(active())
+                            class:is-active=active
                             aria-pressed=move || active().to_string()
                             on:click=move |_| state.apply(|d| d.typography.size = (*id).into())
-                        >
-                            <span class="flex h-7 items-end font-semibold" style=format!("font-size:{}px", (14.0 * factor * 1.15).round()) aria-hidden="true">"A"</span>
-                            <span class="text-[11px] font-medium">{*name}</span>
-                        </button>
+                        >{*name}</button>
                     }
                 }).collect_view()}
             </div>
