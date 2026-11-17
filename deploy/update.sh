@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Baja la última versión de main, compila y reinicia MarketMaker.
+# Es el camino lento (compila en la VPS): lo normal es deploy/release.sh, que
+# baja la versión ya compilada por GitHub. Este queda de respaldo.
 # Se corre como el usuario marketmaker: sudo -iu marketmaker /opt/marketmaker/src/deploy/update.sh
 set -euo pipefail
 SRC=/opt/marketmaker/src
@@ -16,6 +18,9 @@ rustup target add wasm32-unknown-unknown
 command -v cargo-leptos >/dev/null || cargo install --locked cargo-leptos
 
 cargo leptos build --release --split
+# Si estaba andando una versión de release.sh, se reemplaza por esta (y
+# release.sh la guarda como "local" la próxima vez, para poder volver).
+rm -f "$OUT/release"
 install -m 755 target/release/server "$OUT/server.new" && mv "$OUT/server.new" "$OUT/server"
 # Las versiones de los archivos de /pkg (ver hash-files en Cargo.toml).
 if [ -f target/release/hash.txt ]; then install -m 644 target/release/hash.txt "$OUT/hash.txt"; else rm -f "$OUT/hash.txt"; fi

@@ -1,0 +1,14 @@
+# Cada 2 minutos se fija si hay una versión nueva de main ya compilada.
+# Activarlo (como root):
+#   cp /opt/marketmaker/src/deploy/marketmaker-release.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now marketmaker-release.timer
+# Apagarlo: systemctl disable --now marketmaker-release.timer
+[Unit]
+Description=MarketMaker: buscar versiones nuevas cada 2 minutos
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

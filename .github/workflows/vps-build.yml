@@ -1,0 +1,74 @@
+# Compila MarketMaker para la VPS en las máquinas de GitHub.
+# - En cada pull request: solo compila (para ver que no se rompe nada).
+# - En cada push a main: compila y publica una "release" vps-<commit> con
+#   marketmaker.tar.gz. La VPS la baja con deploy/release.sh, sin compilar.
+# Se compila en Ubuntu 24.04, el mismo sistema de la VPS (misma glibc).
+name: Compilar para la VPS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vps-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (versión de rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: cargo-leptos
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-leptos
+
+      - name: Compilar
+        run: cargo leptos build --release --split
+
+      - name: Armar el paquete
+        run: |
+          set -euo pipefail
+          VER=$(git rev-parse --short=7 HEAD)
+          D=dist/marketmaker
+          mkdir -p "$D"
+          install -m 755 target/release/server "$D/server"
+          [ -f target/release/hash.txt ] && install -m 644 target/release/hash.txt "$D/hash.txt"
+          cp -r target/site "$D/site"
+          echo "$VER" > "$D/VERSION"
+          tar -C dist -czf dist/marketmaker.tar.gz marketmaker
+          (cd dist && sha256sum marketmaker.tar.gz > marketmaker.tar.gz.sha256)
+          echo "$VER" > dist/version.txt
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          ls -lh dist
+
+      - name: Publicar la release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="vps-$VER"
+          gh release delete "$TAG" -y --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" --target "$GITHUB_SHA" --latest \
+            --title "VPS $VER" \
+            --notes "Compilado de $GITHUB_SHA para la VPS. Se instala con deploy/release.sh." \
+            dist/marketmaker.tar.gz dist/marketmaker.tar.gz.sha256 dist/version.txt
+          # Se guardan las últimas 10; las anteriores se borran.
+          gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | grep '^vps-' | tail -n +11 \
+            | xargs -r -n1 gh release delete -y --cleanup-tag
