@@ -100,6 +100,9 @@ pub fn FilteredProducts(
     summary: bool,
 ) -> impl IntoView {
     let empty = products.is_empty();
+    // Las columnas se reparten según cuántos productos hay: si no, con 4
+    // productos en una fila de 6 columnas queda un tercio vacío.
+    let shown_count = products.len().min(limit);
     // Los agotados van al final (el orden entre los demás se mantiene).
     let mut products = products;
     products.sort_by_key(|p| !p.in_stock);
@@ -134,7 +137,7 @@ pub fn FilteredProducts(
     view! {
         <div class="contents" aria-live="polite">{notice}</div>
         {empty.then(|| view! { <div class="alert">"Todavía no hay productos."</div> })}
-        <div class="mk-pgrid grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 @lg:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">
+        <div class=format!("mk-pgrid grid min-h-0 flex-1 auto-rows-fr gap-3 {}", fill_cols(shown_count))>
             {move || shown().into_iter().map(|p| view! { <ProductCard product=p show_price=true/> }).collect_view()}
         </div>
     }
@@ -467,5 +470,22 @@ fn TagTabs(props: domain::TagTabsProps, products: Vec<Product>, editing: bool) -
             </div>
             <FilteredProducts products limit filter=Some(local) summary=false/>
         </div>
+    }
+}
+
+/// Columnas de una cuadrícula con `n` productos: que la fila llene el ancho.
+pub fn fill_cols(n: usize) -> &'static str {
+    match n {
+        0 | 1 => "grid-cols-1 @sm:grid-cols-2",
+        2 => "grid-cols-2",
+        3 => "grid-cols-2 @lg:grid-cols-3",
+        4 => "grid-cols-2 @3xl:grid-cols-4",
+        5 => "grid-cols-2 @lg:grid-cols-3 @3xl:grid-cols-5",
+        6 => "grid-cols-2 @lg:grid-cols-3 @5xl:grid-cols-6",
+        8 | 16 => "grid-cols-2 @3xl:grid-cols-4",
+        9 => "grid-cols-2 @lg:grid-cols-3",
+        10 => "grid-cols-2 @3xl:grid-cols-5",
+        12 => "grid-cols-2 @lg:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6",
+        _ => "grid-cols-2 @lg:grid-cols-3 @3xl:grid-cols-4",
     }
 }

@@ -239,6 +239,11 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "instagram" => "M8 3h8a5 5 0 0 1 5 5v8a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V8a5 5 0 0 1 5-5zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M17.5 6.5v.01",
         "pin" => "M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 7.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5",
         "arrow-right" => "M5 12h14M13 6l6 6-6 6",
+        "chevron-left" => "M15 6l-6 6 6 6",
+        "chevron-right" => "M9 6l6 6-6 6",
+        "close" => "M6 6l12 12M18 6L6 18",
+        "facebook" => "M14 8h3V4h-3a4 4 0 0 0-4 4v2H7v4h3v6h4v-6h3l1-4h-4V8z",
+        "tiktok" => "M14 4v10.5a3.5 3.5 0 1 1-3.5-3.5M14 4c.4 2.600 2 4 5 4",
         _ => "M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
     };
     let class = format!("inline-block {class}");

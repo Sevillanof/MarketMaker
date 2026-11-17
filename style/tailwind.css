@@ -1132,3 +1132,58 @@ dialog.mk-cart::backdrop {
   border-radius: calc(var(--radius-box) / 2);
   background: var(--color-base-200);
 }
+
+/* Desplegable del menú superior: vive en la capa superior del navegador
+   (`popover`), así ningún bloque con `overflow: hidden` lo recorta. La
+   posición (debajo de su botón) la pone `place_popover` al tocar. */
+.mk-navpop {
+  position: absolute;
+  inset: auto;
+  margin: 0;
+  padding: 0.25rem;
+  min-width: 12rem;
+  max-width: calc(100vw - 1rem);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+}
+.mk-navpop-wide {
+  padding: 0;
+}
+.mk-navpop:not(:popover-open) {
+  display: none;
+}
+
+/* Fila de productos que se desliza: sin barra de desplazamiento visible y,
+   si la persona no pidió menos movimiento, con desplazamiento suave. */
+.mk-rail {
+  scroll-padding-inline: 0;
+  touch-action: pan-x pan-y;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mk-rail {
+    scroll-behavior: smooth;
+  }
+}
+.mk-rail:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Botón flotante de WhatsApp: verde de la marca, con texto blanco legible.
+   Si hay barra del carrito abajo, se sube para no taparla. */
+.mk-wa-float {
+  background: #0f7a43;
+}
+.mk-wa-float:hover {
+  background: #0c6537;
+}
+.mk-wa-float:focus-visible {
+  outline: 3px solid var(--color-base-content);
+  outline-offset: 2px;
+}
+.mk-store:has(.mk-cart-bar) .mk-wa-float.fixed {
+  bottom: 5.5rem;
+}

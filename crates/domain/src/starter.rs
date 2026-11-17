@@ -48,9 +48,11 @@ pub fn starter_doc(name: &str) -> PageDoc {
         Widget::Navbar(NavbarProps {
             brand: String::new(),
             logo_url: String::new(),
+            menu: s("list"),
             links: vec![LinkItem {
                 label: s("Inicio"),
                 href: s("/"),
+                ..LinkItem::default()
             }],
             button_label: String::new(),
             button_href: String::new(),

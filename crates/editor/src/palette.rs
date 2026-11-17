@@ -40,6 +40,7 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "button",
         "Un botón para consultar o comprar",
     ),
+    ("Encabezado", "Announcement", "announce", "Una franja con un mensaje corto"),
     ("Encabezado", "Navbar", "navbar", "Logo, nombre y enlaces"),
     ("Encabezado", "Banner", "banner", "Imagen grande con título"),
     (
@@ -49,6 +50,7 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "Varias imágenes que pasan solas",
     ),
     ("Productos", "ProductGrid", "grid", "Tus productos en filas"),
+    ("Productos", "ProductCarousel", "rail", "Productos en una fila que se desliza"),
     ("Productos", "TagFilter", "tags", "Pastillas para filtrar"),
     ("Productos", "TagList", "tags", "Casillas al costado"),
     ("Productos", "TagCircles", "tags", "Círculos con foto"),
@@ -73,6 +75,8 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "Promoción con fecha de fin",
     ),
     ("Contenido", "Text", "text", "Título y párrafo"),
+    ("Contenido", "Steps", "steps", "Cómo comprar, paso a paso"),
+    ("Contenido", "Social", "social", "Redes y botón de WhatsApp"),
     ("Contenido", "Card", "card", "Imagen, texto y botón"),
     ("Contenido", "Image", "image", "Una imagen sola"),
     (
@@ -95,6 +99,7 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "benefits",
         "Envíos, pagos, cambios",
     ),
+    ("Confianza", "Stats", "stats", "Números que dan confianza"),
     ("Confianza", "Logos", "logos", "Marcas que vendés"),
     (
         "Contenido",

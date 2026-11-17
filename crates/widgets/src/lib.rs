@@ -7,6 +7,7 @@
 //! Los textos se muestran siempre como texto, nunca como HTML.
 
 use domain::{
+    AnnouncementProps, ProductCarouselProps, SocialProps, StatsProps, StepsProps,
     BannerProps, BenefitsProps, CardProps, ContactProps, CarouselProps, CategoriesProps, CountdownProps,
     FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps, ImageProps, LogosProps,
     NavbarProps, Node, Product, ProductButtonProps, ProductGridProps, ProductImageProps,
@@ -82,7 +83,20 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             view! { <FeaturedProductWidget props=p.clone() products=ctx.products.clone()/> }
                 .into_any()
         }
-        Widget::Navbar(p) => view! { <NavbarWidget props=p.clone() editing/> }.into_any(),
+        Widget::Navbar(p) => {
+            view! { <NavbarWidget props=p.clone() editing uid=format!("nav-{}", node.id)/> }
+                .into_any()
+        }
+        Widget::Announcement(p) => {
+            view! { <AnnouncementWidget props=p.clone() editing/> }.into_any()
+        }
+        Widget::Stats(p) => view! { <StatsWidget props=p.clone()/> }.into_any(),
+        Widget::Steps(p) => view! { <StepsWidget props=p.clone()/> }.into_any(),
+        Widget::ProductCarousel(p) => view! {
+            <ProductCarouselWidget props=p.clone() products=ctx.products.clone() editing/>
+        }
+        .into_any(),
+        Widget::Social(p) => view! { <SocialWidget props=p.clone() editing/> }.into_any(),
         Widget::Carousel(p) => view! { <CarouselWidget props=p.clone() editing/> }.into_any(),
         Widget::Categories(p) => view! { <CategoriesWidget props=p.clone() editing/> }.into_any(),
         Widget::Benefits(p) => view! { <BenefitsWidget props=p.clone()/> }.into_any(),
@@ -465,36 +479,178 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     }
 }
 
+/// Dónde poner un desplegable: justo debajo de su botón (o del menú entero,
+/// si es el panel ancho). El desplegable está en la capa superior del
+/// navegador (`popover`), así que ningún bloque lo recorta.
+fn place_popover(ev: leptos::ev::MouseEvent, pop_id: &str, wide: bool) {
+    use leptos::wasm_bindgen::JsCast;
+    let Some(btn) = ev
+        .current_target()
+        .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+    else {
+        return;
+    };
+    let Some(pop) = document()
+        .get_element_by_id(pop_id)
+        .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+    else {
+        return;
+    };
+    let win = window();
+    let (sx, sy) = (win.scroll_x().unwrap_or(0.0), win.scroll_y().unwrap_or(0.0));
+    let view_w = win.inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(1024.0);
+    let anchor = if wide {
+        btn.closest("nav").ok().flatten().unwrap_or_else(|| btn.clone().into())
+    } else {
+        btn.clone().into()
+    };
+    let r = anchor.get_bounding_client_rect();
+    let b = btn.get_bounding_client_rect();
+    let style = pop.style();
+    _ = style.set_property("top", &format!("{}px", b.bottom() + sy + 6.0));
+    if wide {
+        _ = style.set_property("left", &format!("{}px", r.left() + sx));
+        _ = style.set_property("width", &format!("{}px", r.width()));
+    } else {
+        // Que no se salga por la derecha.
+        let left = b.left().min(view_w - 232.0).max(8.0);
+        _ = style.set_property("left", &format!("{}px", left + sx));
+    }
+}
+
 #[component]
-pub fn NavbarWidget(props: NavbarProps, editing: bool) -> impl IntoView {
+pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl IntoView {
     let has_button = !props.button_label.is_empty();
     // Vacíos, usan el nombre y el logo de la tienda (ver "Datos de la tienda").
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
     let brand = or_store(&props.brand, &store.name);
     let logo_url = or_store(&props.logo_url, &store.logo_url);
+    let wide = props.menu == "panel";
+    let links = props.links;
+    let desktop = links
+        .clone()
+        .into_iter()
+        .enumerate()
+        .map(|(i, l)| {
+            if l.children.is_empty() {
+                return view! {
+                    <li>
+                        <MaybeLink href=l.href editing class="mk-link whitespace-nowrap">{l.label}</MaybeLink>
+                    </li>
+                }
+                .into_any();
+            }
+            let pid = format!("{uid}-m{i}");
+            let pid_click = pid.clone();
+            let children = l.children.clone();
+            let image = l.image_url.clone();
+            let all_href = l.href.clone();
+            let label = l.label.clone();
+            let label_btn = l.label.clone();
+            let panel = if wide {
+                view! {
+                    <div class="grid gap-6 p-5 @3xl:grid-cols-[1fr_1fr_1.2fr]">
+                        {children
+                            .chunks(3)
+                            .map(|col| col.to_vec())
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .map(|col| view! {
+                                <ul class="flex flex-col gap-1.5">
+                                    {col.into_iter().map(|c| view! {
+                                        <li><MaybeLink href=c.href editing class="mk-link link link-hover">{c.label}</MaybeLink></li>
+                                    }).collect_view()}
+                                </ul>
+                            })
+                            .collect_view()}
+                        {(!image.is_empty()).then(|| view! {
+                            <MaybeLink href=all_href.clone() editing class="relative block overflow-hidden rounded-box">
+                                <div class="aspect-[16/9] w-full"><Image src=image.clone() alt=""/></div>
+                                <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-sm font-semibold text-white">{format!("{label} →")}</span>
+                            </MaybeLink>
+                        })}
+                    </div>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <ul class="menu w-52 p-1">
+                        {children.into_iter().map(|c| view! {
+                            <li><MaybeLink href=c.href editing class="mk-link">{c.label}</MaybeLink></li>
+                        }).collect_view()}
+                        {(!all_href.is_empty()).then(|| view! {
+                            <li class="mt-1 border-t border-base-300 pt-1"><MaybeLink href=all_href.clone() editing class="mk-link font-semibold">"Ver todo"</MaybeLink></li>
+                        })}
+                    </ul>
+                }
+                .into_any()
+            };
+            let pop_class = if wide { "mk-navpop mk-navpop-wide @container" } else { "mk-navpop" };
+            view! {
+                <li>
+                    <button type="button" class="mk-link btn btn-ghost btn-sm font-normal whitespace-nowrap"
+                        popovertarget=pid.clone()
+                        on:click=move |ev| place_popover(ev, &pid_click, wide)>
+                        {label_btn}
+                        <Icon name="chevron-down" class="h-4 w-4"/>
+                    </button>
+                    <div id=pid popover="auto" class=pop_class>{panel}</div>
+                </li>
+            }
+            .into_any()
+        })
+        .collect_view();
+    let mobile_id = format!("{uid}-mobile");
+    let mobile_click = mobile_id.clone();
+    let mobile = links
+        .into_iter()
+        .map(|l| {
+            if l.children.is_empty() {
+                view! {
+                    <li><MaybeLink href=l.href editing class="mk-link">{l.label}</MaybeLink></li>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <li>
+                        <details>
+                            <summary>{l.label}</summary>
+                            <ul>
+                                {l.children.into_iter().map(|c| view! {
+                                    <li><MaybeLink href=c.href editing class="mk-link">{c.label}</MaybeLink></li>
+                                }).collect_view()}
+                            </ul>
+                        </details>
+                    </li>
+                }
+                .into_any()
+            }
+        })
+        .collect_view();
     view! {
-        <nav class="mk-box mk-nav navbar h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm">
+        <nav class="mk-box mk-nav navbar @container h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm">
             <MaybeLink href="/" editing class="flex shrink-0 items-center gap-2">
                 {(!logo_url.is_empty()).then(|| view! {
                     <img class="h-8 w-8 object-contain" src=logo_url.clone() alt="" draggable="false"/>
                 })}
                 <span class="mk-brand mk-h text-lg font-bold whitespace-nowrap">{brand}</span>
             </MaybeLink>
-            <ul class="menu menu-horizontal min-w-0 flex-1 flex-nowrap justify-end overflow-x-auto px-0">
-                {props
-                    .links
-                    .into_iter()
-                    .map(|l| view! {
-                        <li>
-                            <MaybeLink href=l.href editing class="mk-link whitespace-nowrap">{l.label}</MaybeLink>
-                        </li>
-                    })
-                    .collect_view()}
+            <ul class="menu menu-horizontal hidden min-w-0 flex-1 flex-nowrap items-center justify-end px-0 @2xl:flex">
+                {desktop}
             </ul>
+            <div class="flex-1 @2xl:hidden"></div>
             {has_button.then(|| view! {
                 <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
             })}
             <CartNavButton/>
+            <button type="button" class="btn btn-ghost btn-square @2xl:hidden" aria-label="Abrir el menú"
+                popovertarget=mobile_id.clone()
+                on:click=move |ev| place_popover(ev, &mobile_click, true)>
+                <Icon name="menu" class="h-6 w-6"/>
+            </button>
+            <div id=mobile_id popover="auto" class="mk-navpop mk-navpop-wide">
+                <ul class="menu w-full p-2">{mobile}</ul>
+            </div>
         </nav>
     }
 }
@@ -607,12 +763,13 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
 
 #[component]
 pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView {
+    let cols = tags::fill_cols(props.items.len());
     view! {
         <div class="mk-box mk-pad mk-cats @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
-            <div class="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 @xl:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">
+            <div class=format!("grid min-h-0 flex-1 auto-rows-fr gap-3 {}", cols)>
                 {props
                     .items
                     .into_iter()
@@ -654,6 +811,406 @@ pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
                     .collect_view()}
             </div>
         </div>
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Widgets con estilos (a, b y c): barra de anuncio, cifras, pasos, carrusel de
+// productos y redes.
+
+/// Columnas de una fila de `n` elementos desde el ancho medio (`@xl`).
+fn cols_xl(n: usize) -> &'static str {
+    match n {
+        0..=2 => "@xl:grid-cols-2",
+        3 => "@xl:grid-cols-3",
+        _ => "@xl:grid-cols-4",
+    }
+}
+
+/// Columnas de una fila de `n` elementos desde el ancho grande (`@2xl`).
+fn cols_2xl(n: usize) -> &'static str {
+    match n {
+        0..=2 => "@2xl:grid-cols-2",
+        3 => "@2xl:grid-cols-3",
+        4 => "@2xl:grid-cols-4",
+        _ => "@2xl:grid-cols-5",
+    }
+}
+
+#[component]
+pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
+    let variant = props.variant.clone();
+    let count = props.items.len().max(1);
+    let items = StoredValue::new(props.items);
+    let current = RwSignal::new(0usize);
+    let paused = RwSignal::new(false);
+    let closed = RwSignal::new(false);
+    if variant == "b" && !editing && count > 1 {
+        Effect::new(move |_| {
+            let handle = set_interval_with_handle(
+                move || {
+                    if !paused.get_untracked() {
+                        current.update(|c| *c = (*c + 1) % count);
+                    }
+                },
+                std::time::Duration::from_secs(6),
+            );
+            on_cleanup(move || {
+                if let Ok(h) = handle {
+                    h.clear();
+                }
+            });
+        });
+    }
+    let rotating = variant == "b";
+    let closable = variant == "c";
+    let message = move || {
+        let i = if rotating { current.get() } else { 0 };
+        items.with_value(|v| v.get(i).cloned())
+    };
+    let step = move |d: isize| {
+        current.update(|c| *c = ((*c as isize + d).rem_euclid(count as isize)) as usize);
+    };
+    view! {
+        <div class="mk-box mk-ann flex h-full items-center gap-2 overflow-hidden rounded-box bg-primary px-2 text-sm text-primary-content"
+            class:hidden=move || closed.get()
+            on:mouseenter=move |_| paused.set(true)
+            on:mouseleave=move |_| paused.set(false)
+            on:focusin=move |_| paused.set(true)
+            on:focusout=move |_| paused.set(false)>
+            {rotating.then(|| view! {
+                <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Mensaje anterior" on:click=move |_| step(-1)>
+                    <Icon name="chevron-left" class="h-4 w-4"/>
+                </button>
+            })}
+            {(!rotating && !closable).then(|| view! { <span class="w-0 flex-1"></span> })}
+            <p class="min-w-0 flex-1 text-center text-balance">
+                {move || message().map(|m| view! {
+                    <span>{m.text}</span>
+                    {(!m.link_label.is_empty()).then(|| view! {
+                        " · "
+                        <MaybeLink href=m.link_href.clone() editing class="mk-link inline font-semibold underline underline-offset-2">{m.link_label.clone()}</MaybeLink>
+                    })}
+                })}
+            </p>
+            {rotating.then(|| view! {
+                <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Mensaje siguiente" on:click=move |_| step(1)>
+                    <Icon name="chevron-right" class="h-4 w-4"/>
+                </button>
+            })}
+            {closable.then(|| view! {
+                <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Cerrar aviso" on:click=move |_| closed.set(true)>
+                    <Icon name="close" class="h-4 w-4"/>
+                </button>
+            })}
+            {(!rotating && !closable).then(|| view! { <span class="w-0 flex-1"></span> })}
+        </div>
+    }
+}
+
+#[component]
+pub fn StatsWidget(props: StatsProps) -> impl IntoView {
+    let n = props.items.len();
+    match props.variant.as_str() {
+        "b" => view! {
+            <div class=format!("mk-box mk-pad mk-stats @container grid h-full grid-cols-1 content-center gap-6 overflow-hidden rounded-box bg-base-100 px-6 py-4 text-center {}", cols_xl(n))>
+                {props.items.into_iter().map(|s| view! {
+                    <div class="min-w-0">
+                        <p class="mk-title mk-h text-4xl font-extrabold tracking-tight @xl:text-5xl">{s.value}</p>
+                        <p class="mx-auto mt-2 h-0.5 w-8 bg-current opacity-60"></p>
+                        <p class="mt-2 text-sm opacity-70">{s.label}</p>
+                    </div>
+                }).collect_view()}
+            </div>
+        }
+        .into_any(),
+        "c" => view! {
+            <div class=format!("mk-stats @container grid h-full grid-cols-1 content-center gap-4 overflow-hidden {}", cols_xl(n))>
+                {props.items.into_iter().map(|s| view! {
+                    <div class="mk-item mk-box flex min-w-0 items-center gap-4 rounded-box border border-base-300 bg-base-100 p-5">
+                        <span class="mk-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-full">
+                            <Icon name=s.icon class="h-6 w-6"/>
+                        </span>
+                        <div class="min-w-0">
+                            <p class="mk-h text-2xl font-bold leading-none">{s.value}</p>
+                            <p class="mt-1 text-sm opacity-70 line-clamp-2">{s.label}</p>
+                        </div>
+                    </div>
+                }).collect_view()}
+            </div>
+        }
+        .into_any(),
+        _ => view! {
+            <div class="mk-stats @container h-full overflow-hidden">
+                <div class="mk-box stats stats-vertical @xl:stats-horizontal h-full w-full overflow-hidden rounded-box bg-base-100 shadow-sm">
+                    {props.items.into_iter().map(|s| view! {
+                        <div class="stat place-items-center">
+                            <div class="stat-value mk-h text-primary">{s.value}</div>
+                            <div class="stat-title whitespace-normal text-center">{s.label}</div>
+                        </div>
+                    }).collect_view()}
+                </div>
+            </div>
+        }
+        .into_any(),
+    }
+}
+
+#[component]
+pub fn StepsWidget(props: StepsProps) -> impl IntoView {
+    let n = props.items.len();
+    let title = (!props.title.is_empty()).then(|| view! {
+        <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold">{props.title.clone()}</h2>
+    });
+    match props.variant.as_str() {
+        "b" => view! {
+            <div class="mk-box mk-steps @container flex h-full flex-col justify-center overflow-hidden rounded-box bg-base-100 p-6 shadow-sm">
+                {title}
+                <ul class="steps steps-vertical @2xl:steps-horizontal w-full">
+                    {props.items.into_iter().map(|s| view! {
+                        <li class="step step-primary"><span class="mk-sub mk-h font-medium">{s.title}</span></li>
+                    }).collect_view()}
+                </ul>
+            </div>
+        }
+        .into_any(),
+        "c" => view! {
+            <div class="mk-steps @container flex h-full flex-col justify-center overflow-hidden">
+                {title}
+                <ol class=format!("grid grid-cols-1 gap-4 {}", cols_xl(n))>
+                    {props.items.into_iter().enumerate().map(|(i, s)| view! {
+                        <li class="mk-item mk-box min-w-0 rounded-box border border-base-300 bg-base-100 p-5">
+                            <p class="mk-h text-5xl font-extrabold opacity-25">{format!("{:02}", i + 1)}</p>
+                            <p class="mk-sub mk-h mt-2 font-semibold">{s.title}</p>
+                            <p class="text-sm opacity-70">{s.text}</p>
+                        </li>
+                    }).collect_view()}
+                </ol>
+            </div>
+        }
+        .into_any(),
+        _ => view! {
+            <div class="mk-box mk-steps @container flex h-full flex-col justify-center overflow-hidden rounded-box bg-base-100 p-6 shadow-sm">
+                {title}
+                <ol class=format!("grid grid-cols-1 gap-6 {}", cols_2xl(n))>
+                    {props.items.into_iter().enumerate().map(|(i, s)| view! {
+                        <li class="flex min-w-0 flex-col items-center gap-2 text-center">
+                            <span class="mk-icon mk-h flex h-10 w-10 items-center justify-center rounded-full bg-primary font-bold text-primary-content">{i + 1}</span>
+                            <p class="mk-sub mk-h font-semibold">{s.title}</p>
+                            <p class="text-sm opacity-70">{s.text}</p>
+                        </li>
+                    }).collect_view()}
+                </ol>
+            </div>
+        }
+        .into_any(),
+    }
+}
+
+#[component]
+pub fn ProductCarouselWidget(
+    props: ProductCarouselProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
+    let variant = props.variant.clone();
+    let limit = usize::try_from(props.limit).unwrap_or(0).max(1);
+    let mut products = products;
+    // Los agotados van al final.
+    products.sort_by_key(|p| !p.in_stock);
+    products.truncate(limit);
+    let total = products.len();
+    let track = NodeRef::<Div>::new();
+    let at_start = RwSignal::new(true);
+    let at_end = RwSignal::new(false);
+    let measure = move || {
+        if let Some(el) = track.get_untracked() {
+            let (left, view_w, all) = (el.scroll_left(), el.client_width(), el.scroll_width());
+            at_start.set(left <= 1);
+            at_end.set(left + view_w >= all - 1);
+        }
+    };
+    Effect::new(move |_| measure());
+    let go = move |dir: i32| {
+        if let Some(el) = track.get_untracked() {
+            let step = f64::from(el.client_width()) * 0.8;
+            el.scroll_by_with_x_and_y(f64::from(dir) * step, 0.0);
+        }
+    };
+    let title = props.title.clone();
+    let link = (!props.link_label.is_empty()).then(|| {
+        view! {
+            <MaybeLink href=props.link_href.clone() editing class="mk-link link link-primary shrink-0 text-sm">{props.link_label.clone()}</MaybeLink>
+        }
+    });
+    let arrows = move |class: &'static str| {
+        view! {
+            <div class=class>
+                <button type="button" class="btn btn-circle btn-sm" aria-label="Ver los anteriores"
+                    disabled=move || at_start.get() on:click=move |_| go(-1)>
+                    <Icon name="chevron-left" class="h-4 w-4"/>
+                </button>
+                <button type="button" class="btn btn-circle btn-sm btn-primary mk-btn" aria-label="Ver los siguientes"
+                    disabled=move || at_end.get() on:click=move |_| go(1)>
+                    <Icon name="chevron-right" class="h-4 w-4"/>
+                </button>
+            </div>
+        }
+    };
+    let rail = {
+        let title = title.clone();
+        view! {
+            <div class="relative min-h-0 flex-1">
+                <div node_ref=track
+                    class="mk-rail carousel h-full w-full gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    tabindex="0" role="region" aria-roledescription="carousel" aria-label=title
+                    on:scroll=move |_| measure()>
+                    {products.into_iter().enumerate().map(|(i, p)| view! {
+                        <div class="carousel-item h-full w-[clamp(9.5rem,24cqw,15rem)]"
+                            role="group" aria-roledescription="slide" aria-label=format!("{} de {total}", i + 1)>
+                            <div class="h-full w-full"><ProductCard product=p show_price=true/></div>
+                        </div>
+                    }).collect_view()}
+                </div>
+                {(total == 0).then(|| view! { <div class="alert">"Todavía no hay productos."</div> })}
+                {(variant == "b").then(|| view! {
+                    <div class="pointer-events-none absolute inset-x-1 top-1/2 flex -translate-y-1/2 justify-between">
+                        <button type="button" class="btn btn-circle pointer-events-auto shadow" aria-label="Ver los anteriores"
+                            disabled=move || at_start.get() on:click=move |_| go(-1)>
+                            <Icon name="chevron-left" class="h-5 w-5"/>
+                        </button>
+                        <button type="button" class="btn btn-circle pointer-events-auto shadow" aria-label="Ver los siguientes"
+                            disabled=move || at_end.get() on:click=move |_| go(1)>
+                            <Icon name="chevron-right" class="h-5 w-5"/>
+                        </button>
+                    </div>
+                })}
+            </div>
+        }
+    };
+    match variant.as_str() {
+        "b" => view! {
+            <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box bg-base-100 p-5 shadow-sm">
+                <div class="flex items-end justify-between gap-3">
+                    <h2 class="mk-title mk-h truncate text-xl font-bold">{title}</h2>
+                    {link}
+                </div>
+                {rail}
+            </div>
+        }
+        .into_any(),
+        "c" => view! {
+            <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
+                <div class="flex items-end justify-between gap-3">
+                    <h2 class="mk-title mk-h truncate text-xl font-bold">{title}</h2>
+                    {link}
+                </div>
+                {rail}
+                {arrows("flex justify-center gap-2")}
+            </div>
+        }
+        .into_any(),
+        _ => view! {
+            <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box bg-base-100 p-5 shadow-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="mk-title mk-h truncate text-xl font-bold">{title}</h2>
+                    <div class="flex items-center gap-4">
+                        {link}
+                        {arrows("flex gap-2")}
+                    </div>
+                </div>
+                {rail}
+            </div>
+        }
+        .into_any(),
+    }
+}
+
+#[component]
+pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
+    let store = use_context::<domain::StoreInfo>().unwrap_or_default();
+    let mut channels = store_channels(&store);
+    // WhatsApp va aparte: es el botón flotante.
+    let whatsapp = channels
+        .iter()
+        .position(|c| c.icon == "whatsapp")
+        .map(|i| channels.remove(i));
+    channels.retain(|c| c.icon == "instagram");
+    if !props.facebook.trim().is_empty() {
+        channels.push(Channel {
+            icon: "facebook",
+            label: "Facebook",
+            value: props.facebook.trim().trim_start_matches("https://").trim_start_matches("www.").to_string(),
+            href: props.facebook.trim().to_string(),
+            external: true,
+        });
+    }
+    if !props.tiktok.trim().is_empty() {
+        channels.push(Channel {
+            icon: "tiktok",
+            label: "TikTok",
+            value: props.tiktok.trim().trim_start_matches("https://").trim_start_matches("www.").to_string(),
+            href: props.tiktok.trim().to_string(),
+            external: true,
+        });
+    }
+    let float = |circle: bool| {
+        let label = props.label.clone();
+        whatsapp.as_ref().map(|w| {
+            let class = if circle {
+                "mk-wa-float btn btn-circle btn-lg border-0 text-white shadow-lg"
+            } else {
+                "mk-wa-float btn rounded-full border-0 px-5 text-white shadow-lg"
+            };
+            let pos = if editing { "absolute bottom-2 right-2" } else { "fixed bottom-6 right-4 z-[45]" };
+            view! {
+                <ChannelLink href=w.href.clone() external=true editing class=format!("{class} {pos}") label="Escribinos por WhatsApp">
+                    <Icon name="whatsapp" class="h-7 w-7"/>
+                    {(!circle).then(|| view! { <span>{label.clone()}</span> })}
+                </ChannelLink>
+            }
+        })
+    };
+    let hint = (editing && whatsapp.is_none() && props.variant != "c").then(|| view! {
+        <p class="text-sm opacity-70">"Cargá tu WhatsApp en «Datos de la tienda» y acá aparece el botón."</p>
+    });
+    match props.variant.as_str() {
+        "b" => view! {
+            <div class="mk-box mk-pad mk-social relative h-full overflow-hidden rounded-box">
+                {hint}
+                {float(false)}
+            </div>
+        }
+        .into_any(),
+        "c" => view! {
+            <div class="mk-social @container grid h-full grid-cols-1 content-center gap-3 overflow-hidden @xl:grid-cols-3">
+                {channels.into_iter().chain(whatsapp).map(|c| view! {
+                    <ChannelLink href=c.href external=c.external editing class="mk-item mk-box flex min-h-14 min-w-0 items-center gap-3 rounded-box border border-base-300 bg-base-100 p-3">
+                        <span class="mk-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+                            <Icon name=c.icon class="h-5 w-5"/>
+                        </span>
+                        <span class="min-w-0 leading-tight">
+                            <span class="block font-semibold">{c.label}</span>
+                            <span class="block truncate text-sm opacity-70">{c.value}</span>
+                        </span>
+                    </ChannelLink>
+                }).collect_view()}
+            </div>
+        }
+        .into_any(),
+        _ => view! {
+            <div class="mk-box mk-pad mk-social relative flex h-full items-center gap-3 overflow-hidden rounded-box">
+                {(!props.title.is_empty()).then(|| view! { <span class="mk-title mk-h text-sm font-semibold">{props.title.clone()}</span> })}
+                {channels.into_iter().map(|c| view! {
+                    <ChannelLink href=c.href external=c.external editing class="mk-btn btn btn-circle btn-outline btn-sm" label=c.label>
+                        <Icon name=c.icon class="h-4 w-4"/>
+                    </ChannelLink>
+                }).collect_view()}
+                {hint}
+                {float(true)}
+            </div>
+        }
+        .into_any(),
     }
 }
 
