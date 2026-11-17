@@ -1187,3 +1187,82 @@ dialog.mk-cart::backdrop {
 .mk-store:has(.mk-cart-bar) .mk-wa-float.fixed {
   bottom: 5.5rem;
 }
+
+/* Tema de la tienda dentro de "Mi tienda" (ver `theme_panel.rs`). */
+.mk-swatch-strip {
+  display: flex;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgb(0 0 0 / 0.14);
+}
+.mk-swatch {
+  flex: 1;
+  height: 26px;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+}
+.mk-swatch:hover {
+  filter: brightness(0.93);
+}
+.mk-swatch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+/* Una esquina de muestra: el arco cambia con `--r`. */
+.mk-rad {
+  position: relative;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 7px;
+  border: 2px solid var(--color-base-300);
+  background: var(--color-base-200);
+  transition: border-color 0.15s ease;
+}
+.mk-rad::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 40px;
+  height: 40px;
+  border-top: 2.5px solid color-mix(in oklab, var(--color-base-content) 40%, transparent);
+  border-left: 2.5px solid color-mix(in oklab, var(--color-base-content) 40%, transparent);
+  border-top-left-radius: var(--r);
+  background: var(--color-base-300);
+}
+.mk-rad:hover {
+  border-color: var(--color-primary);
+}
+.mk-rad[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+}
+.mk-rad[aria-pressed="true"]::before {
+  border-color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 22%, var(--color-base-100));
+}
+/* Selector de color: un solo `popover` para todas las muestras. Sin
+   anclaje CSS, queda arriba a la izquierda, junto al cajón. */
+.mk-colorpop {
+  inset: auto;
+  margin: 0;
+  left: 1rem;
+  top: 8rem;
+  width: 17rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+}
+@supports (position-area: bottom) {
+  .mk-colorpop {
+    left: auto;
+    top: auto;
+    margin-block: 6px;
+    position-area: bottom span-right;
+    position-try-fallbacks: flip-block, flip-inline;
+  }
+}

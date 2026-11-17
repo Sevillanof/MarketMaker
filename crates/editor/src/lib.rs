@@ -22,6 +22,7 @@ pub use photos::{take_files, LinkImport, MyPhotos};
 #[derive(Clone, Debug, PartialEq)]
 pub struct PanelLink(pub String);
 mod store_drawer;
+mod theme_panel;
 mod topbar;
 mod typography;
 
