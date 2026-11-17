@@ -122,8 +122,8 @@ pub fn parse_parcel(
     if all.iter().all(|s| s.trim().is_empty()) {
         return Ok(None);
     }
-    let weight_g = parse_kg(weight)
-        .ok_or("Escribí el peso en kilos, por ejemplo 0,5 (medio kilo).")?;
+    let weight_g =
+        parse_kg(weight).ok_or("Escribí el peso en kilos, por ejemplo 0,5 (medio kilo).")?;
     let cm = |s: &str| {
         parse_cm(s).ok_or("Escribí las tres medidas en centímetros, por ejemplo 20, 15 y 10.")
     };
@@ -207,9 +207,15 @@ impl AndreaniService {
     pub fn owner_hint(self) -> &'static str {
         match self {
             AndreaniService::Home => "Andreani lo lleva a la casa del comprador.",
-            AndreaniService::Branch => "El comprador lo retira en la sucursal de Andreani que elija.",
-            AndreaniService::SameDay => "Llega el mismo día, en las zonas donde Andreani lo ofrece.",
-            AndreaniService::Bigger => "Para paquetes de más de 50 kg o muy grandes. Se usa solo cuando hace falta.",
+            AndreaniService::Branch => {
+                "El comprador lo retira en la sucursal de Andreani que elija."
+            }
+            AndreaniService::SameDay => {
+                "Llega el mismo día, en las zonas donde Andreani lo ofrece."
+            }
+            AndreaniService::Bigger => {
+                "Para paquetes de más de 50 kg o muy grandes. Se usa solo cuando hace falta."
+            }
         }
     }
 
@@ -319,7 +325,10 @@ pub struct AndreaniQuote {
 
 impl AndreaniQuote {
     pub fn cents(&self, service: AndreaniService) -> Option<i64> {
-        self.rates.iter().find(|r| r.service == service).map(|r| r.cents)
+        self.rates
+            .iter()
+            .find(|r| r.service == service)
+            .map(|r| r.cents)
     }
 }
 
@@ -415,7 +424,12 @@ pub const PROVINCES: [&str; 24] = [
 
 /// El código postal de 4 números: acepta "1425" y el CPA ("C1425ABC").
 pub fn normalize_postal_code(text: &str) -> Option<String> {
-    let t: String = text.trim().to_uppercase().chars().filter(|c| !c.is_whitespace()).collect();
+    let t: String = text
+        .trim()
+        .to_uppercase()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     let b = t.as_bytes();
     if b.len() == 4 && b.iter().all(u8::is_ascii_digit) {
         return Some(t);
@@ -455,11 +469,18 @@ pub fn split_street(address: &str) -> Option<(String, String, String)> {
             continue;
         }
         // "de" después de un número: es parte del nombre ("9 de Julio").
-        if words.get(i + 1).is_some_and(|n| n.eq_ignore_ascii_case("de")) {
+        if words
+            .get(i + 1)
+            .is_some_and(|n| n.eq_ignore_ascii_case("de"))
+        {
             continue;
         }
         let street = words[..i].join(" ").trim_end_matches(',').to_string();
-        let rest = words[i + 1..].join(" ").trim_start_matches(',').trim().to_string();
+        let rest = words[i + 1..]
+            .join(" ")
+            .trim_start_matches(',')
+            .trim()
+            .to_string();
         return Some((street, w.to_string(), rest));
     }
     None
@@ -498,7 +519,10 @@ pub fn tidy_origin(o: &mut AndreaniOrigin) -> Vec<crate::FieldError> {
     }
     match normalize_postal_code(&o.postal_code) {
         Some(cp) => o.postal_code = cp,
-        None => err("postal_code", "Escribí el código postal de 4 números, por ejemplo 1425."),
+        None => err(
+            "postal_code",
+            "Escribí el código postal de 4 números, por ejemplo 1425.",
+        ),
     }
     if o.sender.is_empty() {
         err("sender", "Escribí el nombre que sale en la etiqueta.");
@@ -564,7 +588,10 @@ mod tests {
         assert_eq!(parse_kg("0,5"), Some(500));
         assert_eq!(parse_kg("1.25"), Some(1250));
         assert_eq!(parse_kg("2"), Some(2000));
-        assert_eq!(parse_kg("1.000,5"), Some(1_000_500).filter(|g| *g <= PARCEL_MAX_G));
+        assert_eq!(
+            parse_kg("1.000,5"),
+            Some(1_000_500).filter(|g| *g <= PARCEL_MAX_G)
+        );
         assert_eq!(parse_cm("1.250,5"), None);
         assert_eq!(parse_kg("999,5"), Some(999_500));
         assert_eq!(parse_kg("abc"), None);
@@ -613,11 +640,26 @@ mod tests {
 
     #[test]
     fn servicios_de_andreani() {
-        assert_eq!(AndreaniService::from_api("A domicilio"), Some(AndreaniService::Home));
-        assert_eq!(AndreaniService::from_api("estándar"), Some(AndreaniService::Home));
-        assert_eq!(AndreaniService::from_api("A sucursal"), Some(AndreaniService::Branch));
-        assert_eq!(AndreaniService::from_api("Llega hoy"), Some(AndreaniService::SameDay));
-        assert_eq!(AndreaniService::from_api("BIGGER"), Some(AndreaniService::Bigger));
+        assert_eq!(
+            AndreaniService::from_api("A domicilio"),
+            Some(AndreaniService::Home)
+        );
+        assert_eq!(
+            AndreaniService::from_api("estándar"),
+            Some(AndreaniService::Home)
+        );
+        assert_eq!(
+            AndreaniService::from_api("A sucursal"),
+            Some(AndreaniService::Branch)
+        );
+        assert_eq!(
+            AndreaniService::from_api("Llega hoy"),
+            Some(AndreaniService::SameDay)
+        );
+        assert_eq!(
+            AndreaniService::from_api("BIGGER"),
+            Some(AndreaniService::Bigger)
+        );
         assert_eq!(AndreaniService::from_api("otro"), None);
         for s in AndreaniService::ALL {
             assert_eq!(AndreaniService::from_str(s.as_str()), Some(s));
@@ -635,7 +677,10 @@ mod tests {
 
     #[test]
     fn nombre_y_calle() {
-        assert_eq!(split_name("Ana María López"), ("Ana María".into(), "López".into()));
+        assert_eq!(
+            split_name("Ana María López"),
+            ("Ana María".into(), "López".into())
+        );
         assert_eq!(split_name("Ana"), ("Ana".into(), "-".into()));
         assert_eq!(
             split_street("Av. Corrientes 1234"),

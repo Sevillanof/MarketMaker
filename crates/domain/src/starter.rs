@@ -3,7 +3,7 @@
 //! claramente como ejemplo, para cambiarlos antes de publicar.
 
 use crate::{
-    BannerProps, FooterProps, LinkItem, Node, NavbarProps, PageDoc, Pos, ProductGridProps,
+    BannerProps, FooterProps, LinkItem, NavbarProps, Node, PageDoc, Pos, ProductGridProps,
     TextProps, Widget,
 };
 
@@ -137,18 +137,27 @@ mod tests {
         assert!(!json.contains("Mi tienda"));
         assert_eq!(placeholders_left(&doc), 3);
         let mut faq = doc.clone();
-        faq.nodes.push(Node::new("f", Widget::defaults("Faq").unwrap()));
+        faq.nodes
+            .push(Node::new("f", Widget::defaults("Faq").unwrap()));
         assert_eq!(placeholders_left(&faq), 6);
         // Las páginas modelo quedan entre el menú y el pie.
         for (path, name) in PAGE_TEMPLATES {
             let mut d = doc.clone();
             let i = d.add_page_with(path.to_string(), name.to_string(), 0, template_blocks(path));
-            let mut types: Vec<_> = d.layer(crate::Layer::Page(i)).iter().map(|n| (n.pos.y, n.widget.type_name())).collect();
+            let mut types: Vec<_> = d
+                .layer(crate::Layer::Page(i))
+                .iter()
+                .map(|n| (n.pos.y, n.widget.type_name()))
+                .collect();
             types.sort();
             let types: Vec<_> = types.into_iter().map(|(_, t)| t).collect();
             assert_eq!(types.len(), 3, "{path}");
             assert_eq!((types[0], types[2]), ("Navbar", "Footer"), "{path}");
-            assert!(crate::validate(&d).is_ok(), "{path}: {:?}", crate::validate(&d));
+            assert!(
+                crate::validate(&d).is_ok(),
+                "{path}: {:?}",
+                crate::validate(&d)
+            );
             assert!(placeholders_left(&d) > placeholders_left(&doc), "{path}");
         }
         // Contacto usa el bloque que toma los datos de la tienda.

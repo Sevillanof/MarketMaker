@@ -1085,6 +1085,17 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
 mod tests {
     use super::*;
 
+    /// Los enlaces guardados antes de los desplegables no traen `children`
+    /// ni `image_url`; la tienda tiene que seguir abriendo igual.
+    #[test]
+    fn old_links_without_dropdown_still_parse() {
+        let item: LinkItem =
+            serde_json::from_value(serde_json::json!({"label": "Inicio", "href": "/"})).unwrap();
+        assert_eq!(item.label, "Inicio");
+        assert!(item.children.is_empty());
+        assert!(item.image_url.is_empty());
+    }
+
     const EXAMPLE: &str = r#"{
       "schema": 3,
       "theme": "light",

@@ -319,20 +319,32 @@ pub fn tidy_store_info(i: &mut StoreInfo) -> Vec<(&'static str, String)> {
     if i.name.is_empty() {
         e.push(("name", "Escribí el nombre de tu tienda.".to_string()));
     } else if i.name.chars().count() > STORE_NAME_MAX {
-        e.push(("name", format!("El nombre puede tener hasta {STORE_NAME_MAX} letras.")));
+        e.push((
+            "name",
+            format!("El nombre puede tener hasta {STORE_NAME_MAX} letras."),
+        ));
     }
     if !i.whatsapp.is_empty() && i.whatsapp_url().is_none() {
-        e.push(("whatsapp", "Revisá el número, con característica: por ejemplo 11 5555-1234.".to_string()));
+        e.push((
+            "whatsapp",
+            "Revisá el número, con característica: por ejemplo 11 5555-1234.".to_string(),
+        ));
     }
     if !i
         .instagram
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
     {
-        e.push(("instagram", "Escribí solo tu usuario, por ejemplo lahuerta.".to_string()));
+        e.push((
+            "instagram",
+            "Escribí solo tu usuario, por ejemplo lahuerta.".to_string(),
+        ));
     }
     if !i.email.is_empty() && !crate::looks_like_email(&i.email) {
-        e.push(("email", "El email no es válido. Revisalo (por ejemplo, ana@correo.com).".to_string()));
+        e.push((
+            "email",
+            "El email no es válido. Revisalo (por ejemplo, ana@correo.com).".to_string(),
+        ));
     }
     e
 }
@@ -342,7 +354,9 @@ pub fn tidy_store_info(i: &mut StoreInfo) -> Vec<(&'static str, String)> {
 pub enum SlugStatus {
     Free,
     /// La usa otra tienda; `suggestion` está libre.
-    Taken { suggestion: String },
+    Taken {
+        suggestion: String,
+    },
     /// No sirve como dirección: el motivo.
     Problem(String),
 }
@@ -389,14 +403,20 @@ mod tests {
         assert_eq!(i.instagram, "la.huerta");
         assert_eq!(i.email, "hola@lahuerta.com");
         assert_eq!(i.whatsapp_url().unwrap(), "https://wa.me/5491155551234");
-        assert_eq!(i.instagram_url().unwrap(), "https://instagram.com/la.huerta");
+        assert_eq!(
+            i.instagram_url().unwrap(),
+            "https://instagram.com/la.huerta"
+        );
         let mut bad = StoreInfo {
             whatsapp: "abc".into(),
             instagram: "mi tienda".into(),
             email: "x@".into(),
             ..StoreInfo::default()
         };
-        let fields: Vec<_> = tidy_store_info(&mut bad).into_iter().map(|(f, _)| f).collect();
+        let fields: Vec<_> = tidy_store_info(&mut bad)
+            .into_iter()
+            .map(|(f, _)| f)
+            .collect();
         assert_eq!(fields, ["name", "whatsapp", "instagram", "email"]);
     }
 
