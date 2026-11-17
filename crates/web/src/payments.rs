@@ -15,7 +15,7 @@ pub async fn store_payments(slug: String) -> Result<Option<PaymentsInfo>, Server
     };
     let pool = pool()?;
     Ok(Some(PaymentsInfo {
-        configured: crate::mp::config().is_some(),
+        configured: crate::mp::config_for(&tenant.slug).is_some(),
         link: db::mp::link(&pool, tenant.id).await.map_err(internal)?,
         options: db::orders::payment_options(&pool, tenant.id)
             .await
@@ -48,7 +48,7 @@ pub async fn save_payment_options(
 pub async fn mp_connect(slug: String) -> Result<String, ServerFnError> {
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
-    let c = crate::mp::config().ok_or_else(|| {
+    let c = crate::mp::config_for(&tenant.slug).ok_or_else(|| {
         ServerFnError::new("Los cobros con Mercado Pago todavía no están disponibles.")
     })?;
     let state = crate::mp::new_state();
