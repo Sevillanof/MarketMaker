@@ -1087,3 +1087,48 @@ dialog.mk-cart::backdrop {
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
+
+/* Elegir el diseño de partida de la tienda: tarjetas con foto. El botón de
+   opción real queda en la página (oculto a la vista) para que el teclado y
+   los lectores de pantalla lo usen como cualquier grupo de opciones. */
+.mk-template-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border: 2px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  cursor: pointer;
+}
+.mk-template-card:hover {
+  border-color: color-mix(in oklab, var(--color-primary) 50%, var(--color-base-300));
+}
+.mk-template-card:has(.mk-template-input:checked) {
+  border-color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 8%, var(--color-base-100));
+}
+.mk-template-card:has(.mk-template-input:focus-visible) {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.mk-template-input {
+  position: absolute;
+  clip-path: inset(50%);
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
+.mk-template-img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 8 / 5;
+  object-fit: cover;
+  object-position: top;
+  border-radius: calc(var(--radius-box) / 2);
+  background: var(--color-base-200);
+}

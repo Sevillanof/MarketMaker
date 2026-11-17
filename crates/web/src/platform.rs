@@ -122,7 +122,10 @@ pub(crate) fn NewStore(
         }
     });
 
-    let create = Action::new(|(n, s): &(String, String)| create_store(n.clone(), s.clone()));
+    let template = RwSignal::new(domain::STORE_TEMPLATES[0].id.to_string());
+    let create = Action::new(|(n, s, t): &(String, String, String)| {
+        create_store(n.clone(), s.clone(), t.clone())
+    });
     let opening = RwSignal::new(false);
     let busy = move || create.pending().get() || opening.get();
     Effect::new(move |_| match create.value().get() {
@@ -173,7 +176,7 @@ pub(crate) fn NewStore(
         } else if s_err.is_some() {
             focus_id("nueva-tienda-direccion");
         } else {
-            create.dispatch((n, s));
+            create.dispatch((n, s, template.get_untracked()));
         }
     };
     let slug_note = move || {
@@ -241,6 +244,28 @@ pub(crate) fn NewStore(
                     </div>
                     <div aria-live="polite">{slug_note}</div>
                 </div>
+                <fieldset class="flex flex-col gap-2">
+                    <legend class="font-medium">"Diseño de partida"</legend>
+                    <span id="nueva-tienda-diseno-ayuda" class="text-sm text-base-content/70">"Elegí el que más se parezca a lo que querés. Después cambiás todo."</span>
+                    <div class="grid grid-cols-2 gap-3" aria-describedby="nueva-tienda-diseno-ayuda">
+                        {domain::STORE_TEMPLATES.iter().map(|t| {
+                            let id = t.id;
+                            view! {
+                                <label class="mk-template-card">
+                                    <input type="radio" name="template" value=id class="mk-template-input"
+                                        prop:checked=move || template.get() == id
+                                        on:change=move |_| template.set(id.to_string())/>
+                                    <picture>
+                                        <source srcset=format!("{}.avif", t.preview) type="image/avif"/>
+                                        <img src=format!("{}.webp", t.preview) alt="" width="640" height="400" loading="lazy" class="mk-template-img"/>
+                                    </picture>
+                                    <span class="font-semibold">{t.name}</span>
+                                    <span class="text-xs text-base-content/70">{t.hint}</span>
+                                </label>
+                            }
+                        }).collect_view()}
+                    </div>
+                </fieldset>
                 {move || problem.get().map(|p| view! { <p role="alert" class="text-sm text-error">{p}</p> })}
                 <div class="flex flex-wrap justify-end gap-2">
                     {on_cancel.map(|cancel| view! {
