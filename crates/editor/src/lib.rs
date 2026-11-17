@@ -1582,8 +1582,8 @@ mod tests {
     }
 }
 
-/// Ventana de antes de publicar: lista los textos de ejemplo que siguen sin
-/// cambiar y lleva a cada bloque (cambiando de página si hace falta).
+/// Ventana de antes de publicar: avisa que quedan textos de ejemplo, uno por
+/// fila. Tocar una fila lleva a ese bloque (cambiando de página si hace falta).
 #[component]
 fn PublishCheck(
     items: Vec<domain::PlaceholderNode>,
@@ -1592,7 +1592,6 @@ fn PublishCheck(
     publish: Callback<()>,
 ) -> impl IntoView {
     let actions = expect_context::<Actions>();
-    let state = expect_context::<EditorState>();
     let dialog_ref = NodeRef::<leptos::html::Dialog>::new();
     Effect::new(move |_| {
         if let Some(d) = dialog_ref.get() {
@@ -1601,54 +1600,60 @@ fn PublishCheck(
             }
         }
     });
-    let first = items.first().map(|n| n.id.clone());
-    let has_items = !items.is_empty();
+    let n = items.len();
+    let first = items.first().map(|i| i.id.clone());
     let rows = items
         .into_iter()
-        .map(|n| {
-            let place = state.doc.with_untracked(|d| match n.layer {
-                Layer::Page(i) => format!("página {}", d.page_name(i)),
-                Layer::ProductModal => "ficha del producto".to_string(),
-            });
-            let id = n.id.clone();
+        .map(|i| {
+            let id = i.id.clone();
             view! {
                 <li>
-                    <button type="button" class="link link-primary text-left"
+                    <button type="button"
+                        class="flex w-full items-center gap-3 rounded-box border border-base-300 border-l-4 border-l-warning bg-base-100 px-3 py-2.5 text-left hover:bg-base-200"
                         on:click=move |_| { check.set(None); actions.go_to(&id); }>
-                        <span class="font-semibold">{n.widget}</span>": “"{n.text.clone()}"”"
+                        <span class="shrink-0 text-sm font-semibold">{i.widget}</span>
+                        <span class="min-w-0 grow truncate text-sm text-base-content/60">{i.text.clone()}</span>
+                        <Icon name="arrow-left" class="h-4 w-4 shrink-0 rotate-180 text-base-content/60"/>
                     </button>
-                    <span class="block text-xs text-base-content/60">{place}</span>
                 </li>
             }
         })
         .collect_view();
+    // Sin textos pero con productos de ejemplo: se avisa en una línea.
+    let title = if n == 0 {
+        if examples == 1 { "Queda 1 producto de ejemplo".to_string() } else { format!("Quedan {examples} productos de ejemplo") }
+    } else if n == 1 {
+        "Hay 1 texto sin cambiar".to_string()
+    } else {
+        format!("Hay {n} textos sin cambiar")
+    };
     view! {
-        <dialog node_ref=dialog_ref class="mk-publish-check" aria-labelledby="mk-pc-title"
+        <dialog node_ref=dialog_ref class="modal" aria-labelledby="mk-pc-title"
             on:close=move |_| check.set(None)>
-            <h2 id="mk-pc-title" class="text-lg font-bold">
-                {if has_items { "Te quedaron textos de ejemplo" } else { "Antes de publicar" }}
-            </h2>
-            {has_items.then(|| view! {
-                <p class="mt-1 text-sm text-base-content/70">"Tus clientes los van a ver tal cual. Tocá uno para ir a ese bloque:"</p>
-                <ul class="mt-3 flex flex-col gap-3 text-sm">{rows}</ul>
-            })}
-            {(examples > 0).then(|| view! {
-                <p class="mt-3 text-sm text-base-content/70">
-                    {if examples == 1 { "También queda 1 producto de ejemplo, que tus clientes no van a ver.".to_string() }
-                     else { format!("También quedan {examples} productos de ejemplo, que tus clientes no van a ver.") }}
-                </p>
-            })}
-            <form method="dialog" class="mt-5 flex flex-wrap justify-end gap-2">
-                <button type="button" id="mk-publish-anyway" class="btn btn-sm"
-                    on:click=move |_| publish.run(())>"Publicar igual"</button>
-                {first.map(|id| view! {
-                    <button type="button" class="btn btn-sm btn-primary" autofocus
-                        on:click=move |_| { check.set(None); actions.go_to(&id); }>"Ir al primero"</button>
-                })}
-                {(!has_items).then(|| view! {
-                    <button type="submit" class="btn btn-sm btn-primary" autofocus>"Seguir editando"</button>
-                })}
-            </form>
+            <div class="modal-box max-w-sm border-t-4 border-warning" role="alertdialog">
+                <div class="mb-3 flex items-center gap-3">
+                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-warning/20 text-warning">
+                        <Icon name="alert" class="h-5 w-5"/>
+                    </span>
+                    <h2 id="mk-pc-title" class="text-lg font-extrabold">{title}</h2>
+                </div>
+                <ul class="flex flex-col gap-2">{rows}</ul>
+                <div class="modal-action">
+                    <button type="button" id="mk-publish-anyway" class="btn btn-ghost"
+                        on:click=move |_| publish.run(())>"Publicar igual"</button>
+                    {match first {
+                        Some(id) => view! {
+                            <button type="button" class="btn btn-primary" autofocus
+                                on:click=move |_| { check.set(None); actions.go_to(&id); }>"Corregir"</button>
+                        }.into_any(),
+                        None => view! {
+                            <button type="button" class="btn btn-primary" autofocus
+                                on:click=move |_| check.set(None)>"Seguir editando"</button>
+                        }.into_any(),
+                    }}
+                </div>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
         </dialog>
     }
 }
