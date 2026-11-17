@@ -74,7 +74,11 @@ async fn free_slug(pool: &db::Pool, slug: &str) -> Result<String, ServerFnError>
 /// Crea una tienda con quien entró como dueño. Arranca con el diseño inicial
 /// sin publicar y los productos de `demo` como ejemplo.
 #[server]
-pub async fn create_store(name: String, slug: String) -> Result<NewStoreOutcome, ServerFnError> {
+pub async fn create_store(
+    name: String,
+    slug: String,
+    template: String,
+) -> Result<NewStoreOutcome, ServerFnError> {
     let user = crate::auth::current_user().await?.ok_or_else(|| {
         ServerFnError::new("Tenés que entrar con tu cuenta para crear una tienda.")
     })?;
@@ -94,7 +98,7 @@ pub async fn create_store(name: String, slug: String) -> Result<NewStoreOutcome,
         return Ok(NewStoreOutcome::Problem(problem.into()));
     }
     let pool = crate::server::pool()?;
-    let doc = serde_json::to_value(domain::starter_doc(&name)).map_err(crate::server::internal)?;
+    let doc = serde_json::to_value(domain::template_doc(&template, &name)).map_err(crate::server::internal)?;
     let created = db::auth::create_store(&pool, &name, &slug, user.id, "demo", &doc)
         .await
         .map_err(crate::server::internal)?;
