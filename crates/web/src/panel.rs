@@ -201,6 +201,22 @@ pub fn Avatar(
 pub fn StoreShell(slug: String, section: Section, children: Children) -> impl IntoView {
     let nav = Resource::new(|| (), |_| load_panel_nav());
     let slug = StoredValue::new(slug);
+    // La Whitelist se abre desde el menú de la cuenta, pero su ventana va fuera
+    // del cajón del costado: ahí adentro quedaba apretada al ancho del menú.
+    let whitelist = NodeRef::<leptos::html::Dialog>::new();
+    let whitelist_version = RwSignal::new(0u32);
+    // La ventana existe solo en el navegador: se arma después de cargar la
+    // página y solo para el administrador.
+    let on_client = RwSignal::new(false);
+    Effect::new(move |_| on_client.set(true));
+    let is_admin = move || {
+        on_client.get()
+            && nav
+                .get()
+                .and_then(|r| r.ok())
+                .flatten()
+                .is_some_and(|n| n.is_admin)
+    };
     view! {
         // En pantallas chicas el menú se esconde y se abre con el botón de
         // arriba (cajón de daisyUI: funciona aunque la página no cargó el JS).
@@ -233,19 +249,28 @@ pub fn StoreShell(slug: String, section: Section, children: Children) -> impl In
                     <Suspense fallback=|| view! { <ui::Skeleton class="h-12 w-full"/> }>
                         {move || Suspend::new(async move {
                             match nav.await {
-                                Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_value() section/> }.into_any(),
+                                Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_value() section whitelist whitelist_version/> }.into_any(),
                                 _ => ().into_any(),
                             }
                         })}
                     </Suspense>
                 </aside>
             </div>
+            {move || is_admin().then(|| view! {
+                <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/>
+            })}
         </div>
     }
 }
 
 #[component]
-fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
+fn SideNav(
+    nav: PanelNav,
+    slug: String,
+    section: Section,
+    whitelist: NodeRef<leptos::html::Dialog>,
+    whitelist_version: RwSignal<u32>,
+) -> impl IntoView {
     let current = nav
         .stores
         .iter()
@@ -260,10 +285,9 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
         }
     });
     let dialog = NodeRef::<leptos::html::Dialog>::new();
-    let whitelist = NodeRef::<leptos::html::Dialog>::new();
-    let whitelist_version = RwSignal::new(0u32);
     let is_admin = nav.is_admin;
     let menu = NodeRef::<leptos::html::Details>::new();
+    let account_menu = NodeRef::<leptos::html::Details>::new();
     let open_dialog = move |_| {
         if let Some(m) = menu.get() {
             m.set_open(false);
@@ -377,7 +401,7 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                 {item(Section::Photos, format!("/mis-fotos?tienda={s}"), "photo", "Mis fotos", 0)}
             </ul>
         </nav>
-        <details class="dropdown dropdown-top w-full border-t border-base-300 pt-3">
+        <details node_ref=account_menu class="dropdown dropdown-top w-full border-t border-base-300 pt-3">
             <summary class=if section == Section::Account { "flex cursor-pointer list-none items-center gap-2 rounded-lg bg-base-200 p-1.5" } else { "flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 hover:bg-base-200" }
                 aria-label="Tu cuenta">
                 <Avatar letter=initial.clone() size="size-8 text-sm" photo=nav.avatar.clone()/>
@@ -400,7 +424,12 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                     </a></li>
                     {is_admin.then(|| view! {
                         <li><button type="button" on:click=move |_| {
-                            if let Some(m) = menu.get() { m.set_open(false); }
+                            if let Some(m) = account_menu.get() { m.set_open(false); }
+                            // daisyUI mantiene abierto el menú mientras tiene el foco.
+                            if let Some(el) = document().active_element() {
+                                use leptos::wasm_bindgen::JsCast;
+                                if let Ok(el) = el.dyn_into::<leptos::web_sys::HtmlElement>() { _ = el.blur(); }
+                            }
                             crate::whitelist::open_whitelist(whitelist, whitelist_version);
                         }>
                             <ui::Icon class="size-[18px] text-base-content/60" name="shield"/>"Whitelist"
@@ -412,7 +441,6 @@ fn SideNav(nav: PanelNav, slug: String, section: Section) -> impl IntoView {
                 </ul>
             </div>
         </details>
-        {is_admin.then(|| view! { <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/> })}
         <dialog node_ref=dialog class="modal" aria-labelledby="crear-tienda-titulo">
             <div class="modal-box max-w-lg">
                 <crate::platform::NewStore first=false on_cancel=close_dialog/>

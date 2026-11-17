@@ -131,16 +131,17 @@ pub fn WhitelistDialog(
     let email = RwSignal::new(String::new());
     let problem = RwSignal::new(None::<String>);
     let confirming = RwSignal::new(None::<String>);
-    let list = Resource::new(
-        move || version.get(),
-        |v| async move {
+    // Solo en el navegador: la lista se pide al abrir la ventana, no al armar la página.
+    let list = LocalResource::new(move || {
+        let v = version.get();
+        async move {
             if v == 0 {
                 Ok(Vec::new())
             } else {
                 load_whitelist().await
             }
-        },
-    );
+        }
+    });
     let add = Action::new(|e: &String| add_allowed_email(e.clone()));
     let remove = Action::new(|e: &String| remove_allowed_email(e.clone()));
     Effect::new(move |_| match add.value().get() {
@@ -179,7 +180,7 @@ pub fn WhitelistDialog(
                         <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar"
                             on:click=move |_| { if let Some(d) = dialog.get() { d.close(); } }>"✕"</button>
                     </div>
-                    <form class="flex flex-col gap-2" on:submit=move |ev: leptos::ev::SubmitEvent| {
+                    <form class="flex flex-col gap-2" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                         ev.prevent_default();
                         problem.set(None);
                         add.dispatch(email.get_untracked());
