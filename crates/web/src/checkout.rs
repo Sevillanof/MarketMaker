@@ -789,10 +789,21 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     let methods = StoredValue::new(info.pay_methods.clone());
     let step = RwSignal::new(1u8);
     let errors = RwSignal::new(Vec::<FieldError>::new());
+    // Uso y abandono: hasta qué paso llegó (solo hacia adelante).
+    Effect::new(move |reached: Option<u8>| {
+        let now = step.get();
+        match (now, reached.unwrap_or(1)) {
+            (2, r) if r < 2 => crate::analytics::track_client("entrega", None),
+            (3, r) if r < 3 => crate::analytics::track_client("pago", None),
+            _ => {}
+        }
+        now.max(reached.unwrap_or(1))
+    });
     let problem = RwSignal::new(None::<String>);
     // Muestra los errores: abre el paso del primero y lleva el foco ahí.
     let show_errors = move |e: Vec<FieldError>| {
         if let Some(first) = e.first() {
+            crate::analytics::track_client("error_compra", Some(first.field.clone()));
             step.set(step_of(&first.field));
         }
         focus_first(&e);

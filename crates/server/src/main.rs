@@ -95,6 +95,7 @@ async fn main() {
     tokio::spawn(move_old_photos(pool.clone(), store.clone()));
     tokio::spawn(sweep_loose_files(pool.clone(), store.clone()));
     tokio::spawn(expire_unpaid_orders(pool.clone()));
+    tokio::spawn(purge_events(pool.clone()));
     tokio::spawn(web::shipments::track_loop(pool.clone()));
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
@@ -330,6 +331,18 @@ async fn move_old_photos(pool: db::Pool, store: ::media::Store) {
 
 /// Cada hora cancela los pedidos que esperan el pago online hace más de 48
 /// horas sin cambios, y devuelve su stock (ver `db::orders::expire_unpaid`).
+/// Borra los recorridos anónimos de más de 90 días (ver `db::analytics`).
+async fn purge_events(pool: db::Pool) {
+    loop {
+        match db::analytics::purge(&pool).await {
+            Ok(0) => {}
+            Ok(n) => log!("Uso y abandono: se borraron {n} eventos viejos"),
+            Err(e) => log!("Uso y abandono: no pudimos borrar eventos viejos: {e}"),
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
+    }
+}
+
 async fn expire_unpaid_orders(pool: db::Pool) {
     const EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
     loop {

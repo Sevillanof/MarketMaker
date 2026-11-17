@@ -12,6 +12,7 @@ use leptos_router::{
 use storefront::StorefrontPage;
 
 mod account;
+mod analytics;
 #[cfg(feature = "ssr")]
 pub mod andreani;
 pub mod auth;
@@ -70,11 +71,16 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
+    // Uso y abandono: el carrito y las fichas avisan por acá (ver `analytics`).
+    provide_context(widgets::UsageHook(Callback::new(|step: &'static str| {
+        analytics::track_client(step, None)
+    })));
 
     view! {
         <Title text="Marketplace"/>
 
         <Router>
+            <analytics::TrackPages/>
             <main>
                 <Routes fallback=|| view! { <platform::NotAStore/> }>
                     <Route path=StaticSegment("") view=Home ssr=SsrMode::Async/>
@@ -91,6 +97,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/tienda/:slug/cobros") view=payments::PaymentsPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/ventas") view=sales::SalesPage ssr=SsrMode::Async/>
                     <Route path=path!("/tienda/:slug/datos") view=store_info::StoreInfoPage ssr=SsrMode::Async/>
+                    <Route path=path!("/admin/uso") view=analytics::UsagePage ssr=SsrMode::Async/>
                     <Route path=path!("/comprar") view=checkout::CheckoutPage ssr=SsrMode::Async/>
                     <Route path=path!("/terminos") view=legal::TermsPage/>
                     <Route path=path!("/privacidad") view=legal::PrivacyPage/>

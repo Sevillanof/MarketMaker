@@ -45,6 +45,11 @@ pub fn sample_product() -> Product {
     }
 }
 
+/// Aviso de uso para quien arma la página (la app): "agregó al carrito",
+/// "abrió un producto". Si no está en el contexto, no se avisa nada.
+#[derive(Clone, Copy)]
+pub struct UsageHook(pub Callback<&'static str>);
+
 /// Producto abierto en la ficha de la tienda, por contexto. Si está, las
 /// tarjetas de producto se pueden tocar para abrir su ficha.
 #[derive(Clone, Copy)]

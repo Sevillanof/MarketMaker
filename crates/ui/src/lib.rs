@@ -220,6 +220,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         }
         "menu" => "M4 6h16M4 12h16M4 18h16",
         "store" => "M4 10v10h16V10M3 4h18l-1.5 6h-15zM9.5 20v-5h5v5",
+        "chart" => "M4 20V10M10 20V4M16 20v-7M22 20H2",
         "shield" => "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6zM9 12l2 2 4-4",
         "refresh" => "M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5",
         "card" => "M3 6h18v12H3zM3 10h18M7 15h4",
