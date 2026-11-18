@@ -490,6 +490,41 @@ pub fn regret_to_owner(
     }
 }
 
+/// Al dueño: no se pudo crear el envío con Andreani de un pedido pagado.
+pub fn shipment_failed_to_owner(
+    owners: Vec<String>,
+    store_name: &str,
+    slug: &str,
+    o: &Order,
+    reason: &str,
+) -> Email {
+    let url = format!("{}/tienda/{slug}/pedidos", app_url());
+    let html = frame(
+        "MarketMaker",
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">No pudimos crear el envío del pedido #{}</h1>
+<p style="margin:0;color:#52525b">{} pagó su pedido en {}, pero Andreani no aceptó crear el envío.</p>
+<p style="margin:12px 0 0;background:#f4f4f5;padding:10px;border-radius:8px">{}</p>
+<p style="margin:12px 0 0;color:#52525b">Abrí el pedido y tocá "Reintentar". Si el motivo dice que Andreani no respondió, revisá primero en Andreani si el envío se creó igual.</p>{}"#,
+            o.number,
+            esc(&o.customer_name),
+            esc(store_name),
+            esc(reason),
+            button(&url, "Ver pedido")
+        ),
+    );
+    let text = format!(
+        "No pudimos crear el envío del pedido #{} de {store_name}.\n{reason}\n\nAbrí el pedido y tocá \"Reintentar\": {url}\n",
+        o.number
+    );
+    Email {
+        to: owners,
+        subject: format!("No pudimos crear el envío del pedido #{}", o.number),
+        html,
+        text,
+    }
+}
+
 /// Al comprador: su pedido salió con Andreani, con el número de seguimiento.
 pub fn shipped_to_buyer(store_name: &str, slug: &str, o: &Order, tracking: &str) -> Email {
     let first = o.customer_name.split_whitespace().next().unwrap_or("");

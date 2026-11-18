@@ -33,6 +33,15 @@ pub async fn ship_order(pool: &db::Pool, tenant: Uuid, order: Uuid) -> Option<Or
             leptos::logging::warn!("Andreani: pedido #{}: {m}", o.number);
             sh.state = ShipmentState::Failed;
             sh.error = m;
+            // El dueño se entera aunque no abra el pedido.
+            if let (Ok(Some((name, slug))), Ok(owners)) = (
+                db::mp::name_and_slug(pool, tenant).await,
+                db::mp::owner_emails(pool, tenant).await,
+            ) {
+                crate::email::send(crate::email::shipment_failed_to_owner(
+                    owners, &name, &slug, &o, &sh.error,
+                ));
+            }
         }
     }
     if let Err(e) = db::orders::save_shipment(pool, tenant, order, &sh).await {
