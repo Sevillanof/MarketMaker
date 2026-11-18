@@ -11,8 +11,11 @@
 //!   Sin ella se usa la de `MP_REDIRECT_URL` si es https (producción); si
 //!   tampoco, el pago se confirma cuando el comprador vuelve a la tienda.
 //! - `MP_WEBHOOK_SECRET` (opcional): la "clave secreta" de Webhooks de la
-//!   aplicación. Con ella, un aviso de pago sin la firma de Mercado Pago se
-//!   descarta. `MP_SANDBOX_WEBHOOK_SECRET` es la de la aplicación de prueba.
+//!   aplicación. Con ella se comprueba la firma de cada aviso de pago y se
+//!   anota el resultado; el aviso se acepta igual. Con `MP_WEBHOOK_STRICT=1`
+//!   además se descarta el que no venga firmado por Mercado Pago (activarlo
+//!   recién después de ver avisos reales con firma válida).
+//!   `MP_SANDBOX_WEBHOOK_SECRET` es la de la aplicación de prueba.
 //! - `MP_SANDBOX_STORES` (opcional, ej. `pruebas`), `MP_SANDBOX_CLIENT_ID` y
 //!   `MP_SANDBOX_CLIENT_SECRET`: esas tiendas usan otra aplicación, creada por
 //!   una cuenta de prueba "integradora". Mercado Pago no deja pagar si la
@@ -523,14 +526,25 @@ async fn notice(
             .or(q.get("id"))
             .map(String::as_str)
             .unwrap_or("");
-        if !signed_by_mp(
+        let signed = signed_by_mp(
             &secret,
             header("x-signature"),
             header("x-request-id"),
             data_id,
-        ) {
-            leptos::logging::log!("Mercado Pago: aviso sin firma válida, descartado.");
-            return StatusCode::UNAUTHORIZED.into_response();
+        );
+        // Sin `MP_WEBHOOK_STRICT` solo se anota: el pago igual se confirma
+        // preguntándole a Mercado Pago, nunca por lo que diga el aviso.
+        let strict = env("MP_WEBHOOK_STRICT").is_some_and(|v| v == "1");
+        match (signed, strict) {
+            (true, _) => leptos::logging::log!("Mercado Pago: aviso con firma válida."),
+            (false, true) => {
+                leptos::logging::log!("Mercado Pago: aviso sin firma válida, descartado.");
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
+            (false, false) => leptos::logging::log!(
+                "Mercado Pago: aviso sin firma válida (se acepta: modo solo revisar; trae x-signature: {}).",
+                !header("x-signature").is_empty()
+            ),
         }
     }
     let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
