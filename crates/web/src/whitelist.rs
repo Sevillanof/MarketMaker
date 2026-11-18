@@ -77,7 +77,7 @@ pub async fn load_whitelist() -> Result<Vec<AllowedPerson>, ServerFnError> {
     Ok(people.into_iter().map(|(_, p)| p).collect())
 }
 
-/// Habilita un email para crear su cuenta.
+/// Habilita un email para crear su cuenta y le manda la invitación.
 #[server]
 pub async fn add_allowed_email(email: String) -> Result<WhitelistChange, ServerFnError> {
     use crate::server::{internal, pool};
@@ -93,6 +93,25 @@ pub async fn add_allowed_email(email: String) -> Result<WhitelistChange, ServerF
         .await
         .map_err(internal)?;
     crate::auth::refresh_allowlist(&pool).await?;
+    // Si todavía no tiene cuenta, le llega la invitación con su enlace
+    // personal: es la prueba de que el email es suyo. Si el email no sale,
+    // igual queda habilitado y puede pedir el enlace desde Entrar.
+    let has_account = db::auth::account_by_email(&pool, &email)
+        .await
+        .map_err(internal)?
+        .is_some();
+    if !has_account {
+        let key = db::auth::create_invite_key(&pool, &email)
+            .await
+            .map_err(internal)?;
+        let url = domain::password_link(&crate::email::app_url(), &email, &key, true);
+        if !crate::auth::emails_go_out() {
+            leptos::logging::log!("\n  Enlace de invitación de {email}: {url}\n");
+        }
+        if let Err(e) = crate::email::deliver(&crate::email::invitation(&email, &url)).await {
+            leptos::logging::log!("No pudimos mandar la invitación a {email}: {e}");
+        }
+    }
     Ok(WhitelistChange::Done)
 }
 
@@ -131,6 +150,7 @@ pub fn WhitelistDialog(
     let email = RwSignal::new(String::new());
     let problem = RwSignal::new(None::<String>);
     let confirming = RwSignal::new(None::<String>);
+    let sent = RwSignal::new(None::<String>);
     // Solo en el navegador: la lista se pide al abrir la ventana, no al armar la página.
     let list = LocalResource::new(move || {
         let v = version.get();
@@ -146,6 +166,8 @@ pub fn WhitelistDialog(
     let remove = Action::new(|e: &String| remove_allowed_email(e.clone()));
     Effect::new(move |_| match add.value().get() {
         Some(Ok(WhitelistChange::Done)) => {
+            let to = email.get_untracked().trim().to_lowercase();
+            sent.set(Some(format!("Le mandamos la invitación a {to}.")));
             email.set(String::new());
             problem.set(None);
             version.update(|v| *v += 1);
@@ -169,13 +191,13 @@ pub fn WhitelistDialog(
     });
     view! {
         <dialog node_ref=dialog class="modal" aria-labelledby="whitelist-titulo"
-            on:close=move |_| { problem.set(None); confirming.set(None); email.set(String::new()); }>
+            on:close=move |_| { problem.set(None); sent.set(None); confirming.set(None); email.set(String::new()); }>
             <div class="modal-box max-w-xl p-0">
                 <div class="flex flex-col gap-3 p-6 pb-3">
                     <div class="flex items-start justify-between gap-4">
                         <div>
                             <h2 id="whitelist-titulo" class="text-xl font-extrabold">"Whitelist"</h2>
-                            <p class="text-sm text-base-content/70">"Quién puede crear una cuenta. Los cambios se aplican al instante."</p>
+                            <p class="text-sm text-base-content/70">"Quién puede crear una cuenta. Al agregar un email, le mandamos la invitación."</p>
                         </div>
                         <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar"
                             on:click=move |_| { if let Some(d) = dialog.get() { d.close(); } }>"✕"</button>
@@ -183,6 +205,7 @@ pub fn WhitelistDialog(
                     <form class="flex flex-col gap-2" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                         ev.prevent_default();
                         problem.set(None);
+                        sent.set(None);
                         add.dispatch(email.get_untracked());
                     }>
                         <div class="flex gap-2">
@@ -193,6 +216,7 @@ pub fn WhitelistDialog(
                             <button type="submit" class="btn btn-primary" disabled=move || add.pending().get()>"Agregar"</button>
                         </div>
                         {move || problem.get().map(|p| view! { <FieldNote ok=false text=p/> })}
+                        {move || sent.get().map(|t| view! { <FieldNote ok=true text=t/> })}
                     </form>
                     {move || list.get().and_then(|r| r.ok()).filter(|l| !l.is_empty()).map(|l| {
                         let with_account = l.iter().filter(|p| p.has_account).count();

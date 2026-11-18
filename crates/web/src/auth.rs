@@ -13,8 +13,8 @@
 //! `.env.local`). Las dos cosas se releen en cada pedido.
 
 use domain::{
-    AccountCreation, AccountInfo, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange,
-    PasswordSignIn, SetPassword,
+    AccountInfo, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn,
+    SetPassword,
 };
 use leptos::prelude::*;
 
@@ -329,14 +329,11 @@ pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {
     }
 }
 
-/// "¿La olvidaste?" (o confirmar una cuenta del registro abierto): manda por
-/// email un enlace para elegir la contraseña. El enlace lleva el código, así
-/// nadie tiene que copiarlo.
+/// "¿La olvidaste?" o "Creá tu cuenta": manda por email un enlace para elegir
+/// la contraseña. Es la única forma de crear una cuenta: el enlace prueba que
+/// el email es de quien lo escribe.
 #[server]
-pub async fn request_password_link(
-    email: String,
-    new_account: bool,
-) -> Result<CodeRequest, ServerFnError> {
+pub async fn request_password_link(email: String) -> Result<CodeRequest, ServerFnError> {
     let Some(email) = domain::normalize_email(&email) else {
         return Ok(CodeRequest::BadEmail);
     };
@@ -347,6 +344,11 @@ pub async fn request_password_link(
         return Ok(CodeRequest::TooMany);
     }
     let pool = crate::server::pool()?;
+    // Si es cuenta nueva o no lo decide quien pregunta: lo dice la base.
+    let new_account = db::auth::account_by_email(&pool, &email)
+        .await
+        .map_err(crate::server::internal)?
+        .is_none();
     // El enlace lleva una llave larga, no un código de 6 dígitos: no se
     // puede adivinar probando.
     match db::auth::create_login_link_key(&pool, &email)
@@ -535,44 +537,6 @@ pub async fn sign_in(
     crate::limits::clear(&tries);
     open_session(account.id).await?;
     Ok(PasswordSignIn::In {
-        next: domain::safe_next(&next),
-    })
-}
-
-/// Crea la cuenta de un email invitado con nombre y contraseña, sin código, y
-/// entra. Si el email no está invitado (registro abierto) pide el código; si
-/// ya tiene cuenta no la toca.
-#[server]
-pub async fn create_account(
-    email: String,
-    name: String,
-    password: String,
-    next: String,
-) -> Result<AccountCreation, ServerFnError> {
-    use crate::server::internal;
-    let Some(email) = domain::normalize_email(&email) else {
-        return Ok(AccountCreation::NotAllowed);
-    };
-    if !is_allowed(&email) {
-        return Ok(AccountCreation::NotAllowed);
-    }
-    if let Some(reason) = domain::password_problem(&password) {
-        return Ok(AccountCreation::Weak { reason });
-    }
-    if !is_invited(&email) {
-        return Ok(AccountCreation::NeedsCode);
-    }
-    let name = domain::clean_name(&name);
-    let hash = blocking(move || db::auth::hash_password(&password)).await?;
-    let pool = crate::server::pool()?;
-    let Some(user_id) = db::auth::create_account(&pool, &email, &name, &hash)
-        .await
-        .map_err(internal)?
-    else {
-        return Ok(AccountCreation::Exists);
-    };
-    open_session(user_id).await?;
-    Ok(AccountCreation::In {
         next: domain::safe_next(&next),
     })
 }

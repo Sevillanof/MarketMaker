@@ -3,12 +3,10 @@
 //! tienda.
 
 use crate::auth::{
-    change_password, create_account, load_account, lookup_email, request_password_link,
-    save_avatar, save_name, set_password_with_code, sign_in, sign_out,
+    change_password, load_account, lookup_email, request_password_link, save_avatar, save_name,
+    set_password_with_code, sign_in, sign_out,
 };
-use domain::{
-    AccountCreation, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn, SetPassword,
-};
+use domain::{CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn, SetPassword};
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
 
@@ -272,20 +270,15 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
     let login = Action::new(|(e, p, n): &(String, String, String)| {
         sign_in(e.clone(), p.clone(), n.clone())
     });
-    let ask = Action::new(|(e, new_account): &(String, bool)| {
-        request_password_link(e.clone(), *new_account)
-    });
+    // El `bool` es solo para saber qué pantalla mostrar después.
+    let ask = Action::new(|(e, _new_account): &(String, bool)| request_password_link(e.clone()));
     let finish = Action::new(
         |(e, c, nm, p, n): &(String, String, String, String, String)| {
             set_password_with_code(e.clone(), c.clone(), nm.clone(), p.clone(), n.clone())
         },
     );
-    let create = Action::new(|(e, nm, p, n): &(String, String, String, String)| {
-        create_account(e.clone(), nm.clone(), p.clone(), n.clone())
-    });
     let busy = move || {
-        create.pending().get()
-            || lookup.pending().get()
+        lookup.pending().get()
             || login.pending().get()
             || ask.pending().get()
             || finish.pending().get()
@@ -396,35 +389,24 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
         }
     });
     let expired = "Este enlace venció o ya se usó. Pedí uno nuevo con \"¿La olvidaste?\".";
-    Effect::new(move |_| {
-        let Some(result) = create.value().get() else {
-            return;
-        };
-        match result {
-            Ok(AccountCreation::In { next }) => go(&next),
-            Ok(AccountCreation::NeedsCode) => send_link(true),
-            Ok(AccountCreation::Exists) => {
-                password.set(String::new());
-                goto(Step::SignIn);
-                info.set(Some(
-                    "Este email ya tiene una cuenta. Entrá con tu contraseña.".into(),
-                ));
-            }
-            Ok(AccountCreation::Weak { reason }) => problem.set(Some((Spot::Password, reason))),
-            Ok(AccountCreation::NotAllowed) => fail(
-                Spot::Email,
-                "Este email no tiene una invitación. Revisá que sea el mismo al que te escribimos.",
-            ),
-            Err(_) => fail(Spot::Form, CONNECTION),
-        }
-    });
+    let expired_invite =
+        "Este enlace venció o ya se usó. Pedí uno nuevo desde Entrar, con \"Creá tu cuenta\".";
     Effect::new(move |_| {
         let Some(result) = finish.value().get() else {
             return;
         };
         match result {
             Ok(SetPassword::In { next }) => go(&next),
-            Ok(SetPassword::Wrong { .. }) | Ok(SetPassword::Expired) => fail(Spot::Form, expired),
+            Ok(SetPassword::Wrong { .. }) | Ok(SetPassword::Expired) => {
+                let new_account = matches!(
+                    step.get_untracked(),
+                    Step::NewPassword { new_account: true }
+                );
+                fail(
+                    Spot::Form,
+                    if new_account { expired_invite } else { expired },
+                )
+            }
             Ok(SetPassword::Weak { reason }) => problem.set(Some((Spot::Password, reason))),
             Ok(SetPassword::NotAllowed) => fail(Spot::Form, NOT_ALLOWED),
             Err(_) => fail(Spot::Form, CONNECTION),
@@ -528,33 +510,21 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
         Step::Create => view! {
             <form class="flex flex-col gap-6" novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
                 ev.prevent_default();
-                if name.get_untracked().trim().is_empty() {
-                    fail(Spot::Name, "Escribí tu nombre.");
+                if email.get_untracked().trim().is_empty() {
+                    fail(Spot::Email, "Escribí tu email.");
                     return;
                 }
-                if !email_ok() {
-                    return;
-                }
-                if let Some(reason) = domain::password_problem(&password.get_untracked()) {
-                    problem.set(Some((Spot::Password, reason)));
-                    return;
-                }
-                problem.set(None);
-                create.dispatch((email.get_untracked(), name.get_untracked(), password.get_untracked(), next.get_value()));
+                send_link(true);
             }>
                 <div class="flex flex-col gap-3">
                     <button type="button" class="self-start text-sm text-base-content/70 hover:text-base-content"
                         on:click=move |_| { password.set(String::new()); goto(Step::SignIn) }>"← Ya tengo cuenta"</button>
-                    {heading("Creá tu cuenta", "Por ahora MarketMaker es solo con invitación. Usá el email al que te llegó.")}
+                    {heading("Creá tu cuenta", "Escribí el email al que te llegó la invitación y te mandamos un enlace para crearla.")}
                 </div>
                 <div class="flex flex-col gap-4">
-                    {name_field()}
-                    {email_field(false)}
-                    <PasswordField value=password label="Elegí una contraseña" autocomplete="new-password" meter=true
-                        bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()/>
+                    {email_field(true)}
                     {note_at(Spot::Form)}
-                    {submit_btn("Crear cuenta", "Creando cuenta…")}
-                    <p class="text-xs text-base-content/60">"Al crear la cuenta aceptás los "<a class="link" href="/terminos" target="_blank">"términos"</a>" y la "<a class="link" href="/privacidad" target="_blank">"política de privacidad"</a>"."</p>
+                    {submit_btn("Mandarme el enlace", "Mandando…")}
                 </div>
             </form>
         }.into_any(),
@@ -601,7 +571,7 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
             }>
                 <div>
                     <h1 class="text-[28px] leading-tight font-extrabold tracking-tight">
-                        {if new_account { "Confirmá tu cuenta" } else { "Elegí tu contraseña nueva" }}
+                        {if new_account { "Creá tu cuenta" } else { "Elegí tu contraseña nueva" }}
                     </h1>
                     <p class="mt-1.5 text-[15px] text-base-content/70">"Para la cuenta " <strong class="text-base-content">{shown_email}</strong> "."</p>
                 </div>
@@ -612,7 +582,10 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
                     <PasswordField value=password label="Contraseña nueva" autocomplete="new-password" meter=true autofocus=!new_account
                         bad=bad(Spot::Password) note=view! { {note_at(Spot::Password)} }.into_any()/>
                     {note_at(Spot::Form)}
-                    {submit_btn("Guardar y entrar", "Guardando…")}
+                    {if new_account { submit_btn("Crear cuenta y entrar", "Creando cuenta…") } else { submit_btn("Guardar y entrar", "Guardando…") }}
+                    {new_account.then(|| view! {
+                        <p class="text-xs text-base-content/60">"Al crear la cuenta aceptás los "<a class="link" href="/terminos" target="_blank">"términos"</a>" y la "<a class="link" href="/privacidad" target="_blank">"política de privacidad"</a>"."</p>
+                    })}
                     <button type="button" class=format!("{link} self-center")
                         on:click=move |_| { password.set(String::new()); goto(Step::SignIn) }>"Volver a Entrar"</button>
                 </div>
