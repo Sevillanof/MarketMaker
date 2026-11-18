@@ -10,6 +10,9 @@
 //!   servidor (por ejemplo un túnel de cloudflared) para los avisos de pago.
 //!   Sin ella se usa la de `MP_REDIRECT_URL` si es https (producción); si
 //!   tampoco, el pago se confirma cuando el comprador vuelve a la tienda.
+//! - `MP_WEBHOOK_SECRET` (opcional): la "clave secreta" de Webhooks de la
+//!   aplicación. Con ella, un aviso de pago sin la firma de Mercado Pago se
+//!   descarta. `MP_SANDBOX_WEBHOOK_SECRET` es la de la aplicación de prueba.
 //! - `MP_SANDBOX_STORES` (opcional, ej. `pruebas`), `MP_SANDBOX_CLIENT_ID` y
 //!   `MP_SANDBOX_CLIENT_SECRET`: esas tiendas usan otra aplicación, creada por
 //!   una cuenta de prueba "integradora". Mercado Pago no deja pagar si la
@@ -20,7 +23,7 @@
 //! (`test_token`): Checkout Pro con esas llaves falla al pagar.
 
 use axum::extract::{Path, Query, State};
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -35,6 +38,8 @@ pub struct Config {
     pub client_secret: String,
     pub redirect_url: String,
     pub public_url: Option<String>,
+    /// La clave con la que Mercado Pago firma los avisos, si está cargada.
+    webhook_secret: Option<String>,
     auth_url: String,
     api_url: String,
 }
@@ -67,6 +72,7 @@ pub fn config() -> Option<Config> {
         client_secret: env("MP_CLIENT_SECRET")?,
         redirect_url,
         public_url,
+        webhook_secret: env("MP_WEBHOOK_SECRET"),
         // Se pueden cambiar para probar sin el Mercado Pago real.
         auth_url: env("MP_AUTH_URL").unwrap_or_else(|| "https://auth.mercadopago.com.ar".into()),
         api_url: env("MP_API_URL").unwrap_or_else(|| "https://api.mercadopago.com".into()),
@@ -78,11 +84,11 @@ pub fn config() -> Option<Config> {
 /// aplicación de prueba configurada no cobra (nunca usa la real).
 pub fn config_for(slug: &str) -> Option<Config> {
     let mut c = config()?;
-    let sandbox = env("MP_SANDBOX_STORES")
-        .is_some_and(|v| v.split(',').any(|s| s.trim() == slug));
+    let sandbox = env("MP_SANDBOX_STORES").is_some_and(|v| v.split(',').any(|s| s.trim() == slug));
     if sandbox {
         c.client_id = env("MP_SANDBOX_CLIENT_ID")?;
         c.client_secret = env("MP_SANDBOX_CLIENT_SECRET")?;
+        c.webhook_secret = env("MP_SANDBOX_WEBHOOK_SECRET");
     }
     Some(c)
 }
@@ -424,14 +430,101 @@ async fn linked(
     }
 }
 
+/// HMAC-SHA256 (RFC 2104) en hexadecimal.
+fn hmac_sha256_hex(key: &[u8], message: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut block = [0u8; 64];
+    if key.len() > 64 {
+        block[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        block[..key.len()].copy_from_slice(key);
+    }
+    let inner = Sha256::new()
+        .chain_update(block.map(|b| b ^ 0x36))
+        .chain_update(message)
+        .finalize();
+    let outer = Sha256::new()
+        .chain_update(block.map(|b| b ^ 0x5c))
+        .chain_update(inner)
+        .finalize();
+    hex::encode(outer)
+}
+
+/// ¿El aviso viene firmado por Mercado Pago? `signature` es la cabecera
+/// `x-signature` (`ts=…,v1=…`); se firma `id:…;request-id:…;ts:…;` con la
+/// clave secreta de la aplicación. `data_id` es el `data.id` de la dirección.
+fn signed_by_mp(secret: &str, signature: &str, request_id: &str, data_id: &str) -> bool {
+    let part = |name: &str| {
+        signature
+            .split(',')
+            .filter_map(|p| p.trim().split_once('='))
+            .find(|(k, _)| k.trim() == name)
+            .map(|(_, v)| v.trim())
+    };
+    let (Some(ts), Some(v1)) = (part("ts"), part("v1")) else {
+        return false;
+    };
+    // Las partes que no vienen no entran en lo firmado.
+    let mut manifest = String::new();
+    if !data_id.is_empty() {
+        manifest.push_str(&format!("id:{};", data_id.to_lowercase()));
+    }
+    if !request_id.is_empty() {
+        manifest.push_str(&format!("request-id:{request_id};"));
+    }
+    manifest.push_str(&format!("ts:{ts};"));
+    let expected = hmac_sha256_hex(secret.as_bytes(), manifest.as_bytes());
+    // Compara sin cortar antes, para no dar pistas por el tiempo.
+    expected.len() == v1.len()
+        && expected
+            .bytes()
+            .zip(v1.bytes())
+            .fold(0u8, |acc, (a, b)| acc | (a ^ b.to_ascii_lowercase()))
+            == 0
+}
+
 /// Aviso de Mercado Pago: "cambió el pago N". Se pregunta por el pago y se
 /// actualiza el pedido. Siempre responde 200 para que no reintente de más.
 async fn notice(
     State(pool): State<db::Pool>,
     Path(tenant): Path<Uuid>,
     Query(q): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
+    // Cada aviso hace que preguntemos a Mercado Pago con la llave de la
+    // tienda: tope por conexión (los avisos de verdad vienen de a pocos).
+    let minute = std::time::Duration::from_secs(60);
+    let ip = crate::limits::ip_from(&headers);
+    if !crate::limits::allow(&format!("mp-notice|{ip}"), 120, minute) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    // Con la clave secreta cargada, solo valen los avisos firmados.
+    if let Some(secret) = config_of(&pool, tenant)
+        .await
+        .and_then(|c| c.webhook_secret)
+    {
+        let header = |name: &str| {
+            headers
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+        };
+        let data_id = q
+            .get("data.id")
+            .or(q.get("id"))
+            .map(String::as_str)
+            .unwrap_or("");
+        if !signed_by_mp(
+            &secret,
+            header("x-signature"),
+            header("x-request-id"),
+            data_id,
+        ) {
+            leptos::logging::log!("Mercado Pago: aviso sin firma válida, descartado.");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    }
     let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
     let kind = v["type"]
         .as_str()
@@ -445,10 +538,56 @@ async fn notice(
     };
     if kind == "payment" {
         if let Some(id) = id {
+            // El mismo pago avisado muchas veces seguidas: con unas pocas alcanza.
+            if !crate::limits::allow(&format!("mp-pay|{tenant}|{id}"), 6, minute) {
+                return StatusCode::OK.into_response();
+            }
             if let Err(e) = check_payment(&pool, tenant, &id).await {
                 leptos::logging::log!("Mercado Pago: aviso del pago {id}: {e}");
             }
         }
     }
     StatusCode::OK.into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hmac_matches_the_published_examples() {
+        // RFC 4231, casos 2 y 6 (clave más larga que un bloque).
+        assert_eq!(
+            hmac_sha256_hex(b"Jefe", b"what do ya want for nothing?"),
+            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+        );
+        assert_eq!(
+            hmac_sha256_hex(
+                &[0xaa; 131],
+                b"Test Using Larger Than Block-Size Key - Hash Key First"
+            ),
+            "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54"
+        );
+    }
+
+    #[test]
+    fn only_notices_signed_with_the_secret_pass() {
+        let secret = "clave-secreta";
+        let v1 = hmac_sha256_hex(
+            secret.as_bytes(),
+            b"id:123456;request-id:req-1;ts:1700000000;",
+        );
+        let signature = format!("ts=1700000000,v1={v1}");
+        assert!(signed_by_mp(secret, &signature, "req-1", "123456"));
+        // Otro pago, otra clave, o sin firma: no.
+        assert!(!signed_by_mp(secret, &signature, "req-1", "999"));
+        assert!(!signed_by_mp("otra", &signature, "req-1", "123456"));
+        assert!(!signed_by_mp(secret, "", "req-1", "123456"));
+        assert!(!signed_by_mp(
+            secret,
+            "ts=1700000000,v1=",
+            "req-1",
+            "123456"
+        ));
+    }
 }

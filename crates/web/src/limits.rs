@@ -10,7 +10,7 @@ static HITS: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Ventana más larga que se usa; lo más viejo se puede olvidar.
-const LONGEST: Duration = Duration::from_secs(60 * 60);
+const LONGEST: Duration = Duration::from_secs(24 * 60 * 60);
 
 fn with_hits<T>(key: &str, window: Duration, f: impl FnOnce(&mut VecDeque<Instant>) -> T) -> T {
     let now = Instant::now();
@@ -19,7 +19,10 @@ fn with_hits<T>(key: &str, window: Duration, f: impl FnOnce(&mut VecDeque<Instan
         map.retain(|_, v| v.back().is_some_and(|t| now.duration_since(*t) < LONGEST));
     }
     let hits = map.entry(key.to_string()).or_default();
-    while hits.front().is_some_and(|t| now.duration_since(*t) >= window) {
+    while hits
+        .front()
+        .is_some_and(|t| now.duration_since(*t) >= window)
+    {
         hits.pop_front();
     }
     f(hits)
@@ -58,11 +61,15 @@ pub fn clear(key: &str) {
 /// `X-Forwarded-For` (y descarta lo que mande el navegador).
 pub fn client_ip() -> String {
     use leptos::prelude::use_context;
-    let Some(parts) = use_context::<http::request::Parts>() else {
-        return "local".into();
-    };
-    parts
-        .headers
+    match use_context::<http::request::Parts>() {
+        Some(parts) => ip_from(&parts.headers),
+        None => "local".into(),
+    }
+}
+
+/// Como [`client_ip`], para las rutas que no pasan por Leptos.
+pub fn ip_from(headers: &http::HeaderMap) -> String {
+    headers
         .get_all("x-forwarded-for")
         .iter()
         .filter_map(|v| v.to_str().ok())
@@ -88,5 +95,13 @@ mod tests {
         assert_eq!(count(key, w), 2);
         clear(key);
         assert_eq!(count(key, w), 0);
+    }
+
+    #[test]
+    fn the_ip_is_the_last_forwarded_one() {
+        let mut h = http::HeaderMap::new();
+        assert_eq!(ip_from(&h), "local");
+        h.insert("x-forwarded-for", "9.9.9.9, 1.2.3.4".parse().unwrap());
+        assert_eq!(ip_from(&h), "1.2.3.4");
     }
 }
