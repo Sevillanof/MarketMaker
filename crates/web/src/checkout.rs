@@ -25,6 +25,9 @@ pub async fn load_checkout() -> Result<CheckoutInfo, ServerFnError> {
         delivery: delivery_with_andreani(&pool, tenant.id).await?,
         pay_methods: methods(&pool, tenant.id).await?,
         store_name: tenant.name,
+        buyer: crate::buyer::current_buyer()
+            .await?
+            .map(|(_, b)| crate::buyer::to_me(b)),
     })
 }
 
@@ -784,16 +787,18 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     } else {
         Delivery::Pickup
     };
+    // Quien entró a su cuenta ya tiene sus datos puestos.
+    let buyer = info.buyer.clone().unwrap_or_default();
     let f = Fields {
-        name: RwSignal::new(String::new()),
-        email: RwSignal::new(String::new()),
-        phone: RwSignal::new(String::new()),
+        name: RwSignal::new(buyer.name),
+        email: RwSignal::new(buyer.email),
+        phone: RwSignal::new(buyer.phone),
         delivery: RwSignal::new(first),
-        address: RwSignal::new(String::new()),
-        city: RwSignal::new(String::new()),
+        address: RwSignal::new(buyer.address),
+        city: RwSignal::new(buyer.city),
         notes: RwSignal::new(String::new()),
         pay: RwSignal::new(info.pay_methods.first().copied().unwrap_or_default()),
-        postal: RwSignal::new(String::new()),
+        postal: RwSignal::new(buyer.postal_code),
         branch: RwSignal::new(String::new()),
         dni: RwSignal::new(String::new()),
         quote: RwSignal::new(None),

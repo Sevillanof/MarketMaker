@@ -467,6 +467,9 @@ pub struct CheckoutInfo {
     /// Las formas de pago que ofrece la tienda (vacío: todavía no vende).
     #[serde(default)]
     pub pay_methods: Vec<PayMethod>,
+    /// Quien entró a su cuenta: sus datos completan el formulario.
+    #[serde(default)]
+    pub buyer: Option<crate::BuyerMe>,
 }
 
 /// Un producto dentro de un pedido, como estaba al comprarlo.

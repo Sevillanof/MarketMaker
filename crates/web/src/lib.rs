@@ -16,6 +16,8 @@ mod analytics;
 #[cfg(feature = "ssr")]
 pub mod andreani;
 pub mod auth;
+mod buyer;
+mod buyer_ui;
 mod checkout;
 mod dev;
 #[cfg(feature = "ssr")]
@@ -111,6 +113,11 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/privacidad") view=legal::PrivacyPage/>
                     <Route path=path!("/arrepentimiento") view=regret::RegretPage ssr=SsrMode::Async/>
                     <Route path=path!("/pedido/:id") view=checkout::OrderPage ssr=SsrMode::Async/>
+                    <Route path=path!("/mi-cuenta/entrar") view=buyer_ui::BuyerEnterPage ssr=SsrMode::Async/>
+                    <Route path=path!("/mi-cuenta/pedidos") view=buyer_ui::BuyerOrdersPage ssr=SsrMode::Async/>
+                    <Route path=path!("/mi-cuenta/pedidos/:id") view=buyer_ui::BuyerOrderPage ssr=SsrMode::Async/>
+                    <Route path=path!("/mi-cuenta/datos") view=|| view! { <buyer_ui::BuyerProfilePage section="datos"/> } ssr=SsrMode::Async/>
+                    <Route path=path!("/mi-cuenta/direcciones") view=|| view! { <buyer_ui::BuyerProfilePage section="direcciones"/> } ssr=SsrMode::Async/>
                     <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
@@ -168,10 +175,12 @@ fn HomePage() -> impl IntoView {
                         view! {
                         <account::OwnerBar me/>
                         <StoreMeta view=view.clone()/>
-                        {move || {
-                            let path = location.pathname.get();
-                            view! { <StorefrontPage view=view.clone() path/> }
-                        }}
+                        <buyer_ui::BuyerScope store_name=view.store_name.clone()>
+                            {move || {
+                                let path = location.pathname.get();
+                                view! { <StorefrontPage view=view.clone() path/> }
+                            }}
+                        </buyer_ui::BuyerScope>
                     }
                     .into_any()
                     }

@@ -6,6 +6,7 @@
 pub mod analytics;
 pub mod andreani;
 pub mod auth;
+pub mod buyers;
 pub mod media;
 pub mod mp;
 pub mod orders;

@@ -381,6 +381,38 @@ pub async fn list(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Order>> {
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
+/// Los pedidos de un comprador (los que hizo con `email`, ya en minúsculas),
+/// el más nuevo primero. Solo pedidos reales, con número.
+pub async fn list_for_email(pool: &PgPool, tenant: Uuid, email: &str) -> sqlx::Result<Vec<Order>> {
+    let rows = sqlx::query_as::<_, OrderRow>(select!(
+        "WHERE tenant_id = $1 AND lower(email) = $2 AND number IS NOT NULL
+         ORDER BY created_at DESC, number DESC LIMIT 200"
+    ))
+    .bind(tenant)
+    .bind(email)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+/// Un pedido de la tienda, solo si lo hizo `email`.
+pub async fn get_for_email(
+    pool: &PgPool,
+    tenant: Uuid,
+    email: &str,
+    id: Uuid,
+) -> sqlx::Result<Option<Order>> {
+    let row = sqlx::query_as::<_, OrderRow>(select!(
+        "WHERE tenant_id = $1 AND lower(email) = $2 AND id = $3 AND number IS NOT NULL"
+    ))
+    .bind(tenant)
+    .bind(email)
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(Into::into))
+}
+
 /// Cambia el estado de un pedido de la tienda. `false` si no existe. Al
 /// cancelar, las unidades vuelven al stock; al recuperar un cancelado, se
 /// descuentan otra vez (sin bajar de 0).

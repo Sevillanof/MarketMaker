@@ -598,6 +598,28 @@ dialog.mk-cart::backdrop {
   from { transform: translateX(100%); }
 }
 
+/* Cajón de la cuenta del comprador (ver `web::buyer_ui`): como el del carrito
+   en pantallas grandes; en celular sube desde abajo, como una hoja. */
+@media (max-width: 639px) {
+  dialog.mk-cart.mk-acct {
+    margin: auto 0 0 0;
+    width: 100vw;
+    height: auto;
+    min-height: 60dvh;
+    max-height: 90dvh;
+    border-radius: 1.25rem 1.25rem 0 0;
+    box-shadow: 0 -8px 30px rgb(0 0 0 / 0.15);
+  }
+}
+@media (max-width: 639px) and (prefers-reduced-motion: no-preference) {
+  dialog.mk-cart.mk-acct[open] {
+    animation: mk-acct-in 0.2s ease-out;
+  }
+}
+@keyframes mk-acct-in {
+  from { transform: translateY(100%); }
+}
+
 /* Menú de un bloque del editor (ver `canvas.rs`): se abre debajo del botón
    ⋯, alineado a su borde derecho, y se da vuelta si no entra. Sin anchor
    positioning, el script deja la posición del botón en variables. */
