@@ -196,11 +196,81 @@ pub fn Avatar(
     }
 }
 
+/// El último menú del panel que se cargó (se guarda en el contexto de la app).
+#[derive(Clone, Copy)]
+pub struct NavCache(pub RwSignal<Option<PanelNav>>);
+
+/// En qué parte del panel está una dirección `/tienda/:slug/...`.
+fn section_of(path: &str) -> Section {
+    let rest = path
+        .trim_start_matches("/tienda/")
+        .split_once('/')
+        .map_or("", |(_, r)| r);
+    match rest.split('/').next().unwrap_or("") {
+        "productos" => Section::Products,
+        "pedidos" => Section::Orders,
+        "ventas" => Section::Delivery,
+        "cobros" => Section::Payments,
+        "datos" => Section::StoreInfo,
+        _ => Section::Home,
+    }
+}
+
+/// El marco de todas las páginas de `/tienda/:slug/...`: el menú al costado se
+/// arma una sola vez y queda en pantalla mientras cambia solo el contenido
+/// (por eso no hay recarga ni parpadeo al tocar una opción).
+#[component]
+pub fn PanelLayout() -> impl IntoView {
+    if matches!(crate::site::current_site(), domain::Site::Store(_)) {
+        return view! { <crate::Home/> }.into_any();
+    }
+    let slug = slug_param();
+    let location = leptos_router::hooks::use_location();
+    let section = Memo::new(move |_| section_of(&location.pathname.get()));
+    view! {
+        <Shell slug=slug.into() section=section.into()>
+            <leptos_router::components::Outlet/>
+        </Shell>
+    }
+    .into_any()
+}
+
 /// Las páginas de una tienda en la plataforma: menú al costado y contenido.
+/// (Las que no cuelgan de `/tienda/:slug`, como Mi cuenta y Mis fotos.)
 #[component]
 pub fn StoreShell(slug: String, section: Section, children: Children) -> impl IntoView {
-    let nav = Resource::new(|| (), |_| load_panel_nav());
-    let slug = StoredValue::new(slug);
+    view! {
+        <Shell slug=Signal::stored(slug) section=Signal::stored(section)>{children()}</Shell>
+    }
+}
+
+#[component]
+fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> impl IntoView {
+    let location = leptos_router::hooks::use_location();
+    // Se vuelve a pedir en cada cambio de página para refrescar el número de
+    // pedidos por preparar; con `Transition` el menú no se vacía mientras tanto.
+    let nav = Resource::new(
+        move || (slug.get(), location.pathname.get()),
+        |_| load_panel_nav(),
+    );
+    // Lo último que se supo del menú: al pasar a Mi cuenta o Mis fotos (que
+    // arman su propio marco) se muestra al instante en vez de un hueco.
+    let last = use_context::<NavCache>().map(|c| c.0);
+    Effect::new(move |_| {
+        if let (Some(last), Some(Ok(Some(n)))) = (last, nav.get()) {
+            last.set(Some(n));
+        }
+    });
+    // En pantallas chicas, al elegir una opción el menú se cierra solo.
+    Effect::new(move |_| {
+        location.pathname.track();
+        if let Some(el) = document().get_element_by_id("mk-panel-nav") {
+            use leptos::wasm_bindgen::JsCast;
+            if let Ok(input) = el.dyn_into::<leptos::web_sys::HtmlInputElement>() {
+                input.set_checked(false);
+            }
+        }
+    });
     // La Whitelist se abre desde el menú de la cuenta, pero su ventana va fuera
     // del cajón del costado: ahí adentro quedaba apretada al ancho del menú.
     let whitelist = NodeRef::<leptos::html::Dialog>::new();
@@ -246,14 +316,17 @@ pub fn StoreShell(slug: String, section: Section, children: Children) -> impl In
                 <label for="mk-panel-nav" aria-label="Cerrar el menú" class="drawer-overlay"></label>
                 <aside class="sticky top-0 flex h-screen w-64 shrink-0 flex-col gap-3 border-r border-base-300 bg-base-100 p-3">
                     <a href="/" class="px-2 pt-1 text-lg font-bold">"MarketMaker"</a>
-                    <Suspense fallback=|| view! { <ui::Skeleton class="h-12 w-full"/> }>
+                    <Transition fallback=move || match last.and_then(|l| l.get_untracked()) {
+                            Some(nav) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version/> }.into_any(),
+                            None => view! { <ui::Skeleton class="h-12 w-full"/> }.into_any(),
+                        }>
                         {move || Suspend::new(async move {
                             match nav.await {
-                                Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_value() section whitelist whitelist_version/> }.into_any(),
+                                Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version/> }.into_any(),
                                 _ => ().into_any(),
                             }
                         })}
-                    </Suspense>
+                    </Transition>
                 </aside>
             </div>
             {move || is_admin().then(|| view! {
@@ -267,7 +340,7 @@ pub fn StoreShell(slug: String, section: Section, children: Children) -> impl In
 fn SideNav(
     nav: PanelNav,
     slug: String,
-    section: Section,
+    section: Signal<Section>,
     whitelist: NodeRef<leptos::html::Dialog>,
     whitelist_version: RwSignal<u32>,
 ) -> impl IntoView {
@@ -307,10 +380,10 @@ fn SideNav(
                      icon: &'static str,
                      label: &'static str,
                      badge: i64| {
-        let on = s == section;
+        let on = move || s == section.get();
         view! {
             <li>
-                <a href=href class=if on { "bg-primary/10 font-semibold text-primary" } else { "" } aria-current=on.then_some("page")>
+                <a href=href class=move || if on() { "bg-primary/10 font-semibold text-primary" } else { "" } aria-current=move || on().then_some("page")>
                     <ui::Icon class="size-[18px]" name=icon/>
                     {label}
                     {(badge > 0).then(|| view! {
@@ -337,14 +410,15 @@ fn SideNav(
                     <li class="menu-title">"Tus tiendas"</li>
                     {others.into_iter().map(|s| {
                         let on = s.slug == c.slug;
-                        // Recarga la página: cada tienda trae sus propios datos.
-                        let href = match section {
-                            Section::Photos => format!("/mis-fotos?tienda={}", s.slug),
-                            Section::Account => format!("/cuenta?tienda={}", s.slug),
-                            _ => format!("/tienda/{}", s.slug),
+                        // Mis fotos y Mi cuenta leen la tienda una sola vez: ahí se
+                        // recarga la página. Las demás cambian de tienda sin recargar.
+                        let (href, external) = match section.get_untracked() {
+                            Section::Photos => (format!("/mis-fotos?tienda={}", s.slug), true),
+                            Section::Account => (format!("/cuenta?tienda={}", s.slug), true),
+                            _ => (format!("/tienda/{}", s.slug), false),
                         };
                         view! {
-                            <li><a href=href rel="external" class=if on { "bg-base-200 font-semibold" } else { "" }>
+                            <li><a href=href rel=external.then_some("external") class=if on { "bg-base-200 font-semibold" } else { "" }>
                                 <StoreMark name=s.name.clone() slug=s.slug.clone() small=true/>
                                 <span class="grow truncate">{s.name.clone()}</span>
                                 {on.then(|| view! { <ui::Icon class="size-[18px]" name="check"/> })}
@@ -402,7 +476,7 @@ fn SideNav(
             </ul>
         </nav>
         <details node_ref=account_menu class="dropdown dropdown-top w-full border-t border-base-300 pt-3">
-            <summary class=if section == Section::Account { "flex cursor-pointer list-none items-center gap-2 rounded-lg bg-base-200 p-1.5" } else { "flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 hover:bg-base-200" }
+            <summary class=move || if section.get() == Section::Account { "flex cursor-pointer list-none items-center gap-2 rounded-lg bg-base-200 p-1.5" } else { "flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 hover:bg-base-200" }
                 aria-label="Tu cuenta">
                 <Avatar letter=initial.clone() size="size-8 text-sm" photo=nav.avatar.clone()/>
                 <span class="flex min-w-0 grow flex-col leading-tight">
@@ -419,7 +493,7 @@ fn SideNav(
                     </div>
                 </div>
                 <ul class="menu w-full p-0">
-                    <li><a href=format!("/cuenta?tienda={s}") class=if section == Section::Account { "bg-base-200" } else { "" }>
+                    <li><a href=format!("/cuenta?tienda={s}") class=move || if section.get() == Section::Account { "bg-base-200" } else { "" }>
                         <ui::Icon class="size-[18px] text-base-content/60" name="user"/>"Mi cuenta"
                     </a></li>
                     {is_admin.then(|| view! {
@@ -465,7 +539,6 @@ pub fn StoreHomePage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), load_store_overview);
     view! {
         <leptos_meta::Title text="Inicio · MarketMaker"/>
-        <StoreShell slug=slug.get_untracked() section=Section::Home>
             <div class="mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -477,7 +550,6 @@ pub fn StoreHomePage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </StoreShell>
     }
     .into_any()
 }
