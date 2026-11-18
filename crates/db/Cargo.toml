@@ -9,6 +9,7 @@ sqlx = { workspace = true }
 uuid = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+chacha20poly1305 = { workspace = true }
 rand = { workspace = true }
 hex = { workspace = true }
 argon2 = { workspace = true }

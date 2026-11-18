@@ -20,3 +20,6 @@ playwright/.cache/
 
 # Claves secretas locales (Cloudflare R2)
 .env.local
+
+# Clave para cifrar las llaves de Mercado Pago y Andreani (se crea sola)
+secrets.key

@@ -59,6 +59,21 @@ async fn main() {
         .run(&pool)
         .await
         .expect("no se pudieron aplicar las migraciones");
+    // La clave para cifrar las llaves de Mercado Pago y Andreani: SECRETS_KEY
+    // si está; si no, el archivo `secrets.key` de esta carpeta (se crea solo
+    // la primera vez). Sin clave el servidor anda igual y guarda sin cifrar.
+    let key = match std::env::var("SECRETS_KEY") {
+        Ok(text) if !text.trim().is_empty() => db::secrets::parse_key(&text)
+            .ok_or_else(|| "SECRETS_KEY tiene que ser 64 caracteres hexadecimales".to_string()),
+        _ => db::secrets::load_or_create_key(std::path::Path::new("secrets.key"))
+            .map_err(|e| format!("secrets.key: {e}")),
+    };
+    match key {
+        Ok(key) => db::secrets::init(key),
+        Err(e) => leptos::logging::log!(
+            "Sin clave para cifrar las llaves de Mercado Pago y Andreani ({e}): se guardan sin cifrar."
+        ),
+    }
     // La Whitelist de la web se suma a ALLOWED_EMAILS.
     web::auth::refresh_allowlist(&pool)
         .await
@@ -106,6 +121,7 @@ async fn main() {
     tokio::spawn(expire_unpaid_orders(pool.clone()));
     tokio::spawn(purge_events(pool.clone()));
     tokio::spawn(web::shipments::track_loop(pool.clone()));
+    tokio::spawn(seal_old_secrets(pool.clone()));
     let mut app = Router::new().merge(web::media::media_routes(web::media::MediaState {
         pool: pool.clone(),
         store: store.clone(),
@@ -140,7 +156,10 @@ async fn main() {
     // una semana más mientras revisa en segundo plano.
     for (dir, cache) in [
         ("fonts", "public, max-age=2592000"),
-        ("img", "public, max-age=86400, stale-while-revalidate=604800"),
+        (
+            "img",
+            "public, max-age=86400, stale-while-revalidate=604800",
+        ),
     ] {
         app = app.nest_service(
             &format!("/{dir}"),
@@ -414,4 +433,17 @@ async fn sweep_once(pool: &db::Pool, store: &::media::Store) -> Result<usize, St
         removed += 1;
     }
     Ok(removed)
+}
+
+/// Cifra las llaves de Mercado Pago y Andreani que quedaron guardadas en
+/// claro. Espera un rato después de arrancar: si esta versión no anda y
+/// `deploy/release.sh` vuelve a una anterior que no sabe leerlas cifradas, la
+/// base tiene que estar como la dejó.
+async fn seal_old_secrets(pool: sqlx::PgPool) {
+    tokio::time::sleep(std::time::Duration::from_secs(15 * 60)).await;
+    match db::secrets::seal_stored(&pool).await {
+        Ok(0) => {}
+        Ok(n) => leptos::logging::log!("Llaves cifradas: {n} cuentas."),
+        Err(e) => leptos::logging::log!("No se pudieron cifrar las llaves guardadas: {e}"),
+    }
 }

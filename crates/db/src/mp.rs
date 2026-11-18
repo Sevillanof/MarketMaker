@@ -50,8 +50,8 @@ pub async fn save_link(pool: &PgPool, tenant: Uuid, t: &Tokens<'_>) -> sqlx::Res
     )
     .bind(tenant)
     .bind(t.user_id)
-    .bind(t.access_token)
-    .bind(t.refresh_token)
+    .bind(crate::secrets::seal(t.access_token))
+    .bind(crate::secrets::seal(t.refresh_token))
     .bind(t.public_key)
     .bind(t.expires_in_secs as f64)
     .bind(t.live)
@@ -107,14 +107,20 @@ pub struct Credentials {
 }
 
 pub async fn credentials(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Option<Credentials>> {
-    sqlx::query_as::<_, Credentials>(
-        "SELECT mp_access_token AS access_token, mp_refresh_token AS refresh_token,
+    let found = sqlx::query_as::<_, Credentials>(
+        "SELECT mp_access_token AS access_token, COALESCE(mp_refresh_token, '') AS refresh_token,
                 COALESCE(mp_token_expires_at < now() + interval '7 days', true) AS expiring
          FROM tenants WHERE id = $1 AND mp_access_token IS NOT NULL",
     )
     .bind(tenant)
     .fetch_optional(pool)
-    .await
+    .await?;
+    // Se guardan cifradas; acá salen en claro para hablar con Mercado Pago.
+    Ok(found.map(|c| Credentials {
+        access_token: crate::secrets::open(&c.access_token),
+        refresh_token: crate::secrets::open(&c.refresh_token),
+        expiring: c.expiring,
+    }))
 }
 
 /// Guarda la preferencia de pago de un pedido (adónde se lo manda a pagar).

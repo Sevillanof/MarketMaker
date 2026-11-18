@@ -32,13 +32,19 @@ pub struct Login<'a> {
 }
 
 pub async fn account(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Option<Account>> {
-    sqlx::query_as::<_, Account>(
+    let found = sqlx::query_as::<_, Account>(
         "SELECT credential, access_token, client_type, holder, cuit, email, contracts, settings
          FROM andreani_accounts WHERE tenant_id = $1",
     )
     .bind(tenant)
     .fetch_optional(pool)
-    .await
+    .await?;
+    // El código y el token se guardan cifrados; acá salen en claro.
+    Ok(found.map(|mut a| {
+        a.credential = crate::secrets::open(&a.credential);
+        a.access_token = crate::secrets::open(&a.access_token);
+        a
+    }))
 }
 
 /// Conecta (o vuelve a conectar) la cuenta. Si ya había una, conserva lo que
@@ -55,8 +61,8 @@ pub async fn connect(pool: &PgPool, tenant: Uuid, l: &Login<'_>) -> sqlx::Result
              updated_at = now()",
     )
     .bind(tenant)
-    .bind(l.credential)
-    .bind(l.access_token)
+    .bind(crate::secrets::seal(l.credential))
+    .bind(crate::secrets::seal(l.access_token))
     .bind(l.client_type)
     .bind(l.holder)
     .bind(l.cuit)
@@ -73,7 +79,7 @@ pub async fn set_token(pool: &PgPool, tenant: Uuid, token: &str) -> sqlx::Result
         "UPDATE andreani_accounts SET access_token = $2, updated_at = now() WHERE tenant_id = $1",
     )
     .bind(tenant)
-    .bind(token)
+    .bind(crate::secrets::seal(token))
     .execute(pool)
     .await?;
     Ok(())
