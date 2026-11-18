@@ -36,7 +36,7 @@ pub(crate) struct Frame {
     /// Elemento (`data-t`) al que apunta el cursor.
     pub target: &'static str,
     pub click: bool,
-    pub flags: u32,
+    pub flags: u64,
     /// Textos que se van escribiendo, por campo.
     pub t: [String; 3],
 }
@@ -52,7 +52,7 @@ impl Script {
         Self::with_flags(0)
     }
     /// Película que arranca con `flags` ya puestos.
-    pub fn with_flags(flags: u32) -> Self {
+    pub fn with_flags(flags: u64) -> Self {
         let mut s = Self {
             frames: Vec::new(),
             cur: Frame {
@@ -81,11 +81,11 @@ impl Script {
         self.push(450);
         self
     }
-    pub fn set(&mut self, flag: u32) -> &mut Self {
+    pub fn set(&mut self, flag: u64) -> &mut Self {
         self.cur.flags |= flag;
         self
     }
-    pub fn clear(&mut self, flag: u32) -> &mut Self {
+    pub fn clear(&mut self, flag: u64) -> &mut Self {
         self.cur.flags &= !flag;
         self
     }
@@ -108,25 +108,46 @@ impl Script {
 }
 
 // Qué hay en pantalla en cada película (bits de `Frame::flags`).
-const P_PHOTO: u32 = 1;
-const P_PREVIEW: u32 = 2;
-const P_SAVED: u32 = 4;
-const M_WINDOW: u32 = 1;
-const M_LINKED: u32 = 2;
-const A_CONNECTED: u32 = 1;
-const A_ENABLED: u32 = 2;
+const P_PHOTO: u64 = 1;
+const P_PREVIEW: u64 = 2;
+const P_SAVED: u64 = 4;
+const M_WINDOW: u64 = 1;
+const M_LINKED: u64 = 2;
+const A_CONNECTED: u64 = 1;
+const A_ENABLED: u64 = 2;
 
-const FILMS: [(&str, &str); 9] = [
+/// Películas del panel (las primeras) y los pasos del recorrido del editor.
+const PANEL_FILMS: [(&str, &str); FIRST_EDITOR] = [
     ("Cargá un producto", "Productos"),
     ("Vinculá Mercado Pago", "Cobros"),
     ("Conectá Andreani", "Entregas"),
-    ("Agregá un bloque", "Editor"),
-    ("Mové y cambiá el tamaño", "Editor"),
-    ("Editá un texto", "Editor"),
-    ("Elegí colores y letras", "Editor"),
-    ("Creá una página nueva", "Editor"),
-    ("Publicá tu tienda", "Editor"),
 ];
+const FILM_COUNT: usize = FIRST_EDITOR + crate::help_editor::STEPS;
+
+fn film_title(n: usize) -> &'static str {
+    if n >= FIRST_EDITOR {
+        crate::help_editor::TITLES[n - FIRST_EDITOR]
+    } else {
+        PANEL_FILMS[n].0
+    }
+}
+
+fn film_where(n: usize) -> &'static str {
+    if n >= FIRST_EDITOR {
+        "Editor"
+    } else {
+        PANEL_FILMS[n].1
+    }
+}
+
+/// Primera y última película de la ventana en la que está `n`.
+fn film_range(n: usize) -> (usize, usize) {
+    if n >= FIRST_EDITOR {
+        (FIRST_EDITOR, FILM_COUNT - 1)
+    } else {
+        (0, FIRST_EDITOR - 1)
+    }
+}
 
 fn script(film: usize) -> Vec<Frame> {
     if film >= FIRST_EDITOR {
@@ -313,7 +334,6 @@ pub fn HelpButton(
         });
     });
 
-    let last = FILMS.len() - 1;
     view! {
         <button type="button" aria-label="Ayuda" on:click=start
             class="group btn btn-primary fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 h-11 min-h-0 w-11 gap-0 overflow-hidden rounded-full p-0 shadow-lg transition-all duration-300 hover:h-12 hover:w-28 focus-visible:h-12 focus-visible:w-28 motion-reduce:transition-none">
@@ -329,8 +349,8 @@ pub fn HelpButton(
                 {move || open.get().then(|| view! {
                     <div class="flex flex-col gap-3">
                         <div>
-                            <h2 id="help-title" class="text-xl font-bold">{move || FILMS[film.get()].0}</h2>
-                            <p class="text-sm text-base-content/60">{move || FILMS[film.get()].1}</p>
+                            <h2 id="help-title" class="text-xl font-bold">{move || film_title(film.get())}</h2>
+                            <p class="text-sm text-base-content/60">{move || film_where(film.get())}</p>
                         </div>
                         // Es una animación decorativa: el texto accesible está debajo.
                         <div node_ref=stage aria-hidden="true" inert=""
@@ -342,7 +362,7 @@ pub fn HelpButton(
                                     0 => view! { <ProductFilm f=frame/> }.into_any(),
                                     1 => view! { <PaymentsFilm f=frame/> }.into_any(),
                                     2 => view! { <AndreaniFilm f=frame/> }.into_any(),
-                                    n => view! { <crate::help_editor::EditorFilm f=frame film=n - FIRST_EDITOR/> }.into_any(),
+                                    _ => view! { <crate::help_editor::EditorFilm f=frame/> }.into_any(),
                                 }}
                             </div>
                             <div class="pointer-events-none absolute z-20 size-0 transition-[left,top] duration-700 ease-out motion-reduce:transition-none"
@@ -374,13 +394,14 @@ pub fn HelpButton(
                             {move || if paused.get() { "Reanudar animación" } else { "Pausar animación" }}
                         </button>
                         <div class="flex items-center justify-center gap-4">
-                            <button type="button" class="btn btn-primary" disabled=move || film.get() == 0
+                            <button type="button" class="btn btn-primary" disabled=move || film.get() == film_range(film.get()).0
                                 on:click=move |_| play(film.get_untracked().saturating_sub(1))>"Anterior"</button>
                             <span class="min-w-16 text-center text-lg font-bold tabular-nums">
-                                {move || film.get() + 1}<span class="font-normal text-base-content/60">{format!(" / {}", FILMS.len())}</span>
+                                {move || { let (a, _) = film_range(film.get()); film.get() - a + 1 }}
+                                <span class="font-normal text-base-content/60">{move || { let (a, b) = film_range(film.get()); format!(" / {}", b - a + 1) }}</span>
                             </span>
-                            <button type="button" class="btn btn-primary" disabled=move || film.get() == last
-                                on:click=move |_| play((film.get_untracked() + 1).min(last))>"Siguiente"</button>
+                            <button type="button" class="btn btn-primary" disabled=move || film.get() == film_range(film.get()).1
+                                on:click=move |_| play((film.get_untracked() + 1).min(film_range(film.get_untracked()).1))>"Siguiente"</button>
                         </div>
                     </div>
                 })}
@@ -390,7 +411,7 @@ pub fn HelpButton(
     }
 }
 
-pub(crate) fn has(f: RwSignal<Frame>, bit: u32) -> bool {
+pub(crate) fn has(f: RwSignal<Frame>, bit: u64) -> bool {
     f.with(|f| f.flags & bit != 0)
 }
 
