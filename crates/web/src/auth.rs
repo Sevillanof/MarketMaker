@@ -190,8 +190,12 @@ mod ssr {
     /// El token de la cookie de sesión del pedido actual.
     pub(crate) fn session_token() -> Option<String> {
         let parts = use_context::<http::request::Parts>()?;
-        parts
-            .headers
+        session_token_in(&parts.headers)
+    }
+
+    /// El token de la cookie de sesión que viene en estas cabeceras.
+    pub(crate) fn session_token_in(headers: &http::HeaderMap) -> Option<String> {
+        headers
             .get_all(header::COOKIE)
             .iter()
             .filter_map(|v| v.to_str().ok())

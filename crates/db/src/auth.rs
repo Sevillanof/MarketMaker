@@ -28,7 +28,7 @@ fn code_hash(email: &str, code: &str) -> Vec<u8> {
     Sha256::digest(format!("{email}:{code}")).to_vec()
 }
 
-fn token_hash(token: &str) -> Vec<u8> {
+pub(crate) fn token_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
 

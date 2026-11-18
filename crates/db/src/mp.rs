@@ -4,30 +4,60 @@ use domain::MpLink;
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
-/// Guarda el `state` de un "Vincular mi cuenta" que empieza.
-pub async fn save_state(pool: &PgPool, tenant: Uuid, state: &str) -> sqlx::Result<()> {
+/// Guarda el `state` de un "Vincular mi cuenta" que empieza, atado a la
+/// sesión (`session`, el token de su cookie) de quien lo empezó.
+pub async fn save_state(
+    pool: &PgPool,
+    tenant: Uuid,
+    state: &str,
+    session: &str,
+) -> sqlx::Result<()> {
     // De paso, los que nunca volvieron.
     sqlx::query("DELETE FROM mp_oauth_states WHERE created_at < now() - interval '1 day'")
         .execute(pool)
         .await?;
-    sqlx::query("INSERT INTO mp_oauth_states (state, tenant_id) VALUES ($1, $2)")
+    sqlx::query("INSERT INTO mp_oauth_states (state, tenant_id, session_hash) VALUES ($1, $2, $3)")
         .bind(state)
         .bind(tenant)
+        .bind(crate::auth::token_hash(session))
         .execute(pool)
         .await?;
     Ok(())
 }
 
-/// La tienda de un `state` de hace menos de 30 minutos. Se usa una sola vez.
-pub async fn take_state(pool: &PgPool, state: &str) -> sqlx::Result<Option<Uuid>> {
-    sqlx::query_scalar(
+/// Qué pasó con un `state` al volver de Mercado Pago.
+#[derive(Debug, PartialEq)]
+pub enum StateCheck {
+    /// Vale: es de esta tienda y vuelve a la misma sesión que lo empezó.
+    Ok(Uuid),
+    /// Es de esta tienda, pero vuelve a otra sesión (o a ninguna).
+    OtherSession(Uuid),
+    /// No existe, ya se usó o tiene más de 30 minutos.
+    Unknown,
+}
+
+/// Revisa un `state` y lo gasta: sirve una sola vez, por 30 minutos y solo
+/// en la sesión (`session`, el token de su cookie) que lo empezó.
+pub async fn take_state(
+    pool: &PgPool,
+    state: &str,
+    session: Option<&str>,
+) -> sqlx::Result<StateCheck> {
+    let row: Option<(Option<Uuid>, Vec<u8>)> = sqlx::query_as(
         "DELETE FROM mp_oauth_states WHERE state = $1
-         RETURNING CASE WHEN created_at > now() - interval '30 minutes' THEN tenant_id END",
+         RETURNING CASE WHEN created_at > now() - interval '30 minutes' THEN tenant_id END,
+                   session_hash",
     )
     .bind(state)
     .fetch_optional(pool)
-    .await
-    .map(Option::flatten)
+    .await?;
+    Ok(match row {
+        Some((Some(tenant), hash)) => match session {
+            Some(s) if crate::auth::token_hash(s) == hash => StateCheck::Ok(tenant),
+            _ => StateCheck::OtherSession(tenant),
+        },
+        _ => StateCheck::Unknown,
+    })
 }
 
 /// Lo que devuelve Mercado Pago al vincular o renovar.
