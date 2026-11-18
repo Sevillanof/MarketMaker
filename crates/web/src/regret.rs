@@ -41,19 +41,10 @@ pub async fn send_regret(form: RegretForm) -> Result<RegretOutcome, ServerFnErro
         });
     };
     if first {
-        let order = db::orders::get(&pool, tenant.id, id)
-            .await
-            .map_err(internal)?;
-        let owners = db::mp::owner_emails(&pool, tenant.id)
-            .await
-            .map_err(internal)?;
+        let order = db::orders::get(&pool, tenant.id, id).await.map_err(internal)?;
+        let owners = db::mp::owner_emails(&pool, tenant.id).await.map_err(internal)?;
         if let Some(o) = order {
-            crate::email::send(crate::email::regret_to_buyer(
-                &o.email,
-                &tenant.name,
-                number,
-                &code,
-            ));
+            crate::email::send(crate::email::regret_to_buyer(&o.email, &tenant.name, number, &code));
             crate::email::send(crate::email::regret_to_owner(
                 owners,
                 &tenant.name,
@@ -88,11 +79,7 @@ pub fn RegretPage() -> impl IntoView {
     .into_any()
 }
 
-const FIELD_IDS: &[(&str, &str)] = &[
-    ("name", "r-name"),
-    ("email", "r-email"),
-    ("number", "r-number"),
-];
+const FIELD_IDS: &[(&str, &str)] = &[("name", "r-name"), ("email", "r-email"), ("number", "r-number")];
 
 #[component]
 fn Regret(view: PageView) -> impl IntoView {
@@ -119,9 +106,7 @@ fn Regret(view: PageView) -> impl IntoView {
             errors.set(e);
         }
         Some(Ok(RegretOutcome::Problem(p))) => problem.set(Some(p)),
-        Some(Err(_)) => problem.set(Some(
-            "No pudimos enviarlo. Revisá tu conexión y probá de nuevo.".into(),
-        )),
+        Some(Err(_)) => problem.set(Some("No pudimos enviarlo. Revisá tu conexión y probá de nuevo.".into())),
         None => {}
     });
     let error_for = move |field: &'static str| {
@@ -133,9 +118,7 @@ fn Regret(view: PageView) -> impl IntoView {
                 .map(|e| view! { <FieldNote ok=false text=e.message/> })
         }
     };
-    let invalid = move |field: &'static str| {
-        move || errors.get().iter().any(|e| e.field == field).to_string()
-    };
+    let invalid = move |field: &'static str| move || errors.get().iter().any(|e| e.field == field).to_string();
     let submit = move || {
         errors.set(Vec::new());
         problem.set(None);

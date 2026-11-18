@@ -152,11 +152,7 @@ pub fn placeholder_nodes(doc: &PageDoc) -> Vec<PlaceholderNode> {
     let mut out = Vec::new();
     for layer in layers {
         for n in doc.layer(layer) {
-            if let Some(text) = serde_json::to_value(&n.widget)
-                .ok()
-                .as_ref()
-                .and_then(first)
-            {
+            if let Some(text) = serde_json::to_value(&n.widget).ok().as_ref().and_then(first) {
                 out.push(PlaceholderNode {
                     id: n.id.clone(),
                     layer,

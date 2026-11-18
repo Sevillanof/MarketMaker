@@ -140,10 +140,7 @@ async fn main() {
     // una semana más mientras revisa en segundo plano.
     for (dir, cache) in [
         ("fonts", "public, max-age=2592000"),
-        (
-            "img",
-            "public, max-age=86400, stale-while-revalidate=604800",
-        ),
+        ("img", "public, max-age=86400, stale-while-revalidate=604800"),
     ] {
         app = app.nest_service(
             &format!("/{dir}"),

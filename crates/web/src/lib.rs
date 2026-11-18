@@ -36,11 +36,11 @@ mod platform;
 mod products;
 mod regret;
 mod sales;
-pub mod server;
 #[cfg(feature = "ssr")]
 pub mod shipments;
-pub mod site;
 mod store_info;
+pub mod server;
+pub mod site;
 pub mod stores;
 mod whitelist;
 
@@ -211,12 +211,7 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
     let image = banner
         .map(|b| b.image_url)
         .filter(|u| !u.is_empty())
-        .or_else(|| {
-            view.products
-                .iter()
-                .map(|p| p.image_url.clone())
-                .find(|u| !u.is_empty())
-        })
+        .or_else(|| view.products.iter().map(|p| p.image_url.clone()).find(|u| !u.is_empty()))
         .map(|u| {
             if u.starts_with('/') {
                 format!("{}://{}{u}", site::scheme(), site::current_host())

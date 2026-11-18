@@ -11,12 +11,7 @@ use widgets::{
 /// Si no hay ninguna ahí, un aviso con un enlace a Inicio.
 #[component]
 pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoView {
-    let PageView {
-        doc,
-        products,
-        store,
-        ..
-    } = view;
+    let PageView { doc, products, store, .. } = view;
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(store);
     let Some(page) = doc.page_index(&path) else {

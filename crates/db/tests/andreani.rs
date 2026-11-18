@@ -32,16 +32,9 @@ async fn connect_save_reconnect_disconnect(pool: PgPool) {
         contracts: &[],
     };
     assert!(andreani::account(&pool, ana).await.unwrap().is_none());
-    andreani::connect(
-        &pool,
-        ana,
-        &andreani::Login {
-            contracts: &contracts,
-            ..login("t1")
-        },
-    )
-    .await
-    .unwrap();
+    andreani::connect(&pool, ana, &andreani::Login { contracts: &contracts, ..login("t1") })
+        .await
+        .unwrap();
     let acc = andreani::account(&pool, ana).await.unwrap().unwrap();
     assert_eq!(acc.access_token, "t1");
     assert_eq!(acc.contracts.0, contracts);
@@ -53,9 +46,7 @@ async fn connect_save_reconnect_disconnect(pool: PgPool) {
         services: vec![AndreaniService::Home],
         parcel: Parcel::default(),
     };
-    assert!(andreani::save_settings(&pool, ana, &settings)
-        .await
-        .unwrap());
+    assert!(andreani::save_settings(&pool, ana, &settings).await.unwrap());
     andreani::set_token(&pool, ana, "t2").await.unwrap();
 
     // Volver a conectar conserva lo elegido.
@@ -65,9 +56,7 @@ async fn connect_save_reconnect_disconnect(pool: PgPool) {
     assert_eq!(acc.settings.unwrap().0, settings);
 
     let beto = tenant(&pool, "beto").await;
-    assert!(!andreani::save_settings(&pool, beto, &settings)
-        .await
-        .unwrap());
+    assert!(!andreani::save_settings(&pool, beto, &settings).await.unwrap());
 
     andreani::disconnect(&pool, ana).await.unwrap();
     assert!(andreani::account(&pool, ana).await.unwrap().is_none());
