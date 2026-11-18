@@ -409,9 +409,10 @@ pub fn password_link(to: &str, url: &str, new_account: bool) -> Email {
     }
 }
 
-/// La invitación a crear la cuenta, con el enlace personal. La manda la
-/// Whitelist cuando el administrador agrega un email.
-pub fn invitation(to: &str, url: &str) -> Email {
+/// La invitación a crear la cuenta, con el enlace personal. La manda el
+/// administrador desde la Whitelist, con el asunto, el título y el mensaje
+/// que haya dejado (ya pasados por [`domain::InviteText::clean`]).
+pub fn invitation(to: &str, url: &str, words: &domain::InviteText) -> Email {
     let days = db::auth::INVITE_DAYS;
     let step = |n: u8, title: &str, text: &str| {
         format!(
@@ -430,22 +431,26 @@ pub fn invitation(to: &str, url: &str) -> Email {
 <div style="max-width:520px;margin:0 auto;padding:32px 16px">
 <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:20px;padding:36px">
 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr><td style="width:36px;height:36px;border-radius:10px;background:#4330d6;background-image:linear-gradient(135deg,#4330d6,#6a55f0);color:#ffffff;font-weight:800;font-size:20px;text-align:center">m</td><td style="padding-left:10px;font-weight:800;font-size:18px;color:#18181b">MarketMaker</td></tr></table>
-<h1 style="font-size:28px;line-height:34px;font-weight:800;letter-spacing:-0.5px;margin:28px 0 10px;color:#18181b">Ya podés crear tu cuenta</h1>
-<p style="font-size:16px;line-height:24px;margin:0 0 26px;color:#52525b">Te invitamos a MarketMaker, la forma más simple de tener tu tienda online.</p>
+<h1 style="font-size:28px;line-height:34px;font-weight:800;letter-spacing:-0.5px;margin:28px 0 10px;color:#18181b">{title}</h1>
+<p style="font-size:16px;line-height:24px;margin:0 0 26px;color:#52525b">{message}</p>
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">{steps}</table>
 <a href="{href}" style="display:block;margin:8px 0 0;background:#4330d6;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;text-align:center;padding:15px 20px;border-radius:12px">Crear mi cuenta</a>
 <p style="font-size:13px;line-height:20px;margin:14px 0 0;color:#71717a;text-align:center">El enlace es personal y vence en {days} días.</p>
 </div>
 <p style="font-size:12px;line-height:19px;margin:18px 0 0;color:#71717a;text-align:center">Si no esperabas esta invitación, podés ignorar este email.<br>MarketMaker · mkr.com.ar</p>
 </div></body></html>"#,
-        href = esc(url)
+        href = esc(url),
+        title = esc(&words.title),
+        message = esc(&words.message).replace('\n', "<br>")
     );
     Email {
         to: vec![to.to_string()],
-        subject: "Ya podés crear tu cuenta de MarketMaker".to_string(),
+        subject: words.subject.clone(),
         html,
         text: format!(
-            "Ya podés crear tu cuenta\n\nTe invitamos a MarketMaker, la forma más simple de tener tu tienda online.\n\n1. Creá tu cuenta: elegís tu nombre y una contraseña.\n2. Armá tu tienda: diseño, productos y formas de cobro.\n3. Publicala: tu dirección propia, tutienda.mkr.com.ar\n\nCrear mi cuenta:\n{url}\n\nEl enlace es personal y vence en {days} días.\n\nSi no esperabas esta invitación, podés ignorar este email.\nMarketMaker · mkr.com.ar\n"
+            "{title}\n\n{message}\n\n1. Creá tu cuenta: elegís tu nombre y una contraseña.\n2. Armá tu tienda: diseño, productos y formas de cobro.\n3. Publicala: tu dirección propia, tutienda.mkr.com.ar\n\nCrear mi cuenta:\n{url}\n\nEl enlace es personal y vence en {days} días.\n\nSi no esperabas esta invitación, podés ignorar este email.\nMarketMaker · mkr.com.ar\n",
+            title = words.title,
+            message = words.message
         ),
     }
 }
@@ -605,12 +610,19 @@ mod tests {
     #[test]
     fn the_invitation_carries_its_link_safely() {
         let url = "https://mkr.com.ar/entrar?recuperar=ana%40correo.com&codigo=abc&nuevo";
-        let mail = invitation("ana@correo.com", url);
+        let mail = invitation("ana@correo.com", url, &domain::InviteText::default());
         assert_eq!(mail.to, ["ana@correo.com"]);
         assert!(mail.html.contains(&esc(url)));
         assert!(!mail.html.contains("codigo=abc&nuevo"));
         assert!(mail.text.contains(url));
         assert!(mail.html.contains(">Ya podés crear tu cuenta</h1>"));
+        // Lo que escribe el administrador va como texto, nunca como HTML.
+        let own = domain::InviteText::clean("Hola", "<b>Hola</b>", "Uno\n<a href=x>dos</a>");
+        let mail = invitation("ana@correo.com", url, &own);
+        assert_eq!(mail.subject, "Hola");
+        assert!(mail.html.contains("&lt;b&gt;Hola&lt;/b&gt;</h1>"));
+        assert!(mail.html.contains("Uno<br>&lt;a href=x&gt;dos&lt;/a&gt;"));
+        assert!(mail.html.contains(&esc(url)));
         if let Ok(path) = std::env::var("INVITATION_PREVIEW") {
             std::fs::write(path, &mail.html).unwrap();
         }
