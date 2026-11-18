@@ -296,6 +296,37 @@ pub async fn who_am_i() -> Result<Option<Me>, ServerFnError> {
     }))
 }
 
+/// Manda al email de la cuenta el enlace del editor de esta tienda, para abrirlo
+/// desde una computadora (el editor no se usa en el teléfono).
+#[server]
+pub async fn send_editor_link() -> Result<(), ServerFnError> {
+    let Some(user) = current_user().await? else {
+        return Err(ServerFnError::new("Entrá con tu cuenta para pedir el enlace."));
+    };
+    let tenant = current_tenant()
+        .await
+        .map_err(|_| ServerFnError::new("El enlace se pide desde la tienda que querés editar."))?;
+    let owner = db::auth::role_in(&crate::server::pool()?, tenant.id, user.id)
+        .await
+        .map_err(crate::server::internal)?
+        .is_some();
+    if !owner {
+        return Err(ServerFnError::new("Esta cuenta no puede editar esta tienda."));
+    }
+    if !may_ask_for_email() {
+        return Err(ServerFnError::new(
+            "Pediste varios enlaces en poco tiempo. Probá de nuevo en unos minutos.",
+        ));
+    }
+    let url = format!("{}/editor", crate::email::store_url(&tenant.slug));
+    crate::email::deliver(&crate::email::editor_link(&user.email, &tenant.name, &url))
+        .await
+        .map_err(|e| {
+            leptos::logging::log!("Enlace del editor a {}: no se pudo mandar: {e}", user.email);
+            ServerFnError::new("No pudimos mandar el email. Probá de nuevo en unos minutos.")
+        })
+}
+
 /// Paso 1: manda un código de 6 dígitos al email, si está habilitado.
 #[server]
 pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {

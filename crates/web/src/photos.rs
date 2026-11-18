@@ -112,10 +112,11 @@ pub fn MyPhotosPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Mis fotos · MarketMaker"/>
         <crate::panel::StoreShell slug=store section=crate::panel::Section::Photos>
-            <div class="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10">
+            <div class="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10 max-sm:gap-4 max-sm:py-5 max-sm:pb-24">
                 <div class="flex flex-wrap items-center gap-3">
-                    <h1 class="grow text-3xl font-bold">"Mis fotos"</h1>
-                    <label for="mis-fotos-subir" class="btn btn-primary" class:btn-disabled=move || uploads.progress.get().is_some()>
+                    <h1 class="grow text-3xl font-bold max-sm:text-2xl">"Mis fotos"</h1>
+                    // En el teléfono es el botón flotante de abajo (ver `.mk-fab`).
+                    <label for="mis-fotos-subir" class="btn btn-primary mk-fab" class:btn-disabled=move || uploads.progress.get().is_some()>
                         "Subir fotos"
                     </label>
                     <input id="mis-fotos-subir" type="file" class="sr-only" multiple
@@ -162,7 +163,7 @@ pub fn MyPhotosPage() -> impl IntoView {
                                         }.into_any()
                                     } else {
                                         view! {
-                                            <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tus fotos">
+                                            <ul class="grid gap-4 max-sm:grid-cols-2 max-sm:gap-2.5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tus fotos">
                                                 {photos.into_iter().map(|p| view! { <PhotoCard photo=p reload/> }).collect_view()}
                                             </ul>
                                         }.into_any()
@@ -198,6 +199,8 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
     let draft = RwSignal::new(name);
     let error = RwSignal::new(None::<String>);
     let confirm = RwSignal::new(false);
+    // Teléfono: cada foto es una miniatura; al tocarla se abren sus datos.
+    let open = RwSignal::new(false);
     let rename =
         Action::new(|(id, name): &(String, String)| rename_photo(id.clone(), name.clone()));
     let remove = Action::new(|id: &String| delete_photo(id.clone()));
@@ -257,11 +260,20 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
         format!("{width} × {height} px")
     };
     view! {
-        <li class="card overflow-hidden bg-base-100 shadow-sm">
-            <figure class="aspect-[4/3] bg-base-200">
+        <li class="card overflow-hidden bg-base-100 shadow-sm" class=("max-sm:col-span-2", move || open.get())>
+            <figure class="aspect-[4/3] bg-base-200" class=("max-sm:aspect-square", move || !open.get())>
                 <img src=thumb alt=move || saved_name.get() loading="lazy" class="h-full w-full object-cover"/>
             </figure>
-            <div class="card-body gap-2 p-4">
+            <button type="button" class="flex min-h-12 w-full items-center gap-2 px-3 text-left text-sm sm:hidden"
+                aria-expanded=move || open.get().to_string()
+                on:click=move |_| open.update(|v| *v = !*v)>
+                <span class="min-w-0 grow">
+                    <span class="block truncate font-medium">{move || saved_name.get()}</span>
+                    <span class="block truncate text-xs text-base-content/60">{if uses == 0 { "Sin usar".to_string() } else { format!("En {uses} {}", if uses == 1 { "lugar" } else { "lugares" }) }}</span>
+                </span>
+                <span aria-hidden="true" class="text-base-content/60">{move || if open.get() { "▴" } else { "▾" }}</span>
+            </button>
+            <div class="card-body gap-2 p-4" class=("max-sm:hidden", move || !open.get())>
                 <label for=input_id.clone() class="text-xs font-medium text-base-content/70">"Nombre"</label>
                 <input id=input_id class="input input-sm w-full" maxlength="80" prop:value=move || draft.get()
                     on:input=move |ev| draft.set(event_target_value(&ev))

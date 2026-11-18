@@ -263,6 +263,15 @@ pub(crate) fn SignInFirst(back: String) -> impl IntoView {
     }
 }
 
+/// Si la pantalla es de teléfono (menos de 640 px, como `sm` de Tailwind).
+fn is_phone() -> bool {
+    window()
+        .inner_width()
+        .ok()
+        .and_then(|w| w.as_f64())
+        .is_some_and(|w| w < 640.0)
+}
+
 fn photo_count(n: usize) -> String {
     match n {
         0 => "Sin fotos".into(),
@@ -286,7 +295,7 @@ pub fn ProductsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), list_store_products);
     view! {
         <leptos_meta::Title text="Productos · MarketMaker"/>
-            <div class="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-8">
+            <div class="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-8 max-sm:py-5 max-sm:pb-24">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::List/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -363,17 +372,19 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     });
 
     let new_href = format!("{base}/nuevo");
+    let base_phone = base.clone();
     let empty = products.with_untracked(Vec::is_empty);
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <div class="grow">
-                <h1 class="text-3xl font-bold">"Productos"</h1>
+                <h1 class="text-3xl font-bold max-sm:text-2xl">"Productos"</h1>
                 <p class="text-sm text-base-content/70">{data.store_name} " · " {summary}</p>
             </div>
-            <button type="button" class="btn" on:click=move |_| {
+            <button type="button" class="btn max-sm:min-h-11" on:click=move |_| {
                 if let Some(d) = manage.get() { _ = d.show_modal(); }
             }>"Etiquetas"</button>
-            <a class="btn btn-primary" href=new_href.clone()>"+ Nuevo producto"</a>
+            // En el teléfono es el botón flotante de abajo (ver `.mk-fab`).
+            <a class="btn btn-primary mk-fab" href=new_href.clone()>"+ Nuevo producto"</a>
         </div>
         <dialog node_ref=manage class="modal" aria-labelledby="etiquetas-titulo">
             <div class="modal-box max-w-3xl">
@@ -393,7 +404,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
         } else {
             view! {
                 <div class="flex flex-col gap-3">
-                    <label class="input w-full max-w-md">
+                    <label class="input w-full max-w-md max-sm:h-12 max-sm:max-w-none">
                         <span class="text-base-content/50" aria-hidden="true">"⌕"</span>
                         <input type="search" placeholder="Buscar por nombre, descripción o etiqueta"
                             aria-label="Buscar productos"
@@ -401,8 +412,8 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                             on:input=move |ev| query.set(event_target_value(&ev))/>
                     </label>
                     {move || (!tags.with(Vec::is_empty)).then(|| view! {
-                        <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por etiqueta">
-                            <span class="text-sm text-base-content/70">"Etiquetas:"</span>
+                        <div class="flex flex-wrap items-center gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0 max-sm:[&_.badge]:h-10 max-sm:[&_.badge]:px-4" role="group" aria-label="Filtrar por etiqueta">
+                            <span class="text-sm text-base-content/70 max-sm:hidden">"Etiquetas:"</span>
                             <button type="button" class="badge badge-lg cursor-pointer"
                                 class:badge-primary=move || tag.get().is_none()
                                 class:badge-outline=move || tag.get().is_some()
@@ -425,7 +436,61 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                         </div>
                     })}
                 </div>
-                <div class="card overflow-x-auto bg-base-100 shadow-sm">
+                // Teléfono: una tarjeta por producto, con foto grande y el interruptor
+                // para mostrarlo u ocultarlo sin abrirlo.
+                <ul class="flex flex-col gap-2.5 sm:hidden" aria-label="Productos">
+                    <For each=move || shown.get() key=|p| (p.id.clone(), p.visible) let:p>
+                        {
+                            let href = format!("{base_phone}/{}", p.id);
+                            let id = p.id.clone();
+                            let visible = p.visible;
+                            let label = format!("Mostrar {} en la tienda", p.name);
+                            view! {
+                                <li class="flex items-center gap-2 rounded-box bg-base-100 p-2.5 shadow-sm" class=("opacity-60", !visible)>
+                                    <a href=href class="flex min-w-0 grow items-center gap-3">
+                                        <div class="size-16 shrink-0 overflow-hidden rounded-field bg-base-200">
+                                            <ui::Image src=p.image_url.clone() alt="" fit=p.fit(&p.image_url)/>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <div class="truncate font-semibold">{p.name.clone()}</div>
+                                            <div class="flex flex-wrap items-center gap-x-2 text-sm">
+                                                <span class="font-semibold">{ui::format_price(p.price_cents)}</span>
+                                                {(p.compare_at_cents > p.price_cents).then(|| view! {
+                                                    <s class="text-xs text-base-content/50">{ui::format_price(p.compare_at_cents)}</s>
+                                                })}
+                                                {if p.in_stock {
+                                                    view! { <span class="text-green-800">"· Hay stock"</span> }.into_any()
+                                                } else {
+                                                    view! { <span class="text-amber-800">"· Agotado"</span> }.into_any()
+                                                }}
+                                            </div>
+                                            <div class="truncate text-xs text-base-content/60">
+                                                {if p.example {
+                                                    "De ejemplo · tus clientes no lo ven".to_string()
+                                                } else if !visible {
+                                                    "Oculto · no aparece en la tienda".to_string()
+                                                } else {
+                                                    photo_count(p.all_photos().len())
+                                                }}
+                                            </div>
+                                        </div>
+                                    </a>
+                                    <label class="flex size-12 shrink-0 cursor-pointer items-center justify-center">
+                                        <input type="checkbox" class="toggle toggle-primary"
+                                            aria-label=label
+                                            prop:checked=visible
+                                            disabled=move || toggle.pending().get()
+                                            on:change=move |ev| { toggle.dispatch((id.clone(), event_target_checked(&ev))); }/>
+                                    </label>
+                                </li>
+                            }
+                        }
+                    </For>
+                </ul>
+                {move || shown.with(Vec::is_empty).then(|| view! {
+                    <p class="p-6 text-center text-base-content/70 sm:hidden">"Ningún producto coincide con la búsqueda."</p>
+                })}
+                <div class="card overflow-x-auto bg-base-100 shadow-sm max-sm:hidden">
                     <table class="table">
                         <thead><tr><th>"Producto"</th><th>"Precio"</th><th>"Stock"</th><th>"En la tienda"</th><th><span class="sr-only">"Acciones"</span></th></tr></thead>
                         <tbody>
@@ -730,7 +795,7 @@ pub fn ProductEditPage() -> impl IntoView {
     );
     view! {
         <leptos_meta::Title text="Producto · MarketMaker"/>
-            <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8">
+            <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8 max-sm:py-4 max-sm:pb-28">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         let back = format!("/tienda/{}/productos", slug.get_untracked());
@@ -1076,18 +1141,21 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
 
     view! {
         <div class="flex flex-wrap items-center gap-3">
-            <a class="btn btn-ghost btn-sm" href=list_href>"← Productos"</a>
-            <h1 class="min-w-0 grow truncate text-3xl font-bold">{title}</h1>
-            <span class="text-sm text-base-content/60" role="status" aria-live="polite">
+            <a class="btn btn-ghost btn-sm max-sm:size-11 max-sm:p-0" href=list_href>
+                <span aria-hidden="true">"←"</span><span class="max-sm:sr-only">"Productos"</span>
+            </a>
+            <h1 class="min-w-0 grow truncate text-3xl font-bold max-sm:text-xl">{title}</h1>
+            <span class="text-sm text-base-content/60 max-sm:text-xs" role="status" aria-live="polite">
                 {move || if save.pending().get() { "Guardando…" } else if saved.get() && !dirty.get() { "Guardado ✓" } else { "" }}
             </span>
+            // En el teléfono, Borrar y Guardar están en la barra fija de abajo.
             {move || (!id.get().is_empty()).then(|| view! {
-                <button type="button" class="btn btn-ghost" on:click=move |_| confirm_delete.set(true)>"Borrar"</button>
+                <button type="button" class="btn btn-ghost max-sm:hidden" on:click=move |_| confirm_delete.set(true)>"Borrar"</button>
             })}
-            {save_button()}
+            <span class="contents max-sm:hidden">{save_button()}</span>
         </div>
         {move || confirm_delete.get().then(|| view! {
-            <div role="alert" class="alert alert-warning flex flex-wrap">
+            <div role="alert" class="alert alert-warning flex flex-wrap max-sm:fixed max-sm:inset-x-3 max-sm:bottom-24 max-sm:z-40 max-sm:shadow-xl">
                 <span class="grow">"¿Borrar este producto? Deja de verse en la tienda y no se puede deshacer. Sus fotos siguen en Mis fotos."</span>
                 <button type="button" class="btn btn-sm" on:click=move |_| confirm_delete.set(false)>"No, dejarlo"</button>
                 <button type="button" class="btn btn-sm btn-error" disabled=move || delete.pending().get()
@@ -1196,23 +1264,37 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                     </div>
                     {field_error("parcel")}
                 </fieldset>
-                <div class="flex flex-wrap items-center justify-end gap-3 border-t border-base-200 pt-4">
+                <div class="mk-savebar flex flex-wrap items-center justify-end gap-3 border-t border-base-200 pt-4">
                     {move || {
                         let n = errors.with(Vec::len);
                         (n > 0).then(|| view! {
-                            <p class="text-sm text-error">{if n == 1 { "Revisá el campo marcado.".to_string() } else { format!("Revisá los {n} campos marcados.") }}</p>
+                            <p class="text-sm text-error max-sm:hidden">{if n == 1 { "Revisá el campo marcado.".to_string() } else { format!("Revisá los {n} campos marcados.") }}</p>
                         })
                     }}
+                    {move || (!id.get().is_empty()).then(|| view! {
+                        <button type="button" class="btn btn-outline size-12 shrink-0 p-0 sm:hidden" aria-label="Borrar este producto"
+                            on:click=move |_| confirm_delete.set(true)>
+                            <ui::Icon class="size-5" name="trash"/>
+                        </button>
+                    })}
                     {save_button()}
                 </div>
             </div></div>
             <aside class="flex flex-col gap-3 lg:sticky lg:top-4">
                 <span class="text-sm font-medium text-base-content/70">"Así se ve en tu tienda"</span>
                 {move || match adjusting_now.get() {
+                    // En el teléfono el ajuste ocupa toda la pantalla; en las demás, `contents`
+                    // lo deja como siempre, sobre la vista previa.
                     Some(url) => view! {
-                        <PhotoAdjust url fits=form.fits name=form.name
-                            price=Signal::derive(move || preview().map(|p| (p.price_cents, p.compare_at_cents)))
-                            on_done=Callback::new(move |()| adjusting.set(None))/>
+                        <div class="contents max-sm:fixed max-sm:inset-0 max-sm:z-[70] max-sm:flex max-sm:flex-col max-sm:gap-3 max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:bg-base-200 max-sm:p-4" role="group" aria-label="Ajustar foto">
+                            <div class="flex items-center gap-3 sm:hidden">
+                                <h2 class="grow text-lg font-semibold">"Ajustar foto"</h2>
+                                <button type="button" class="btn btn-primary" on:click=move |_| adjusting.set(None)>"Listo"</button>
+                            </div>
+                            <PhotoAdjust url fits=form.fits name=form.name
+                                price=Signal::derive(move || preview().map(|p| (p.price_cents, p.compare_at_cents)))
+                                on_done=Callback::new(move |()| adjusting.set(None))/>
+                        </div>
                     }.into_any(),
                     None => view! {
                 <div class="h-80">
@@ -1258,10 +1340,25 @@ fn PhotosField(
         });
     };
     let shift = move |i: usize, to: usize| photos.update(|p| p.swap(i, to));
+    // Teléfono: al tocar una foto se abre una hoja con sus acciones (encuadrar,
+    // hacerla principal, moverla, sacarla), con botones grandes en vez de
+    // flechitas.
+    let sheet = RwSignal::new(None::<usize>);
+    let sheet_el = NodeRef::<leptos::html::Dialog>::new();
+    Effect::new(move |_| {
+        let Some(d) = sheet_el.get() else { return };
+        if sheet.get().is_some() {
+            if !d.open() {
+                _ = d.show_modal();
+            }
+        } else if d.open() {
+            d.close();
+        }
+    });
     view! {
         <fieldset class="fieldset">
             <legend class="fieldset-legend">"Fotos " <span class="font-normal text-base-content/60">"· la primera es la principal; tocá una foto para encuadrarla"</span></legend>
-            <ul class="flex flex-wrap gap-3" aria-label="Fotos del producto">
+            <ul class="flex flex-wrap gap-3 max-sm:grid max-sm:grid-cols-3 max-sm:gap-2" aria-label="Fotos del producto">
                 {move || {
                     let list = photos.get();
                     let last = list.len().saturating_sub(1);
@@ -1272,7 +1369,7 @@ fn PhotosField(
                         let here = Memo::new(move |_| adjusting.with(|a| a.as_deref() == Some(mine.as_str())));
                         let pick = url.clone();
                         view! {
-                            <li class="group relative h-24 w-32 overflow-hidden rounded-box bg-base-200"
+                            <li class="group relative h-24 w-32 overflow-hidden rounded-box bg-base-200 max-sm:aspect-square max-sm:h-auto max-sm:w-auto"
                                 class:ring-2=move || i == 0 || here.get()
                                 class:ring-primary=move || i == 0 || here.get()
                                 class:ring-4=move || here.get()>
@@ -1280,7 +1377,14 @@ fn PhotosField(
                                 <button type="button" class="absolute inset-0 cursor-pointer rounded-box focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
                                     aria-label=format!("Encuadrar la foto {n}")
                                     aria-pressed=move || here.get().to_string()
-                                    on:click=move |_| adjusting.set(Some(pick.clone()))></button>
+                                    on:click=move |_| {
+                                        if is_phone() {
+                                            sheet.set(Some(i));
+                                        } else {
+                                            adjusting.set(Some(pick.clone()));
+                                        }
+                                    }></button>
+                                <span aria-hidden="true" class="pointer-events-none absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-black/70 text-white sm:hidden">"⋯"</span>
                                 {move || if here.get() {
                                     view! { <span class="badge badge-primary badge-sm absolute left-1 top-1">"Encuadrando"</span> }.into_any()
                                 } else if i == 0 {
@@ -1288,7 +1392,7 @@ fn PhotosField(
                                 } else {
                                     ().into_any()
                                 }}
-                                <div class="absolute inset-x-1 bottom-1 flex justify-between gap-1">
+                                <div class="absolute inset-x-1 bottom-1 flex justify-between gap-1 max-sm:hidden">
                                     <button type="button" class="btn btn-xs btn-square" aria-label=format!("Mover la foto {n} a la izquierda")
                                         disabled=i == 0 on:click=move |_| shift(i, i - 1)>"←"</button>
                                     <button type="button" class="btn btn-xs btn-square" aria-label=format!("Sacar la foto {n}")
@@ -1301,7 +1405,7 @@ fn PhotosField(
                     }).collect_view()
                 }}
                 <li>
-                    <button type="button" class="flex h-24 w-32 flex-col items-center justify-center gap-1 rounded-box border-2 border-dashed border-base-300 text-sm text-base-content/70 hover:border-primary"
+                    <button type="button" class="flex h-24 w-32 flex-col items-center justify-center gap-1 rounded-box border-2 border-dashed border-base-300 text-sm text-base-content/70 hover:border-primary max-sm:aspect-square max-sm:h-auto max-sm:w-full max-sm:text-xs"
                         aria-expanded=move || picking.get().to_string()
                         disabled=full
                         on:click=move |_| { library.ensure_loaded(); picking.update(|v| *v = !*v); }>
@@ -1309,7 +1413,7 @@ fn PhotosField(
                     </button>
                 </li>
                 <li>
-                    <label for="producto-subir" class="flex h-24 w-32 cursor-pointer flex-col items-center justify-center gap-1 rounded-box border-2 border-dashed border-base-300 text-sm text-base-content/70 hover:border-primary"
+                    <label for="producto-subir" class="flex h-24 w-32 cursor-pointer flex-col items-center justify-center gap-1 rounded-box border-2 border-dashed border-base-300 text-sm text-base-content/70 hover:border-primary max-sm:aspect-square max-sm:h-auto max-sm:w-full max-sm:text-xs"
                         class:pointer-events-none=move || library.progress.get().is_some() || full()>
                         <span class="text-xl" aria-hidden="true">"⇪"</span>"Subir fotos"
                     </label>
@@ -1318,6 +1422,45 @@ fn PhotosField(
                         on:change=move |ev| library.upload_each(editor::take_files(&ev), Callback::new(move |item: domain::MediaItem| add(item.url)))/>
                 </li>
             </ul>
+            <dialog node_ref=sheet_el class="mk-sheet" aria-labelledby="foto-hoja-titulo"
+                on:close=move |_| sheet.set(None)
+                on:click=move |ev| {
+                    // Tocar el fondo oscuro cierra.
+                    use leptos::wasm_bindgen::JsCast;
+                    if ev.target().and_then(|t| t.dyn_into::<leptos::web_sys::HtmlDialogElement>().ok()).is_some() {
+                        sheet.set(None);
+                    }
+                }>
+                {move || sheet.get().and_then(|i| photos.with(|p| p.get(i).cloned()).map(|url| (i, url))).map(|(i, url)| {
+                    let last = photos.with(Vec::len).saturating_sub(1);
+                    let fit = fits.with(|f| f.get(&url).copied());
+                    let pick = url.clone();
+                    view! {
+                        <div class="mx-auto mb-3 mt-1 h-1.5 w-10 rounded-full bg-base-300" aria-hidden="true"></div>
+                        <div class="flex items-center gap-3 pb-2">
+                            <div class="size-14 shrink-0 overflow-hidden rounded-field bg-base-200"><ui::Image src=url alt="" fit/></div>
+                            <h2 id="foto-hoja-titulo" class="font-semibold">{if i == 0 { "Foto principal".to_string() } else { format!("Foto {}", i + 1) }}</h2>
+                        </div>
+                        <ul class="menu w-full p-0 [&_button]:min-h-12 [&_button]:text-base">
+                            <li><button type="button" on:click=move |_| { sheet.set(None); adjusting.set(Some(pick.clone())); }>"Ajustar encuadre"</button></li>
+                            {(i > 0).then(|| view! {
+                                <li><button type="button" on:click=move |_| {
+                                    photos.update(|p| { let x = p.remove(i); p.insert(0, x); });
+                                    sheet.set(None);
+                                }>"Hacer principal"</button></li>
+                                <li><button type="button" on:click=move |_| { shift(i, i - 1); sheet.set(None); }>"Mover a la izquierda"</button></li>
+                            })}
+                            {(i < last).then(|| view! {
+                                <li><button type="button" on:click=move |_| { shift(i, i + 1); sheet.set(None); }>"Mover a la derecha"</button></li>
+                            })}
+                            <li><button type="button" class="text-error" on:click=move |_| {
+                                photos.update(|p| { p.remove(i); });
+                                sheet.set(None);
+                            }>"Quitar de este producto"</button></li>
+                        </ul>
+                    }
+                })}
+            </dialog>
             <div role="status" aria-live="polite" class="flex flex-col gap-1 text-sm">
                 {move || library.progress.get()}
                 {move || library.saved.get().into_iter().map(|t| view! { <span>{t}</span> }).collect_view()}
@@ -1596,6 +1739,14 @@ fn PhotoAdjust(
     let img = NodeRef::<leptos::html::Img>::new();
     // Dónde empezó el arrastre: puntero, encuadre y medidas.
     let start = StoredValue::new(None::<(f64, f64, PhotoFit)>);
+    // Dedos apoyados (id, x, y) y, con dos, la distancia inicial y el encuadre
+    // de partida: el pellizco acerca o aleja la foto.
+    let touches = StoredValue::new(Vec::<(i32, f64, f64)>::new());
+    let pinch = StoredValue::new(None::<(f64, PhotoFit)>);
+    let gap = |t: &[(i32, f64, f64)]| {
+        let (a, b) = (t[0], t[1]);
+        ((a.1 - b.1).powi(2) + (a.2 - b.2).powi(2)).sqrt()
+    };
 
     let measure = move || {
         let el = img.get_untracked()?;
@@ -1640,13 +1791,39 @@ fn PhotoAdjust(
         }) {
             _ = t.set_pointer_capture(ev.pointer_id());
         }
-        start.set_value(Some((
-            f64::from(ev.client_x()),
-            f64::from(ev.client_y()),
-            fit.get_untracked(),
-        )));
+        touches.update_value(|t| {
+            t.retain(|p| p.0 != ev.pointer_id());
+            t.push((ev.pointer_id(), f64::from(ev.client_x()), f64::from(ev.client_y())));
+        });
+        let two = touches.with_value(|t| t.len() >= 2);
+        if two {
+            // Con el segundo dedo deja de arrastrar y empieza el pellizco.
+            start.set_value(None);
+            let d = touches.with_value(|t| gap(t));
+            pinch.set_value((d > 1.0).then(|| (d, fit.get_untracked())));
+        } else {
+            start.set_value(Some((
+                f64::from(ev.client_x()),
+                f64::from(ev.client_y()),
+                fit.get_untracked(),
+            )));
+        }
     };
     let on_move = move |ev: leptos::ev::PointerEvent| {
+        touches.update_value(|t| {
+            if let Some(p) = t.iter_mut().find(|p| p.0 == ev.pointer_id()) {
+                p.1 = f64::from(ev.client_x());
+                p.2 = f64::from(ev.client_y());
+            }
+        });
+        if let Some((d0, base)) = pinch.get_value() {
+            if touches.with_value(|t| t.len() >= 2) {
+                let d = touches.with_value(|t| gap(t));
+                moved.set(true);
+                set_zoom(f64::from(base.zoom) * d / d0);
+            }
+            return;
+        }
         if let Some((x0, y0, base)) = start.get_value() {
             moved.set(true);
             nudge(
@@ -1656,7 +1833,17 @@ fn PhotoAdjust(
             );
         }
     };
-    let on_up = move |_: leptos::ev::PointerEvent| {
+    let on_up = move |ev: leptos::ev::PointerEvent| {
+        touches.update_value(|t| t.retain(|p| p.0 != ev.pointer_id()));
+        if pinch.get_value().is_some() {
+            // Terminó el pellizco; si queda un dedo, sigue arrastrando desde ahí.
+            pinch.set_value(None);
+            commit();
+            if let Some((_, x, y)) = touches.with_value(|t| t.first().copied()) {
+                start.set_value(Some((x, y, fit.get_untracked())));
+            }
+            return;
+        }
         if start.get_value().is_some() {
             start.set_value(None);
             commit();
@@ -1688,14 +1875,14 @@ fn PhotoAdjust(
         <div class="card overflow-hidden border border-base-300 bg-base-100 shadow-sm outline-3 outline-offset-2 outline-primary">
             <div class=move || format!("relative w-full cursor-grab touch-none select-none overflow-hidden bg-base-200 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary {}", shape.get().class())
                 tabindex="0" role="application"
-                aria-label="Encuadre de la foto. Arrastrala o usá las flechas para moverla, y + o − para el zoom."
+                aria-label="Encuadre de la foto. Arrastrala o usá las flechas para moverla, y + o − para el zoom. En pantalla táctil, pellizcá para acercar."
                 on:pointerdown=on_down on:pointermove=on_move on:pointerup=on_up on:pointercancel=on_up
                 on:wheel=on_wheel on:keydown=on_key>
                 <img node_ref=img src=url class="pointer-events-none block h-full w-full object-cover"
                     style=move || fit.get().css() alt="" draggable="false"/>
                 {move || (!moved.get()).then(|| view! {
-                    <span class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-1.5 text-sm whitespace-nowrap text-white">
-                        "✥ Arrastrá para mover"
+                    <span class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-1.5 text-sm whitespace-nowrap text-white max-sm:w-max max-sm:max-w-[85%] max-sm:whitespace-normal max-sm:text-center">
+                        "✥ Arrastrá para mover"<span class="sm:hidden">" · pellizcá para acercar"</span>
                     </span>
                 })}
             </div>
@@ -1704,7 +1891,7 @@ fn PhotoAdjust(
                 {move || price.get().map(|(cents, was)| view! { <ui::PriceWas cents was/> })}
             </div>
         </div>
-        <div class="flex flex-col gap-3 rounded-box bg-base-100 p-4 shadow-md">
+        <div class="flex flex-col gap-3 rounded-box bg-base-100 p-4 shadow-md max-sm:[&_.btn]:min-h-11">
             <label class="flex items-center gap-3 text-sm">
                 <span>"Zoom"</span>
                 <input type="range" class="range range-primary range-xs grow"

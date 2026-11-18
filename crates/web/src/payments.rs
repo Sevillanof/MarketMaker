@@ -79,7 +79,7 @@ pub fn PaymentsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_payments);
     view! {
         <leptos_meta::Title text="Cobros · MarketMaker"/>
-            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-10">
+            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-10 max-sm:py-5">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -208,7 +208,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-end gap-3">
             <div class="grow">
-                <h1 class="text-3xl font-bold">"Cobros"</h1>
+                <h1 class="text-3xl font-bold max-sm:text-2xl">"Cobros"</h1>
                 <p class="text-base-content/70">"Elegí cómo te pueden pagar. Podés tener más de una."</p>
             </div>
             <span role="status" class="text-sm font-semibold text-success">

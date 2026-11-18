@@ -522,18 +522,34 @@ fn EditorPage() -> impl IntoView {
     .into_any()
 }
 
-/// En pantallas de menos de 800 px: el diseño se edita en una computadora; Productos y
-/// Pedidos sí se pueden usar desde el celular.
+/// En pantallas de menos de 800 px: el diseño se edita en una computadora;
+/// Productos, Pedidos y el resto del panel sí se usan desde el teléfono.
 #[component]
 fn EditorOnDesktop(panel: String) -> impl IntoView {
+    let send = Action::new(|_: &()| send_editor_link());
     view! {
         <div data-theme="light" class="min-h-screen bg-base-200 px-4 py-12 text-base-content min-[800px]:hidden">
             <div class="card mx-auto max-w-md bg-base-100 shadow-sm"><div class="card-body gap-3">
-                <h1 class="card-title text-2xl">"Para diseñar tu tienda, usá una computadora"</h1>
-                <p class="text-base-content/75">"El editor necesita una pantalla grande. Desde el celular podés cargar productos y atender tus pedidos."</p>
-                <div class="flex flex-wrap gap-2">
-                    <a class="btn btn-primary" href=format!("{panel}/pedidos")>"Ver pedidos"</a>
-                    <a class="btn" href=format!("{panel}/productos")>"Ver productos"</a>
+                <h1 class="card-title text-2xl text-balance">"El diseño se edita desde una computadora"</h1>
+                <p class="text-pretty text-base-content/75">"Desde el teléfono podés cargar productos, atender pedidos y ver cómo queda tu tienda."</p>
+                <a class="btn btn-primary min-h-12" href="/">"Ver mi tienda"</a>
+                <button type="button" class="btn min-h-12" disabled=move || send.pending().get()
+                    on:click=move |_| { send.dispatch(()); }>
+                    {move || if send.pending().get() { "Enviando…" } else { "Enviarme el enlace del editor" }}
+                </button>
+                <div role="status" aria-live="polite" class="text-sm empty:hidden">
+                    {move || send.value().get().map(|r| match r {
+                        Ok(()) => view! { <p class="text-success">"Te enviamos el enlace a tu email. Abrilo desde una computadora."</p> }.into_any(),
+                        Err(e) => {
+                            let msg = e.to_string();
+                            let msg = msg.rsplit_once(": ").map_or(msg.clone(), |(_, m)| m.to_string());
+                            view! { <p class="text-error">{msg}</p> }.into_any()
+                        }
+                    })}
+                </div>
+                <div class="flex flex-wrap gap-2 border-t border-base-200 pt-3">
+                    <a class="btn btn-ghost min-h-11" href=format!("{panel}/pedidos")>"Ver pedidos"</a>
+                    <a class="btn btn-ghost min-h-11" href=format!("{panel}/productos")>"Ver productos"</a>
                 </div>
             </div></div>
         </div>

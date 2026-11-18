@@ -379,6 +379,27 @@ pub fn login_code(to: &str, code: &str) -> Email {
     }
 }
 
+/// El enlace del editor de una tienda, para abrirlo desde una computadora.
+pub fn editor_link(to: &str, store: &str, url: &str) -> Email {
+    let title = format!("El editor de {store}");
+    let html = frame(
+        "MarketMaker",
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">{}</h1>
+<p style="margin:0 0 16px;color:#52525b">Pediste el enlace para diseñar tu tienda desde una computadora. Abrilo allá e ingresá con tu cuenta.</p>
+{}"#,
+            esc(&title),
+            button(url, "Abrir el editor")
+        ),
+    );
+    Email {
+        to: vec![to.to_string()],
+        subject: title.clone(),
+        html,
+        text: format!("{title}\n\nAbrí este enlace desde una computadora para diseñar tu tienda:\n{url}\n"),
+    }
+}
+
 /// El enlace para entrar a la cuenta de comprador de una tienda.
 pub fn buyer_link(to: &str, store: &str, url: &str) -> Email {
     let title = format!("Entrá a tu cuenta de {store}");

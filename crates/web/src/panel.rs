@@ -21,6 +21,22 @@ pub enum Section {
     Account,
 }
 
+impl Section {
+    /// El nombre de la sección, para la barra de arriba del teléfono.
+    fn title(self) -> &'static str {
+        match self {
+            Section::Home => "Inicio",
+            Section::Products => "Productos",
+            Section::Orders => "Pedidos",
+            Section::Delivery => "Entregas",
+            Section::Payments => "Cobros",
+            Section::StoreInfo => "Datos de la tienda",
+            Section::Photos => "Mis fotos",
+            Section::Account => "Mi cuenta",
+        }
+    }
+}
+
 /// Quién entró y sus tiendas, para el menú. `None` si no entró.
 #[server]
 pub async fn load_panel_nav() -> Result<Option<PanelNav>, ServerFnError> {
@@ -315,7 +331,7 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
             <input id="mk-panel-nav" type="checkbox" class="drawer-toggle" aria-hidden="true" tabindex="-1"/>
             <div class="drawer-content min-w-0">
                 <header class="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-base-300 bg-base-100 px-2 lg:hidden">
-                    <label for="mk-panel-nav" role="button" tabindex="0" class="btn btn-ghost btn-square" aria-label="Abrir el menú"
+                    <label for="mk-panel-nav" role="button" tabindex="0" class="btn btn-ghost btn-square max-sm:size-12" aria-label="Abrir el menú"
                         on:keydown=|ev| {
                             if ev.key() == "Enter" || ev.key() == " " {
                                 ev.prevent_default();
@@ -329,13 +345,15 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
                         }>
                         <ui::Icon class="size-6" name="menu"/>
                     </label>
-                    <a href="/" class="text-lg font-bold">"MarketMaker"</a>
+                    <a href="/" class="text-lg font-bold max-sm:hidden">"MarketMaker"</a>
+                    // En el teléfono, el nombre de la sección en que estás.
+                    <p class="min-w-0 truncate text-lg font-bold sm:hidden">{move || section.get().title()}</p>
                 </header>
                 {children()}
             </div>
             <div class="drawer-side z-30">
                 <label for="mk-panel-nav" aria-label="Cerrar el menú" class="drawer-overlay"></label>
-                <aside class="sticky top-0 flex h-screen w-64 shrink-0 flex-col gap-3 border-r border-base-300 bg-base-100 p-3">
+                <aside class="sticky top-0 flex h-screen w-64 shrink-0 flex-col gap-3 border-r border-base-300 bg-base-100 p-3 max-sm:w-[min(20rem,86vw)]">
                     <a href="/" class="px-2 pt-1 text-lg font-bold">"MarketMaker"</a>
                     <Transition fallback=move || match last.and_then(|l| l.get_untracked()) {
                             Some(nav) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version/> }.into_any(),
@@ -351,7 +369,10 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
                 </aside>
             </div>
             <Show when=move || opening.get()>
-                <div class="fixed inset-0 z-[60]"><ui::EditorSkeleton/></div>
+                <div class="fixed inset-0 z-[60] max-sm:hidden"><ui::EditorSkeleton/></div>
+                <div class="fixed inset-0 z-[60] grid place-items-center bg-base-200 sm:hidden" role="status" aria-label="Abriendo">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                </div>
             </Show>
             {move || is_admin().then(|| view! {
                 <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/>
@@ -482,13 +503,14 @@ fn SideNav(
         <EditorOpening open/>
         {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-xs">{e}</div> })}
         <nav aria-label="Tu tienda" class="grow overflow-y-auto">
-            <ul class="menu w-full gap-0.5 p-0">
+            <ul class="menu mk-panel-menu w-full gap-0.5 p-0">
                 {item(Section::Home, base.clone(), "home", "Inicio", 0)}
                 <li>
                     <button type="button" disabled=move || open.pending().get()
                         on:click=move |_| { open.dispatch(design_slug.clone()); }>
                         <ui::Icon class="size-[18px]" name="pencil"/>"Diseño"
-                        <span class="ml-auto text-xs text-base-content/70">"Abre el editor"</span>
+                        <span class="ml-auto text-xs text-base-content/70 max-sm:hidden">"Abre el editor"</span>
+                        <span class="ml-auto text-xs text-base-content/70 sm:hidden">"Solo computadora"</span>
                     </button>
                 </li>
                 {item(Section::Products, format!("{base}/productos"), "box", "Productos", 0)}
@@ -565,7 +587,7 @@ pub fn StoreHomePage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), load_store_overview);
     view! {
         <leptos_meta::Title text="Inicio · MarketMaker"/>
-            <div class="mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8">
+            <div class="mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8 max-sm:gap-4 max-sm:px-4 max-sm:py-5">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Home/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -705,20 +727,29 @@ fn Overview(o: StoreOverview) -> impl IntoView {
     view! {
         <header class="flex flex-wrap items-center gap-4">
             <div class="grow">
-                <h1 class="text-3xl font-bold">{o.name.clone()}</h1>
+                <h1 class="text-3xl font-bold max-sm:text-2xl">{o.name.clone()}</h1>
                 <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-base-content/70">
                     <span class="font-mono">{address}</span>
                     <span class=format!("badge badge-sm border-0 font-semibold {publish_class}")>{o.publish.label()}</span>
                 </p>
             </div>
-            <a class="btn btn-outline max-w-72" href=o.url.clone() target="_blank" rel="noopener">
+            <a class="btn btn-outline max-w-72 max-sm:w-full max-sm:max-w-none" href=o.url.clone() target="_blank" rel="noopener">
                 <ui::Icon class="size-[18px]" name="external"/><span class="truncate">{format!("Ver {}", o.name)}</span><span class="sr-only">" (se abre en otra pestaña)"</span>
             </a>
-            <button type="button" class="btn btn-primary" disabled=move || open.pending().get()
+            // El diseño se edita desde una computadora: en el teléfono no hay botón.
+            <button type="button" class="btn btn-primary max-sm:hidden" disabled=move || open.pending().get()
                 on:click=move |_| { open.dispatch(slug.clone()); }>
                 <ui::Icon class="size-[18px]" name="pencil"/>"Editar diseño"
             </button>
         </header>
+        // Teléfono: lo urgente primero.
+        {(o.to_prepare > 0).then(|| view! {
+            <section aria-label="Pedidos para preparar" class="rounded-box border border-amber-300 bg-amber-50 p-4 text-amber-900 sm:hidden">
+                <p class="font-bold">{if o.to_prepare == 1 { "1 pedido para preparar".to_string() } else { format!("{} pedidos para preparar", o.to_prepare) }}</p>
+                <p class="mt-1 text-sm">"Ya están pagos. Preparalos y marcalos como enviados."</p>
+                <a class="btn btn-primary mt-3 w-full" href=orders_href.clone()>"Ver pedidos"</a>
+            </section>
+        })}
         <EditorOpening open/>
         {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
         {(o.examples > 0).then(|| view! { <ExamplesNotice slug=o.slug.clone() count=o.examples/> })}
@@ -753,9 +784,9 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                                         <a href=orders_href.clone() class="flex items-center gap-3 border-t border-base-300 py-3 hover:bg-base-200/60">
                                             <span class="font-bold tabular-nums">"#"{r.number}</span>
                                             <span class="min-w-0 grow truncate">{r.customer_name.clone()}</span>
-                                            <span class="text-sm text-base-content/60">{domain::order_time_ar(&r.created_at)}</span>
+                                            <span class="text-sm text-base-content/60 max-sm:hidden">{domain::order_time_ar(&r.created_at)}</span>
                                             {status_badge(r.status)}
-                                            <span class="w-28 text-right tabular-nums">{ui::format_price(r.total_cents)}</span>
+                                            <span class="w-28 text-right tabular-nums max-sm:w-auto">{ui::format_price(r.total_cents)}</span>
                                         </a>
                                     </li>
                                 }).collect_view()}

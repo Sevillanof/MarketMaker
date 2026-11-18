@@ -1595,3 +1595,73 @@ dialog.mk-cart::backdrop {
   .mk-load-msg-n { animation: none; opacity: 0; }
   .mk-load-msg-n:first-child { opacity: 1; }
 }
+
+/* Panel en el teléfono (menos de 640 px). En pantallas más grandes nada de esto
+   se aplica: el panel se ve como siempre. */
+@media (max-width: 639px) {
+  /* Barra de acciones fija abajo (Guardar, Borrar…), siempre a mano. */
+  .mk-savebar {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 25;
+    justify-content: stretch;
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    margin: 0;
+    background: var(--color-base-100);
+    border-top: 1px solid var(--color-base-300);
+    padding: 0.75rem 1rem max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .mk-savebar > .btn-primary {
+    flex: 1;
+    min-height: 3rem;
+  }
+  /* El botón de ayuda cede el lugar a la barra de acciones. */
+  body:has(.mk-savebar) .mk-help {
+    display: none;
+  }
+  /* Botón flotante de la acción principal (por ejemplo, + Nuevo producto). */
+  .mk-fab {
+    position: fixed;
+    right: 1rem;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    z-index: 25;
+    min-height: 3.25rem;
+    border-radius: 9999px;
+    padding-inline: 1.25rem;
+    box-shadow: 0 8px 22px -6px rgb(67 48 214 / 0.55);
+  }
+  /* Toques de al menos 44 px en el menú del panel. */
+  .mk-panel-menu a,
+  .mk-panel-menu button,
+  .mk-panel-menu summary {
+    min-height: 3rem;
+    font-size: 1rem;
+  }
+}
+
+/* Hoja que sube desde abajo (acciones de una foto, etc.): solo en teléfono. */
+dialog.mk-sheet {
+  margin: auto 0 0 0;
+  width: 100vw;
+  max-width: none;
+  max-height: 90dvh;
+  padding: 0.5rem 1rem max(1rem, env(safe-area-inset-bottom));
+  border: 0;
+  border-radius: 1.25rem 1.25rem 0 0;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  box-shadow: 0 -8px 30px rgb(0 0 0 / 0.25);
+  overscroll-behavior: contain;
+}
+dialog.mk-sheet::backdrop {
+  background: rgb(17 24 39 / 0.45);
+  overscroll-behavior: contain;
+}
+@media (min-width: 640px) {
+  dialog.mk-sheet { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.mk-sheet[open] { animation: mk-acct-in 0.2s ease-out; }
+}
