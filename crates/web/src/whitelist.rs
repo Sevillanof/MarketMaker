@@ -106,9 +106,15 @@ pub async fn add_allowed_email(email: String) -> Result<WhitelistChange, ServerF
 }
 
 /// Le manda la invitación (con su enlace personal) a un email habilitado que
-/// todavía no tiene cuenta. `false` si no se pudo mandar.
+/// todavía no tiene cuenta, con el asunto, el título y el mensaje que el
+/// administrador dejó en la vista previa. `false` si no se pudo mandar.
 #[server]
-pub async fn send_invitation(email: String) -> Result<bool, ServerFnError> {
+pub async fn send_invitation(
+    email: String,
+    subject: String,
+    title: String,
+    message: String,
+) -> Result<bool, ServerFnError> {
     use crate::server::{internal, pool};
     require_admin().await?;
     let Some(email) = domain::normalize_email(&email) else {
@@ -132,7 +138,8 @@ pub async fn send_invitation(email: String) -> Result<bool, ServerFnError> {
     if !crate::auth::emails_go_out() {
         leptos::logging::log!("\n  Enlace de invitación de {email}: {url}\n");
     }
-    match crate::email::deliver(&crate::email::invitation(&email, &url)).await {
+    let words = domain::InviteText::clean(&subject, &title, &message);
+    match crate::email::deliver(&crate::email::invitation(&email, &url, &words)).await {
         Ok(()) => Ok(true),
         Err(e) => {
             leptos::logging::log!("No pudimos mandar la invitación a {email}: {e}");
@@ -190,30 +197,75 @@ pub fn WhitelistDialog(
     });
     let add = Action::new(|e: &String| add_allowed_email(e.clone()));
     let remove = Action::new(|e: &String| remove_allowed_email(e.clone()));
-    let invite = Action::new(|e: &String| send_invitation(e.clone()));
+    // La vista previa de la invitación: se abre con la carta de cada persona
+    // y recién ahí se envía, con los textos que queden escritos.
+    let preview = NodeRef::<leptos::html::Dialog>::new();
+    let invite_to = RwSignal::new(String::new());
+    let subject = RwSignal::new(String::new());
+    let title = RwSignal::new(String::new());
+    let message = RwSignal::new(String::new());
+    let invite_problem = RwSignal::new(None::<String>);
+    let original = move || {
+        subject.set(domain::INVITE_SUBJECT.into());
+        title.set(domain::INVITE_TITLE.into());
+        message.set(domain::INVITE_MESSAGE.into());
+    };
+    let changed = move || {
+        subject.get() != domain::INVITE_SUBJECT
+            || title.get() != domain::INVITE_TITLE
+            || message.get() != domain::INVITE_MESSAGE
+    };
+    let open_preview = Callback::new(move |to: String| {
+        invite_to.set(to);
+        invite_problem.set(None);
+        original();
+        if let Some(d) = preview.get() {
+            _ = d.show_modal();
+        }
+    });
+    let invite = Action::new(|(e, s, t, m): &(String, String, String, String)| {
+        send_invitation(e.clone(), s.clone(), t.clone(), m.clone())
+    });
     Effect::new(move |_| {
         let Some(result) = invite.value().get() else {
             return;
         };
-        let to = invite.input().get_untracked().unwrap_or_default();
+        let to = invite_to.get_untracked();
         match result {
             Ok(true) => {
                 problem.set(None);
                 sent.set(Some(format!("Le enviamos la invitación a {to}.")));
                 version.update(|v| *v += 1);
+                if let Some(d) = preview.get() {
+                    d.close();
+                }
             }
-            Ok(false) => {
-                sent.set(None);
-                problem.set(Some(format!(
-                    "No pudimos enviar la invitación a {to}. Probá de nuevo en un momento."
-                )));
-            }
-            Err(_) => {
-                sent.set(None);
-                problem.set(Some(CONNECTION.into()));
-            }
+            Ok(false) => invite_problem.set(Some(
+                "No pudimos enviar la invitación. Probá de nuevo en un momento.".into(),
+            )),
+            Err(_) => invite_problem.set(Some(CONNECTION.into())),
         }
     });
+    // Un texto del email que se cambia ahí mismo: borde punteado y lápiz.
+    let editable = "w-full rounded-md bg-transparent outline-2 outline-offset-4 outline-dashed outline-primary/40 hover:outline-primary/70 focus:outline-solid focus:outline-primary";
+    let pencil = || {
+        view! {
+            <span class="pointer-events-none absolute -top-3 -right-3 grid size-6 place-items-center rounded-full bg-primary text-primary-content" aria-hidden="true">
+                <ui::Icon class="size-3.5" name="pencil"/>
+            </span>
+        }
+    };
+    let step = |n: u8, name: &'static str, text: &'static str| {
+        view! {
+            <li class="flex gap-3.5">
+                <span class="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[13px] font-bold text-primary" aria-hidden="true">{n}</span>
+                <span>
+                    <span class="block text-sm font-bold">{name}</span>
+                    <span class="block text-[13px] leading-snug text-base-content/70">{text}</span>
+                </span>
+            </li>
+        }
+    };
     Effect::new(move |_| match add.value().get() {
         Some(Ok(WhitelistChange::Done)) => {
             email.set(String::new());
@@ -282,7 +334,7 @@ pub fn WhitelistDialog(
                             Err(_) => view! { <p class="py-6"><FieldNote ok=false text=CONNECTION/></p> }.into_any(),
                             Ok(people) => view! {
                                 <ul>
-                                    {people.into_iter().map(|p| view! { <PersonRow p confirming remove invite/> }).collect_view()}
+                                    {people.into_iter().map(|p| view! { <PersonRow p confirming remove on_invite=open_preview/> }).collect_view()}
                                 </ul>
                             }.into_any(),
                         })}
@@ -294,6 +346,82 @@ pub fn WhitelistDialog(
             </div>
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
         </dialog>
+        <dialog node_ref=preview class="modal" aria-labelledby="invitacion-titulo">
+            <form class="modal-box flex max-h-[92vh] max-w-xl flex-col p-0" novalidate
+                on:submit=move |ev: leptos::ev::SubmitEvent| {
+                    ev.prevent_default();
+                    invite_problem.set(None);
+                    invite.dispatch((invite_to.get_untracked(), subject.get_untracked(), title.get_untracked(), message.get_untracked()));
+                }>
+                <div class="flex items-start justify-between gap-4 border-b border-base-300 px-6 py-4">
+                    <div class="min-w-0">
+                        <h2 id="invitacion-titulo" class="text-lg font-extrabold">"Enviar invitación"</h2>
+                        <p class="truncate text-sm text-base-content/70">"Para " <strong class="text-base-content">{move || invite_to.get()}</strong></p>
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar"
+                        on:click=move |_| { if let Some(d) = preview.get() { d.close(); } }>"✕"</button>
+                </div>
+                <div class="flex items-center gap-3 border-b border-base-300 px-6 py-3.5 text-sm">
+                    <label for="invitacion-asunto" class="font-semibold text-base-content/60">"Asunto"</label>
+                    <span class="relative grow">
+                        <input id="invitacion-asunto" type="text" class=format!("{editable} px-1 py-0.5")
+                            maxlength=domain::INVITE_SUBJECT_MAX.to_string() autocomplete="off"
+                            prop:value=move || subject.get()
+                            on:input=move |ev| subject.set(event_target_value(&ev))/>
+                        {pencil()}
+                    </span>
+                </div>
+                <div class="overflow-y-auto overscroll-contain bg-base-200 px-5 py-5">
+                    <div class="mx-auto max-w-md rounded-2xl border border-base-300 bg-base-100 p-7">
+                        <div class="flex items-center gap-2.5" aria-hidden="true">
+                            <span class="grid size-8 place-items-center rounded-[9px] bg-gradient-to-br from-[#4330d6] to-[#6a55f0] text-lg font-extrabold text-white">"m"</span>
+                            <span class="font-extrabold">"MarketMaker"</span>
+                        </div>
+                        <div class="relative mt-6">
+                            <input type="text" aria-label="Título del email"
+                                class=format!("{editable} text-2xl leading-tight font-extrabold tracking-tight")
+                                maxlength=domain::INVITE_TITLE_MAX.to_string() autocomplete="off"
+                                prop:value=move || title.get()
+                                on:input=move |ev| title.set(event_target_value(&ev))/>
+                            {pencil()}
+                        </div>
+                        <div class="relative mt-5">
+                            <textarea aria-label="Mensaje del email" rows="3" autofocus
+                                class=format!("{editable} block h-auto min-h-[2lh] max-h-[10lh] resize-none [field-sizing:content] text-[15px] leading-relaxed text-base-content/70")
+                                maxlength=domain::INVITE_MESSAGE_MAX.to_string()
+                                prop:value=move || message.get()
+                                on:input=move |ev| message.set(event_target_value(&ev))></textarea>
+                            {pencil()}
+                        </div>
+                        <ol class="mt-5 flex flex-col gap-3.5">
+                            {step(1, "Creá tu cuenta", "Elegís tu nombre y una contraseña.")}
+                            {step(2, "Armá tu tienda", "Diseño, productos y formas de cobro.")}
+                            {step(3, "Publicala", "Tu dirección propia: tutienda.mkr.com.ar")}
+                        </ol>
+                        <div class="mt-5 rounded-xl bg-primary py-3 text-center text-[15px] font-bold text-primary-content" aria-hidden="true">"Crear mi cuenta"</div>
+                        <p class="mt-3 text-center text-xs text-base-content/60">"El enlace es personal y vence en 7 días."</p>
+                    </div>
+                </div>
+                <p class="border-t border-base-300 bg-base-200/50 px-6 py-2.5 text-[13px] text-base-content/60">
+                    "Tocá cualquier texto marcado para cambiarlo. Los pasos y el botón van siempre."
+                </p>
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-base-300 px-6 py-4">
+                    <div class="flex min-w-0 flex-col gap-1">
+                        <button type="button" class="self-start text-sm font-semibold text-primary hover:underline disabled:text-base-content/40 disabled:no-underline"
+                            disabled=move || !changed() on:click=move |_| original()>"Volver al texto original"</button>
+                        {move || invite_problem.get().map(|p| view! { <FieldNote ok=false text=p/> })}
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" class="btn btn-ghost"
+                            on:click=move |_| { if let Some(d) = preview.get() { d.close(); } }>"Cancelar"</button>
+                        <button type="submit" class="btn btn-primary" disabled=move || invite.pending().get()>
+                            {move || if invite.pending().get() { "Enviando…" } else { "Enviar invitación" }}
+                        </button>
+                    </div>
+                </div>
+            </form>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
     }
 }
 
@@ -302,7 +430,7 @@ fn PersonRow(
     p: AllowedPerson,
     confirming: RwSignal<Option<String>>,
     remove: Action<String, Result<WhitelistChange, ServerFnError>>,
-    invite: Action<String, Result<bool, ServerFnError>>,
+    on_invite: Callback<String>,
 ) -> impl IntoView {
     let initial = p
         .name
@@ -335,14 +463,10 @@ fn PersonRow(
     let was_invited = !p.invited.is_empty();
     let can_invite = !p.has_account && !p.is_admin;
     let email_invite = p.email.clone();
-    let email_sending = p.email.clone();
     let invite_label = if was_invited {
-        format!("Reenviar la invitación a {}", p.email)
+        format!("Ver y reenviar la invitación a {}", p.email)
     } else {
-        format!("Enviar la invitación a {}", p.email)
-    };
-    let sending = move || {
-        invite.pending().get() && invite.input().get().as_deref() == Some(email_sending.as_str())
+        format!("Ver y enviar la invitación a {}", p.email)
     };
     view! {
         <li class="flex gap-3 border-b border-base-300 py-3 last:border-b-0">
@@ -388,13 +512,8 @@ fn PersonRow(
                 {can_invite.then(|| view! {
                     <button type="button" aria-label=invite_label.clone() title=invite_label.clone()
                         class=if was_invited { "btn btn-ghost btn-sm btn-square text-success" } else { "btn btn-ghost btn-sm btn-square text-primary" }
-                        disabled=move || invite.pending().get()
-                        on:click=move |_| { invite.dispatch(email_invite.clone()); }>
-                        {move || if sending() {
-                            view! { <span class="loading loading-spinner loading-xs" aria-hidden="true"></span> }.into_any()
-                        } else {
-                            view! { <ui::Icon class="size-5" name=if was_invited { "mail-check" } else { "mail" }/> }.into_any()
-                        }}
+                        on:click=move |_| on_invite.run(email_invite.clone())>
+                        <ui::Icon class="size-5" name=if was_invited { "mail-check" } else { "mail" }/>
                     </button>
                 })}
                 {if p.removable {

@@ -218,6 +218,67 @@ pub struct AllowedPerson {
     pub invited: String,
 }
 
+/// Textos de la invitación que el administrador puede cambiar antes de
+/// enviarla. Los pasos y el botón con el enlace van siempre.
+pub const INVITE_SUBJECT: &str = "Ya podés crear tu cuenta de MarketMaker";
+pub const INVITE_TITLE: &str = "Ya podés crear tu cuenta";
+pub const INVITE_MESSAGE: &str =
+    "Te invitamos a MarketMaker, la forma más simple de tener tu tienda online.";
+pub const INVITE_SUBJECT_MAX: usize = 120;
+pub const INVITE_TITLE_MAX: usize = 80;
+pub const INVITE_MESSAGE_MAX: usize = 600;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct InviteText {
+    pub subject: String,
+    pub title: String,
+    pub message: String,
+}
+
+impl Default for InviteText {
+    fn default() -> Self {
+        Self {
+            subject: INVITE_SUBJECT.into(),
+            title: INVITE_TITLE.into(),
+            message: INVITE_MESSAGE.into(),
+        }
+    }
+}
+
+impl InviteText {
+    /// Lo que de verdad se manda: sin espacios de más, con tope de largo, el
+    /// asunto y el título en una sola línea, y el texto original donde quedó
+    /// vacío.
+    pub fn clean(subject: &str, title: &str, message: &str) -> Self {
+        let one_line = |s: &str, max: usize, default: &str| {
+            let line = s
+                .chars()
+                .map(|c| if c.is_control() { ' ' } else { c })
+                .collect::<String>();
+            let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+            if line.is_empty() {
+                default.to_string()
+            } else {
+                line.chars().take(max).collect()
+            }
+        };
+        let message = message
+            .chars()
+            .filter(|c| *c == '\n' || !c.is_control())
+            .collect::<String>();
+        let message = message.trim();
+        Self {
+            subject: one_line(subject, INVITE_SUBJECT_MAX, INVITE_SUBJECT),
+            title: one_line(title, INVITE_TITLE_MAX, INVITE_TITLE),
+            message: if message.is_empty() {
+                INVITE_MESSAGE.to_string()
+            } else {
+                message.chars().take(INVITE_MESSAGE_MAX).collect()
+            },
+        }
+    }
+}
+
 /// Qué pasó al agregar o quitar un email de la Whitelist.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum WhitelistChange {
@@ -548,5 +609,23 @@ mod tests {
         assert!(store_slug_problem("Ana").is_some());
         assert!(store_slug_problem("-ana").is_some());
         assert!(store_slug_problem("www").is_some());
+    }
+}
+
+#[cfg(test)]
+mod invite_text_tests {
+    use super::*;
+
+    #[test]
+    fn empty_fields_fall_back_and_the_subject_stays_on_one_line() {
+        let t = InviteText::clean("  ", "Hola\r\nBcc: otro@correo.com", " Uno\n\nDos \u{7}");
+        assert_eq!(t.subject, INVITE_SUBJECT);
+        assert_eq!(t.title, "Hola Bcc: otro@correo.com");
+        assert_eq!(t.message, "Uno\n\nDos");
+        let long = "a".repeat(INVITE_MESSAGE_MAX + 50);
+        assert_eq!(
+            InviteText::clean("", "", &long).message.chars().count(),
+            INVITE_MESSAGE_MAX
+        );
     }
 }
