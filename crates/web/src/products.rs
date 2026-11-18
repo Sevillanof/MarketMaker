@@ -287,7 +287,7 @@ pub fn ProductsPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Productos · MarketMaker"/>
             <div class="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-8">
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::List/> }>
                     {move || Suspend::new(async move {
                         match data.await {
                             Ok(Some(list)) => view! { <ProductList slug=slug.get_untracked() data=list/> }.into_any(),
@@ -731,7 +731,7 @@ pub fn ProductEditPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Producto · MarketMaker"/>
             <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8">
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         let back = format!("/tienda/{}/productos", slug.get_untracked());
                         match data.await {

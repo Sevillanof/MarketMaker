@@ -79,7 +79,7 @@ pub fn OrdersPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Pedidos · MarketMaker"/>
             <div class="mx-auto flex max-w-[1280px] flex-col gap-5 px-6 py-8">
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Board/> }>
                     {move || Suspend::new(async move {
                         match data.await {
                             Ok(Some((_, orders))) => view! { <Board slug=slug.get_untracked() orders/> }.into_any(),

@@ -235,7 +235,7 @@ pub fn SalesPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Entregas · MarketMaker"/>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match (data.await, andreani.await) {
                             (Ok(Some((_, d))), Ok(Some(panel))) => view! {

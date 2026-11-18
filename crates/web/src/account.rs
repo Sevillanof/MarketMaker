@@ -639,7 +639,7 @@ pub fn AccountPage() -> impl IntoView {
                     <h1 class="text-3xl font-extrabold tracking-tight">"Mi cuenta"</h1>
                     <p class="mt-1 text-base-content/70">"Tus datos para entrar a MarketMaker. Valen para todas tus tiendas."</p>
                 </div>
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-80 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match account.await {
                             Ok(Some(a)) => view! { <AccountRows account=a/> }.into_any(),
