@@ -408,7 +408,7 @@ fn SideNav(
         let on = move || s == section.get();
         view! {
             <li>
-                <a href=href class=move || if on() { "bg-primary/10 font-semibold text-primary" } else { "" } aria-current=move || on().then_some("page")>
+                <a href=href class=move || if on() { "bg-primary/15 font-semibold text-primary shadow-[inset_3px_0_0_var(--color-primary)]" } else { "focus:bg-transparent focus-visible:bg-base-200" } aria-current=move || on().then_some("page")>
                     <ui::Icon class="size-[18px]" name=icon/>
                     {label}
                     {(badge > 0).then(|| view! {
