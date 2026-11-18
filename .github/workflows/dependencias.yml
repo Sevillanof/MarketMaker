@@ -8,7 +8,7 @@ on:
     - cron: "17 9 * * 1"
   push:
     branches: [main]
-    paths: [Cargo.lock, .github/workflows/dependencias.yml]
+    paths: [Cargo.lock, .cargo/audit.toml, .github/workflows/dependencias.yml]
   workflow_dispatch:
 
 permissions:

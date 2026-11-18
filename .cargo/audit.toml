@@ -1,0 +1,8 @@
+# Avisos de `cargo audit` que no aplican a MarketMaker (ver
+# .github/workflows/dependencias.yml).
+[advisories]
+ignore = [
+    # libsqlite3-sys: figura en Cargo.lock por sqlx, pero MarketMaker usa solo
+    # Postgres y no se compila (`cargo tree -i libsqlite3-sys` no muestra nada).
+    "RUSTSEC-2026-0459",
+]
