@@ -335,35 +335,34 @@ pub fn StoreNotFound() -> impl IntoView {
 /// editor con la sesión abierta.
 #[component]
 pub fn PassPage() -> impl IntoView {
+    // El pase se usa en el servidor, al armar la página: guarda la sesión y
+    // redirige a /editor de una vez, sin esperar a que el navegador baje y
+    // arranque todo el programa de la página (WASM) solo para canjearlo.
     let query = use_query_map();
-    let pass = Action::new(|t: &String| use_pass(t.clone()));
-    Effect::new(move |_| {
-        // Solo en el navegador, una vez.
-        let token = query.read_untracked().get("t").unwrap_or_default();
-        pass.dispatch(token);
-    });
-    Effect::new(move |_| {
-        if let Some(Ok(true)) = pass.value().get() {
-            go("/editor");
-        }
-    });
+    let token = query.read_untracked().get("t").unwrap_or_default();
+    let pass = Resource::new(move || token.clone(), |t| use_pass(t));
     view! {
         <leptos_meta::Title text="Abriendo tu tienda · MarketMaker"/>
         <Shell>
             <div class="card bg-base-100 shadow-sm"><div class="card-body gap-3" role="status">
-                {move || match pass.value().get() {
-                    None | Some(Ok(true)) => view! {
-                        <p class="flex items-center gap-2"><span class="loading loading-spinner loading-sm" aria-hidden="true"></span>"Abriendo el editor de tu tienda…"</p>
-                    }.into_any(),
-                    _ => view! {
-                        <h1 class="card-title text-2xl">"Este enlace ya no sirve"</h1>
-                        <p>"Los enlaces para abrir el editor duran un minuto y se usan una sola vez. Volvé a tus tiendas y tocá Editar de nuevo, o entrá con tu email."</p>
-                        <div class="flex flex-wrap gap-2">
-                            <a class="btn btn-primary" href=crate::site::platform_url()>"Ir a tus tiendas"</a>
-                            <a class="btn btn-ghost" href="/entrar?volver=/editor">"Entrar con mi email"</a>
-                        </div>
-                    }.into_any(),
-                }}
+                <Suspense fallback=|| view! { <p>"Abriendo el editor de tu tienda…"</p> }>
+                    {move || Suspend::new(async move {
+                        match pass.await {
+                            Ok(true) => view! {
+                                <p class="flex items-center gap-2"><span class="loading loading-spinner loading-sm" aria-hidden="true"></span>"Abriendo el editor de tu tienda…"</p>
+                                <leptos_router::components::Redirect path="/editor"/>
+                            }.into_any(),
+                            _ => view! {
+                                <h1 class="card-title text-2xl">"Este enlace ya no sirve"</h1>
+                                <p>"Los enlaces para abrir el editor duran un minuto y se usan una sola vez. Volvé a tus tiendas y tocá Editar de nuevo, o entrá con tu email."</p>
+                                <div class="flex flex-wrap gap-2">
+                                    <a class="btn btn-primary" href=crate::site::platform_url()>"Ir a tus tiendas"</a>
+                                    <a class="btn btn-ghost" href="/entrar?volver=/editor">"Entrar con mi email"</a>
+                                </div>
+                            }.into_any(),
+                        }
+                    })}
+                </Suspense>
             </div></div>
         </Shell>
     }
