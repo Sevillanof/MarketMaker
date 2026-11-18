@@ -218,6 +218,15 @@ async fn sessions_open_and_close(pool: PgPool) {
     assert_eq!(session_user(&pool, "otro-token").await.unwrap(), None);
     delete_session(&pool, &token).await.unwrap();
     assert_eq!(session_user(&pool, &token).await.unwrap(), None);
+
+    // Una sesión muy vieja se termina aunque se haya usado todos los días.
+    let old = create_session(&pool, user_id).await.unwrap();
+    sqlx::query("UPDATE sessions SET created_at = now() - make_interval(days => $1)")
+        .bind(SESSION_MAX_DAYS + 1)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(session_user(&pool, &old).await.unwrap(), None);
 }
 
 #[sqlx::test(migrations = "../../migrations")]

@@ -20,6 +20,9 @@ pub const CODES_PER_HOUR: i64 = 5;
 pub const CODES_PER_DAY: i64 = 15;
 /// Cuánto dura una sesión sin usarse.
 pub const SESSION_DAYS: i32 = 30;
+/// Cuánto dura una sesión como mucho, aunque se use todos los días: pasado
+/// ese tiempo hay que entrar de nuevo con la contraseña.
+pub const SESSION_MAX_DAYS: i32 = 180;
 
 fn code_hash(email: &str, code: &str) -> Vec<u8> {
     Sha256::digest(format!("{email}:{code}")).to_vec()
@@ -254,10 +257,12 @@ pub async fn session_user(pool: &PgPool, token: &str) -> sqlx::Result<Option<Ses
         "UPDATE sessions s SET expires_at = now() + make_interval(days => $2)
          FROM users u
          WHERE s.token_hash = $1 AND s.expires_at > now() AND u.id = s.user_id
+           AND s.created_at > now() - make_interval(days => $3)
          RETURNING u.id, u.email, u.name, u.avatar_id",
     )
     .bind(token_hash(token))
     .bind(SESSION_DAYS)
+    .bind(SESSION_MAX_DAYS)
     .fetch_optional(pool)
     .await
 }
