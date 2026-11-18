@@ -234,7 +234,7 @@ pub fn SalesPage() -> impl IntoView {
     let andreani = Resource::new(move || slug.get(), load_andreani);
     view! {
         <leptos_meta::Title text="Entregas · MarketMaker"/>
-            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
+            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 max-sm:py-5 max-sm:pb-28">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match (data.await, andreani.await) {
@@ -357,7 +357,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <div class="grow">
-                <h1 class="text-3xl font-bold">"Entregas"</h1>
+                <h1 class="text-3xl font-bold max-sm:text-2xl">"Entregas"</h1>
                 <p class="text-sm text-base-content/70">"Lo que elijas acá aparece en \"Finalizar compra\" de tu tienda."</p>
             </div>
         </div>
@@ -766,7 +766,7 @@ fn AndreaniConnected(
                 {move || parcel_error().map(|m| view! { <p class="label whitespace-normal text-error">{m}</p> })}
             </fieldset>
 
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="mk-savebar flex flex-wrap items-center gap-3">
                 <button type="submit" class="btn btn-primary" disabled=move || save.pending().get()>
                     {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
                 </button>

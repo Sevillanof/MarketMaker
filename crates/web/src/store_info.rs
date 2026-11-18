@@ -69,7 +69,7 @@ pub fn StoreInfoPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), load_store_info);
     view! {
         <leptos_meta::Title text="Datos de la tienda · MarketMaker"/>
-            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
+            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 max-sm:py-5 max-sm:pb-28">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -159,7 +159,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
 
     view! {
         <div>
-            <h1 class="text-3xl font-bold">"Datos de la tienda"</h1>
+            <h1 class="text-3xl font-bold max-sm:text-2xl">"Datos de la tienda"</h1>
             <p class="text-sm text-base-content/70">"El menú y el pie de tu tienda usan estos datos. Si los cambiás acá, se actualizan en todas tus páginas."</p>
         </div>
         <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(); }>
@@ -251,7 +251,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                 </div>
                 <p class="-mt-2 text-sm text-base-content/60">"Lo que completes aparece como enlace en el pie de tu tienda."</p>
 
-                <div class="flex flex-wrap items-center gap-3">
+                <div class="mk-savebar flex flex-wrap items-center gap-3">
                     <button type="submit" class="btn btn-primary" disabled=move || save.pending().get() || busy()>
                         {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
                     </button>

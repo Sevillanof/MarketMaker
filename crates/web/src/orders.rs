@@ -78,7 +78,7 @@ pub fn OrdersPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_orders);
     view! {
         <leptos_meta::Title text="Pedidos · MarketMaker"/>
-            <div class="mx-auto flex max-w-[1280px] flex-col gap-5 px-6 py-8">
+            <div class="mx-auto flex max-w-[1280px] flex-col gap-5 px-6 py-8 max-sm:gap-4 max-sm:px-4 max-sm:py-5">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Board/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -186,6 +186,9 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         refreshed: StoredValue::new(Vec::new()),
     };
     let show_cancelled = RwSignal::new(false);
+    // Teléfono: se ve una columna por vez, elegida arriba (por defecto, lo que
+    // hay que preparar).
+    let tab = RwSignal::new(OrderColumn::ToPrepare);
     let cancelled = Memo::new(move |_| {
         ctx.orders.with(|os| {
             os.iter()
@@ -198,8 +201,9 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <div class="grow">
-                <h1 class="text-3xl font-bold">"Pedidos"</h1>
-                <p class="text-sm text-base-content/70">"Arrastrá un pedido a otra columna o usá \"Mover a…\"."</p>
+                <h1 class="text-3xl font-bold max-sm:text-2xl">"Pedidos"</h1>
+                <p class="text-sm text-base-content/70 max-sm:hidden">"Arrastrá un pedido a otra columna o usá \"Mover a…\"."</p>
+                <p class="text-sm text-base-content/70 sm:hidden">"Tocá un pedido para ver el detalle."</p>
             </div>
         </div>
         {move || ctx.problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
@@ -210,8 +214,21 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
                 <p>"Con Mercado Pago, el pedido aparece acá, en \"Para preparar\", cuando se aprueba el pago. Con transferencia o a coordinar, aparece en \"Esperando pago\" hasta que toques \"Ya me pagó\"."</p>
             </div></div>
         })}
-        <div class="grid grid-cols-4 items-start gap-4">
-            {OrderColumn::ALL.into_iter().map(|c| view! { <Column ctx column=c/> }).collect_view()}
+        <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:hidden" role="group" aria-label="Estado de los pedidos">
+            {OrderColumn::ALL.into_iter().map(|c| {
+                let n = Memo::new(move |_| ctx.orders.with(|os| os.iter().filter(|o| OrderColumn::of(o.status) == Some(c)).count()));
+                view! {
+                    <button type="button" class="btn btn-sm h-10 shrink-0 rounded-full px-4"
+                        class:btn-primary=move || tab.get() == c
+                        aria-pressed=move || (tab.get() == c).to_string()
+                        on:click=move |_| tab.set(c)>
+                        {c.title()}" "{move || n.get()}
+                    </button>
+                }
+            }).collect_view()}
+        </div>
+        <div class="grid grid-cols-4 items-start gap-4 max-sm:grid-cols-1">
+            {OrderColumn::ALL.into_iter().map(|c| view! { <Column ctx column=c tab/> }).collect_view()}
         </div>
         {move || (!cancelled.with(Vec::is_empty)).then(|| view! {
             <div>
@@ -220,7 +237,7 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
                     {move || format!("{} cancelados ({})", if show_cancelled.get() { "Ocultar" } else { "Ver" }, cancelled.with(Vec::len))}
                 </button>
                 <Show when=move || show_cancelled.get()>
-                    <ul class="mt-2 grid grid-cols-4 gap-3" aria-label="Pedidos cancelados">
+                    <ul class="mt-2 grid grid-cols-4 gap-3 max-sm:grid-cols-1" aria-label="Pedidos cancelados">
                         <For each=move || cancelled.get() key=|o| o.id.clone() let:o>
                             <li><OrderCard ctx order=o/></li>
                         </For>
@@ -233,7 +250,7 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
 }
 
 #[component]
-fn Column(ctx: BoardCtx, column: OrderColumn) -> impl IntoView {
+fn Column(ctx: BoardCtx, column: OrderColumn, tab: RwSignal<OrderColumn>) -> impl IntoView {
     let over = RwSignal::new(false);
     let mine = Memo::new(move |_| {
         ctx.orders.with(|os| {
@@ -246,7 +263,8 @@ fn Column(ctx: BoardCtx, column: OrderColumn) -> impl IntoView {
     let heading = format!("col-{}", column.status().as_str());
     let labelled = heading.clone();
     view! {
-        <section class="flex min-h-64 flex-col gap-2 rounded-box bg-base-300/50 p-3 transition-colors"
+        <section class="flex min-h-64 flex-col gap-2 rounded-box bg-base-300/50 p-3 transition-colors max-sm:min-h-0 max-sm:bg-transparent max-sm:p-0"
+            class=("max-sm:hidden", move || tab.get() != column)
             class:outline-2=move || over.get() class:outline-dashed=move || over.get() class:outline-primary=move || over.get()
             aria-labelledby=labelled
             on:dragover=move |ev| {
@@ -264,7 +282,7 @@ fn Column(ctx: BoardCtx, column: OrderColumn) -> impl IntoView {
                     ctx.set_status(id, column.status());
                 }
             }>
-            <h2 id=heading class="flex items-center justify-between px-1 font-semibold">
+            <h2 id=heading class="flex items-center justify-between px-1 font-semibold max-sm:sr-only">
                 {column.title()}
                 <span class="badge badge-ghost badge-sm">{move || mine.with(Vec::len)}</span>
             </h2>
@@ -297,6 +315,12 @@ fn OrderCard(ctx: BoardCtx, order: Order) -> impl IntoView {
     let id_open = id.clone();
     let is_open = Memo::new(move |_| ctx.open.with(|o| o.as_deref() == Some(id_open.as_str())));
     let id_click = id.clone();
+    // Teléfono: el paso siguiente a un toque, sin abrir el pedido ni arrastrar.
+    let next = OrderColumn::of(order.status)
+        .and_then(OrderColumn::next)
+        .filter(|_| order.status != OrderStatus::New && order.status != OrderStatus::PendingPayment)
+        .map(|n| (n.status(), n.action(order.delivery)));
+    let id_next = id.clone();
     let thumbs = order
         .items
         .iter()
@@ -317,7 +341,7 @@ fn OrderCard(ctx: BoardCtx, order: Order) -> impl IntoView {
                 ctx.dragging.set(Some(id_drag.clone()));
             }
             on:dragend=move |_| ctx.dragging.set(None)>
-            <button type="button" class="block w-full cursor-pointer rounded-field p-3 pr-10 text-left"
+            <button type="button" class="block w-full cursor-pointer rounded-field p-3 pr-10 text-left max-sm:pr-14"
                 aria-haspopup="dialog"
                 on:click=move |_| ctx.open.set(Some(id_click.clone()))>
                 <span class="block truncate"><b>{format!("#{}", order.number)}</b>" · "{order.customer_name.clone()}</span>
@@ -335,6 +359,12 @@ fn OrderCard(ctx: BoardCtx, order: Order) -> impl IntoView {
                 </span>
             </button>
             <MoveMenu ctx id=order.id.clone() number=order.number status=order.status/>
+            {next.map(|(to, label)| view! {
+                <div class="px-3 pb-3 sm:hidden">
+                    <button type="button" class="btn btn-primary min-h-11 w-full"
+                        on:click=move |_| ctx.set_status(id_next.clone(), to)>{label}</button>
+                </div>
+            })}
         </div>
     }
 }
@@ -355,8 +385,8 @@ fn MoveMenu(ctx: BoardCtx, id: String, number: i32, status: OrderStatus) -> impl
         }
     };
     view! {
-        <details class="dropdown dropdown-end absolute top-2 right-2">
-            <summary class="btn btn-ghost btn-xs btn-square list-none" title="Mover a…"
+        <details class="dropdown dropdown-end absolute top-2 right-2 max-sm:top-1 max-sm:right-1">
+            <summary class="btn btn-ghost btn-xs btn-square list-none max-sm:size-11" title="Mover a…"
                 aria-label=format!("Mover pedido #{number} a…")>
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
             </summary>
@@ -441,13 +471,13 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                         )}</p>
                     })}
                 </div>
-                <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=move |_| ctx.open.set(None)>"✕"</button>
+                <button type="button" class="btn btn-ghost btn-sm btn-square max-sm:size-11" aria-label="Cerrar" on:click=move |_| ctx.open.set(None)>"✕"</button>
             </header>
             <div class="grow overflow-y-auto p-6">
                 <h3 class="font-semibold">{order.customer_name.clone()}</h3>
                 <p class="text-sm text-base-content/75">{order.email.clone()}</p>
                 <p class="text-sm text-base-content/75">{order.phone.clone()}</p>
-                <div class="mt-3 flex gap-2">
+                <div class="mt-3 flex gap-2 max-sm:[&_.btn]:min-h-11">
                     <a class="btn btn-sm btn-success" href=format!("https://wa.me/{wa}?text={}", urlencode(&format!("Hola {}! Te escribo por tu pedido #{}.", order.customer_name.split_whitespace().next().unwrap_or(""), order.number))) target="_blank" rel="noopener">"Escribir por WhatsApp"</a>
                     <a class="btn btn-sm btn-ghost" href=format!("mailto:{}?subject={}", order.email, urlencode(&format!("Tu pedido #{}", order.number)))>"Email"</a>
                 </div>
@@ -473,7 +503,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                 <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
                 <div class="mt-2 flex justify-between text-lg font-bold"><span>"Total"</span><span>{format_price(order.total_cents)}</span></div>
             </div>
-            <footer class="flex flex-col gap-2 border-t border-base-200 p-6">
+            <footer class="flex flex-col gap-2 border-t border-base-200 p-6 max-sm:p-4 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:[&_.btn]:min-h-11 max-sm:[&_.select]:min-h-11">
                 {match column {
                     Some(c) => view! {
                         {c.next().map(|n| view! {

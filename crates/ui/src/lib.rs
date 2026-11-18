@@ -274,22 +274,50 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         }
         .into_any(),
         PanelSkeletonKind::List => view! {
-            {sk_head(2)}
-            <Skeleton class="h-10 w-80 max-w-full"/>
-            {sk_card("divide-y divide-base-300 !gap-0 !py-1", Box::new(|| view! {
+            // Teléfono: título, buscador, etiquetas y una tarjeta por producto
+            // (foto, dos líneas e interruptor), más el botón flotante.
+            <div class="flex flex-col gap-4 sm:hidden">
+                <div class="flex flex-col gap-2"><Skeleton class="h-7 w-40"/>{sk_line("w-56 max-w-full")}</div>
+                <Skeleton class="h-12 w-full"/>
+                <div class="flex gap-2 overflow-hidden">
+                    {(0..4).map(|_| view! { <Skeleton class="h-10 w-20 shrink-0 rounded-full"/> }).collect_view()}
+                </div>
                 {(0..5).map(|_| view! {
-                    <div class="grid grid-cols-[3.5rem_1fr_6rem_5rem] items-center gap-4 py-3">
-                        <Skeleton class="size-14"/>
-                        <div class="flex flex-col gap-2">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-1/3"/></div>
-                        {sk_line("w-full")}{sk_line("w-full")}
+                    <div class="flex items-center gap-3 rounded-box bg-base-100 p-2.5">
+                        <Skeleton class="size-16 shrink-0"/>
+                        <div class="flex grow flex-col gap-2">{sk_line("w-2/3")}{sk_line("w-1/3")}<Skeleton class="h-2.5 w-1/2"/></div>
+                        <Skeleton class="h-6 w-10 rounded-full"/>
                     </div>
                 }).collect_view()}
-            }.into_any()))}
+                <Skeleton class="fixed right-4 bottom-4 h-13 w-44 rounded-full"/>
+            </div>
+            <div class="flex flex-col gap-5 max-sm:hidden">
+                {sk_head(2)}
+                <Skeleton class="h-10 w-80 max-w-full"/>
+                {sk_card("divide-y divide-base-300 !gap-0 !py-1", Box::new(|| view! {
+                    {(0..5).map(|_| view! {
+                        <div class="grid grid-cols-[3.5rem_1fr_6rem_5rem] items-center gap-4 py-3">
+                            <Skeleton class="size-14"/>
+                            <div class="flex flex-col gap-2">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-1/3"/></div>
+                            {sk_line("w-full")}{sk_line("w-full")}
+                        </div>
+                    }).collect_view()}
+                }.into_any()))}
+            </div>
         }
         .into_any(),
         PanelSkeletonKind::Board => view! {
-            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-40"/>{sk_line("w-80 max-w-full")}</div>
-            <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-40 max-sm:h-7"/>{sk_line("w-80 max-w-full")}</div>
+            // Teléfono: las pestañas de estado y los pedidos de una columna.
+            <div class="flex flex-col gap-3 sm:hidden">
+                <div class="flex gap-2 overflow-hidden">
+                    {(0..3).map(|_| view! { <Skeleton class="h-10 w-28 shrink-0 rounded-full"/> }).collect_view()}
+                </div>
+                {(0..3).map(|_| sk_card("!gap-2 !p-3", Box::new(|| view! {
+                    {sk_line("w-2/3")}{sk_line("w-1/3")}<Skeleton class="h-11 w-full"/>
+                }.into_any()))).collect_view()}
+            </div>
+            <div class="grid grid-cols-2 gap-4 max-sm:hidden lg:grid-cols-4">
                 {[2, 1, 1, 0].into_iter().map(|n| view! {
                     <div class="flex min-h-64 flex-col gap-2.5 rounded-box bg-base-300/50 p-3.5">
                         <div class="flex items-center gap-2">{sk_line("w-1/2")}<Skeleton class="ml-auto h-4 w-6"/></div>
@@ -322,6 +350,7 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
             <div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4 lg:grid-cols-5">
                 {(0..10).map(|_| view! { <Skeleton class="aspect-square w-full"/> }).collect_view()}
             </div>
+            <Skeleton class="fixed right-4 bottom-4 h-13 w-40 rounded-full sm:hidden"/>
         }
         .into_any(),
     };
@@ -412,6 +441,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "photo" => "M3 3h18v18H3zM9 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4M21 15l-5-5L5 21",
         "camera" => "M3 8h4l2-3h6l2 3h4v12H3zM12 10a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7",
         "plus" => "M12 5v14M5 12h14",
+        "trash" => "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
         "check" => "M5 12l5 5 9-10",
         "chevron-down" => "M6 9l6 6 6-6",
         "external" => "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",

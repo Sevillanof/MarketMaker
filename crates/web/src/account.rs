@@ -608,9 +608,9 @@ pub fn AccountPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Mi cuenta · MarketMaker"/>
         <crate::panel::StoreShell slug=store section=crate::panel::Section::Account>
-            <div class="mx-auto flex max-w-3xl flex-col gap-4 px-8 py-10">
+            <div class="mx-auto flex max-w-3xl flex-col gap-4 px-8 py-10 max-sm:px-4 max-sm:py-5">
                 <div>
-                    <h1 class="text-3xl font-extrabold tracking-tight">"Mi cuenta"</h1>
+                    <h1 class="text-3xl font-extrabold tracking-tight max-sm:text-2xl">"Mi cuenta"</h1>
                     <p class="mt-1 text-base-content/70">"Tus datos para entrar a MarketMaker. Valen para todas tus tiendas."</p>
                 </div>
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
@@ -636,9 +636,9 @@ fn AccountRow(
     #[prop(optional)] action: Option<AnyView>,
 ) -> impl IntoView {
     view! {
-        <div class="flex items-center gap-4 border-t border-base-300 px-6 py-4">
-            <ui::Icon class="size-[18px] shrink-0 text-base-content/60" name=icon/>
-            <div class="w-32 shrink-0 text-sm font-semibold">{label}</div>
+        <div class="flex items-center gap-4 border-t border-base-300 px-6 py-4 max-sm:flex-wrap max-sm:gap-x-3 max-sm:gap-y-1 max-sm:px-4">
+            <ui::Icon class="size-[18px] shrink-0 text-base-content/60 max-sm:hidden" name=icon/>
+            <div class="w-32 shrink-0 text-sm font-semibold max-sm:w-full max-sm:text-xs max-sm:font-medium max-sm:text-base-content/60">{label}</div>
             <div class="min-w-0 grow">{children()}</div>
             {action}
         </div>
