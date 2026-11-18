@@ -155,6 +155,13 @@ fn svg_to_image(bytes: &[u8]) -> Result<DynamicImage, MediaError> {
     let options = OPTIONS.get_or_init(|| {
         let mut o = usvg::Options::default();
         o.fontdb_mut().load_system_fonts();
+        // Las imágenes que el SVG trae adentro (`data:`) se dibujan; las que
+        // nombra por ruta o dirección no se leen nunca: un logo no puede
+        // hacer que el servidor abra sus propios archivos.
+        o.image_href_resolver = usvg::ImageHrefResolver {
+            resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+            resolve_string: Box::new(|_, _| None),
+        };
         o
     });
     let tree = usvg::Tree::from_data(bytes, options).map_err(|_| MediaError::Broken)?;

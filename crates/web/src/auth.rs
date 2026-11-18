@@ -104,9 +104,8 @@ mod ssr {
         email_list("ADMIN_EMAILS")
     }
 
-    /// `ADMIN_EMAILS` (en `.env.local`): quien administra MarketMaker. Una
-    /// cuenta de antes sin contraseña estrena la que escriba en Entrar, sin
-    /// confirmar el email.
+    /// `ADMIN_EMAILS` (en `.env.local`): quien administra MarketMaker (ve la
+    /// Whitelist y el panel de uso).
     pub fn is_admin(email: &str) -> bool {
         email_list("ADMIN_EMAILS").contains(email)
     }
@@ -137,20 +136,52 @@ mod ssr {
         tokio::task::spawn_blocking(f).await.map_err(internal)
     }
 
-    /// Abre la sesión de `user_id` en este navegador y, si la tienda de esta
-    /// dirección todavía no tiene dueño, esta persona pasa a serlo.
+    /// Abre la sesión de `user_id` en este navegador.
     pub(crate) async fn open_session(user_id: uuid::Uuid) -> Result<(), ServerFnError> {
         let pool = pool()?;
-        if let Ok(tenant) = current_tenant().await {
-            db::auth::claim_if_ownerless(&pool, tenant.id, user_id)
-                .await
-                .map_err(internal)?;
+        // Solo en desarrollo: la tienda demo recién creada no tiene dueño y
+        // queda de quien entra primero. En producción una tienda nunca cambia
+        // de manos por entrar en su dirección.
+        if !config().secure_cookie {
+            if let Ok(tenant) = current_tenant().await {
+                db::auth::claim_if_ownerless(&pool, tenant.id, user_id)
+                    .await
+                    .map_err(internal)?;
+            }
         }
         let token = db::auth::create_session(&pool, user_id)
             .await
             .map_err(internal)?;
         set_session_cookie(&token);
         Ok(())
+    }
+
+    /// Hay un servicio de emails configurado: los códigos y enlaces viajan por
+    /// email y no se escriben en el registro del servidor.
+    pub(crate) fn emails_go_out() -> bool {
+        std::env::var("RESEND_API_KEY").is_ok_and(|k| !k.trim().is_empty())
+    }
+
+    /// Frena a quien pide emails en serie desde una misma conexión (para
+    /// molestar a otra persona o gastar el cupo de emails): 6 cada 10 minutos.
+    pub(crate) fn may_ask_for_email() -> bool {
+        let ip = crate::limits::client_ip();
+        crate::limits::allow(
+            &format!("mail|{ip}"),
+            6,
+            std::time::Duration::from_secs(10 * 60),
+        )
+    }
+
+    /// Frena a quien prueba códigos en serie desde una misma conexión: 20
+    /// cada 10 minutos (cada código ya tiene sus propios 5 intentos).
+    pub(crate) fn may_try_code() -> bool {
+        let ip = crate::limits::client_ip();
+        crate::limits::allow(
+            &format!("code|{ip}"),
+            20,
+            std::time::Duration::from_secs(10 * 60),
+        )
     }
 
     pub(crate) fn config() -> AuthConfig {
@@ -275,6 +306,9 @@ pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {
         );
         return Ok(CodeRequest::NotAllowed);
     }
+    if !may_ask_for_email() {
+        return Ok(CodeRequest::TooMany);
+    }
     let pool = crate::server::pool()?;
     match db::auth::create_login_code(&pool, &email)
         .await
@@ -282,8 +316,11 @@ pub async fn request_code(email: String) -> Result<CodeRequest, ServerFnError> {
     {
         Err(db::auth::TooMany) => Ok(CodeRequest::TooMany),
         Ok(code) => {
-            // Sin RESEND_API_KEY, el email (con el código) va a la terminal.
-            leptos::logging::log!("\n  Código para entrar de {email}: {code}\n");
+            // Sin RESEND_API_KEY (desarrollo), el código va a la terminal. En
+            // producción nunca se escribe en el registro.
+            if !emails_go_out() {
+                leptos::logging::log!("\n  Código para entrar de {email}: {code}\n");
+            }
             if let Err(e) = crate::email::deliver(&crate::email::login_code(&email, &code)).await {
                 leptos::logging::log!("No pudimos mandar el código a {email}: {e}");
             }
@@ -306,16 +343,24 @@ pub async fn request_password_link(
     if !is_allowed(&email) {
         return Ok(CodeRequest::NotAllowed);
     }
+    if !may_ask_for_email() {
+        return Ok(CodeRequest::TooMany);
+    }
     let pool = crate::server::pool()?;
-    match db::auth::create_login_code(&pool, &email)
+    // El enlace lleva una llave larga, no un código de 6 dígitos: no se
+    // puede adivinar probando.
+    match db::auth::create_login_link_key(&pool, &email)
         .await
         .map_err(crate::server::internal)?
     {
         Err(db::auth::TooMany) => Ok(CodeRequest::TooMany),
         Ok(code) => {
             let url = domain::password_link(&crate::email::app_url(), &email, &code, new_account);
-            // Sin RESEND_API_KEY, el email (con el enlace) va a la terminal.
-            leptos::logging::log!("\n  Enlace para elegir contraseña de {email}: {url}\n");
+            // Sin RESEND_API_KEY (desarrollo), el enlace va a la terminal. En
+            // producción nunca se escribe en el registro.
+            if !emails_go_out() {
+                leptos::logging::log!("\n  Enlace para elegir contraseña de {email}: {url}\n");
+            }
             let mail = crate::email::password_link(&email, &url, new_account);
             if let Err(e) = crate::email::deliver(&mail).await {
                 leptos::logging::log!("No pudimos mandar el enlace a {email}: {e}");
@@ -341,7 +386,7 @@ pub async fn check_code(
             left: db::auth::CODE_ATTEMPTS as u32,
         });
     };
-    if !is_allowed(&email) {
+    if !is_allowed(&email) || !may_try_code() {
         return Ok(CodeCheck::Expired);
     }
     let pool = crate::server::pool()?;
@@ -460,23 +505,10 @@ pub async fn sign_in(
         });
     }
     let Some(hash) = account.password_hash else {
-        // Cuenta de antes, sin contraseña: la del administrador estrena la que
-        // escribió; las demás confirman el email una vez con un enlace.
-        if !is_admin(&email) {
-            return Ok(PasswordSignIn::NoPassword);
-        }
-        if let Some(reason) = domain::password_problem(&password) {
-            return Ok(PasswordSignIn::Weak { reason });
-        }
-        let hash = blocking(move || db::auth::hash_password(&password)).await?;
-        db::auth::set_password_hash(&pool, account.id, &hash)
-            .await
-            .map_err(internal)?;
-        crate::limits::clear(&tries);
-        open_session(account.id).await?;
-        return Ok(PasswordSignIn::In {
-            next: domain::safe_next(&next),
-        });
+        // Cuenta de antes, sin contraseña: confirma el email una vez con un
+        // enlace y ahí elige la suya. Nadie estrena una contraseña sin
+        // demostrar que el email es suyo, tampoco el administrador.
+        return Ok(PasswordSignIn::NoPassword);
     };
     let ok = blocking(move || db::auth::verify_password(&password, &hash)).await?;
     if !ok {
@@ -569,6 +601,9 @@ pub async fn set_password_with_code(
     };
     if !is_allowed(&email) {
         return Ok(SetPassword::NotAllowed);
+    }
+    if !may_try_code() {
+        return Ok(SetPassword::Expired);
     }
     let pool = crate::server::pool()?;
     let user_id = match db::auth::check_login_code(&pool, &email, &code)

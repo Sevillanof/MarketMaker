@@ -285,11 +285,14 @@ pub fn normalize_email(raw: &str) -> Option<String> {
 /// El código tal como lo escribe la persona ("482 913", "482-913") → "482913".
 /// `None` si no son 6 dígitos.
 pub fn normalize_code(raw: &str) -> Option<String> {
-    let digits: String = raw
+    let code: String = raw
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '-')
         .collect();
-    (digits.len() == 6 && digits.chars().all(|c| c.is_ascii_digit())).then_some(digits)
+    let typed = code.len() == 6 && code.chars().all(|c| c.is_ascii_digit());
+    // La llave de un enlace: 32 letras y números en hexadecimal.
+    let link = code.len() == 32 && code.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'));
+    (typed || link).then_some(code)
 }
 
 /// El enlace del email para elegir contraseña: `/entrar?recuperar=…&codigo=…`
@@ -406,6 +409,11 @@ mod tests {
         assert_eq!(normalize_code("482-913"), Some("482913".into()));
         assert_eq!(normalize_code("48291"), None);
         assert_eq!(normalize_code("48291a"), None);
+        // La llave de un enlace: 32 en hexadecimal, tal cual.
+        let key = "0123456789abcdef0123456789abcdef";
+        assert_eq!(normalize_code(key), Some(key.into()));
+        assert_eq!(normalize_code(&key[..31]), None);
+        assert_eq!(normalize_code("0123456789abcdef0123456789abcdeg"), None);
     }
 
     #[test]

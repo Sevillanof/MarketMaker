@@ -95,6 +95,51 @@ async fn too_many_codes_per_hour(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn too_many_codes_per_day(pool: PgPool) {
+    // Códigos pedidos a lo largo del día (ninguno en la última hora).
+    for _ in 0..CODES_PER_DAY {
+        sqlx::query(
+            "INSERT INTO login_codes (email, code_hash, created_at, expires_at)
+             VALUES ('ana@correo.com', '\\x00', now() - interval '3 hours', now() - interval '2 hours')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    assert_eq!(
+        create_login_code(&pool, "ana@correo.com").await.unwrap(),
+        Err(TooMany)
+    );
+    // A otra persona no le afecta.
+    assert!(create_login_code(&pool, "luz@correo.com")
+        .await
+        .unwrap()
+        .is_ok());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn link_keys_are_long_and_work_once(pool: PgPool) {
+    let key = create_login_link_key(&pool, "ana@correo.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(key.len(), 32);
+    assert!(key.chars().all(|c| c.is_ascii_hexdigit()));
+    assert!(matches!(
+        check_login_code(&pool, "ana@correo.com", &key)
+            .await
+            .unwrap(),
+        CodeResult::Ok { .. }
+    ));
+    assert_eq!(
+        check_login_code(&pool, "ana@correo.com", &key)
+            .await
+            .unwrap(),
+        CodeResult::Expired
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn sessions_open_and_close(pool: PgPool) {
     let code = known_code(&pool, "ana@correo.com").await;
     let CodeResult::Ok { user_id } = check_login_code(&pool, "ana@correo.com", &code)
