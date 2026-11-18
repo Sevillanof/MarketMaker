@@ -20,6 +20,7 @@ mod checkout;
 mod dev;
 #[cfg(feature = "ssr")]
 pub mod email;
+mod help;
 mod landing;
 mod legal;
 #[cfg(feature = "ssr")]

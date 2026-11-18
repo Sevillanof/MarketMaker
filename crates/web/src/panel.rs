@@ -356,6 +356,7 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
             {move || is_admin().then(|| view! {
                 <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/>
             })}
+            <crate::help::HelpButton section/>
         </div>
     }
 }
