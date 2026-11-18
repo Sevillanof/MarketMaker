@@ -30,6 +30,11 @@ else
   flock -w 600 9 || { echo "Hay otra instalación en curso hace más de 10 minutos."; exit 1; }
 fi
 rm -rf "$REL"/.bajando-*
+# Copias de seguridad de la base (deploy/backup.sh): se pasa cada minuto con el
+# timer y solo hace algo una vez por día. Nunca debe frenar un deploy.
+if [ "${AUTO:-}" = 1 ] && [ -x "$(dirname "$0")/backup.sh" ]; then
+  timeout 900 "$(dirname "$0")/backup.sh" tick 9>&- || true
+fi
 current() { [ -L "$CUR/release" ] && basename "$(readlink "$CUR/release")" || true; }
 
 download() {
