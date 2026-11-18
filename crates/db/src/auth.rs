@@ -15,6 +15,9 @@ pub const CODE_MINUTES: i32 = 10;
 pub const CODE_ATTEMPTS: i32 = 5;
 /// Códigos por email y por hora.
 pub const CODES_PER_HOUR: i64 = 5;
+/// Códigos por email y por día: frena a quien los pide sin parar para
+/// adivinar uno o para llenarle la casilla a otra persona.
+pub const CODES_PER_DAY: i64 = 15;
 /// Cuánto dura una sesión sin usarse.
 pub const SESSION_DAYS: i32 = 30;
 
@@ -29,6 +32,15 @@ fn token_hash(token: &str) -> Vec<u8> {
 /// Seis dígitos al azar, con ceros a la izquierda.
 pub fn new_code() -> String {
     format!("{:06}", rand::rng().random_range(0..1_000_000u32))
+}
+
+/// La llave de un enlace de email (elegir contraseña, confirmar la cuenta):
+/// 16 bytes al azar en hexadecimal. A diferencia del código de 6 dígitos,
+/// que se copia a mano, no se puede adivinar probando.
+pub fn new_link_key() -> String {
+    let mut bytes = [0u8; 16];
+    rand::rng().fill_bytes(&mut bytes);
+    hex::encode(bytes)
 }
 
 /// 32 bytes al azar en hexadecimal: lo que lleva la cookie.
@@ -48,17 +60,34 @@ pub async fn create_login_code(
     pool: &PgPool,
     email: &str,
 ) -> sqlx::Result<Result<String, TooMany>> {
-    let recent: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM login_codes
-         WHERE email = $1 AND created_at > now() - interval '1 hour'",
+    save_login_code(pool, email, new_code()).await
+}
+
+/// Como [`create_login_code`], pero con una llave larga para llevar dentro
+/// de un enlace (nadie la escribe a mano).
+pub async fn create_login_link_key(
+    pool: &PgPool,
+    email: &str,
+) -> sqlx::Result<Result<String, TooMany>> {
+    save_login_code(pool, email, new_link_key()).await
+}
+
+async fn save_login_code(
+    pool: &PgPool,
+    email: &str,
+    code: String,
+) -> sqlx::Result<Result<String, TooMany>> {
+    let (hour, day): (i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE created_at > now() - interval '1 hour'), count(*)
+         FROM login_codes
+         WHERE email = $1 AND created_at > now() - interval '1 day'",
     )
     .bind(email)
     .fetch_one(pool)
     .await?;
-    if recent >= CODES_PER_HOUR {
+    if hour >= CODES_PER_HOUR || day >= CODES_PER_DAY {
         return Ok(Err(TooMany));
     }
-    let code = new_code();
     let mut tx = pool.begin().await?;
     sqlx::query("UPDATE login_codes SET used_at = now() WHERE email = $1 AND used_at IS NULL")
         .bind(email)

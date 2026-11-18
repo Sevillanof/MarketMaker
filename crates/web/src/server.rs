@@ -11,8 +11,12 @@ pub(crate) fn pool() -> Result<db::Pool, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
+/// Una falla nuestra (la base, un servicio): el detalle queda en el registro
+/// del servidor y al navegador solo le llega un mensaje general, sin nombres
+/// de tablas ni datos internos.
 pub(crate) fn internal(e: impl std::fmt::Display) -> ServerFnError {
-    ServerFnError::new(e.to_string())
+    leptos::logging::error!("Error interno: {e}");
+    ServerFnError::new("Tuvimos un problema de nuestro lado. Probá de nuevo en un momento.")
 }
 
 #[cfg(feature = "ssr")]

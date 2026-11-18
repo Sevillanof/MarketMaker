@@ -11,8 +11,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Por defecto todo corre con permiso de solo lectura. Solo el paso final
+# `publish`, y solo en main, puede publicar una versión: una rama de un pull
+# request no puede dejar una versión "última" para la VPS.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: vps-build-${{ github.ref }}
@@ -23,17 +26,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      # Las acciones van fijadas al commit exacto (al lado, su etiqueta): si
+      # alguien mueve la etiqueta de ese proyecto, acá no entra código nuevo.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Rust (versión de rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           cache-on-failure: true
 
       - name: cargo-leptos
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2
         with:
           tool: cargo-leptos
 
@@ -57,15 +62,43 @@ jobs:
           tar -C dist -czf dist/marketmaker.tar.gz marketmaker
           (cd dist && sha256sum marketmaker.tar.gz > marketmaker.tar.gz.sha256)
           echo "$VER" > dist/version.txt
-          echo "VER=$VER" >> "$GITHUB_ENV"
           ls -lh dist
 
-      - name: Publicar la release
+      - name: Guardar el paquete para publicarlo
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: paquete
+          path: |
+            dist/marketmaker.tar.gz
+            dist/marketmaker.tar.gz.sha256
+            dist/version.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  # Publica lo que compiló `build`. No baja el código ni corre nada del
+  # repositorio: solo sube los tres archivos como release.
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: paquete
+          path: dist
+
+      - name: Publicar la release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          VER=$(cat dist/version.txt)
+          [[ $VER =~ ^[0-9a-f]{7}$ ]] || { echo "Versión rara: '$VER'"; exit 1; }
           TAG="vps-$VER"
           gh release delete "$TAG" -y --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" --target "$GITHUB_SHA" --latest \
