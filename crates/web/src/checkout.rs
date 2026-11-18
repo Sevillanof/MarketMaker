@@ -810,11 +810,12 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         errors.set(e);
     };
     let place = Action::new(|form: &CheckoutForm| send_order(form.clone()));
+    let navigate = leptos_router::hooks::use_navigate();
     Effect::new(move |_| match place.value().get() {
         Some(Ok(PlaceOrder::Placed { id, .. })) => {
             cart.clear();
             forget_buyer();
-            _ = window().location().set_href(&format!("/pedido/{id}"));
+            navigate(&format!("/pedido/{id}"), Default::default());
         }
         // El carrito queda como está hasta que Mercado Pago apruebe el pago:
         // si la persona vuelve sin pagar, lo encuentra igual.

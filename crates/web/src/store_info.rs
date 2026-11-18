@@ -69,7 +69,6 @@ pub fn StoreInfoPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), load_store_info);
     view! {
         <leptos_meta::Title text="Datos de la tienda · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::StoreInfo>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -81,7 +80,6 @@ pub fn StoreInfoPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }

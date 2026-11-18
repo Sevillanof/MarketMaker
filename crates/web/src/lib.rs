@@ -5,7 +5,7 @@ use editor::{Editor, PublishAction, SaveAction};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Title};
 use leptos_router::{
-    components::{Redirect, Route, Router, Routes},
+    components::{ParentRoute, Redirect, Route, Router, Routes},
     hooks::use_location,
     path, SsrMode, StaticSegment, WildcardSegment,
 };
@@ -76,6 +76,8 @@ pub fn App() -> impl IntoView {
         analytics::track_client(step, None)
     })));
 
+    provide_context(panel::NavCache(RwSignal::new(None)));
+
     view! {
         <Title text="Marketplace"/>
 
@@ -90,13 +92,17 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
                     <Route path=path!("/cuenta") view=account::AccountPage ssr=SsrMode::Async/>
                     <Route path=path!("/mis-fotos") view=photos::MyPhotosPage ssr=SsrMode::Async/>
-                    <Route path=path!("/tienda/:slug") view=panel::StoreHomePage ssr=SsrMode::Async/>
-                    <Route path=path!("/tienda/:slug/productos") view=products::ProductsPage ssr=SsrMode::Async/>
-                    <Route path=path!("/tienda/:slug/productos/:id") view=products::ProductEditPage ssr=SsrMode::Async/>
-                    <Route path=path!("/tienda/:slug/pedidos") view=orders::OrdersPage ssr=SsrMode::Async/>
-                    <Route path=path!("/tienda/:slug/cobros") view=payments::PaymentsPage ssr=SsrMode::Async/>
-                    <Route path=path!("/tienda/:slug/ventas") view=sales::SalesPage ssr=SsrMode::Async/>
-                    <Route path=path!("/tienda/:slug/datos") view=store_info::StoreInfoPage ssr=SsrMode::Async/>
+                    // El menú del panel es el marco de estas páginas: queda fijo y
+                    // solo cambia el contenido.
+                    <ParentRoute path=path!("/tienda/:slug") view=panel::PanelLayout ssr=SsrMode::Async>
+                        <Route path=path!("") view=panel::StoreHomePage ssr=SsrMode::Async/>
+                        <Route path=path!("productos") view=products::ProductsPage ssr=SsrMode::Async/>
+                        <Route path=path!("productos/:id") view=products::ProductEditPage ssr=SsrMode::Async/>
+                        <Route path=path!("pedidos") view=orders::OrdersPage ssr=SsrMode::Async/>
+                        <Route path=path!("cobros") view=payments::PaymentsPage ssr=SsrMode::Async/>
+                        <Route path=path!("ventas") view=sales::SalesPage ssr=SsrMode::Async/>
+                        <Route path=path!("datos") view=store_info::StoreInfoPage ssr=SsrMode::Async/>
+                    </ParentRoute>
                     <Route path=path!("/admin/uso") view=analytics::UsagePage ssr=SsrMode::Async/>
                     <Route path=path!("/comprar") view=checkout::CheckoutPage ssr=SsrMode::Async/>
                     <Route path=path!("/terminos") view=legal::TermsPage/>

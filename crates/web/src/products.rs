@@ -286,7 +286,6 @@ pub fn ProductsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), list_store_products);
     view! {
         <leptos_meta::Title text="Productos · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Products>
             <div class="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -298,7 +297,6 @@ pub fn ProductsPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -732,7 +730,6 @@ pub fn ProductEditPage() -> impl IntoView {
     );
     view! {
         <leptos_meta::Title text="Producto · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Products>
             <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -752,7 +749,6 @@ pub fn ProductEditPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -1047,10 +1043,9 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         delete_product(slug.get_value(), id.get_untracked()).await
     });
     let list_href2 = list_href.clone();
+    let navigate = leptos_router::hooks::use_navigate();
     Effect::new(move |_| match delete.value().get() {
-        Some(Ok(())) => {
-            let _ = window().location().set_href(&list_href2);
-        }
+        Some(Ok(())) => navigate(&list_href2, Default::default()),
         Some(Err(e)) => errors.set(vec![error_text(&e)]),
         None => {}
     });
