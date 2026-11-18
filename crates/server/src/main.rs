@@ -10,6 +10,8 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_header::SetResponseHeaderLayer;
 use web::*;
 
+mod html_cache;
+
 #[tokio::main]
 async fn main() {
     // DATABASE_URL sale de `.env` (o del entorno, que tiene prioridad).
@@ -232,7 +234,13 @@ async fn main() {
             header::HeaderName::from_static("permissions-policy"),
             HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
         ))
-        .with_state(leptos_options);
+        .with_state(leptos_options)
+        // Lo más de afuera: guarda unos segundos el HTML de los visitantes
+        // sin sesión (ver `html_cache`), con todas las cabeceras ya puestas.
+        .layer(axum::middleware::from_fn_with_state(
+            html_cache::HtmlCache::from_env(),
+            html_cache::middleware,
+        ));
 
     log!("listening on http://{}", &addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
