@@ -613,8 +613,8 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                     <span class=format!("badge badge-sm border-0 font-semibold {publish_class}")>{o.publish.label()}</span>
                 </p>
             </div>
-            <a class="btn btn-outline" href=o.url.clone() target="_blank" rel="noopener">
-                <ui::Icon class="size-[18px]" name="external"/>"Ver tienda"<span class="sr-only">" (se abre en otra pestaña)"</span>
+            <a class="btn btn-outline max-w-72" href=o.url.clone() target="_blank" rel="noopener">
+                <ui::Icon class="size-[18px]" name="external"/><span class="truncate">{format!("Ver {}", o.name)}</span><span class="sr-only">" (se abre en otra pestaña)"</span>
             </a>
             <button type="button" class="btn btn-primary" disabled=move || open.pending().get()
                 on:click=move |_| { open.dispatch(slug.clone()); }>
