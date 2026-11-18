@@ -124,6 +124,26 @@ pub fn placeholders_left(doc: &PageDoc) -> usize {
     n
 }
 
+/// Cuántas fotos de muestra (las que vienen con la plantilla, `/img/...`)
+/// siguen en `doc`, sin contar las repetidas, para avisar antes de publicar.
+pub fn sample_photos(doc: &PageDoc) -> usize {
+    fn walk(v: &serde_json::Value, seen: &mut std::collections::HashSet<String>) {
+        match v {
+            serde_json::Value::String(s)
+                if s.starts_with("/img/") && !s.starts_with("/img/plantillas") =>
+            {
+                seen.insert(s.clone());
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|v| walk(v, seen)),
+            serde_json::Value::Object(o) => o.values().for_each(|v| walk(v, seen)),
+            _ => {}
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    walk(&serde_json::to_value(doc).unwrap_or_default(), &mut seen);
+    seen.len()
+}
+
 /// Un bloque con un texto de ejemplo sin cambiar.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlaceholderNode {
@@ -152,7 +172,11 @@ pub fn placeholder_nodes(doc: &PageDoc) -> Vec<PlaceholderNode> {
     let mut out = Vec::new();
     for layer in layers {
         for n in doc.layer(layer) {
-            if let Some(text) = serde_json::to_value(&n.widget).ok().as_ref().and_then(first) {
+            if let Some(text) = serde_json::to_value(&n.widget)
+                .ok()
+                .as_ref()
+                .and_then(first)
+            {
                 out.push(PlaceholderNode {
                     id: n.id.clone(),
                     layer,
@@ -177,6 +201,17 @@ mod tests {
         assert!(json.contains("La Huerta"));
         assert!(!json.contains("Mi tienda"));
         assert_eq!(placeholders_left(&doc), 3);
+        assert!(
+            sample_photos(&doc) >= 1,
+            "el banner inicial usa una foto de muestra"
+        );
+        let mut own = doc.clone();
+        for n in &mut own.nodes {
+            if let Widget::Banner(b) = &mut n.widget {
+                b.image_url = "https://fotos.ejemplo.com/mia.webp".into();
+            }
+        }
+        assert!(sample_photos(&own) < sample_photos(&doc));
         let nodes = placeholder_nodes(&doc);
         assert_eq!(nodes.len(), 3, "{nodes:?}");
         assert!(nodes.iter().all(|n| n.layer == crate::Layer::Page(0)));

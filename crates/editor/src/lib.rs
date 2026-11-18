@@ -1021,9 +1021,12 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         }
     };
 
+    let sample_photos = RwSignal::new(0usize);
     let check_publish = move || {
         let items = state.doc.with_untracked(domain::placeholder_nodes);
-        if items.is_empty() && examples == 0 {
+        let photos = state.doc.with_untracked(domain::sample_photos);
+        sample_photos.set(photos);
+        if items.is_empty() && examples == 0 && photos == 0 {
             publish_now();
         } else {
             publish_check.set(Some(items));
@@ -1337,7 +1340,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                 </button>
             </header>
             {move || publish_check.get().map(|items| view! {
-                <PublishCheck items examples check=publish_check
+                <PublishCheck items examples photos=sample_photos.get_untracked() check=publish_check
                     publish=Callback::new(move |_| { publish_check.set(None); publish_now(); })/>
             })}
             {move || recover.get().map(|doc| {
@@ -1594,6 +1597,7 @@ mod tests {
 fn PublishCheck(
     items: Vec<domain::PlaceholderNode>,
     examples: usize,
+    photos: usize,
     check: RwSignal<Option<Vec<domain::PlaceholderNode>>>,
     publish: Callback<()>,
 ) -> impl IntoView {
@@ -1626,7 +1630,9 @@ fn PublishCheck(
         })
         .collect_view();
     // Sin textos pero con productos de ejemplo: se avisa en una línea.
-    let title = if n == 0 {
+    let title = if n == 0 && examples == 0 {
+        if photos == 1 { "Queda 1 foto de muestra".to_string() } else { format!("Quedan {photos} fotos de muestra") }
+    } else if n == 0 {
         if examples == 1 { "Queda 1 producto de ejemplo".to_string() } else { format!("Quedan {examples} productos de ejemplo") }
     } else if n == 1 {
         "Hay 1 texto sin cambiar".to_string()
@@ -1644,6 +1650,15 @@ fn PublishCheck(
                     <h2 id="mk-pc-title" class="text-lg font-extrabold">{title}</h2>
                 </div>
                 <ul class="flex flex-col gap-2">{rows}</ul>
+                {(photos > 0 && (n > 0 || examples > 0)).then(|| view! {
+                    <p class="mt-3 text-sm text-base-content/75">
+                        {if photos == 1 { "También queda 1 foto de muestra.".to_string() } else { format!("También quedan {photos} fotos de muestra.") }}
+                        " Cambialas por las tuyas en Mis fotos."
+                    </p>
+                })}
+                {(n == 0 && examples == 0).then(|| view! {
+                    <p class="text-sm text-base-content/75">"Son fotos de ejemplo que vienen con la plantilla. Cambialas por las tuyas en Mis fotos."</p>
+                })}
                 <div class="modal-action">
                     <button type="button" id="mk-publish-anyway" class="btn btn-ghost"
                         on:click=move |_| publish.run(())>"Publicar igual"</button>
