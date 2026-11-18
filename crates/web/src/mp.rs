@@ -365,6 +365,7 @@ pub fn routes<S: Clone + Send + Sync + 'static>(pool: db::Pool) -> Router<S> {
 /// Vuelve de Mercado Pago después de aceptar (o no) vincular la cuenta.
 async fn linked(
     State(pool): State<db::Pool>,
+    headers: HeaderMap,
     Query(q): Query<HashMap<String, String>>,
 ) -> Response {
     let platform = config()
@@ -384,8 +385,12 @@ async fn linked(
     let Some(state) = q.get("state") else {
         return fail(None, "");
     };
-    let tenant = match db::mp::take_state(&pool, state).await {
-        Ok(Some(t)) => t,
+    // El permiso solo vale en la sesión que lo empezó: si este enlace lo
+    // abre otra persona (o nadie con sesión), no se vincula nada.
+    let session = crate::auth::session_token_in(&headers);
+    let (tenant, same_session) = match db::mp::take_state(&pool, state, session.as_deref()).await {
+        Ok(db::mp::StateCheck::Ok(t)) => (t, true),
+        Ok(db::mp::StateCheck::OtherSession(t)) => (t, false),
         _ => return fail(None, ""),
     };
     let slug = db::mp::slug_of(&pool, tenant)
@@ -393,6 +398,9 @@ async fn linked(
         .ok()
         .flatten()
         .unwrap_or_default();
+    if !same_session {
+        return fail(Some(&slug), "sesion");
+    }
     let Some(code) = q.get("code") else {
         // Tocó "Cancelar" en Mercado Pago.
         return fail(Some(&slug), "cancelado");

@@ -51,8 +51,12 @@ pub async fn mp_connect(slug: String) -> Result<String, ServerFnError> {
     let c = crate::mp::config_for(&tenant.slug).ok_or_else(|| {
         ServerFnError::new("Los cobros con Mercado Pago todavía no están disponibles.")
     })?;
+    // El permiso queda atado a esta sesión: al volver de Mercado Pago solo
+    // vale en el mismo navegador que lo empezó.
+    let session = crate::auth::session_token()
+        .ok_or_else(|| ServerFnError::new("Tu sesión venció. Entrá de nuevo."))?;
     let state = crate::mp::new_state();
-    db::mp::save_state(&pool()?, tenant.id, &state)
+    db::mp::save_state(&pool()?, tenant.id, &state, &session)
         .await
         .map_err(internal)?;
     Ok(crate::mp::authorize_url(&c, &state))
@@ -129,6 +133,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     let mp_problem = RwSignal::new(query.with_untracked(|q| {
         q.get("error").map(|e| match e.as_str() {
             "cancelado" => "No se vinculó: cancelaste en Mercado Pago.".to_string(),
+            "sesion" => "No se vinculó: el enlace no corresponde a esta sesión. Tocá \"Vincular mi cuenta\" de nuevo desde acá.".to_string(),
             "configuracion" => {
                 "Los cobros con Mercado Pago todavía no están disponibles.".to_string()
             }
