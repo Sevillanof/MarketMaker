@@ -183,7 +183,17 @@ async fn an_invitation_survives_other_links_and_wrong_tries(pool: PgPool) {
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn a_new_invitation_replaces_the_old_one_and_expires(pool: PgPool) {
+    let who = ["ana@correo.com".to_string(), "luz@correo.com".to_string()];
+    assert!(invitations_sent(&pool, &who).await.unwrap().is_empty());
+    // Un enlace pedido desde Entrar no cuenta como invitación.
+    create_login_link_key(&pool, "luz@correo.com")
+        .await
+        .unwrap()
+        .unwrap();
     let first = create_invite_key(&pool, "ana@correo.com").await.unwrap();
+    let sent = invitations_sent(&pool, &who).await.unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0, "ana@correo.com");
     let second = create_invite_key(&pool, "ana@correo.com").await.unwrap();
     assert_eq!(
         check_login_code(&pool, "ana@correo.com", &first)

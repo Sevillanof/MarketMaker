@@ -213,6 +213,9 @@ pub struct AllowedPerson {
     pub last_seen: String,
     pub stores: Vec<StoreCard>,
     pub orders: i64,
+    /// "Invitación enviada ayer", si ya se le mandó; "" si no.
+    #[serde(default)]
+    pub invited: String,
 }
 
 /// Qué pasó al agregar o quitar un email de la Whitelist.

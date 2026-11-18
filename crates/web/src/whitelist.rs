@@ -32,6 +32,9 @@ pub async fn load_whitelist() -> Result<Vec<AllowedPerson>, ServerFnError> {
     let members = db::auth::allowlist_members(&pool()?, &emails)
         .await
         .map_err(internal)?;
+    let invited = db::auth::invitations_sent(&pool()?, &emails)
+        .await
+        .map_err(internal)?;
     let mut people: Vec<(i64, AllowedPerson)> = members
         .into_iter()
         .map(|m| {
@@ -63,6 +66,11 @@ pub async fn load_whitelist() -> Result<Vec<AllowedPerson>, ServerFnError> {
                     })
                     .collect(),
                 orders: m.orders,
+                invited: invited
+                    .iter()
+                    .find(|(e, _)| !m.has_account && *e == m.email)
+                    .map(|(_, s)| format!("Invitación enviada {}", domain::ago_es(*s)))
+                    .unwrap_or_default(),
                 email: m.email,
             };
             let key = if is_admin {
@@ -95,6 +103,42 @@ pub async fn add_allowed_email(email: String) -> Result<WhitelistChange, ServerF
         .map_err(internal)?;
     crate::auth::refresh_allowlist(&pool).await?;
     Ok(WhitelistChange::Done)
+}
+
+/// Le manda la invitación (con su enlace personal) a un email habilitado que
+/// todavía no tiene cuenta. `false` si no se pudo mandar.
+#[server]
+pub async fn send_invitation(email: String) -> Result<bool, ServerFnError> {
+    use crate::server::{internal, pool};
+    require_admin().await?;
+    let Some(email) = domain::normalize_email(&email) else {
+        return Ok(false);
+    };
+    if !crate::auth::allowed_emails().contains(&email) {
+        return Ok(false);
+    }
+    let pool = pool()?;
+    let has_account = db::auth::account_by_email(&pool, &email)
+        .await
+        .map_err(internal)?
+        .is_some();
+    if has_account {
+        return Ok(false);
+    }
+    let key = db::auth::create_invite_key(&pool, &email)
+        .await
+        .map_err(internal)?;
+    let url = domain::password_link(&crate::email::app_url(), &email, &key, true);
+    if !crate::auth::emails_go_out() {
+        leptos::logging::log!("\n  Enlace de invitación de {email}: {url}\n");
+    }
+    match crate::email::deliver(&crate::email::invitation(&email, &url)).await {
+        Ok(()) => Ok(true),
+        Err(e) => {
+            leptos::logging::log!("No pudimos mandar la invitación a {email}: {e}");
+            Ok(false)
+        }
+    }
 }
 
 /// Quita un email de la lista: la persona deja de poder entrar.
@@ -146,6 +190,30 @@ pub fn WhitelistDialog(
     });
     let add = Action::new(|e: &String| add_allowed_email(e.clone()));
     let remove = Action::new(|e: &String| remove_allowed_email(e.clone()));
+    let invite = Action::new(|e: &String| send_invitation(e.clone()));
+    Effect::new(move |_| {
+        let Some(result) = invite.value().get() else {
+            return;
+        };
+        let to = invite.input().get_untracked().unwrap_or_default();
+        match result {
+            Ok(true) => {
+                problem.set(None);
+                sent.set(Some(format!("Le enviamos la invitación a {to}.")));
+                version.update(|v| *v += 1);
+            }
+            Ok(false) => {
+                sent.set(None);
+                problem.set(Some(format!(
+                    "No pudimos enviar la invitación a {to}. Probá de nuevo en un momento."
+                )));
+            }
+            Err(_) => {
+                sent.set(None);
+                problem.set(Some(CONNECTION.into()));
+            }
+        }
+    });
     Effect::new(move |_| match add.value().get() {
         Some(Ok(WhitelistChange::Done)) => {
             email.set(String::new());
@@ -214,7 +282,7 @@ pub fn WhitelistDialog(
                             Err(_) => view! { <p class="py-6"><FieldNote ok=false text=CONNECTION/></p> }.into_any(),
                             Ok(people) => view! {
                                 <ul>
-                                    {people.into_iter().map(|p| view! { <PersonRow p confirming remove/> }).collect_view()}
+                                    {people.into_iter().map(|p| view! { <PersonRow p confirming remove invite/> }).collect_view()}
                                 </ul>
                             }.into_any(),
                         })}
@@ -234,6 +302,7 @@ fn PersonRow(
     p: AllowedPerson,
     confirming: RwSignal<Option<String>>,
     remove: Action<String, Result<WhitelistChange, ServerFnError>>,
+    invite: Action<String, Result<bool, ServerFnError>>,
 ) -> impl IntoView {
     let initial = p
         .name
@@ -247,10 +316,12 @@ fn PersonRow(
         ("Administrador", "bg-primary/10 text-primary")
     } else if p.has_account {
         ("Con cuenta", "bg-success/15 text-success-content")
+    } else if !p.invited.is_empty() {
+        ("Invitado", "bg-primary/10 text-primary")
     } else {
         ("Esperando", "bg-warning/20 text-warning-content")
     };
-    let facts = [p.joined.clone(), p.last_seen.clone()]
+    let facts = [p.joined.clone(), p.last_seen.clone(), p.invited.clone()]
         .into_iter()
         .filter(|s| !s.is_empty())
         .chain((p.orders > 0).then(|| format!("{} pedidos", p.orders)))
@@ -260,6 +331,19 @@ fn PersonRow(
     let email_confirm = p.email.clone();
     let email_remove = p.email.clone();
     let label = format!("Quitar {}", p.email);
+    // La carta: para enviar la invitación; con tilde si ya se le envió.
+    let was_invited = !p.invited.is_empty();
+    let can_invite = !p.has_account && !p.is_admin;
+    let email_invite = p.email.clone();
+    let email_sending = p.email.clone();
+    let invite_label = if was_invited {
+        format!("Reenviar la invitación a {}", p.email)
+    } else {
+        format!("Enviar la invitación a {}", p.email)
+    };
+    let sending = move || {
+        invite.pending().get() && invite.input().get().as_deref() == Some(email_sending.as_str())
+    };
     view! {
         <li class="flex gap-3 border-b border-base-300 py-3 last:border-b-0">
             <Avatar letter=initial size="size-10 text-sm" photo=p.avatar.clone()/>
@@ -300,7 +384,19 @@ fn PersonRow(
                     }
                 })}
             </div>
-            <div class="self-center text-sm">
+            <div class="flex items-center gap-1 self-center text-sm">
+                {can_invite.then(|| view! {
+                    <button type="button" aria-label=invite_label.clone() title=invite_label.clone()
+                        class=if was_invited { "btn btn-ghost btn-sm btn-square text-success" } else { "btn btn-ghost btn-sm btn-square text-primary" }
+                        disabled=move || invite.pending().get()
+                        on:click=move |_| { invite.dispatch(email_invite.clone()); }>
+                        {move || if sending() {
+                            view! { <span class="loading loading-spinner loading-xs" aria-hidden="true"></span> }.into_any()
+                        } else {
+                            view! { <ui::Icon class="size-5" name=if was_invited { "mail-check" } else { "mail" }/> }.into_any()
+                        }}
+                    </button>
+                })}
                 {if p.removable {
                     view! {
                         <button type="button" class="btn btn-ghost btn-sm text-base-content/70 hover:text-error" aria-label=label

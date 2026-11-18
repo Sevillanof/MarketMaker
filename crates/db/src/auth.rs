@@ -106,6 +106,23 @@ pub async fn create_invite_key(pool: &PgPool, email: &str) -> sqlx::Result<Strin
     Ok(key)
 }
 
+/// Cuántos segundos hace que se le mandó la última invitación a cada email
+/// de `emails` (los que nunca recibieron una no aparecen).
+pub async fn invitations_sent(
+    pool: &PgPool,
+    emails: &[String],
+) -> sqlx::Result<Vec<(String, i64)>> {
+    sqlx::query_as(
+        "SELECT email, extract(epoch FROM now() - max(created_at))::bigint
+         FROM login_codes
+         WHERE email = ANY($1) AND expires_at - created_at > interval '1 hour'
+         GROUP BY email",
+    )
+    .bind(emails)
+    .fetch_all(pool)
+    .await
+}
+
 async fn save_login_code(
     pool: &PgPool,
     email: &str,
