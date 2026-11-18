@@ -57,3 +57,25 @@ Es lento y carga la VPS; sirve si GitHub no compiló. `release.sh` guarda esa
 compilación como versión `local` la próxima vez, para poder volver a ella.
 
 Logs: `journalctl -u marketmaker -f`.
+
+## Copias de seguridad de la base
+
+`deploy/backup.sh` (lo llama `release.sh` cada minuto, así se instala solo con
+los deploys). Cada noche, después de las 03:00 de Argentina: `pg_dump`
+comprimido → bucket de R2 aparte del de las fotos (`BACKUP_R2_BUCKET`) →
+deja 7 diarias, 4 semanales (domingos) y 6 mensuales (día 1). Los domingos
+restaura la última en una base descartable y compara las tablas. Si algo
+falla manda un email (Resend) a `ADMIN_EMAILS`, una vez por día.
+
+Una sola vez, en `/opt/marketmaker/current/.env.local`:
+
+    BACKUP_R2_BUCKET=marketmaker-backups
+    BACKUP_R2_ACCESS_KEY_ID=...
+    BACKUP_R2_SECRET_ACCESS_KEY=...
+
+y, para la prueba de restauración completa (si no, solo verifica el archivo):
+
+    sudo -u postgres psql -c 'alter role marketmaker createdb'
+
+A mano, como marketmaker: `deploy/backup.sh run | test | list`.
+Restaurar: bajar el `.dump` de R2 y `pg_restore --clean --no-owner -d <base> archivo.dump`.
