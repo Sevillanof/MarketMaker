@@ -75,7 +75,6 @@ pub fn PaymentsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_payments);
     view! {
         <leptos_meta::Title text="Cobros · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Payments>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-10">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-72 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -87,7 +86,6 @@ pub fn PaymentsPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }

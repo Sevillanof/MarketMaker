@@ -19,7 +19,10 @@ fn with_hits<T>(key: &str, window: Duration, f: impl FnOnce(&mut VecDeque<Instan
         map.retain(|_, v| v.back().is_some_and(|t| now.duration_since(*t) < LONGEST));
     }
     let hits = map.entry(key.to_string()).or_default();
-    while hits.front().is_some_and(|t| now.duration_since(*t) >= window) {
+    while hits
+        .front()
+        .is_some_and(|t| now.duration_since(*t) >= window)
+    {
         hits.pop_front();
     }
     f(hits)

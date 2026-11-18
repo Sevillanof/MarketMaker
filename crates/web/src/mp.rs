@@ -78,8 +78,7 @@ pub fn config() -> Option<Config> {
 /// aplicación de prueba configurada no cobra (nunca usa la real).
 pub fn config_for(slug: &str) -> Option<Config> {
     let mut c = config()?;
-    let sandbox = env("MP_SANDBOX_STORES")
-        .is_some_and(|v| v.split(',').any(|s| s.trim() == slug));
+    let sandbox = env("MP_SANDBOX_STORES").is_some_and(|v| v.split(',').any(|s| s.trim() == slug));
     if sandbox {
         c.client_id = env("MP_SANDBOX_CLIENT_ID")?;
         c.client_secret = env("MP_SANDBOX_CLIENT_SECRET")?;

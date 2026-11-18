@@ -574,7 +574,8 @@ impl Actions {
         };
         if let Some(p) = self.state.doc.with_untracked(|d| d.page_index(path)) {
             self.open_page(p, true);
-            self.ui.toast(format!("Tu tienda ya tiene la página {name}."), false);
+            self.ui
+                .toast(format!("Tu tienda ya tiene la página {name}."), false);
             return;
         }
         if self.state.doc.with_untracked(|d| d.pages.len()) >= domain::MAX_PAGES {
@@ -721,11 +722,18 @@ impl Actions {
 
 /// Tamaño de un bloque dicho en palabras: ancho en columnas y alto en píxeles.
 pub(crate) fn size_text(size: domain::Size) -> String {
-    let width = match WIDTHS.iter().find(|(cols, _)| *cols == size.w).map(|(_, n)| *n) {
+    let width = match WIDTHS
+        .iter()
+        .find(|(cols, _)| *cols == size.w)
+        .map(|(_, n)| *n)
+    {
         Some("Completo") => "todo el ancho".to_string(),
         Some("Mitad") => "mitad del ancho".to_string(),
         Some(name) => format!("{name} del ancho"),
-        None => format!("{} por ciento del ancho", u32::from(size.w) * 100 / u32::from(domain::GRID_COLS)),
+        None => format!(
+            "{} por ciento del ancho",
+            u32::from(size.w) * 100 / u32::from(domain::GRID_COLS)
+        ),
     };
     let rows = u32::from(size.h) * u32::from(domain::ROW_PX);
     let height = match rows {
@@ -1627,7 +1635,11 @@ fn PublishCheck(
         .collect_view();
     // Sin textos pero con productos de ejemplo: se avisa en una línea.
     let title = if n == 0 {
-        if examples == 1 { "Queda 1 producto de ejemplo".to_string() } else { format!("Quedan {examples} productos de ejemplo") }
+        if examples == 1 {
+            "Queda 1 producto de ejemplo".to_string()
+        } else {
+            format!("Quedan {examples} productos de ejemplo")
+        }
     } else if n == 1 {
         "Hay 1 texto sin cambiar".to_string()
     } else {

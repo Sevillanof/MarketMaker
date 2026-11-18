@@ -286,7 +286,6 @@ pub fn ProductsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), list_store_products);
     view! {
         <leptos_meta::Title text="Productos · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Products>
             <div class="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -298,7 +297,6 @@ pub fn ProductsPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -732,7 +730,6 @@ pub fn ProductEditPage() -> impl IntoView {
     );
     view! {
         <leptos_meta::Title text="Producto · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Products>
             <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -752,7 +749,6 @@ pub fn ProductEditPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -803,10 +799,26 @@ impl Form {
             in_stock: RwSignal::new(p.in_stock || p.stock.is_some()),
             stock: RwSignal::new(p.stock.map(|s| s.to_string()).unwrap_or_default()),
             visible: RwSignal::new(p.visible),
-            weight: RwSignal::new(p.parcel.map(|x| domain::kg_input(x.weight_g)).unwrap_or_default()),
-            length: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.length_mm)).unwrap_or_default()),
-            width: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.width_mm)).unwrap_or_default()),
-            height: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.height_mm)).unwrap_or_default()),
+            weight: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::kg_input(x.weight_g))
+                    .unwrap_or_default(),
+            ),
+            length: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.length_mm))
+                    .unwrap_or_default(),
+            ),
+            width: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.width_mm))
+                    .unwrap_or_default(),
+            ),
+            height: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.height_mm))
+                    .unwrap_or_default(),
+            ),
         }
     }
 
@@ -1029,17 +1041,22 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             errors.with(|es| {
                 es.iter()
                     .filter(|e| error_field(e) == field)
-                    .map(|e| view! { <p class="label whitespace-normal text-error">{e.clone()}</p> })
+                    .map(
+                        |e| view! { <p class="label whitespace-normal text-error">{e.clone()}</p> },
+                    )
                     .collect_view()
             })
         }
     };
-    let has_error = move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
-    let save_button = move || view! {
-        <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
-            on:click=move |_| on_save()>
-            {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
-        </button>
+    let has_error =
+        move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
+    let save_button = move || {
+        view! {
+            <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
+                on:click=move |_| on_save()>
+                {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
+            </button>
+        }
     };
 
     let confirm_delete = RwSignal::new(false);
@@ -1047,10 +1064,9 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         delete_product(slug.get_value(), id.get_untracked()).await
     });
     let list_href2 = list_href.clone();
+    let navigate = leptos_router::hooks::use_navigate();
     Effect::new(move |_| match delete.value().get() {
-        Some(Ok(())) => {
-            let _ = window().location().set_href(&list_href2);
-        }
+        Some(Ok(())) => navigate(&list_href2, Default::default()),
         Some(Err(e)) => errors.set(vec![error_text(&e)]),
         None => {}
     });

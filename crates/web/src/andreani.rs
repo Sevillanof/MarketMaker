@@ -5,7 +5,9 @@
 //! - `ANDREANI_API_URL`: para probar con un Andreani de mentira
 //!   (`scripts/fake-andreani.js`). Sin ella, el real.
 
-use domain::{AndreaniBranch, AndreaniContract, AndreaniOrigin, AndreaniRate, AndreaniService, Parcel};
+use domain::{
+    AndreaniBranch, AndreaniContract, AndreaniOrigin, AndreaniRate, AndreaniService, Parcel,
+};
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 use uuid::Uuid;
@@ -72,7 +74,10 @@ async fn send(
             .header("Content-Type", "application/json")
             .body(b.to_string());
     }
-    let res = req.send().await.map_err(|e| Error::Network(e.to_string()))?;
+    let res = req
+        .send()
+        .await
+        .map_err(|e| Error::Network(e.to_string()))?;
     let status = res.status();
     let bytes = res
         .bytes()
@@ -109,7 +114,9 @@ async fn call(
     auth: Auth<'_>,
     body: Option<Value>,
 ) -> Result<Value, Error> {
-    send(method, path, auth, body).await.map(|b| unwrap_json(&b))
+    send(method, path, auth, body)
+        .await
+        .map(|b| unwrap_json(&b))
 }
 
 /// Lo que devuelve Andreani al entrar.
@@ -209,7 +216,14 @@ async fn with_account_raw(
         .map_err(|e| Error::Network(e.to_string()))?
         .ok_or(Error::Unauthorized)?;
     if !acc.access_token.is_empty() {
-        match send(method.clone(), path, Auth::Token(&acc.access_token), body.clone()).await {
+        match send(
+            method.clone(),
+            path,
+            Auth::Token(&acc.access_token),
+            body.clone(),
+        )
+        .await
+        {
             Err(Error::Unauthorized) => {}
             other => return other,
         }
@@ -232,9 +246,7 @@ async fn with_account(
 }
 
 /// Guarda en la cuenta de Andreani desde dónde despacha la tienda.
-pub async fn save_origin(
-    pool: &db::Pool,
-    tenant: Uuid, o: &AndreaniOrigin) -> Result<(), Error> {
+pub async fn save_origin(pool: &db::Pool, tenant: Uuid, o: &AndreaniOrigin) -> Result<(), Error> {
     with_account(
         pool,
         tenant,
@@ -310,7 +322,11 @@ pub async fn rates(
         })),
     )
     .await?;
-    let list = r["rates"].as_array().or(r.as_array()).cloned().unwrap_or_default();
+    let list = r["rates"]
+        .as_array()
+        .or(r.as_array())
+        .cloned()
+        .unwrap_or_default();
     Ok(list
         .iter()
         .filter_map(|x| {
@@ -331,7 +347,9 @@ pub async fn rates(
 /// Las sucursales de Andreani cerca de un código postal.
 pub async fn branches(
     pool: &db::Pool,
-    tenant: Uuid, postal_code: &str) -> Result<Vec<AndreaniBranch>, Error> {
+    tenant: Uuid,
+    postal_code: &str,
+) -> Result<Vec<AndreaniBranch>, Error> {
     let r = with_account(
         pool,
         tenant,
@@ -340,7 +358,11 @@ pub async fn branches(
         None,
     )
     .await?;
-    let list = r["data"].as_array().or(r.as_array()).cloned().unwrap_or_default();
+    let list = r["data"]
+        .as_array()
+        .or(r.as_array())
+        .cloned()
+        .unwrap_or_default();
     Ok(list.iter().filter_map(branch_of).collect())
 }
 
@@ -396,7 +418,9 @@ pub struct NewShipment<'a> {
 /// idempotente: si falla por la red, no se reintenta solo.
 pub async fn create_shipment(
     pool: &db::Pool,
-    tenant: Uuid, n: &NewShipment<'_>) -> Result<String, Error> {
+    tenant: Uuid,
+    n: &NewShipment<'_>,
+) -> Result<String, Error> {
     let cm = |mm: u32| f64::from(mm) / 10.0;
     let products: Vec<Value> = n
         .lines
@@ -445,7 +469,10 @@ pub async fn create_shipment(
     .await?;
     let id = text(&r, &["pedidoId", "pedido_id", "numeroDeEnvio"]);
     if id.is_empty() {
-        return Err(Error::Api(200, "Andreani no devolvió el número de envío".into()));
+        return Err(Error::Api(
+            200,
+            "Andreani no devolvió el número de envío".into(),
+        ));
     }
     Ok(id)
 }
@@ -453,7 +480,10 @@ pub async fn create_shipment(
 /// La etiqueta en PDF de envíos ya pagados (por número de seguimiento).
 pub async fn label(
     pool: &db::Pool,
-    tenant: Uuid, client_type: &str, trackings: &[String]) -> Result<Vec<u8>, Error> {
+    tenant: Uuid,
+    client_type: &str,
+    trackings: &[String],
+) -> Result<Vec<u8>, Error> {
     let pdf = with_account_raw(
         pool,
         tenant,
@@ -479,7 +509,9 @@ pub struct Tracking {
 /// El seguimiento de hasta 100 envíos (por número de pedido de Andreani).
 pub async fn track(
     pool: &db::Pool,
-    tenant: Uuid, pedido_ids: &[String]) -> Result<Vec<Tracking>, Error> {
+    tenant: Uuid,
+    pedido_ids: &[String],
+) -> Result<Vec<Tracking>, Error> {
     let r = with_account(
         pool,
         tenant,
@@ -488,7 +520,11 @@ pub async fn track(
         Some(json!({ "salesOrderNumbers": pedido_ids })),
     )
     .await?;
-    let list = r.as_array().or(r["data"].as_array()).cloned().unwrap_or_default();
+    let list = r
+        .as_array()
+        .or(r["data"].as_array())
+        .cloned()
+        .unwrap_or_default();
     Ok(list
         .iter()
         .map(|x| Tracking {
@@ -548,7 +584,8 @@ mod tests {
         let k = contract_of(&c).unwrap();
         assert_eq!(k.id, "7");
         assert_eq!(k.service, AndreaniService::Branch);
-        let c = json!({"id": "9", "modoDeEntregaNombre": "A domicilio", "tipoDeEnvioNombre": "Bigger"});
+        let c =
+            json!({"id": "9", "modoDeEntregaNombre": "A domicilio", "tipoDeEnvioNombre": "Bigger"});
         assert_eq!(contract_of(&c).unwrap().service, AndreaniService::Bigger);
         assert!(contract_of(&json!({"id": "1", "modoDeEntregaNombre": "raro"})).is_none());
     }

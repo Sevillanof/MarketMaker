@@ -51,12 +51,7 @@ pub async fn ship_order(pool: &db::Pool, tenant: Uuid, order: Uuid) -> Option<Or
 }
 
 /// Da de alta el envío. El error, en palabras para el dueño.
-async fn create(
-    pool: &db::Pool,
-    tenant: Uuid,
-    o: &Order,
-    sh: &Shipment,
-) -> Result<String, String> {
+async fn create(pool: &db::Pool, tenant: Uuid, o: &Order, sh: &Shipment) -> Result<String, String> {
     use crate::andreani::Error;
     let acc = db::andreani::account(pool, tenant)
         .await
@@ -72,7 +67,12 @@ async fn create(
         .0
         .iter()
         .find(|c| c.service == sh.service)
-        .ok_or_else(|| format!("Tu cuenta de Andreani no tiene el servicio \"{}\".", sh.service.label()))?;
+        .ok_or_else(|| {
+            format!(
+                "Tu cuenta de Andreani no tiene el servicio \"{}\".",
+                sh.service.label()
+            )
+        })?;
     let ids: Vec<Uuid> = o
         .items
         .iter()
@@ -177,8 +177,13 @@ pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> usize {
             new.tracking = t.tracking.clone();
         }
         new.status = t.status.clone();
-        let Ok(id) = Uuid::parse_str(&o.id) else { continue };
-        if db::orders::save_shipment(pool, tenant, id, &new).await.is_err() {
+        let Ok(id) = Uuid::parse_str(&o.id) else {
+            continue;
+        };
+        if db::orders::save_shipment(pool, tenant, id, &new)
+            .await
+            .is_err()
+        {
             continue;
         }
         changed += 1;
@@ -197,7 +202,12 @@ pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> usize {
             if let Ok(Some((name, slug))) = db::mp::name_and_slug(pool, tenant).await {
                 let mut o = o.clone();
                 o.shipment = Some(new.clone());
-                crate::email::send(crate::email::shipped_to_buyer(&name, &slug, &o, &new.tracking));
+                crate::email::send(crate::email::shipped_to_buyer(
+                    &name,
+                    &slug,
+                    &o,
+                    &new.tracking,
+                ));
             }
         }
     }
@@ -210,8 +220,12 @@ pub async fn track_loop(pool: db::Pool) {
     const EVERY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
     match db::orders::recover_stuck_shipments(&pool).await {
         Ok(0) => {}
-        Ok(n) => leptos::logging::warn!("Andreani: {n} envío(s) quedaron a medias y pasaron a \"falló\""),
-        Err(e) => leptos::logging::warn!("Andreani: no se pudieron revisar los envíos a medias: {e}"),
+        Ok(n) => {
+            leptos::logging::warn!("Andreani: {n} envío(s) quedaron a medias y pasaron a \"falló\"")
+        }
+        Err(e) => {
+            leptos::logging::warn!("Andreani: no se pudieron revisar los envíos a medias: {e}")
+        }
     }
     loop {
         // Pagados que nunca llegaron a crearse (reinicio justo después del pago).
@@ -271,7 +285,10 @@ async fn label(
         None => None,
     };
     let Some(user) = user.filter(|u| crate::auth::is_allowed(&u.email)) else {
-        return fail(StatusCode::UNAUTHORIZED, "Entrá con tu cuenta para bajar la etiqueta.");
+        return fail(
+            StatusCode::UNAUTHORIZED,
+            "Entrá con tu cuenta para bajar la etiqueta.",
+        );
     };
     let Ok(Some(tenant)) = db::orders::tenant_of(&pool, order).await else {
         return fail(StatusCode::NOT_FOUND, "Ese pedido no existe.");
@@ -282,7 +299,12 @@ async fn label(
     let Ok(Some(o)) = db::orders::get(&pool, tenant, order).await else {
         return fail(StatusCode::NOT_FOUND, "Ese pedido no existe.");
     };
-    let Some(tracking) = o.shipment.as_ref().map(|s| s.tracking.clone()).filter(|t| !t.is_empty()) else {
+    let Some(tracking) = o
+        .shipment
+        .as_ref()
+        .map(|s| s.tracking.clone())
+        .filter(|t| !t.is_empty())
+    else {
         return fail(
             StatusCode::CONFLICT,
             "La etiqueta aparece cuando pagás el envío en Andreani.",
@@ -290,7 +312,12 @@ async fn label(
     };
     let client_type = match db::andreani::account(&pool, tenant).await {
         Ok(Some(a)) => a.client_type,
-        _ => return fail(StatusCode::CONFLICT, "Conectá tu cuenta de Andreani en Entregas."),
+        _ => {
+            return fail(
+                StatusCode::CONFLICT,
+                "Conectá tu cuenta de Andreani en Entregas.",
+            )
+        }
     };
     match crate::andreani::label(&pool, tenant, &client_type, &[tracking]).await {
         Ok(pdf) => (

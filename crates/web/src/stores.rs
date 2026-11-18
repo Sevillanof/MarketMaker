@@ -52,7 +52,11 @@ async fn free_slug(pool: &db::Pool, slug: &str) -> Result<String, ServerFnError>
     let base: String = if slug.len() < 3 {
         format!("{slug}tienda")
     } else {
-        slug.chars().take(26).collect::<String>().trim_end_matches('-').to_string()
+        slug.chars()
+            .take(26)
+            .collect::<String>()
+            .trim_end_matches('-')
+            .to_string()
     };
     for n in 1..1000 {
         let candidate = if n == 1 {
@@ -98,7 +102,8 @@ pub async fn create_store(
         return Ok(NewStoreOutcome::Problem(problem.into()));
     }
     let pool = crate::server::pool()?;
-    let doc = serde_json::to_value(domain::template_doc(&template, &name)).map_err(crate::server::internal)?;
+    let doc = serde_json::to_value(domain::template_doc(&template, &name))
+        .map_err(crate::server::internal)?;
     let created = db::auth::create_store(&pool, &name, &slug, user.id, "demo", &doc)
         .await
         .map_err(crate::server::internal)?;

@@ -7,11 +7,11 @@
 //! Los textos se muestran siempre como texto, nunca como HTML.
 
 use domain::{
-    AnnouncementProps, ProductCarouselProps, SocialProps, StatsProps, StepsProps,
-    BannerProps, BenefitsProps, CardProps, ContactProps, CarouselProps, CategoriesProps, CountdownProps,
-    FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps, ImageProps, LogosProps,
-    NavbarProps, Node, Product, ProductButtonProps, ProductGridProps, ProductImageProps,
-    ProductModal, TabsProps, TestimonialsProps, TextProps, Widget,
+    AnnouncementProps, BannerProps, BenefitsProps, CardProps, CarouselProps, CategoriesProps,
+    ContactProps, CountdownProps, FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps,
+    ImageProps, LogosProps, NavbarProps, Node, Product, ProductButtonProps, ProductCarouselProps,
+    ProductGridProps, ProductImageProps, ProductModal, SocialProps, StatsProps, StepsProps,
+    TabsProps, TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
 use leptos::prelude::*;
@@ -503,9 +503,16 @@ fn place_popover(ev: leptos::ev::MouseEvent, pop_id: &str, wide: bool) {
     };
     let win = window();
     let (sx, sy) = (win.scroll_x().unwrap_or(0.0), win.scroll_y().unwrap_or(0.0));
-    let view_w = win.inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(1024.0);
+    let view_w = win
+        .inner_width()
+        .ok()
+        .and_then(|w| w.as_f64())
+        .unwrap_or(1024.0);
     let anchor = if wide {
-        btn.closest("nav").ok().flatten().unwrap_or_else(|| btn.clone().into())
+        btn.closest("nav")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| btn.clone().into())
     } else {
         btn.clone().into()
     };
@@ -964,8 +971,10 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
 #[component]
 pub fn StepsWidget(props: StepsProps) -> impl IntoView {
     let n = props.items.len();
-    let title = (!props.title.is_empty()).then(|| view! {
-        <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold">{props.title.clone()}</h2>
+    let title = (!props.title.is_empty()).then(|| {
+        view! {
+            <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold">{props.title.clone()}</h2>
+        }
     });
     match props.variant.as_str() {
         "b" => view! {
@@ -1145,7 +1154,12 @@ pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
         channels.push(Channel {
             icon: "facebook",
             label: "Facebook",
-            value: props.facebook.trim().trim_start_matches("https://").trim_start_matches("www.").to_string(),
+            value: props
+                .facebook
+                .trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("www.")
+                .to_string(),
             href: props.facebook.trim().to_string(),
             external: true,
         });
@@ -1154,7 +1168,12 @@ pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
         channels.push(Channel {
             icon: "tiktok",
             label: "TikTok",
-            value: props.tiktok.trim().trim_start_matches("https://").trim_start_matches("www.").to_string(),
+            value: props
+                .tiktok
+                .trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("www.")
+                .to_string(),
             href: props.tiktok.trim().to_string(),
             external: true,
         });
@@ -1598,9 +1617,14 @@ pub fn ContactWidget(props: ContactProps, editing: bool) -> impl IntoView {
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
     let mut channels = store_channels(&store);
     // WhatsApp va como botón principal; el resto, como filas.
-    let whatsapp = (channels.first().is_some_and(|c| c.icon == "whatsapp")).then(|| channels.remove(0));
+    let whatsapp =
+        (channels.first().is_some_and(|c| c.icon == "whatsapp")).then(|| channels.remove(0));
     let has_channels = whatsapp.is_some() || !channels.is_empty();
-    let others_title = if whatsapp.is_some() { "También podés" } else { "Escribinos" };
+    let others_title = if whatsapp.is_some() {
+        "También podés"
+    } else {
+        "Escribinos"
+    };
     let hours = props.hours.trim().to_string();
     let address = props.address.trim().to_string();
     let root = if has_channels || editing {

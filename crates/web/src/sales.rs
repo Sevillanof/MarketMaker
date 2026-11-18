@@ -1,11 +1,11 @@
 //! Ventas de una tienda, en la plataforma (`/tienda/:slug/ventas`): por
 //! ahora, cómo entrega sus pedidos (retiro y envío).
 
-use crate::products::{error_text, slug_param, SignInFirst};
 use crate::checkout::{error_for, focus_id, TextField};
+use crate::products::{error_text, slug_param, SignInFirst};
 use domain::{
-    AndreaniAccount, AndreaniConnect, AndreaniPanel, AndreaniSaved, AndreaniService, AndreaniSettings,
-    DeliverySettings, FieldError,
+    AndreaniAccount, AndreaniConnect, AndreaniPanel, AndreaniSaved, AndreaniService,
+    AndreaniSettings, DeliverySettings, FieldError,
 };
 use leptos::prelude::*;
 
@@ -94,7 +94,9 @@ pub async fn load_andreani(slug: String) -> Result<Option<AndreaniPanel>, Server
         return Ok(None);
     };
     let pool = pool()?;
-    let d = db::orders::delivery(&pool, tenant.id).await.map_err(internal)?;
+    let d = db::orders::delivery(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
     let account = db::andreani::account(&pool, tenant.id)
         .await
         .map_err(internal)?
@@ -108,7 +110,10 @@ pub async fn load_andreani(slug: String) -> Result<Option<AndreaniPanel>, Server
 
 /// Conecta la cuenta de Andreani con el código que pegó el dueño.
 #[server]
-pub async fn connect_andreani(slug: String, code: String) -> Result<AndreaniConnect, ServerFnError> {
+pub async fn connect_andreani(
+    slug: String,
+    code: String,
+) -> Result<AndreaniConnect, ServerFnError> {
     use crate::andreani::Error;
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
@@ -164,7 +169,9 @@ pub async fn connect_andreani(slug: String, code: String) -> Result<AndreaniConn
     )
     .await
     .map_err(internal)?;
-    let d = db::orders::delivery(&pool, tenant.id).await.map_err(internal)?;
+    let d = db::orders::delivery(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
     let acc = db::andreani::account(&pool, tenant.id)
         .await
         .map_err(internal)?
@@ -185,7 +192,10 @@ pub async fn save_andreani(
     use crate::server::{internal, pool};
     let tenant = crate::products::server::require_store(&slug).await?;
     let pool = pool()?;
-    let Some(acc) = db::andreani::account(&pool, tenant.id).await.map_err(internal)? else {
+    let Some(acc) = db::andreani::account(&pool, tenant.id)
+        .await
+        .map_err(internal)?
+    else {
         return Ok(AndreaniSaved {
             errors: vec![FieldError {
                 field: "account".into(),
@@ -198,7 +208,10 @@ pub async fn save_andreani(
     let mut s = settings;
     let errors = domain::tidy_andreani(&mut s, &available);
     if !errors.is_empty() {
-        return Ok(AndreaniSaved { errors, warning: None });
+        return Ok(AndreaniSaved {
+            errors,
+            warning: None,
+        });
     }
     db::andreani::save_settings(&pool, tenant.id, &s)
         .await
@@ -210,7 +223,10 @@ pub async fn save_andreani(
             Some("Guardamos los cambios, pero Andreani no tomó la dirección de origen. Volvé a guardar en unos minutos.".into())
         }
     };
-    Ok(AndreaniSaved { errors: Vec::new(), warning })
+    Ok(AndreaniSaved {
+        errors: Vec::new(),
+        warning,
+    })
 }
 
 /// Desconecta la cuenta de Andreani (los envíos ya creados siguen en Andreani).
@@ -234,7 +250,6 @@ pub fn SalesPage() -> impl IntoView {
     let andreani = Resource::new(move || slug.get(), load_andreani);
     view! {
         <leptos_meta::Title text="Entregas · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Delivery>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -249,7 +264,6 @@ pub fn SalesPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -284,7 +298,11 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             if let Some(f) = e.first() {
                 // Al escribir, el error se muestra bajo el campo sin sacarle el foco.
                 if !auto.get_untracked() {
-                    focus_id(if f.field == "type" { "d-pickup".to_string() } else { format!("d-{}", f.field) });
+                    focus_id(if f.field == "type" {
+                        "d-pickup".to_string()
+                    } else {
+                        format!("d-{}", f.field)
+                    });
                 }
             }
             problems.set(e);
@@ -475,7 +493,8 @@ fn AndreaniConnectSteps(slug: String, on_connect: Callback<AndreaniAccount>) -> 
     let code = RwSignal::new(String::new());
     let problem = RwSignal::new(None::<String>);
     let slug = StoredValue::new(slug);
-    let connect = Action::new(move |code: &String| connect_andreani(slug.get_value(), code.clone()));
+    let connect =
+        Action::new(move |code: &String| connect_andreani(slug.get_value(), code.clone()));
     Effect::new(move |_| match connect.value().get() {
         Some(Ok(AndreaniConnect::Connected(a))) => on_connect.run(a),
         Some(Ok(AndreaniConnect::Problem(m))) => {
@@ -610,7 +629,10 @@ fn AndreaniConnected(
                 return;
             }
             Err(m) => {
-                let e = vec![FieldError { field: "parcel".into(), message: m }];
+                let e = vec![FieldError {
+                    field: "parcel".into(),
+                    message: m,
+                }];
                 focus_first(&e);
                 errors.set(e);
                 return;
@@ -652,7 +674,11 @@ fn AndreaniConnected(
         }
     });
 
-    let holder = if acc.holder.is_empty() { acc.email.clone() } else { acc.holder.clone() };
+    let holder = if acc.holder.is_empty() {
+        acc.email.clone()
+    } else {
+        acc.holder.clone()
+    };
     let cuit = (!acc.cuit.is_empty()).then(|| format!("CUIT {}", acc.cuit));
     let offer: Vec<AndreaniService> = acc
         .available

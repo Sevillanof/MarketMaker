@@ -59,13 +59,18 @@ pub async fn refresh_shipment(slug: String, id: String) -> Result<Option<Order>,
     let tenant = crate::products::server::require_store(&slug).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
     let pool = pool()?;
-    let Some(o) = db::orders::get(&pool, tenant.id, id).await.map_err(internal)? else {
+    let Some(o) = db::orders::get(&pool, tenant.id, id)
+        .await
+        .map_err(internal)?
+    else {
         return Ok(None);
     };
     if crate::shipments::refresh(&pool, tenant.id, std::slice::from_ref(&o)).await == 0 {
         return Ok(None);
     }
-    db::orders::get(&pool, tenant.id, id).await.map_err(internal)
+    db::orders::get(&pool, tenant.id, id)
+        .await
+        .map_err(internal)
 }
 
 /// `/tienda/:slug/pedidos`.
@@ -78,7 +83,6 @@ pub fn OrdersPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_orders);
     view! {
         <leptos_meta::Title text="Pedidos · MarketMaker"/>
-        <crate::panel::StoreShell slug=slug.get_untracked() section=crate::panel::Section::Orders>
             <div class="mx-auto flex max-w-[1280px] flex-col gap-5 px-6 py-8">
                 <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
                     {move || Suspend::new(async move {
@@ -90,7 +94,6 @@ pub fn OrdersPage() -> impl IntoView {
                     })}
                 </Suspense>
             </div>
-        </crate::panel::StoreShell>
     }
     .into_any()
 }
@@ -164,12 +167,12 @@ impl BoardCtx {
                 Ok(Some(o)) => self.replace(o),
                 Ok(None) => {}
                 Err(e) => {
-                set(before);
-                self.notice.set(String::new());
-                self.problem.set(Some(format!(
-                    "No pudimos mover el pedido #{number}. {}",
-                    error_text(&e)
-                )));
+                    set(before);
+                    self.notice.set(String::new());
+                    self.problem.set(Some(format!(
+                        "No pudimos mover el pedido #{number}. {}",
+                        error_text(&e)
+                    )));
                 }
             }
         });
@@ -536,7 +539,10 @@ fn ShipmentBox(ctx: BoardCtx, id: String, sh: domain::Shipment, paid: bool) -> i
         }
         new
     });
-    if sh.state == S::Created && !domain::tracking_is_delivered(&sh.status) && first_look == Some(true) {
+    if sh.state == S::Created
+        && !domain::tracking_is_delivered(&sh.status)
+        && first_look == Some(true)
+    {
         Effect::new(move |_| {
             let slug = ctx.slug.get_value();
             leptos::task::spawn_local(async move {

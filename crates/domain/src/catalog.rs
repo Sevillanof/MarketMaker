@@ -504,9 +504,15 @@ mod tests {
         assert_eq!(parse_price("1.000.000"), Some(100_000_000));
         assert_eq!(parse_price(""), None);
         assert_eq!(parse_price("12,345"), None);
-        assert!(price_problem("-500", "El precio").unwrap().contains("negativo"));
-        assert!(price_problem("1,999", "El precio").unwrap().contains("miles"));
-        assert!(price_problem("9999999999999999999", "El precio").unwrap().contains("grande"));
+        assert!(price_problem("-500", "El precio")
+            .unwrap()
+            .contains("negativo"));
+        assert!(price_problem("1,999", "El precio")
+            .unwrap()
+            .contains("miles"));
+        assert!(price_problem("9999999999999999999", "El precio")
+            .unwrap()
+            .contains("grande"));
         assert!(price_problem("45.999,90", "El precio").is_none());
         assert_eq!(parse_price("doce"), None);
         assert_eq!(price_input(4_599_990), "45.999,90");

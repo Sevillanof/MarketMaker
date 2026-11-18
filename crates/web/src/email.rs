@@ -182,11 +182,7 @@ fn where_(o: &Order, pickup_address: &str) -> String {
             "Envío a {}",
             domain::ship_address(&o.address, &o.city, &o.postal_code)
         ),
-        Delivery::Andreani(s) => format!(
-            "{} · {}",
-            s.label(),
-            o.destination().unwrap_or_default()
-        ),
+        Delivery::Andreani(s) => format!("{} · {}", s.label(), o.destination().unwrap_or_default()),
     }
 }
 
@@ -266,11 +262,7 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
     let place = match o.delivery {
         Delivery::Pickup => "Retira en el local".to_string(),
         Delivery::Shipping => format!("Envío a domicilio · {}", o.city),
-        Delivery::Andreani(s) => format!(
-            "{} · {}",
-            s.label(),
-            o.destination().unwrap_or_default()
-        ),
+        Delivery::Andreani(s) => format!("{} · {}", s.label(), o.destination().unwrap_or_default()),
     };
     let notes = if o.notes.is_empty() {
         String::new()
