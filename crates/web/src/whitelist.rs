@@ -77,7 +77,8 @@ pub async fn load_whitelist() -> Result<Vec<AllowedPerson>, ServerFnError> {
     Ok(people.into_iter().map(|(_, p)| p).collect())
 }
 
-/// Habilita un email para crear su cuenta y le manda la invitación.
+/// Habilita un email para crear su cuenta. No le manda nada: la invitación
+/// se envía aparte, cuando el administrador quiere.
 #[server]
 pub async fn add_allowed_email(email: String) -> Result<WhitelistChange, ServerFnError> {
     use crate::server::{internal, pool};
@@ -93,25 +94,6 @@ pub async fn add_allowed_email(email: String) -> Result<WhitelistChange, ServerF
         .await
         .map_err(internal)?;
     crate::auth::refresh_allowlist(&pool).await?;
-    // Si todavía no tiene cuenta, le llega la invitación con su enlace
-    // personal: es la prueba de que el email es suyo. Si el email no sale,
-    // igual queda habilitado y puede pedir el enlace desde Entrar.
-    let has_account = db::auth::account_by_email(&pool, &email)
-        .await
-        .map_err(internal)?
-        .is_some();
-    if !has_account {
-        let key = db::auth::create_invite_key(&pool, &email)
-            .await
-            .map_err(internal)?;
-        let url = domain::password_link(&crate::email::app_url(), &email, &key, true);
-        if !crate::auth::emails_go_out() {
-            leptos::logging::log!("\n  Enlace de invitación de {email}: {url}\n");
-        }
-        if let Err(e) = crate::email::deliver(&crate::email::invitation(&email, &url)).await {
-            leptos::logging::log!("No pudimos mandar la invitación a {email}: {e}");
-        }
-    }
     Ok(WhitelistChange::Done)
 }
 
@@ -166,8 +148,6 @@ pub fn WhitelistDialog(
     let remove = Action::new(|e: &String| remove_allowed_email(e.clone()));
     Effect::new(move |_| match add.value().get() {
         Some(Ok(WhitelistChange::Done)) => {
-            let to = email.get_untracked().trim().to_lowercase();
-            sent.set(Some(format!("Le mandamos la invitación a {to}.")));
             email.set(String::new());
             problem.set(None);
             version.update(|v| *v += 1);
@@ -197,7 +177,7 @@ pub fn WhitelistDialog(
                     <div class="flex items-start justify-between gap-4">
                         <div>
                             <h2 id="whitelist-titulo" class="text-xl font-extrabold">"Whitelist"</h2>
-                            <p class="text-sm text-base-content/70">"Quién puede crear una cuenta. Al agregar un email, le mandamos la invitación."</p>
+                            <p class="text-sm text-base-content/70">"Quién puede crear una cuenta. Los cambios se aplican al instante."</p>
                         </div>
                         <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar"
                             on:click=move |_| { if let Some(d) = dialog.get() { d.close(); } }>"✕"</button>
