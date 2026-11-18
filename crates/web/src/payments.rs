@@ -91,7 +91,7 @@ pub fn PaymentsPage() -> impl IntoView {
 }
 
 /// Ícono redondo de una forma de cobro.
-fn method_icon(kind: &'static str) -> impl IntoView {
+pub(crate) fn method_icon(kind: &'static str) -> impl IntoView {
     let (bg, path) = match kind {
         "mp" => (
             "bg-[#009ee3] text-white rounded-full",
