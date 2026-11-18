@@ -13,8 +13,7 @@
 //! `.env.local`). Las dos cosas se releen en cada pedido.
 
 use domain::{
-    AccountInfo, CodeCheck, CodeRequest, EmailLookup, Me, PasswordChange, PasswordSignIn,
-    SetPassword,
+    AccountInfo, CodeCheck, CodeRequest, Me, PasswordChange, PasswordSignIn, SetPassword,
 };
 use leptos::prelude::*;
 
@@ -337,11 +336,13 @@ pub async fn request_password_link(email: String) -> Result<CodeRequest, ServerF
     let Some(email) = domain::normalize_email(&email) else {
         return Ok(CodeRequest::BadEmail);
     };
-    if !is_allowed(&email) {
-        return Ok(CodeRequest::NotAllowed);
-    }
     if !may_ask_for_email() {
         return Ok(CodeRequest::TooMany);
+    }
+    // La respuesta es la misma tenga o no invitación: así nadie puede usar
+    // este formulario para averiguar qué emails están en la lista.
+    if !is_allowed(&email) {
+        return Ok(CodeRequest::Sent);
     }
     let pool = crate::server::pool()?;
     // Si es cuenta nueva o no lo decide quien pregunta: lo dice la base.
@@ -430,36 +431,6 @@ pub async fn sign_out() -> Result<(), ServerFnError> {
     }
     clear_session_cookie();
     Ok(())
-}
-
-/// Paso 1 de Entrar: ¿este email ya tiene cuenta?
-#[server]
-pub async fn lookup_email(email: String) -> Result<EmailLookup, ServerFnError> {
-    use std::time::Duration;
-    // Probar emails en serie para ver quién tiene cuenta: 10 por minuto.
-    let ip = crate::limits::client_ip();
-    if !crate::limits::allow(&format!("lookup|{ip}"), 10, Duration::from_secs(60)) {
-        return Ok(EmailLookup::TooMany);
-    }
-    let Some(email) = domain::normalize_email(&email) else {
-        return Ok(EmailLookup::BadEmail);
-    };
-    let account = db::auth::account_by_email(&crate::server::pool()?, &email)
-        .await
-        .map_err(crate::server::internal)?;
-    if !is_allowed(&email) {
-        if account.is_none() {
-            leptos::logging::log!(
-                "\n  {email} quiso crear una cuenta pero no está en ALLOWED_EMAILS (hay {} habilitados). Agregalo en .env.local.\n",
-                allowed_emails().len()
-            );
-        }
-        return Ok(EmailLookup::NotAllowed);
-    }
-    Ok(match account {
-        Some(_) => EmailLookup::Existing,
-        None => EmailLookup::New,
-    })
 }
 
 /// Contraseñas equivocadas seguidas, desde una misma conexión y para un
