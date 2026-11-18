@@ -57,7 +57,8 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <AutoReload options=options.clone()/>
                 <leptos_meta::HashedStylesheet options=options.clone() id="leptos"/>
-                <HydrationScripts options/>
+                <HydrationScripts options=options.clone()/>
+                {editor_preload(&options)}
                 <MetaTags/>
             </head>
             <body>
@@ -241,6 +242,44 @@ impl leptos_router::LazyRoute for EditorRoute {
 
     fn view(_this: Self) -> AnyView {
         view! { <EditorPage/> }.into_any()
+    }
+}
+
+/// La parte del editor que se baja aparte (`split___editor_route_view_*.wasm`):
+/// su nombre lleva un hash que cambia en cada compilación, así que se busca
+/// en la carpeta `pkg` (una sola vez). `None` si no hay (sin `--split`).
+#[cfg(feature = "ssr")]
+fn editor_chunk_url(opts: &LeptosOptions) -> Option<String> {
+    use std::sync::OnceLock;
+    static URL: OnceLock<Option<String>> = OnceLock::new();
+    URL.get_or_init(|| {
+        let pkg = std::path::Path::new(&*opts.site_root).join(&*opts.site_pkg_dir);
+        std::fs::read_dir(pkg).ok()?.flatten().find_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            (name.starts_with("split___editor_route_view") && name.ends_with(".wasm"))
+                .then(|| format!("/{}/{name}", opts.site_pkg_dir))
+        })
+    })
+    .clone()
+}
+
+/// En `/editor`, pide ya la parte del editor (en paralelo con el programa
+/// principal): si no, empieza a bajar recién cuando el principal terminó de
+/// arrancar. Va en el `<head>` que arma el servidor (no se hidrata).
+fn editor_preload(options: &LeptosOptions) -> Option<impl IntoView> {
+    #[cfg(feature = "ssr")]
+    {
+        let parts = use_context::<http::request::Parts>()?;
+        if parts.uri.path() != "/editor" {
+            return None;
+        }
+        let href = editor_chunk_url(options)?;
+        Some(leptos::html::link().rel("preload").href(href).r#as("fetch").crossorigin("anonymous"))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = options;
+        None::<()>
     }
 }
 
