@@ -230,8 +230,8 @@ async fn main() {
         // meter la tienda o el editor dentro de un marco (clickjacking).
         .layer(SetResponseHeaderLayer::if_not_present(
             header::STRICT_TRANSPORT_SECURITY,
-            // Primero un día; cuando todo ande bien en HTTPS se sube a un año.
-            HeaderValue::from_static("max-age=86400; includeSubDomains"),
+            // Un año: la plataforma y todas las tiendas andan solo en HTTPS.
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_CONTENT_TYPE_OPTIONS,
