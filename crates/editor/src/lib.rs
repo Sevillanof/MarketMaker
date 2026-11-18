@@ -32,7 +32,7 @@ use std::time::Duration;
 use wasm_bindgen::JsCast;
 
 use canvas::Canvas;
-use icons::Icon;
+pub use icons::Icon;
 use inspector::Inspector;
 use palette::Palette;
 use topbar::{PageSwitcher, StoreMenu};
