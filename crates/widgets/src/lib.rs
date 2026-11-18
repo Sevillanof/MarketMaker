@@ -20,7 +20,7 @@ use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 pub mod account;
 pub mod cart;
 pub mod tags;
-pub use account::{Account, AccountNavButton, AccountState, BuyerAvatar};
+pub use account::{Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar};
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
 pub use tags::{FilteredProducts, ProductFilter};
 

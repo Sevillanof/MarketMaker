@@ -106,3 +106,22 @@ pub fn AccountNavButton() -> impl IntoView {
     }
     .into_any()
 }
+
+/// "Mi cuenta" en el pie de la tienda: una segunda puerta a la cuenta, para
+/// las tiendas cuyo menú no la muestra o ya no está a la vista.
+#[component]
+pub fn AccountFooterLink() -> impl IntoView {
+    let Some(account) = use_context::<Account>() else {
+        return ().into_any();
+    };
+    view! {
+        <button type="button" class="link link-hover" aria-haspopup="dialog"
+            on:click=move |_| account.open.set(true)>
+            {move || match account.state.get() {
+                AccountState::In(_) => "Mi cuenta",
+                _ => "Ingresar a mi cuenta",
+            }}
+        </button>
+    }
+    .into_any()
+}
