@@ -69,9 +69,9 @@ async fn andreani_ready(
 /// vuelve a preguntar por 15 minutos (y el pedido se cobra con lo que vio
 /// el comprador).
 #[cfg(feature = "ssr")]
-fn quote_cache() -> &'static std::sync::Mutex<
-    std::collections::HashMap<String, (std::time::Instant, AndreaniQuote)>,
-> {
+fn quote_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, AndreaniQuote)>>
+{
     static CACHE: std::sync::OnceLock<
         std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, AndreaniQuote)>>,
     > = std::sync::OnceLock::new();
@@ -116,7 +116,10 @@ async fn andreani_quote(
         .map_err(internal)?;
     let mut items = Vec::new();
     for (id, qty) in &sorted {
-        if let Some(p) = products.iter().find(|p| p.id == *id && p.visible && !p.example) {
+        if let Some(p) = products
+            .iter()
+            .find(|p| p.id == *id && p.visible && !p.example)
+        {
             items.push(crate::andreani::Line {
                 parcel: p.parcel.unwrap_or(settings.parcel),
                 unit_cents: p.price_cents,
@@ -131,10 +134,17 @@ async fn andreani_quote(
     // paquete), origen y servicios. Si el dueño cambia algo, se cotiza de nuevo.
     let key = format!(
         "{tenant}|{cp}|{:?}|{}|{:?}|{:?}",
-        items.iter().map(|l| (l.parcel, l.unit_cents, l.qty)).collect::<Vec<_>>(),
+        items
+            .iter()
+            .map(|l| (l.parcel, l.unit_cents, l.qty))
+            .collect::<Vec<_>>(),
         settings.origin.postal_code,
         settings.services,
-        acc.contracts.0.iter().map(|c| c.service).collect::<Vec<_>>(),
+        acc.contracts
+            .0
+            .iter()
+            .map(|c| c.service)
+            .collect::<Vec<_>>(),
     );
     if let Some((at, q)) = quote_cache().lock().unwrap().get(&key) {
         if at.elapsed() < TTL {
@@ -150,19 +160,20 @@ async fn andreani_quote(
         ));
     }
     let origin = settings.origin.postal_code.clone();
-    let rates = match crate::andreani::rates(pool, tenant, &acc.client_type, &origin, &cp, &items, bigger)
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            leptos::logging::warn!("Andreani: no se pudo cotizar a {cp}: {e}");
-            // No se guarda: el próximo intento vuelve a preguntar.
-            return Ok(problem(
-                cp,
-                "No pudimos calcular el envío con Andreani. Probá de nuevo en un momento.",
-            ));
-        }
-    };
+    let rates =
+        match crate::andreani::rates(pool, tenant, &acc.client_type, &origin, &cp, &items, bigger)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                leptos::logging::warn!("Andreani: no se pudo cotizar a {cp}: {e}");
+                // No se guarda: el próximo intento vuelve a preguntar.
+                return Ok(problem(
+                    cp,
+                    "No pudimos calcular el envío con Andreani. Probá de nuevo en un momento.",
+                ));
+            }
+        };
     let rates: Vec<_> = rates
         .into_iter()
         .filter(|r| {
@@ -186,6 +197,22 @@ async fn andreani_quote(
     Ok(q)
 }
 
+#[cfg(feature = "ssr")]
+const TOO_MANY_LOOKUPS: &str =
+    "Recibimos muchas consultas seguidas desde tu conexión. Esperá unos minutos y probá de nuevo.";
+
+/// Cotizar y buscar sucursales gastan el cupo de Andreani de la tienda: 40
+/// consultas de cada una cada 10 minutos por conexión y tienda alcanzan de
+/// sobra para comprar.
+#[cfg(feature = "ssr")]
+fn may_ask_andreani(what: &str, tenant: uuid::Uuid) -> bool {
+    crate::limits::allow(
+        &format!("{what}|{tenant}|{}", crate::limits::client_ip()),
+        40,
+        std::time::Duration::from_secs(10 * 60),
+    )
+}
+
 /// "Finalizar compra": lo que cuesta el envío con Andreani a `postal_code`.
 #[server(input = Json)]
 pub async fn quote_shipping(
@@ -193,6 +220,9 @@ pub async fn quote_shipping(
     lines: Vec<(String, u32)>,
 ) -> Result<AndreaniQuote, ServerFnError> {
     let tenant = crate::auth::current_tenant().await?;
+    if !may_ask_andreani("quote", tenant.id) {
+        return Err(ServerFnError::new(TOO_MANY_LOOKUPS));
+    }
     let lines: Vec<_> = lines.into_iter().take(domain::MAX_ORDER_LINES).collect();
     andreani_quote(&crate::server::pool()?, tenant.id, &postal_code, &lines).await
 }
@@ -233,13 +263,23 @@ pub async fn find_branches(postal_code: String) -> Result<Vec<AndreaniBranch>, S
     let Some(cp) = domain::normalize_postal_code(&postal_code) else {
         return Ok(Vec::new());
     };
-    if andreani_ready(&crate::server::pool()?, tenant.id).await?.is_none() {
+    if andreani_ready(&crate::server::pool()?, tenant.id)
+        .await?
+        .is_none()
+    {
         return Ok(Vec::new());
     }
-    andreani_branches(&crate::server::pool()?, tenant.id, &cp).await.map_err(|e| {
-        leptos::logging::warn!("Andreani: sucursales de {cp}: {e}");
-        ServerFnError::new("No pudimos traer las sucursales de Andreani. Probá de nuevo en un momento.")
-    })
+    if !may_ask_andreani("branches", tenant.id) {
+        return Err(ServerFnError::new(TOO_MANY_LOOKUPS));
+    }
+    andreani_branches(&crate::server::pool()?, tenant.id, &cp)
+        .await
+        .map_err(|e| {
+            leptos::logging::warn!("Andreani: sucursales de {cp}: {e}");
+            ServerFnError::new(
+                "No pudimos traer las sucursales de Andreani. Probá de nuevo en un momento.",
+            )
+        })
 }
 
 /// Las formas de pago que ofrece la tienda, en orden.
@@ -315,6 +355,27 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         return Ok(PlaceOrder::CartChanged {
             message: "Recibimos varios pedidos seguidos desde tu conexión. Esperá unos minutos y probá de nuevo.".into(),
         });
+    }
+    // Un pedido por transferencia o a coordinar manda la confirmación al
+    // email que escribió el comprador, sin saber si es suyo: tope por
+    // dirección y por tienda para que no sirva para molestar a terceros.
+    if form.pay != domain::PayMethod::MercadoPago {
+        let day = std::time::Duration::from_secs(24 * 60 * 60);
+        let to = form.email.trim().to_lowercase();
+        if !crate::limits::allow(&format!("order-mail|{to}"), 6, day) {
+            return Ok(PlaceOrder::CartChanged {
+                message: "Ya recibimos varios pedidos con ese email hoy. Si necesitás hacer otro, escribile a la tienda.".into(),
+            });
+        }
+        if !crate::limits::allow(
+            &format!("order-store|{}", tenant.id),
+            120,
+            std::time::Duration::from_secs(60 * 60),
+        ) {
+            return Ok(PlaceOrder::CartChanged {
+                message: "La tienda está recibiendo muchos pedidos en este momento. Probá de nuevo en unos minutos.".into(),
+            });
+        }
     }
     let changed = |message: String| Ok(PlaceOrder::CartChanged { message });
     let mut ids = Vec::new();
@@ -668,9 +729,8 @@ fn buyer_storage() -> Option<leptos::web_sys::Storage> {
 /// comprador, así no los vuelve a escribir si el pago falla o si vuelve a la
 /// tienda. No guarda la forma de pago ni la nota.
 fn remember_buyer(f: &Fields) {
-    let (name, email, phone, address, city, postal, dni) = (
-        f.name, f.email, f.phone, f.address, f.city, f.postal, f.dni,
-    );
+    let (name, email, phone, address, city, postal, dni) =
+        (f.name, f.email, f.phone, f.address, f.city, f.postal, f.dni);
     // Después de hidratar: recupera lo guardado en los campos vacíos.
     Effect::new(move |_| {
         let Some(raw) = buyer_storage().and_then(|s| s.get_item(BUYER_KEY).ok().flatten()) else {
@@ -680,8 +740,13 @@ fn remember_buyer(f: &Fields) {
             return;
         };
         for (sig, key) in [
-            (name, "name"), (email, "email"), (phone, "phone"), (address, "address"),
-            (city, "city"), (postal, "postal"), (dni, "dni"),
+            (name, "name"),
+            (email, "email"),
+            (phone, "phone"),
+            (address, "address"),
+            (city, "city"),
+            (postal, "postal"),
+            (dni, "dni"),
         ] {
             if sig.get_untracked().is_empty() {
                 if let Some(x) = v.get(key) {
@@ -754,7 +819,9 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             f.quote.set(None);
             return;
         };
-        if f.quote.with_untracked(|q| q.as_ref().is_some_and(|q| q.postal_code == cp)) {
+        if f.quote
+            .with_untracked(|q| q.as_ref().is_some_and(|q| q.postal_code == cp))
+        {
             return;
         }
         quoting.dispatch((cp, lines_now()));
@@ -1249,7 +1316,11 @@ fn BranchPicker(
             }));
             let code = f.branch.get_untracked();
             if !list.iter().any(|b| b.code == code) {
-                f.branch.set(if list.len() == 1 { list[0].code.clone() } else { String::new() });
+                f.branch.set(if list.len() == 1 {
+                    list[0].code.clone()
+                } else {
+                    String::new()
+                });
             }
             branches.set(list);
         }
