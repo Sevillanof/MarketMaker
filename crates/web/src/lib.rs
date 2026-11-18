@@ -23,6 +23,7 @@ mod dev;
 #[cfg(feature = "ssr")]
 pub mod email;
 mod help;
+mod help_editor;
 mod landing;
 mod legal;
 #[cfg(feature = "ssr")]
@@ -503,7 +504,10 @@ fn EditorPage() -> impl IntoView {
                     _ => return view! { <Redirect path="/entrar?volver=/editor"/> }.into_any(),
                 }
                 match page.await {
-                    Ok(initial) => view! { <Editor initial save publish/> }.into_any(),
+                    Ok(initial) => view! {
+                        <Editor initial save publish/>
+                        <crate::help::HelpButton section=Signal::derive(|| panel::Section::Home) editor=true/>
+                    }.into_any(),
                     Err(e) => view! {
                         <div class="p-8">
                             <div class="alert alert-error">{format!("No se pudo cargar la página: {e}")}</div>

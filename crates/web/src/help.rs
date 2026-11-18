@@ -12,64 +12,84 @@ use leptos::prelude::*;
 use std::{sync::Arc, time::Duration};
 
 /// Ancho con el que se dibuja cada película; después se achica al de la ventana.
-const FILM_WIDTH: f64 = 960.0;
+const PANEL_FILM: (f64, f64) = (960.0, 600.0);
+/// Las del editor son más grandes: es una pantalla entera.
+pub(crate) const EDITOR_FILM: (f64, f64) = (1360.0, 800.0);
+
+/// Primera película del editor (las anteriores son del panel).
+const FIRST_EDITOR: usize = 3;
+
+fn film_size(n: usize) -> (f64, f64) {
+    if n >= FIRST_EDITOR {
+        EDITOR_FILM
+    } else {
+        PANEL_FILM
+    }
+}
 
 /// Un instante de la película: qué se ve y dónde está el cursor.
 #[derive(Clone, Default, PartialEq)]
-struct Frame {
+pub(crate) struct Frame {
     /// Cuánto dura antes del siguiente (en milisegundos).
-    ms: u32,
-    caption: &'static str,
+    pub ms: u32,
+    pub caption: &'static str,
     /// Elemento (`data-t`) al que apunta el cursor.
-    target: &'static str,
-    click: bool,
-    flags: u32,
+    pub target: &'static str,
+    pub click: bool,
+    pub flags: u32,
     /// Textos que se van escribiendo, por campo.
-    t: [String; 3],
+    pub t: [String; 3],
 }
 
 /// Armado de una película, paso a paso.
-struct Script {
+pub(crate) struct Script {
     frames: Vec<Frame>,
     cur: Frame,
 }
 
 impl Script {
-    fn new() -> Self {
+    pub fn new() -> Self {
+        Self::with_flags(0)
+    }
+    /// Película que arranca con `flags` ya puestos.
+    pub fn with_flags(flags: u32) -> Self {
         let mut s = Self {
             frames: Vec::new(),
-            cur: Frame::default(),
+            cur: Frame {
+                flags,
+                ..Frame::default()
+            },
         };
         s.push(900);
         s
     }
-    fn push(&mut self, ms: u32) {
+    pub fn push(&mut self, ms: u32) {
         let mut f = self.cur.clone();
         f.ms = ms;
         self.frames.push(f);
         self.cur.click = false;
     }
     /// El cursor va a `target` y se muestra `caption`.
-    fn go(&mut self, target: &'static str, caption: &'static str, ms: u32) -> &mut Self {
+    pub fn go(&mut self, target: &'static str, caption: &'static str, ms: u32) -> &mut Self {
         self.cur.target = target;
         self.cur.caption = caption;
         self.push(ms);
         self
     }
-    fn click(&mut self) -> &mut Self {
+    pub fn click(&mut self) -> &mut Self {
         self.cur.click = true;
         self.push(450);
         self
     }
-    fn set(&mut self, flag: u32) -> &mut Self {
+    pub fn set(&mut self, flag: u32) -> &mut Self {
         self.cur.flags |= flag;
         self
     }
-    fn clear(&mut self, flag: u32) -> &mut Self {
+    pub fn clear(&mut self, flag: u32) -> &mut Self {
         self.cur.flags &= !flag;
         self
     }
-    fn typing(&mut self, slot: usize, text: &str) -> &mut Self {
+    pub fn typing(&mut self, slot: usize, text: &str) -> &mut Self {
         for n in 1..=text.chars().count() {
             self.cur.t[slot] = text.chars().take(n).collect();
             self.push(65);
@@ -77,12 +97,12 @@ impl Script {
         self.push(500);
         self
     }
-    fn say(&mut self, caption: &'static str, ms: u32) -> &mut Self {
+    pub fn say(&mut self, caption: &'static str, ms: u32) -> &mut Self {
         self.cur.caption = caption;
         self.push(ms);
         self
     }
-    fn finish(self) -> Vec<Frame> {
+    pub fn finish(self) -> Vec<Frame> {
         self.frames
     }
 }
@@ -96,13 +116,22 @@ const M_LINKED: u32 = 2;
 const A_CONNECTED: u32 = 1;
 const A_ENABLED: u32 = 2;
 
-const FILMS: [(&str, &str); 3] = [
+const FILMS: [(&str, &str); 9] = [
     ("Cargá un producto", "Productos"),
     ("Vinculá Mercado Pago", "Cobros"),
     ("Conectá Andreani", "Entregas"),
+    ("Agregá un bloque", "Editor"),
+    ("Mové y cambiá el tamaño", "Editor"),
+    ("Editá un texto", "Editor"),
+    ("Elegí colores y letras", "Editor"),
+    ("Creá una página nueva", "Editor"),
+    ("Publicá tu tienda", "Editor"),
 ];
 
 fn script(film: usize) -> Vec<Frame> {
+    if film >= FIRST_EDITOR {
+        return crate::help_editor::script(film - FIRST_EDITOR);
+    }
     let mut s = Script::new();
     match film {
         0 => {
@@ -218,7 +247,12 @@ fn tick(
 
 /// El botón "?" (se agranda y dice "Ayuda" al pasar el mouse) y su ventana.
 #[component]
-pub fn HelpButton(section: Signal<Section>) -> impl IntoView {
+pub fn HelpButton(
+    section: Signal<Section>,
+    /// En el editor: se abre en las películas del editor.
+    #[prop(optional)]
+    editor: bool,
+) -> impl IntoView {
     let dialog = NodeRef::<leptos::html::Dialog>::new();
     let stage = NodeRef::<leptos::html::Div>::new();
     let open = RwSignal::new(false);
@@ -235,9 +269,16 @@ pub fn HelpButton(section: Signal<Section>) -> impl IntoView {
         gen.update(|g| *g += 1);
         let g = gen.get_untracked();
         tick(Arc::new(script(n)), 0, g, gen, frame, paused);
+        // Con la ventana ya dibujada: se mide para achicar la película a su ancho.
+        request_animation_frame(move || {
+            if let Some(st) = stage.get_untracked() {
+                scale.set((f64::from(st.client_width()) / film_size(n).0).clamp(0.3, 1.0));
+            }
+        });
     };
     let start = move |_| {
         let n = match section.get_untracked() {
+            _ if editor => FIRST_EDITOR,
             Section::Payments => 1,
             Section::Delivery => 2,
             _ => 0,
@@ -248,12 +289,6 @@ pub fn HelpButton(section: Signal<Section>) -> impl IntoView {
             _ = d.show_modal();
         }
         play(n);
-        // Con la ventana ya dibujada: se mide para achicar la película a su ancho.
-        request_animation_frame(move || {
-            if let Some(st) = stage.get_untracked() {
-                scale.set((f64::from(st.client_width()) / FILM_WIDTH).clamp(0.3, 1.0));
-            }
-        });
     };
 
     // El cursor sigue al elemento al que apunta el instante actual.
@@ -287,7 +322,7 @@ pub fn HelpButton(section: Signal<Section>) -> impl IntoView {
         </button>
         <dialog node_ref=dialog class="modal" aria-labelledby="help-title"
             on:close=move |_| { gen.update(|g| *g += 1); open.set(false); }>
-            <div class="modal-box w-11/12 max-w-3xl" data-theme="light">
+            <div class=move || { if film.get() >= FIRST_EDITOR { "modal-box w-11/12 max-w-5xl" } else { "modal-box w-11/12 max-w-3xl" } } data-theme="light">
                 <form method="dialog">
                     <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Cerrar">"✕"</button>
                 </form>
@@ -299,13 +334,15 @@ pub fn HelpButton(section: Signal<Section>) -> impl IntoView {
                         </div>
                         // Es una animación decorativa: el texto accesible está debajo.
                         <div node_ref=stage aria-hidden="true" inert=""
-                            class="relative aspect-[16/10] w-full overflow-hidden rounded-box border border-base-300 bg-base-200">
+                            style=move || { let (w, h) = film_size(film.get()); format!("aspect-ratio:{w}/{h}") }
+                            class="relative w-full overflow-hidden rounded-box border border-base-300 bg-base-200">
                             <div class="absolute left-0 top-0 origin-top-left bg-base-200"
-                                style=move || format!("width:{FILM_WIDTH}px;transform:scale({})", scale.get())>
+                                style=move || format!("width:{}px;transform:scale({})", film_size(film.get()).0, scale.get())>
                                 {move || match film.get() {
                                     0 => view! { <ProductFilm f=frame/> }.into_any(),
                                     1 => view! { <PaymentsFilm f=frame/> }.into_any(),
-                                    _ => view! { <AndreaniFilm f=frame/> }.into_any(),
+                                    2 => view! { <AndreaniFilm f=frame/> }.into_any(),
+                                    n => view! { <crate::help_editor::EditorFilm f=frame film=n - FIRST_EDITOR/> }.into_any(),
                                 }}
                             </div>
                             <div class="pointer-events-none absolute z-20 size-0 transition-[left,top] duration-700 ease-out motion-reduce:transition-none"
@@ -353,7 +390,7 @@ pub fn HelpButton(section: Signal<Section>) -> impl IntoView {
     }
 }
 
-fn has(f: RwSignal<Frame>, bit: u32) -> bool {
+pub(crate) fn has(f: RwSignal<Frame>, bit: u32) -> bool {
     f.with(|f| f.flags & bit != 0)
 }
 
