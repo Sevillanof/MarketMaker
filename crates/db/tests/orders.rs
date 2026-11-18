@@ -182,9 +182,16 @@ async fn an_online_order_enters_only_when_paid(pool: PgPool) {
     // Pide más de lo que hay: no deja.
     let too_many = [item(id, 4)];
     assert!(matches!(
-        orders::create(&pool, t, &NewOrder { status: OrderStatus::PendingPayment, ..order(&too_many) })
-            .await
-            .unwrap(),
+        orders::create(
+            &pool,
+            t,
+            &NewOrder {
+                status: OrderStatus::PendingPayment,
+                ..order(&too_many)
+            }
+        )
+        .await
+        .unwrap(),
         Created::Short { left: 3, .. }
     ));
 
@@ -192,7 +199,10 @@ async fn an_online_order_enters_only_when_paid(pool: PgPool) {
     assert!(!orders::mark_paid(&pool, t, o, "1", 100).await.unwrap());
     // Se aprueba el pago: número, stock y aparece para preparar.
     assert!(orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap());
-    assert!(!orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap(), "una sola vez");
+    assert!(
+        !orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap(),
+        "una sola vez"
+    );
     assert_eq!(stock(&pool, t, id).await, Some(1));
     let listed = orders::list(&pool, t).await.unwrap();
     assert_eq!(listed.len(), 1);
@@ -218,8 +228,16 @@ async fn unpaid_attempts_are_dropped_and_manual_orders_cancelled(pool: PgPool) {
     };
     orders::create(&pool, t, &attempt).await.unwrap();
     orders::create(&pool, t, &order(&items)).await.unwrap();
-    assert_eq!(stock(&pool, t, id).await, Some(2), "la transferencia guarda la unidad");
-    assert_eq!(orders::expire_unpaid(&pool, 48).await.unwrap(), 0, "todavía no");
+    assert_eq!(
+        stock(&pool, t, id).await,
+        Some(2),
+        "la transferencia guarda la unidad"
+    );
+    assert_eq!(
+        orders::expire_unpaid(&pool, 48).await.unwrap(),
+        0,
+        "todavía no"
+    );
     sqlx::query("UPDATE orders SET updated_at = now() - interval '49 hours'")
         .execute(&pool)
         .await
@@ -239,9 +257,16 @@ async fn unpaid_attempts_are_dropped_and_manual_orders_cancelled(pool: PgPool) {
 async fn andreani_orders_keep_their_shipment(pool: PgPool) {
     use domain::{AndreaniService, Shipment, ShipmentState};
     let t = tenant(&pool, "ana").await;
-    let id = products::create(&pool, t, &Product { name: "Taza".into(), ..Product::default() })
-        .await
-        .unwrap();
+    let id = products::create(
+        &pool,
+        t,
+        &Product {
+            name: "Taza".into(),
+            ..Product::default()
+        },
+    )
+    .await
+    .unwrap();
     let items = [item(id, 1)];
     let shipment = Shipment {
         service: AndreaniService::Branch,
@@ -273,10 +298,17 @@ async fn andreani_orders_keep_their_shipment(pool: PgPool) {
 
     // Sin pagar no se crea; pagado, se toma una sola vez (y otra si falla).
     assert!(!orders::claim_shipment(&pool, t, o).await.unwrap());
-    assert!(orders::set_status(&pool, t, o, OrderStatus::Paid).await.unwrap());
+    assert!(orders::set_status(&pool, t, o, OrderStatus::Paid)
+        .await
+        .unwrap());
     assert!(orders::claim_shipment(&pool, t, o).await.unwrap());
     assert!(!orders::claim_shipment(&pool, t, o).await.unwrap());
-    let mut failed = orders::get(&pool, t, o).await.unwrap().unwrap().shipment.unwrap();
+    let mut failed = orders::get(&pool, t, o)
+        .await
+        .unwrap()
+        .unwrap()
+        .shipment
+        .unwrap();
     assert_eq!(failed.state, ShipmentState::Creating);
     failed.state = ShipmentState::Failed;
     orders::save_shipment(&pool, t, o, &failed).await.unwrap();

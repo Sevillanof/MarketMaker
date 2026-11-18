@@ -140,6 +140,70 @@ async fn link_keys_are_long_and_work_once(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn an_invitation_survives_other_links_and_wrong_tries(pool: PgPool) {
+    let invite = create_invite_key(&pool, "ana@correo.com").await.unwrap();
+    // Alguien pide enlaces desde Entrar y prueba llaves equivocadas.
+    let other = create_login_link_key(&pool, "ana@correo.com")
+        .await
+        .unwrap()
+        .unwrap();
+    for _ in 0..CODE_ATTEMPTS + 2 {
+        check_login_code(&pool, "ana@correo.com", "000000")
+            .await
+            .unwrap();
+    }
+    // El enlace pedido se gastó con los intentos; la invitación sigue.
+    assert_eq!(
+        check_login_code(&pool, "ana@correo.com", &other)
+            .await
+            .unwrap(),
+        CodeResult::Expired
+    );
+    assert!(matches!(
+        check_login_code(&pool, "ana@correo.com", &invite)
+            .await
+            .unwrap(),
+        CodeResult::Ok { .. }
+    ));
+    // Sirve una sola vez, y no vale para otro email.
+    assert_eq!(
+        check_login_code(&pool, "ana@correo.com", &invite)
+            .await
+            .unwrap(),
+        CodeResult::Expired
+    );
+    let luz = create_invite_key(&pool, "luz@correo.com").await.unwrap();
+    assert_eq!(
+        check_login_code(&pool, "ana@correo.com", &luz)
+            .await
+            .unwrap(),
+        CodeResult::Expired
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_new_invitation_replaces_the_old_one_and_expires(pool: PgPool) {
+    let first = create_invite_key(&pool, "ana@correo.com").await.unwrap();
+    let second = create_invite_key(&pool, "ana@correo.com").await.unwrap();
+    assert_eq!(
+        check_login_code(&pool, "ana@correo.com", &first)
+            .await
+            .unwrap(),
+        CodeResult::Expired
+    );
+    sqlx::query("UPDATE login_codes SET created_at = created_at - interval '8 days', expires_at = expires_at - interval '8 days' WHERE email = 'ana@correo.com'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        check_login_code(&pool, "ana@correo.com", &second)
+            .await
+            .unwrap(),
+        CodeResult::Expired
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn sessions_open_and_close(pool: PgPool) {
     let code = known_code(&pool, "ana@correo.com").await;
     let CodeResult::Ok { user_id } = check_login_code(&pool, "ana@correo.com", &code)

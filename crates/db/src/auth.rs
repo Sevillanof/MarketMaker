@@ -72,15 +72,48 @@ pub async fn create_login_link_key(
     save_login_code(pool, email, new_link_key()).await
 }
 
+/// Cuánto dura el enlace de una invitación.
+pub const INVITE_DAYS: i32 = 7;
+
+/// La llave del enlace de invitación de `email` (ya normalizado): sirve una
+/// vez, por [`INVITE_DAYS`] días, para crear la cuenta. La pide el
+/// administrador al invitar, así que no cuenta para los topes por hora, y
+/// pedir otro enlace desde Entrar no la anula.
+pub async fn create_invite_key(pool: &PgPool, email: &str) -> sqlx::Result<String> {
+    let key = new_link_key();
+    let mut tx = pool.begin().await?;
+    // Una invitación anterior de este email deja de servir.
+    sqlx::query(
+        "UPDATE login_codes SET used_at = now()
+         WHERE email = $1 AND used_at IS NULL AND expires_at - created_at > interval '1 hour'",
+    )
+    .bind(email)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO login_codes (email, code_hash, expires_at)
+         VALUES ($1, $2, now() + make_interval(days => $3))",
+    )
+    .bind(email)
+    .bind(code_hash(email, &key))
+    .bind(INVITE_DAYS)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(key)
+}
+
 async fn save_login_code(
     pool: &PgPool,
     email: &str,
     code: String,
 ) -> sqlx::Result<Result<String, TooMany>> {
+    // Las invitaciones (duran días) no cuentan: las manda el administrador.
     let (hour, day): (i64, i64) = sqlx::query_as(
         "SELECT count(*) FILTER (WHERE created_at > now() - interval '1 hour'), count(*)
          FROM login_codes
-         WHERE email = $1 AND created_at > now() - interval '1 day'",
+         WHERE email = $1 AND created_at > now() - interval '1 day'
+           AND expires_at - created_at <= interval '1 hour'",
     )
     .bind(email)
     .fetch_one(pool)
@@ -89,10 +122,14 @@ async fn save_login_code(
         return Ok(Err(TooMany));
     }
     let mut tx = pool.begin().await?;
-    sqlx::query("UPDATE login_codes SET used_at = now() WHERE email = $1 AND used_at IS NULL")
-        .bind(email)
-        .execute(&mut *tx)
-        .await?;
+    // Los códigos anteriores dejan de servir; una invitación sigue valiendo.
+    sqlx::query(
+        "UPDATE login_codes SET used_at = now()
+         WHERE email = $1 AND used_at IS NULL AND expires_at - created_at <= interval '1 hour'",
+    )
+    .bind(email)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query(
         "INSERT INTO login_codes (email, code_hash, expires_at)
          VALUES ($1, $2, now() + make_interval(mins => $3))",
@@ -117,26 +154,43 @@ pub enum CodeResult {
     Expired,
 }
 
-/// Revisa `code` contra el último código vigente de `email`. Si es correcto lo
-/// marca como usado y devuelve la cuenta, creándola si es la primera vez.
+/// Revisa `code` contra los códigos vigentes de `email`: el último que pidió
+/// o la llave de su invitación. Si es correcto lo marca como usado y devuelve
+/// la cuenta, creándola si es la primera vez.
 pub async fn check_login_code(pool: &PgPool, email: &str, code: &str) -> sqlx::Result<CodeResult> {
     let mut tx = pool.begin().await?;
-    let row: Option<(Uuid, Vec<u8>, i32)> = sqlx::query_as(
-        "SELECT id, code_hash, attempts FROM login_codes
-         WHERE email = $1 AND used_at IS NULL AND expires_at > now()
+    let hit: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM login_codes
+         WHERE email = $1 AND code_hash = $2 AND used_at IS NULL AND expires_at > now()
+           AND attempts < $3
          ORDER BY created_at DESC LIMIT 1
          FOR UPDATE",
     )
     .bind(email)
+    .bind(code_hash(email, code))
+    .bind(CODE_ATTEMPTS)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((id, hash, attempts)) = row else {
-        return Ok(CodeResult::Expired);
-    };
-    if attempts >= CODE_ATTEMPTS {
-        return Ok(CodeResult::Expired);
-    }
-    if hash != code_hash(email, code) {
+    let Some(id) = hit else {
+        // No era: el intento se anota en el último código pedido. La llave de
+        // una invitación es larga, no se adivina probando y no lleva cuenta
+        // (así nadie la gasta a propósito con intentos equivocados).
+        let row: Option<(Uuid, i32)> = sqlx::query_as(
+            "SELECT id, attempts FROM login_codes
+             WHERE email = $1 AND used_at IS NULL AND expires_at > now()
+               AND expires_at - created_at <= interval '1 hour'
+             ORDER BY created_at DESC LIMIT 1
+             FOR UPDATE",
+        )
+        .bind(email)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((id, attempts)) = row else {
+            return Ok(CodeResult::Expired);
+        };
+        if attempts >= CODE_ATTEMPTS {
+            return Ok(CodeResult::Expired);
+        }
         let attempts = attempts + 1;
         sqlx::query("UPDATE login_codes SET attempts = $2 WHERE id = $1")
             .bind(id)
@@ -150,7 +204,7 @@ pub async fn check_login_code(pool: &PgPool, email: &str, code: &str) -> sqlx::R
         } else {
             CodeResult::Wrong { left }
         });
-    }
+    };
     sqlx::query("UPDATE login_codes SET used_at = now() WHERE id = $1")
         .bind(id)
         .execute(&mut *tx)

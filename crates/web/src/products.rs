@@ -799,10 +799,26 @@ impl Form {
             in_stock: RwSignal::new(p.in_stock || p.stock.is_some()),
             stock: RwSignal::new(p.stock.map(|s| s.to_string()).unwrap_or_default()),
             visible: RwSignal::new(p.visible),
-            weight: RwSignal::new(p.parcel.map(|x| domain::kg_input(x.weight_g)).unwrap_or_default()),
-            length: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.length_mm)).unwrap_or_default()),
-            width: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.width_mm)).unwrap_or_default()),
-            height: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.height_mm)).unwrap_or_default()),
+            weight: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::kg_input(x.weight_g))
+                    .unwrap_or_default(),
+            ),
+            length: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.length_mm))
+                    .unwrap_or_default(),
+            ),
+            width: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.width_mm))
+                    .unwrap_or_default(),
+            ),
+            height: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.height_mm))
+                    .unwrap_or_default(),
+            ),
         }
     }
 
@@ -1025,17 +1041,22 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             errors.with(|es| {
                 es.iter()
                     .filter(|e| error_field(e) == field)
-                    .map(|e| view! { <p class="label whitespace-normal text-error">{e.clone()}</p> })
+                    .map(
+                        |e| view! { <p class="label whitespace-normal text-error">{e.clone()}</p> },
+                    )
                     .collect_view()
             })
         }
     };
-    let has_error = move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
-    let save_button = move || view! {
-        <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
-            on:click=move |_| on_save()>
-            {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
-        </button>
+    let has_error =
+        move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
+    let save_button = move || {
+        view! {
+            <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
+                on:click=move |_| on_save()>
+                {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
+            </button>
+        }
     };
 
     let confirm_delete = RwSignal::new(false);
