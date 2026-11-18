@@ -70,7 +70,7 @@ pub fn StoreInfoPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Datos de la tienda · MarketMaker"/>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match data.await {
                             Ok(Some(form)) => view! { <StoreInfoEditor slug=slug.get_untracked() form/> }.into_any(),

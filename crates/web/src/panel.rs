@@ -143,6 +143,25 @@ fn editor_opener() -> (
     (open, problem)
 }
 
+/// Si se está abriendo el editor (el skeleton se dibuja en el marco del panel,
+/// fuera del menú, para cubrir toda la pantalla).
+#[derive(Clone, Copy)]
+struct OpeningEditor(RwSignal<bool>);
+
+/// Avisa al marco del panel que se está abriendo el editor: se pide la
+/// dirección y la página se recarga en la de la tienda, y mientras tanto se
+/// muestra su skeleton a pantalla completa en vez de una espera en blanco.
+#[component]
+fn EditorOpening(open: Action<String, Result<String, ServerFnError>>) -> impl IntoView {
+    let flag = use_context::<OpeningEditor>().map(|f| f.0);
+    Effect::new(move |_| {
+        let busy = open.pending().get() || matches!(open.value().get(), Some(Ok(_)));
+        if let Some(flag) = flag {
+            flag.set(busy);
+        }
+    });
+}
+
 /// Inicial de la tienda sobre un fondo de color, siempre el mismo para la
 /// misma dirección.
 #[component]
@@ -247,6 +266,8 @@ pub fn StoreShell(slug: String, section: Section, children: Children) -> impl In
 #[component]
 fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> impl IntoView {
     let location = leptos_router::hooks::use_location();
+    let opening = RwSignal::new(false);
+    provide_context(OpeningEditor(opening));
     // Se vuelve a pedir en cada cambio de página para refrescar el número de
     // pedidos por preparar; con `Transition` el menú no se vacía mientras tanto.
     let nav = Resource::new(
@@ -329,6 +350,9 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
                     </Transition>
                 </aside>
             </div>
+            <Show when=move || opening.get()>
+                <div class="fixed inset-0 z-[60]"><ui::EditorSkeleton/></div>
+            </Show>
             {move || is_admin().then(|| view! {
                 <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/>
             })}
@@ -454,6 +478,7 @@ fn SideNav(
     };
     view! {
         {switcher}
+        <EditorOpening open/>
         {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-xs">{e}</div> })}
         <nav aria-label="Tu tienda" class="grow overflow-y-auto">
             <ul class="menu w-full gap-0.5 p-0">
@@ -540,7 +565,7 @@ pub fn StoreHomePage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Inicio · MarketMaker"/>
             <div class="mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8">
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-96 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Home/> }>
                     {move || Suspend::new(async move {
                         match data.await {
                             Ok(Some(o)) => view! { <Overview o/> }.into_any(),
@@ -693,6 +718,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 <ui::Icon class="size-[18px]" name="pencil"/>"Editar diseño"
             </button>
         </header>
+        <EditorOpening open/>
         {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
         {(o.examples > 0).then(|| view! { <ExamplesNotice slug=o.slug.clone() count=o.examples/> })}
 

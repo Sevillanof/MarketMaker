@@ -273,7 +273,7 @@ fn EditorPage() -> impl IntoView {
         // El editor es solo para computadora; en el celular, un aviso.
         <EditorOnDesktop panel/>
         <div class="max-[799px]:hidden">
-        <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
+        <Suspense fallback=|| view! { <ui::EditorSkeleton/> }>
             {move || Suspend::new(async move {
                 // Sin cuenta, a Entrar; con una cuenta que no es dueña, un aviso.
                 // Esto es para orientar: el permiso real lo revisa `save_page`.

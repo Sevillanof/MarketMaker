@@ -76,7 +76,7 @@ pub fn PaymentsPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Cobros · MarketMaker"/>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-10">
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-72 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match data.await {
                             Ok(Some(info)) => view! { <Payments slug=slug.get_untracked() info/> }.into_any(),

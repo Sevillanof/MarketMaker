@@ -210,6 +210,183 @@ pub fn PageSkeleton() -> impl IntoView {
     }
 }
 
+/// Una línea de texto de skeleton: `w` es la clase de ancho (`w-1/3`…).
+fn sk_line(w: &'static str) -> impl IntoView {
+    view! { <Skeleton class=format!("h-3.5 {w}")/> }
+}
+
+/// Una tarjeta blanca del panel para armar skeletons.
+fn sk_card(class: &'static str, children: Children) -> impl IntoView {
+    view! { <div class=format!("flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4 {class}")>{children()}</div> }
+}
+
+/// Encabezado de una página del panel: título, texto y, a la derecha, botones.
+fn sk_head(buttons: usize) -> impl IntoView {
+    view! {
+        <div class="flex items-center gap-3">
+            <div class="flex grow flex-col gap-2">
+                <Skeleton class="h-8 w-56"/>
+                {sk_line("w-80 max-w-full")}
+            </div>
+            {(0..buttons).map(|_| view! { <Skeleton class="h-10 w-32"/> }).collect_view()}
+        </div>
+    }
+}
+
+/// Los skeletons del panel: cada uno copia el diseño de su pantalla (mismas
+/// medidas y huecos) para que al llegar los datos nada se mueva.
+/// Regla del proyecto: si cambia el diseño de una pantalla, se revisa su skeleton.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PanelSkeletonKind {
+    /// Inicio: encabezado, cuatro números, últimos pedidos y checklist.
+    Home,
+    /// Productos: buscador y filas con foto.
+    List,
+    /// Pedidos: cuatro columnas con tarjetas.
+    Board,
+    /// Cobros, Entregas, Datos y Mi cuenta: formulario en una tarjeta.
+    Form,
+    /// Mis fotos: grilla de fotos.
+    Photos,
+}
+
+#[component]
+pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
+    let body = match kind {
+        PanelSkeletonKind::Home => view! {
+            {sk_head(2)}
+            <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                {(0..4).map(|_| sk_card("", Box::new(|| view! {
+                    {sk_line("w-1/3")}<Skeleton class="h-9 w-1/2"/>{sk_line("w-2/3")}
+                }.into_any()))).collect_view()}
+            </div>
+            <div class="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+                {sk_card("", Box::new(|| view! {
+                    {sk_line("w-1/4")}
+                    {(0..3).map(|_| view! {
+                        <div class="flex items-center gap-3"><Skeleton class="size-11"/><div class="grow">{sk_line("w-full")}</div></div>
+                    }).collect_view()}
+                }.into_any()))}
+                {sk_card("", Box::new(|| view! {
+                    {sk_line("w-1/3")}{sk_line("w-full")}{sk_line("w-full")}{sk_line("w-2/3")}{sk_line("w-full")}
+                }.into_any()))}
+            </div>
+        }
+        .into_any(),
+        PanelSkeletonKind::List => view! {
+            {sk_head(2)}
+            <Skeleton class="h-10 w-80 max-w-full"/>
+            {sk_card("divide-y divide-base-300 !gap-0 !py-1", Box::new(|| view! {
+                {(0..5).map(|_| view! {
+                    <div class="grid grid-cols-[3.5rem_1fr_6rem_5rem] items-center gap-4 py-3">
+                        <Skeleton class="size-14"/>
+                        <div class="flex flex-col gap-2">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-1/3"/></div>
+                        {sk_line("w-full")}{sk_line("w-full")}
+                    </div>
+                }).collect_view()}
+            }.into_any()))}
+        }
+        .into_any(),
+        PanelSkeletonKind::Board => view! {
+            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-40"/>{sk_line("w-80 max-w-full")}</div>
+            <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                {[2, 1, 1, 0].into_iter().map(|n| view! {
+                    <div class="flex min-h-64 flex-col gap-2.5 rounded-box bg-base-300/50 p-3.5">
+                        <div class="flex items-center gap-2">{sk_line("w-1/2")}<Skeleton class="ml-auto h-4 w-6"/></div>
+                        {(0..n).map(|_| sk_card("!gap-2 !p-3", Box::new(|| view! {
+                            {sk_line("w-2/3")}{sk_line("w-1/3")}<Skeleton class="h-2.5 w-full"/>
+                        }.into_any()))).collect_view()}
+                    </div>
+                }).collect_view()}
+            </div>
+        }
+        .into_any(),
+        PanelSkeletonKind::Form => view! {
+            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-52"/>{sk_line("w-96 max-w-full")}</div>
+            {sk_card("max-w-3xl gap-4", Box::new(|| view! {
+                {(0..2).map(|_| view! {
+                    <div class="flex items-center gap-3">
+                        <Skeleton class="size-11"/>
+                        <div class="flex grow flex-col gap-2">{sk_line("w-1/2")}<Skeleton class="h-2.5 w-full"/></div>
+                        <Skeleton class="h-6 w-12 rounded-full"/>
+                    </div>
+                }).collect_view()}
+                {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
+                {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
+                <Skeleton class="h-10 w-32"/>
+            }.into_any()))}
+        }
+        .into_any(),
+        PanelSkeletonKind::Photos => view! {
+            {sk_head(1)}
+            <div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4 lg:grid-cols-5">
+                {(0..10).map(|_| view! { <Skeleton class="aspect-square w-full"/> }).collect_view()}
+            </div>
+        }
+        .into_any(),
+    };
+    view! { <div class="flex flex-col gap-5" aria-busy="true" aria-label="Cargando">{body}</div> }
+}
+
+/// El editor mientras se baja y llega tu tienda: la misma barra, el riel de
+/// bloques, el lienzo (775 px, como el real) y el panel de la derecha. El
+/// mensaje cambia cada 2 segundos (en CSS: anda aunque la página no haya
+/// cargado del todo) y se queda quieto si pediste menos movimiento.
+#[component]
+pub fn EditorSkeleton() -> impl IntoView {
+    // Los textos los eligió Fran; cada uno se ve 2 s (ver `.mk-load-msg` en
+    // style/tailwind.css: si cambia la cantidad, cambia `--n` y los porcentajes).
+    let msgs = [
+        "Abriendo tu editor…",
+        "Cargando tu diseño…",
+        "Alistando tus productos…",
+        "Ya casi está…",
+        "Está tardando…",
+        "Vamoo, apura…",
+        "Ya casi…",
+    ];
+
+    view! {
+        <div data-theme="light" class="relative grid h-screen grid-cols-[76px_1fr_368px] grid-rows-[64px_1fr] bg-base-100 text-base-content" aria-busy="true" role="status" aria-label="Abriendo el editor">
+            <div class="col-span-3 flex items-center gap-3.5 border-b border-base-300 px-4">
+                <Skeleton class="size-7 rounded-full"/>
+                <div class="flex w-56 items-center gap-2.5 rounded-box border border-base-300 p-2">
+                    <Skeleton class="size-9"/>
+                    <div class="flex grow flex-col gap-1.5">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-full"/></div>
+                </div>
+                <Skeleton class="h-9 w-48"/><Skeleton class="h-5 w-28"/>
+                <Skeleton class="ml-8 h-9 w-48"/>
+                <div class="grow"></div>
+                <Skeleton class="h-5 w-14"/><Skeleton class="h-5 w-28"/><Skeleton class="h-9 w-24"/>
+            </div>
+            <div class="flex flex-col items-center gap-5 border-r border-base-300 pt-4">
+                {(0..6).map(|_| view! {
+                    <div class="flex flex-col items-center gap-1.5"><Skeleton class="size-[22px]"/><Skeleton class="h-2 w-10"/></div>
+                }).collect_view()}
+            </div>
+            <div class="flex justify-center overflow-hidden bg-base-200 py-3">
+                <div class="flex w-[775px] flex-col gap-4">
+                    <Skeleton class="h-44 w-full"/>
+                    {sk_line("w-28")}
+                    <div class="grid grid-cols-6 gap-2">
+                        {(0..8).map(|_| view! { <Skeleton class="h-36 w-full"/> }).collect_view()}
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-col gap-3 border-l border-base-300 p-5">
+                <Skeleton class="h-6 w-3/4"/>{sk_line("w-full")}{sk_line("w-2/3")}<Skeleton class="mt-1.5 h-16 w-full"/>
+            </div>
+            <div class="pointer-events-none absolute inset-0 grid place-items-center">
+                <div class="mk-load-msg relative h-11 w-72 rounded-box border border-base-300 bg-base-100 font-semibold shadow-lg">
+                    {msgs.into_iter().enumerate().map(|(i, m)| view! {
+                        <span class="mk-load-msg-n absolute inset-0 grid place-items-center" style=format!("--i:{i}")>{m}</span>
+                    }).collect_view()}
+                </div>
+            </div>
+        </div>
+    }
+}
+
 /// Ícono de línea (24×24) de la lista de beneficios y del panel. Si el nombre no existe
 /// se dibuja una estrella.
 #[component]

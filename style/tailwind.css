@@ -1555,3 +1555,21 @@ dialog.mk-cart::backdrop {
     min-height: calc(var(--h) * 8px - 16px);
   }
 }
+
+/* Mensaje de carga del editor: 7 frases, cada una visible 2 s (ciclo de 14 s).
+   Se apilan en la misma caja y se muestran de a una. Sin movimiento (solo la
+   primera) si la persona pidió menos animación. */
+.mk-load-msg-n {
+  opacity: 0;
+  animation: mk-load-msg 14s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 2s);
+}
+@keyframes mk-load-msg {
+  0% { opacity: 0; transform: translateY(4px); }
+  1.5%, 12.5% { opacity: 1; transform: none; }
+  14.28%, 100% { opacity: 0; transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk-load-msg-n { animation: none; opacity: 0; }
+  .mk-load-msg-n:first-child { opacity: 1; }
+}

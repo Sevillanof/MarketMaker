@@ -138,7 +138,7 @@ pub fn MyPhotosPage() -> impl IntoView {
                         </ul>
                     })
                 }}
-                <Suspense fallback=|| view! { <ui::Skeleton class="h-64 w-full"/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Photos/> }>
                     {move || Suspend::new(async move {
                         match photos.await {
                             Ok(None) => view! {
