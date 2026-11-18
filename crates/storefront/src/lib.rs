@@ -64,7 +64,8 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
                 </div>
             </div>
             // Obligatorio en las tiendas online de Argentina (Res. 424/2020).
-            <p class="mk-legal py-6 text-center text-xs text-base-content/70">
+            <p class="mk-legal flex flex-wrap items-center justify-center gap-x-4 gap-y-1 py-6 text-center text-xs text-base-content/70">
+                <widgets::AccountFooterLink/>
                 <a class="link link-hover" href="/arrepentimiento">"Botón de arrepentimiento"</a>
             </p>
             <ProductDialog modal=doc.product_modal products open/>

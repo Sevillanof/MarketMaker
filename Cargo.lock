@@ -4880,6 +4880,7 @@ dependencies = [
  "editor",
  "hex",
  "http",
+ "js-sys",
  "leptos",
  "leptos_axum",
  "leptos_meta",
@@ -4896,6 +4897,8 @@ dependencies = [
  "tokio",
  "ui",
  "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "widgets",
 ]

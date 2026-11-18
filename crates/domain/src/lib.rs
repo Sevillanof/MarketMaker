@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 mod account;
+mod buyer;
 mod catalog;
 mod layout;
 mod look;
@@ -18,6 +19,7 @@ mod typography;
 mod widgets;
 
 pub use account::*;
+pub use buyer::*;
 pub use catalog::*;
 pub use layout::*;
 pub use look::*;

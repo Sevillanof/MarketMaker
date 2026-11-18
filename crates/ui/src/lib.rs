@@ -512,3 +512,96 @@ mod tests {
         assert_eq!(format_price(-100), "-$ 1,00");
     }
 }
+
+/// Skeleton del cajón de la cuenta del comprador con sesión (ver
+/// `web::buyer_ui`): perfil, tarjeta del pedido en curso, tres opciones y el
+/// botón de salir anclado al fondo. Si cambia ese diseño, se cambia este.
+#[component]
+pub fn BuyerDrawerSkeleton() -> impl IntoView {
+    view! {
+        <div class="flex h-full flex-col px-6 py-5" aria-busy="true" aria-label="Cargando tu cuenta">
+            <div class="flex items-center gap-3">
+                <Skeleton class="size-10 shrink-0 rounded-full"/>
+                <div class="flex flex-1 flex-col gap-2"><Skeleton class="h-3.5 w-32"/><Skeleton class="h-3 w-44"/></div>
+            </div>
+            <Skeleton class="mt-5 h-36 w-full rounded-box"/>
+            <div class="mt-3 flex flex-1 flex-col">
+                {(0..3).map(|_| view! {
+                    <div class="flex items-center justify-between border-b border-base-200 py-4">
+                        <Skeleton class="h-3.5 w-2/5"/><Skeleton class="h-3.5 w-4"/>
+                    </div>
+                }).collect_view()}
+            </div>
+            <Skeleton class="h-11 w-full rounded-field"/>
+        </div>
+    }
+}
+
+/// Qué pantalla de la cuenta del comprador imita [`BuyerPageSkeleton`].
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BuyerPageKind {
+    /// Mis pedidos: título, pestañas y tarjetas de pedido.
+    Orders,
+    /// Detalle de un pedido: estado, seguimiento y productos.
+    Order,
+    /// Mis datos y Direcciones: avatar y formulario en una tarjeta.
+    Form,
+}
+
+/// Skeleton de las páginas de la cuenta del comprador (`/mi-cuenta/…`): el
+/// encabezado de la tienda y el contenido de cada pantalla con sus medidas.
+#[component]
+pub fn BuyerPageSkeleton(kind: BuyerPageKind) -> impl IntoView {
+    let body = match kind {
+        BuyerPageKind::Orders => view! {
+            <Skeleton class="h-7 w-44"/>
+            <div class="flex gap-2"><Skeleton class="h-9 w-24"/><Skeleton class="h-9 w-24"/><Skeleton class="h-9 w-28"/></div>
+            {(0..2).map(|_| view! {
+                <div class="card bg-base-100 shadow-sm"><div class="card-body gap-4 p-5">
+                    <div class="flex items-center gap-3"><Skeleton class="h-4 w-28"/><Skeleton class="h-5 w-16 rounded-full"/><Skeleton class="ml-auto h-3.5 w-12"/></div>
+                    <div class="flex items-center gap-2"><Skeleton class="size-10"/><Skeleton class="size-10"/><Skeleton class="ml-auto h-4 w-24"/></div>
+                </div></div>
+            }).collect_view()}
+        }
+        .into_any(),
+        BuyerPageKind::Order => view! {
+            <Skeleton class="h-4 w-32"/>
+            <div class="card bg-base-100 shadow-sm"><div class="card-body gap-5 p-6">
+                <div class="flex items-center gap-3"><Skeleton class="h-7 w-40"/><Skeleton class="h-6 w-20 rounded-full"/></div>
+                <Skeleton class="h-3.5 w-48"/>
+                <div class="grid grid-cols-4 gap-3">
+                    {(0..4).map(|_| view! { <div class="flex flex-col gap-2"><Skeleton class="size-4 rounded-full"/><Skeleton class="h-3.5 w-3/4"/></div> }).collect_view()}
+                </div>
+                <Skeleton class="h-20 w-full rounded-box"/>
+                {(0..2).map(|_| view! {
+                    <div class="flex items-center gap-3 border-t border-base-200 pt-4">
+                        <Skeleton class="size-12"/>
+                        <div class="flex flex-1 flex-col gap-2"><Skeleton class="h-3.5 w-3/5"/><Skeleton class="h-3 w-1/4"/></div>
+                        <Skeleton class="h-3.5 w-16"/>
+                    </div>
+                }).collect_view()}
+            </div></div>
+        }
+        .into_any(),
+        BuyerPageKind::Form => view! {
+            <Skeleton class="h-7 w-44"/>
+            <div class="flex gap-2"><Skeleton class="h-9 w-24"/><Skeleton class="h-9 w-24"/><Skeleton class="h-9 w-28"/></div>
+            <div class="card bg-base-100 shadow-sm"><div class="card-body gap-5 p-6">
+                <div class="flex items-center gap-4"><Skeleton class="size-20 rounded-full"/><Skeleton class="h-9 w-32"/></div>
+                {(0..3).map(|_| view! { <div class="flex flex-col gap-2"><Skeleton class="h-3.5 w-24"/><Skeleton class="h-11 w-full"/></div> }).collect_view()}
+                <Skeleton class="h-11 w-36"/>
+            </div></div>
+        }
+        .into_any(),
+    };
+    view! {
+        <div class="min-h-screen bg-base-200" aria-busy="true" aria-label="Cargando">
+            <div class="mx-auto flex max-w-[1120px] flex-col gap-5 px-4 py-4">
+                <div class="flex h-18 items-center rounded-box bg-base-100 px-6 shadow-sm">
+                    <Skeleton class="h-5 w-36"/><Skeleton class="ml-auto h-4 w-32"/>
+                </div>
+                <div class="mx-auto flex w-full max-w-2xl flex-col gap-4">{body}</div>
+            </div>
+        </div>
+    }
+}

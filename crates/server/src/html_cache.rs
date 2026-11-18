@@ -31,9 +31,9 @@ const MAX_BUFFER: usize = 8 * 1024 * 1024;
 const MAX_ENTRIES: usize = 500;
 
 /// Rutas que dependen de quién mira o que cambian algo: nunca se guardan.
-const NEVER: [&str; 12] = [
+const NEVER: [&str; 13] = [
     "/api", "/media", "/mp", "/tls-ok", "/admin", "/editor", "/tienda", "/cuenta", "/comprar",
-    "/pedido", "/entrar", "/envios",
+    "/pedido", "/entrar", "/envios", "/mi-cuenta",
 ];
 
 struct Entry {
@@ -122,7 +122,20 @@ fn cacheable_response(res: &Response) -> bool {
             .is_some_and(|v| v.contains("no-store") || v.contains("private"))
 }
 
+/// Páginas que muestran datos de una persona (la cuenta del comprador): ni
+/// esta caché ni Cloudflare ni el navegador compartido deben guardarlas.
+fn is_private_page(path: &str) -> bool {
+    path == "/mi-cuenta" || path.starts_with("/mi-cuenta/")
+}
+
 pub async fn middleware(State(cache): State<HtmlCache>, req: Request, next: Next) -> Response {
+    if is_private_page(req.uri().path()) {
+        let mut res = next.run(req).await;
+        res.headers_mut()
+            .entry(header::CACHE_CONTROL)
+            .or_insert(HeaderValue::from_static("private, no-store"));
+        return res;
+    }
     if cache.ttl.is_zero() || !cacheable_request(&req) {
         return next.run(req).await;
     }
@@ -176,11 +189,19 @@ mod tests {
         assert!(cacheable_request(&get("/ofertas", false)));
         assert!(cacheable_request(&get("/terminos", false)));
         assert!(!cacheable_request(&get("/", true)));
-        for p in ["/editor", "/tienda/ana/pedidos", "/api/x", "/pedido/abc", "/comprar", "/entrar", "/cuenta", "/tls-ok"] {
+        for p in ["/editor", "/tienda/ana/pedidos", "/api/x", "/pedido/abc", "/comprar", "/entrar", "/cuenta", "/mi-cuenta/pedidos", "/mi-cuenta/entrar", "/tls-ok"] {
             assert!(!cacheable_request(&get(p, false)), "{p}");
         }
         let post = Request::builder().method("POST").uri("/").body(Body::empty()).unwrap();
         assert!(!cacheable_request(&post));
+    }
+
+    #[test]
+    fn buyer_account_pages_are_private() {
+        assert!(is_private_page("/mi-cuenta"));
+        assert!(is_private_page("/mi-cuenta/pedidos/abc"));
+        assert!(!is_private_page("/mi-cuentas"));
+        assert!(!is_private_page("/"));
     }
 
     #[test]

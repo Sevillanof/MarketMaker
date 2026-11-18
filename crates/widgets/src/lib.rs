@@ -17,8 +17,10 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
+pub mod account;
 pub mod cart;
 pub mod tags;
+pub use account::{Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar};
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
 pub use tags::{FilteredProducts, ProductFilter};
 
@@ -647,6 +649,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
             {has_button.then(|| view! {
                 <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
             })}
+            <AccountNavButton/>
             <CartNavButton/>
             <button type="button" class="btn btn-ghost btn-square @2xl:hidden" aria-label="Abrir el menú"
                 popovertarget=mobile_id.clone()

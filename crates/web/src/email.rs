@@ -379,6 +379,32 @@ pub fn login_code(to: &str, code: &str) -> Email {
     }
 }
 
+/// El enlace para entrar a la cuenta de comprador de una tienda.
+pub fn buyer_link(to: &str, store: &str, url: &str) -> Email {
+    let title = format!("Entrá a tu cuenta de {store}");
+    let html = frame(
+        store,
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">{}</h1>
+<p style="margin:0 0 16px;color:#52525b">Tocá el botón para ver tus pedidos y el seguimiento de tus compras. El enlace vence en {} minutos y sirve una sola vez.</p>
+{}
+<p style="margin:16px 0 0;color:#52525b">Si no lo pediste, ignorá este email: nadie puede entrar a tu cuenta sin este enlace.</p>"#,
+            esc(&title),
+            db::buyers::LINK_MINUTES,
+            button(url, "Entrar a mi cuenta")
+        ),
+    );
+    Email {
+        to: vec![to.to_string()],
+        subject: title.clone(),
+        html,
+        text: format!(
+            "{title}\n\nAbrí este enlace para ver tus pedidos (vence en {} minutos y sirve una sola vez):\n{url}\n\nSi no lo pediste, ignorá este email.\n",
+            db::buyers::LINK_MINUTES
+        ),
+    }
+}
+
 /// El enlace para elegir la contraseña (se la olvidó, o confirma una cuenta
 /// nueva del registro abierto).
 pub fn password_link(to: &str, url: &str, new_account: bool) -> Email {

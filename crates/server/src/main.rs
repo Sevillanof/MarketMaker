@@ -373,6 +373,9 @@ async fn purge_events(pool: db::Pool) {
             Ok(n) => log!("Uso y abandono: se borraron {n} eventos viejos"),
             Err(e) => log!("Uso y abandono: no pudimos borrar eventos viejos: {e}"),
         }
+        if let Err(e) = db::buyers::purge_expired(&pool).await {
+            log!("Cuentas de compradores: no pudimos limpiar lo vencido: {e}");
+        }
         tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
     }
 }
