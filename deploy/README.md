@@ -79,3 +79,18 @@ y, para la prueba de restauración completa (si no, solo verifica el archivo):
 
 A mano, como marketmaker: `deploy/backup.sh run | test | list`.
 Restaurar: bajar el `.dump` de R2 y `pg_restore --clean --no-owner -d <base> archivo.dump`.
+
+## Clave de las llaves de Mercado Pago y Andreani
+
+Las llaves que cada tienda vincula se guardan cifradas en la base. La clave
+vive en `/opt/marketmaker/current/secrets.key` (el servidor la crea solo la
+primera vez; solo la lee el usuario `marketmaker`). No va en las copias de
+seguridad: una copia de la base sola no alcanza para usar esas llaves.
+
+- Si se pierde ese archivo (por ejemplo, al mudar de servidor sin copiarlo),
+  cada tienda tiene que vincular Mercado Pago y Andreani de nuevo. Conviene
+  guardar una copia en un gestor de contraseñas.
+- Para usar una clave propia: `SECRETS_KEY` (64 caracteres hexadecimales) en
+  `.env.local`.
+- Una versión anterior a esta no sabe leer las llaves cifradas: no volver
+  atrás más allá de este cambio.

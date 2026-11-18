@@ -10,6 +10,7 @@ pub mod media;
 pub mod mp;
 pub mod orders;
 pub mod products;
+pub mod secrets;
 
 use domain::{PageDoc, Product, SaveOutcome};
 use sqlx::{FromRow, PgExecutor, PgPool};
