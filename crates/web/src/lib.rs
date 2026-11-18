@@ -90,21 +90,21 @@ pub fn App() -> impl IntoView {
                     // El editor se baja aparte (`cargo leptos build --split`): quien
                     // compra en una tienda no carga su código.
                     <Route path=path!("/editor") view={leptos_router::Lazy::<EditorRoute>::new()} ssr=SsrMode::Async/>
-                    <Route path=path!("/entrar") view=account::SignInPage ssr=SsrMode::Async/>
-                    <Route path=path!("/cuenta") view=account::AccountPage ssr=SsrMode::Async/>
-                    <Route path=path!("/mis-fotos") view=photos::MyPhotosPage ssr=SsrMode::Async/>
+                    <Route path=path!("/entrar") view={leptos_router::Lazy::<SignInRoute>::new()} ssr=SsrMode::Async/>
+                    <Route path=path!("/cuenta") view={leptos_router::Lazy::<AccountRoute>::new()} ssr=SsrMode::Async/>
+                    <Route path=path!("/mis-fotos") view={leptos_router::Lazy::<PhotosRoute>::new()} ssr=SsrMode::Async/>
                     // El menú del panel es el marco de estas páginas: queda fijo y
                     // solo cambia el contenido.
-                    <ParentRoute path=path!("/tienda/:slug") view=panel::PanelLayout ssr=SsrMode::Async>
-                        <Route path=path!("") view=panel::StoreHomePage ssr=SsrMode::Async/>
-                        <Route path=path!("productos") view=products::ProductsPage ssr=SsrMode::Async/>
-                        <Route path=path!("productos/:id") view=products::ProductEditPage ssr=SsrMode::Async/>
-                        <Route path=path!("pedidos") view=orders::OrdersPage ssr=SsrMode::Async/>
-                        <Route path=path!("cobros") view=payments::PaymentsPage ssr=SsrMode::Async/>
-                        <Route path=path!("ventas") view=sales::SalesPage ssr=SsrMode::Async/>
-                        <Route path=path!("datos") view=store_info::StoreInfoPage ssr=SsrMode::Async/>
+                    <ParentRoute path=path!("/tienda/:slug") view={leptos_router::Lazy::<PanelLayoutRoute>::new()} ssr=SsrMode::Async>
+                        <Route path=path!("") view={leptos_router::Lazy::<HomeRoute>::new()} ssr=SsrMode::Async/>
+                        <Route path=path!("productos") view={leptos_router::Lazy::<ProductsRoute>::new()} ssr=SsrMode::Async/>
+                        <Route path=path!("productos/:id") view={leptos_router::Lazy::<ProductEditRoute>::new()} ssr=SsrMode::Async/>
+                        <Route path=path!("pedidos") view={leptos_router::Lazy::<OrdersRoute>::new()} ssr=SsrMode::Async/>
+                        <Route path=path!("cobros") view={leptos_router::Lazy::<PaymentsRoute>::new()} ssr=SsrMode::Async/>
+                        <Route path=path!("ventas") view={leptos_router::Lazy::<SalesRoute>::new()} ssr=SsrMode::Async/>
+                        <Route path=path!("datos") view={leptos_router::Lazy::<StoreInfoRoute>::new()} ssr=SsrMode::Async/>
                     </ParentRoute>
-                    <Route path=path!("/admin/uso") view=analytics::UsagePage ssr=SsrMode::Async/>
+                    <Route path=path!("/admin/uso") view={leptos_router::Lazy::<UsageRoute>::new()} ssr=SsrMode::Async/>
                     <Route path=path!("/comprar") view=checkout::CheckoutPage ssr=SsrMode::Async/>
                     <Route path=path!("/terminos") view=legal::TermsPage/>
                     <Route path=path!("/privacidad") view=legal::PrivacyPage/>
@@ -227,6 +227,177 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
         <leptos_meta::Meta property="og:title" content=name/>
         <leptos_meta::Meta property="og:description" content=description/>
         {image.map(|i| view! { <leptos_meta::Meta property="og:image" content=i/> })}
+    }
+}
+
+/// Las pantallas que no usa quien compra (entrar, cuenta, fotos, panel y
+/// administración) se bajan aparte, como el editor: el programa principal que
+/// baja todo comprador queda mucho más chico.
+#[derive(Debug)]
+struct SignInRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for SignInRoute {
+    fn data() -> Self {
+        SignInRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <account::SignInPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct AccountRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for AccountRoute {
+    fn data() -> Self {
+        AccountRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <account::AccountPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct PhotosRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for PhotosRoute {
+    fn data() -> Self {
+        PhotosRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <photos::MyPhotosPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct PanelLayoutRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for PanelLayoutRoute {
+    fn data() -> Self {
+        PanelLayoutRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <panel::PanelLayout/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct HomeRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for HomeRoute {
+    fn data() -> Self {
+        HomeRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <panel::StoreHomePage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct ProductsRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for ProductsRoute {
+    fn data() -> Self {
+        ProductsRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <products::ProductsPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct ProductEditRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for ProductEditRoute {
+    fn data() -> Self {
+        ProductEditRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <products::ProductEditPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct OrdersRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for OrdersRoute {
+    fn data() -> Self {
+        OrdersRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <orders::OrdersPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct PaymentsRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for PaymentsRoute {
+    fn data() -> Self {
+        PaymentsRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <payments::PaymentsPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct SalesRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for SalesRoute {
+    fn data() -> Self {
+        SalesRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <sales::SalesPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct StoreInfoRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for StoreInfoRoute {
+    fn data() -> Self {
+        StoreInfoRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <store_info::StoreInfoPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
+struct UsageRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for UsageRoute {
+    fn data() -> Self {
+        UsageRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <analytics::UsagePage/> }.into_any()
     }
 }
 
