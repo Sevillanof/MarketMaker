@@ -37,8 +37,15 @@ async fn main() {
             connect = connect.username(&user);
         }
     }
+    // Conexiones a Postgres: 5 por defecto; en producción se sube con
+    // DB_POOL_SIZE (en `.env.local`). Postgres admite 100.
+    let pool_size = std::env::var("DB_POOL_SIZE")
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .filter(|n| (1..=80).contains(n))
+        .unwrap_or(5);
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(pool_size)
         .connect_with(connect)
         .await
         .expect("no se pudo conectar a PostgreSQL");
