@@ -930,6 +930,11 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     let state = EditorState::new(&initial);
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(initial.store.clone());
+    let view_label = if initial.store_name.trim().is_empty() {
+        "Ver tienda".to_string()
+    } else {
+        format!("Ver {}", initial.store_name.trim())
+    };
     let products = StoredValue::new(initial.products.clone());
     let status = RwSignal::new(Status::Idle);
     let ui = Ui {
@@ -1310,14 +1315,15 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     }}
                 </span>
                 <a
-                    class="btn btn-ghost btn-sm btn-square"
+                    class="btn btn-outline btn-sm max-w-44 gap-1.5 max-[1199px]:max-w-32 max-[1099px]:btn-ghost max-[1099px]:btn-square max-[1099px]:border-0"
                     href=move || state.doc.with(|d| d.page_path(state.page.get()).to_string())
                     target="_blank"
                     rel="noopener"
-                    aria-label="Ver tienda publicada (se abre en otra pestaña)"
-                    title="Ver tienda publicada"
+                    aria-label=format!("{view_label} publicada (se abre en otra pestaña)")
+                    title=view_label.clone()
                 >
-                    <Icon name="external" class="h-5 w-5"/>
+                    <Icon name="external" class="h-4 w-4 shrink-0 max-[1099px]:h-5 max-[1099px]:w-5"/>
+                    <span class="truncate max-[1099px]:sr-only">{view_label.clone()}</span>
                 </a>
                 <button
                     type="button"
