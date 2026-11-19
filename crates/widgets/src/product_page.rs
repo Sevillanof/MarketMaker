@@ -349,3 +349,119 @@ pub fn ProductPriceWidget(
         </div>
     }
 }
+
+/// El botón invisible que cubre la tarjeta y abre la ficha (en la tienda).
+fn open_cover(id: String, name: &str) -> impl IntoView {
+    use_context::<crate::OpenProduct>().map(|crate::OpenProduct(open)| view! {
+        <button type="button"
+            class="absolute inset-0 cursor-pointer rounded-box focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            aria-haspopup="dialog" aria-label=format!("Ver {name}")
+            on:click=move |_| open.set(Some(id.clone()))></button>
+    })
+}
+
+/// Tarjeta «Completa»: carteles sobre la foto, precio con el anterior
+/// tachado, y las líneas de transferencia y cuotas de Cobros (cada una se
+/// prende o se apaga en el bloque).
+#[allow(non_snake_case)]
+pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) -> impl IntoView {
+    let offers = use_context::<domain::StoreInfo>()
+        .map(|s| s.offers)
+        .unwrap_or_default();
+    let cents = product.price_cents;
+    let transfer = (show_price && look.card_transfer)
+        .then(|| offers.transfer_cents(cents))
+        .flatten();
+    let per = (show_price && look.card_installments)
+        .then(|| offers.installment_cents(cents))
+        .flatten();
+    let off = show_price.then(|| product.discount_pct()).flatten();
+    let fit = product.fit(&product.image_url);
+    let n = offers.installments;
+    view! {
+        <div class="relative h-full" data-product-id=product.id.clone()>
+            <div class="mk-item mk-cfull flex h-full min-h-0 flex-col overflow-hidden rounded-box bg-base-100">
+                <div class="relative min-h-0 flex-1 overflow-hidden rounded-box bg-base-200">
+                    <div class="absolute inset-0"><Image src=product.image_url.clone() alt=product.name.clone() fit/></div>
+                    <div class="absolute left-2 top-2 flex flex-col items-start gap-1">
+                        {(!product.in_stock).then(|| view! { <span class="badge badge-neutral badge-sm">"Agotado"</span> })}
+                        {off.map(|n| view! { <span class="badge badge-error badge-sm">{format!("-{n}%")}</span> })}
+                        {product.few_left().map(|t| view! { <span class="badge badge-warning badge-sm">{t}</span> })}
+                    </div>
+                </div>
+                <div class="flex shrink-0 flex-col gap-0.5 px-1 pt-2 pb-1">
+                    <h3 class="mk-sub truncate text-sm font-semibold">{product.name.clone()}</h3>
+                    {show_price.then(|| view! {
+                        <p class="mk-cfull-price flex flex-wrap items-baseline gap-x-2 text-sm font-bold">
+                            {format_price(cents)}
+                            {(product.compare_at_cents > cents).then(|| view! {
+                                <s class="text-xs font-normal text-error"><span class="sr-only">"Antes "</span>{format_price(product.compare_at_cents)}</s>
+                            })}
+                        </p>
+                    })}
+                    {transfer.map(|c| view! { <p class="mk-cfull-tr truncate text-xs font-semibold">{format!("{} con transferencia", format_price(c))}</p> })}
+                    {per.map(|c| view! { <p class="truncate text-xs opacity-70">{format!("{n} cuotas sin interés de {}", format_price(c))}</p> })}
+                </div>
+            </div>
+            {open_cover(product.id.clone(), &product.name)}
+        </div>
+    }
+}
+
+/// Tarjeta «Limpia con Agregar»: tarjeta blanca redondeada, nombre en
+/// mayúsculas y «Agregar» siempre a la vista (suma uno al carrito).
+#[allow(non_snake_case)]
+pub fn CleanCard(product: Product, show_price: bool) -> impl IntoView {
+    let fit = product.fit(&product.image_url);
+    let cart = use_context::<crate::Cart>();
+    let id = StoredValue::new(product.id.clone());
+    let added = RwSignal::new(false);
+    let tag = if !product.in_stock {
+        Some("Agotado".to_string())
+    } else if product.few_left().is_some() {
+        Some("Últimas".to_string())
+    } else {
+        product.discount_pct().map(|n| format!("-{n}%"))
+    };
+    let add = product.in_stock.then(|| {
+        let label = format!("Agregar {} al carrito", product.name);
+        view! {
+            <button type="button" class="mk-cclean-add btn btn-sm relative z-10" aria-label=label
+                disabled=cart.is_none()
+                on:click=move |_| {
+                    if let Some(cart) = cart {
+                        id.with_value(|id| cart.add(id, 1));
+                        added.set(true);
+                        set_timeout(move || added.set(false), std::time::Duration::from_millis(1800));
+                    }
+                }>
+                {move || if added.get() { view! { "✓ Listo" }.into_any() } else { view! { <crate::cart::BagIcon class="h-4 w-4"/>"Agregar" }.into_any() }}
+            </button>
+        }
+    });
+    view! {
+        <div class="relative h-full" data-product-id=product.id.clone()>
+            <div class="mk-item mk-cclean flex h-full min-h-0 flex-col overflow-hidden">
+                <div class="relative min-h-0 flex-1 overflow-hidden bg-base-200">
+                    <div class="absolute inset-0"><Image src=product.image_url.clone() alt=product.name.clone() fit/></div>
+                    {tag.map(|t| view! { <span class="mk-cclean-tag absolute left-2 top-2">{t}</span> })}
+                </div>
+                <div class="flex shrink-0 flex-col gap-1 p-3">
+                    <h3 class="mk-sub truncate text-sm font-bold uppercase tracking-wide">{product.name.clone()}</h3>
+                    <div class="flex items-center justify-between gap-2">
+                        {show_price.then(|| view! {
+                            <span class="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-sm">
+                                <b>{format_price(product.price_cents)}</b>
+                                {(product.compare_at_cents > product.price_cents).then(|| view! {
+                                    <s class="text-xs opacity-55"><span class="sr-only">"Antes "</span>{format_price(product.compare_at_cents)}</s>
+                                })}
+                            </span>
+                        })}
+                        {add}
+                    </div>
+                </div>
+            </div>
+            {open_cover(product.id.clone(), &product.name)}
+        </div>
+    }
+}

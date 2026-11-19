@@ -348,6 +348,7 @@ fn vidriera(name: &str) -> PageDoc {
             }))
             .look(2, "neutral")],
             vec![block(Widget::TagTabs(TagTabsProps {
+                cards: crate::CardOptions::default(),
                 title: s("Lo más elegido"),
                 limit: 8,
                 all_label: s("Todo"),
@@ -363,6 +364,7 @@ fn vidriera(name: &str) -> PageDoc {
             }))
             .look(4, "neutral")],
             vec![block(Widget::ProductGrid(ProductGridProps {
+                cards: crate::CardOptions::default(),
                 title: s("Novedades"),
                 limit: 4,
             }))
@@ -434,6 +436,7 @@ fn taller(name: &str) -> PageDoc {
             }))
             .look(3, "")],
             vec![block(Widget::ProductGrid(ProductGridProps {
+                cards: crate::CardOptions::default(),
                 title: s("Nuestros productos"),
                 limit: 8,
             }))],
@@ -479,6 +482,7 @@ fn noche(name: &str) -> PageDoc {
                 show_counts: true,
             }))],
             vec![block(Widget::TagTabs(TagTabsProps {
+                cards: crate::CardOptions::default(),
                 title: s("Catálogo"),
                 limit: 8,
                 all_label: s("Todo"),

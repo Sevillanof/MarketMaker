@@ -64,7 +64,21 @@ pub struct OpenProduct(pub RwSignal<Option<String>>);
 pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
     let class = format!("{} {} h-full", node.style.classes(), node.look.classes());
     let style = format!("{}; {}", node.style.css_vars(), node.look.css_vars());
-    let content = render_content(node, ctx);
+    // Las tarjetas de producto leen su estilo del bloque que las contiene.
+    let cards = match &node.widget {
+        Widget::ProductGrid(p) => Some(p.cards.clone()),
+        Widget::TagTabs(p) => Some(p.cards.clone()),
+        Widget::ProductCarousel(p) => Some(p.cards.clone()),
+        Widget::FeaturedProduct(p) => Some(p.cards.clone()),
+        _ => None,
+    };
+    let content = match cards {
+        Some(cards) => {
+            let (node, ctx) = (node.clone(), ctx.clone());
+            view! { <leptos::context::Provider value=cards>{render_content(&node, &ctx)}</leptos::context::Provider> }.into_any()
+        }
+        None => render_content(node, ctx),
+    };
     view! { <div class=class style=style>{content}</div> }.into_any()
 }
 
@@ -483,6 +497,12 @@ pub fn FeaturedProductWidget(props: FeaturedProductProps, products: Vec<Product>
 /// En la tienda (con [`OpenProduct`]) se puede tocar para abrir su ficha.
 #[component]
 pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
+    let look = use_context::<domain::CardOptions>().unwrap_or_default();
+    match look.card.as_str() {
+        "full" => return product_page::FullCard(product, show_price, &look).into_any(),
+        "clean" => return product_page::CleanCard(product, show_price).into_any(),
+        _ => {}
+    }
     let open = use_context::<OpenProduct>();
     let id = product.id.clone();
     let name = product.name.clone();
@@ -523,6 +543,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
         })}
         </div>
     }
+    .into_any()
 }
 
 /// Dónde poner un desplegable: justo debajo de su botón (o del menú entero,

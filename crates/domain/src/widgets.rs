@@ -109,7 +109,41 @@ pub struct TextProps {
 pub struct ProductGridProps {
     pub title: String,
     pub limit: i64,
+    #[serde(flatten)]
+    pub cards: CardOptions,
 }
+
+/// Cómo se ven las tarjetas de producto de un bloque (cuadrícula, pestañas,
+/// carrusel o producto destacado). Van "planas" en las props, así el
+/// inspector las edita como cualquier otro campo.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CardOptions {
+    /// `""` clásica, `full` completa, `clean` limpia con Agregar.
+    #[serde(default)]
+    pub card: String,
+    /// En la completa: el precio con transferencia (de Cobros).
+    #[serde(default = "yes")]
+    pub card_transfer: bool,
+    /// En la completa: las cuotas sin interés (de Cobros).
+    #[serde(default = "yes")]
+    pub card_installments: bool,
+}
+
+impl Default for CardOptions {
+    fn default() -> Self {
+        Self {
+            card: String::new(),
+            card_transfer: true,
+            card_installments: true,
+        }
+    }
+}
+
+pub const CARD_STYLE_OPTIONS: &[(&str, &str)] = &[
+    ("", "Clásica"),
+    ("full", "Completa: precio, transferencia y cuotas"),
+    ("clean", "Limpia con «Agregar»"),
+];
 
 /// Las etiquetas de los productos, para que el comprador filtre las
 /// cuadrículas de la misma página.
@@ -137,12 +171,16 @@ pub struct TagTabsProps {
     pub title: String,
     pub limit: i64,
     pub all_label: String,
+    #[serde(flatten)]
+    pub cards: CardOptions,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FeaturedProductProps {
     pub product_id: String,
     pub show_price: bool,
+    #[serde(flatten)]
+    pub cards: CardOptions,
 }
 
 /// Enlace con texto, usado en la navbar y el footer. En la navbar puede
@@ -400,6 +438,8 @@ pub struct ProductCarouselProps {
     pub link_label: String,
     #[serde(default)]
     pub link_href: String,
+    #[serde(flatten)]
+    pub cards: CardOptions,
 }
 
 /// Redes de la tienda y botón de WhatsApp. WhatsApp e Instagram salen de
@@ -544,6 +584,15 @@ const PRODUCT_GRID_FIELDS: &[Field] = &[
         "Cantidad de productos",
         FieldKind::Number { min: 1, max: 12 },
     ),
+    field(
+        "card",
+        "Tarjetas",
+        FieldKind::Select {
+            options: CARD_STYLE_OPTIONS,
+        },
+    ),
+    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
+    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
 ];
 const TAG_FILTER_FIELDS: &[Field] = &[
     field("title", "Título (opcional)", text(60)),
@@ -570,10 +619,28 @@ const TAG_TABS_FIELDS: &[Field] = &[
         FieldKind::Number { min: 1, max: 12 },
     ),
     adv("all_label", "Texto de la pestaña de todos", text(20)),
+    field(
+        "card",
+        "Tarjetas",
+        FieldKind::Select {
+            options: CARD_STYLE_OPTIONS,
+        },
+    ),
+    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
+    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
 ];
 const FEATURED_PRODUCT_FIELDS: &[Field] = &[
     field("product_id", "Producto", FieldKind::ProductRef),
     adv("show_price", "Mostrar precio", FieldKind::Bool),
+    field(
+        "card",
+        "Tarjetas",
+        FieldKind::Select {
+            options: CARD_STYLE_OPTIONS,
+        },
+    ),
+    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
+    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
 ];
 
 const LINK_ITEM: &[Field] = &[
@@ -989,6 +1056,15 @@ const PRODUCT_CAROUSEL_FIELDS: &[Field] = &[
     ),
     adv("link_label", "Texto de «Ver todos»", text(30)),
     adv("link_href", "Enlace de «Ver todos»", FieldKind::Url),
+    field(
+        "card",
+        "Tarjetas",
+        FieldKind::Select {
+            options: CARD_STYLE_OPTIONS,
+        },
+    ),
+    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
+    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
 ];
 
 pub const VARIANT_SOCIAL: &[(&str, &str)] = &[
@@ -1171,6 +1247,7 @@ impl Widget {
                 align: s("left"),
             }),
             "ProductGrid" => Widget::ProductGrid(ProductGridProps {
+                cards: CardOptions::default(),
                 title: s("Productos"),
                 limit: 4,
             }),
@@ -1194,11 +1271,13 @@ impl Widget {
                 show_counts: true,
             }),
             "TagTabs" => Widget::TagTabs(TagTabsProps {
+                cards: CardOptions::default(),
                 title: s("Productos"),
                 limit: 8,
                 all_label: s("Todos"),
             }),
             "FeaturedProduct" => Widget::FeaturedProduct(FeaturedProductProps {
+                cards: CardOptions::default(),
                 product_id: String::new(),
                 show_price: true,
             }),
@@ -1431,6 +1510,7 @@ impl Widget {
                 ],
             }),
             "ProductCarousel" => Widget::ProductCarousel(ProductCarouselProps {
+                cards: CardOptions::default(),
                 variant: s("a"),
                 title: s("Lo más vendido"),
                 limit: 8,
