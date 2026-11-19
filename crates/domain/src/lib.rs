@@ -16,6 +16,7 @@ mod starter;
 mod templates;
 mod theme;
 mod typography;
+mod variants;
 mod widgets;
 
 pub use account::*;
@@ -31,6 +32,7 @@ pub use starter::*;
 pub use templates::*;
 pub use theme::*;
 pub use typography::*;
+pub use variants::*;
 pub use widgets::*;
 
 /// Versión del formato del documento. La 1 guardaba el tamaño como el id de
@@ -772,6 +774,10 @@ pub struct Product {
     /// Peso y medidas para cotizar el envío. `None`: el paquete de la tienda.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parcel: Option<Parcel>,
+    /// Colores y talles con su stock (ver [`Variants`]). Vacío: el producto
+    /// se vende como siempre.
+    #[serde(default, skip_serializing_if = "Variants::is_empty")]
+    pub variants: Variants,
 }
 
 fn yes() -> bool {
@@ -795,6 +801,7 @@ impl Default for Product {
             photo_fits: BTreeMap::new(),
             example: false,
             parcel: None,
+            variants: Variants::default(),
         }
     }
 }
@@ -1137,6 +1144,24 @@ mod tests {
         let Widget::ProductPrice(p) = w else { panic!("precio") };
         assert_eq!(p.variant, "a");
         assert!(p.show_installments && p.show_transfer);
+    }
+
+    /// Menús y anuncios guardados antes de los estilos nuevos: se ven igual.
+    #[test]
+    fn old_navbar_and_announcement_keep_their_look() {
+        let w: Widget = serde_json::from_value(serde_json::json!({"type": "Navbar", "props": {
+            "brand": "", "logo_url": "", "links": [], "button_label": "", "button_href": ""
+        }}))
+        .unwrap();
+        let Widget::Navbar(p) = w else { panic!("menú") };
+        assert_eq!((p.variant.as_str(), p.tone.as_str()), ("a", ""));
+        assert!(!p.floats() && !p.search && !p.upper && !p.menu_color);
+        let w: Widget = serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
+            "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
+        }}))
+        .unwrap();
+        let Widget::Announcement(p) = w else { panic!("anuncio") };
+        assert_eq!((p.code.as_str(), p.coupon.as_str()), ("", ""));
     }
 
     /// Los enlaces guardados antes de los desplegables no traen `children`

@@ -22,6 +22,7 @@ async fn place_order(pool: &PgPool, t: Uuid, email: &str, status: OrderStatus) -
         image_url: String::new(),
         unit_cents: 1000,
         qty: 1,
+        ..Default::default()
     }];
     let o = NewOrder {
         status,

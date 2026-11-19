@@ -200,6 +200,11 @@ fn navbar(links: Vec<LinkItem>, button: (&str, &str)) -> Widget {
         button_label: s(button.0),
         button_href: s(button.1),
         menu: s("list"),
+        variant: s("a"),
+        tone: String::new(),
+        upper: false,
+        search: false,
+        menu_color: false,
     })
 }
 

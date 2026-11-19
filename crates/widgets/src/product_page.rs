@@ -24,8 +24,41 @@ fn photo_tags(badge: String, few: Option<String>) -> impl IntoView {
     })
 }
 
+/// El color y el talle elegidos en la ficha abierta (vacíos: sin elegir).
+/// Lo comparten el selector del botón y la foto.
+#[derive(Clone, Copy)]
+pub struct VariantPick {
+    pub color: RwSignal<String>,
+    pub size: RwSignal<String>,
+}
+
+impl VariantPick {
+    pub fn new() -> Self {
+        Self {
+            color: RwSignal::new(String::new()),
+            size: RwSignal::new(String::new()),
+        }
+    }
+}
+
+impl Default for VariantPick {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[component]
 pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
+    // Al elegir un color en la ficha, la foto va a la de ese color.
+    let colors = product.as_ref().map(|p| p.variants.colors.clone()).unwrap_or_default();
+    let all = product.as_ref().map(Product::all_photos).unwrap_or_default();
+    let target = use_context::<VariantPick>().filter(|_| !colors.is_empty()).map(|pick| {
+        Memo::new(move |_| {
+            let c = pick.color.get();
+            let photo = colors.iter().find(|x| x.name == c).map(|x| x.photo.clone())?;
+            all.iter().position(|u| *u == photo)
+        })
+    });
     let few = product
         .as_ref()
         .filter(|_| props.stock_note)
@@ -71,7 +104,7 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
         }
         .into_any(),
         "b" | "d" | "e" if total > 1 => {
-            slider(props.variant.clone(), total, photo, badge, few, photos, fits).into_any()
+            slider(props.variant.clone(), total, photo, badge, few, photos, fits, target).into_any()
         }
         "e" => view! {
             <div class="mk-box mk-image mk-pvisor flex h-full flex-col">
@@ -85,7 +118,7 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
             </div>
         }
         .into_any(),
-        _ => classic(total, photo, badge, few, photos, fits).into_any(),
+        _ => classic(total, photo, badge, few, photos, fits, target).into_any(),
     }
 }
 
@@ -97,6 +130,7 @@ fn classic(
     few: Option<String>,
     photos: StoredValue<Vec<String>>,
     fits: StoredValue<std::collections::BTreeMap<String, domain::PhotoFit>>,
+    target: Option<Memo<Option<usize>>>,
 ) -> impl IntoView {
     if total < 2 {
         return view! {
@@ -107,6 +141,13 @@ fn classic(
         .into_any();
     }
     let shown = RwSignal::new(0usize);
+    if let Some(t) = target {
+        Effect::new(move |_| {
+            if let Some(i) = t.get().filter(|i| *i < total) {
+                shown.set(i);
+            }
+        });
+    }
     view! {
         <div class="mk-image flex h-full flex-col gap-2">
             <div class="mk-box relative min-h-0 flex-1 overflow-hidden rounded-box bg-base-200">
@@ -151,6 +192,7 @@ fn slider(
     few: Option<String>,
     photos: StoredValue<Vec<String>>,
     fits: StoredValue<std::collections::BTreeMap<String, domain::PhotoFit>>,
+    target: Option<Memo<Option<usize>>>,
 ) -> impl IntoView {
     let track = NodeRef::<Div>::new();
     let current = RwSignal::new(0usize);
@@ -165,6 +207,13 @@ fn slider(
             el.set_scroll_left(el.client_width() * i as i32);
         }
     };
+    if let Some(t) = target {
+        Effect::new(move |_| {
+            if let Some(i) = t.get() {
+                go(i);
+            }
+        });
+    }
     let rail = view! {
         <div node_ref=track class="mk-ptrack" tabindex="0" aria-label="Fotos del producto"
             on:pointerdown=move |_| pending.set_value(None)
@@ -424,19 +473,27 @@ pub fn CleanCard(product: Product, show_price: bool) -> impl IntoView {
     } else {
         product.discount_pct().map(|n| format!("-{n}%"))
     };
+    let variants = product.has_variants();
+    let open_id = StoredValue::new(product.id.clone());
     let add = product.in_stock.then(|| {
-        let label = format!("Agregar {} al carrito", product.name);
+        let label = if variants {
+            format!("Elegir color o talle de {}", product.name)
+        } else {
+            format!("Agregar {} al carrito", product.name)
+        };
         view! {
             <button type="button" class="mk-cclean-add btn btn-sm relative z-10" aria-label=label
                 disabled=cart.is_none()
                 on:click=move |_| {
-                    if let Some(cart) = cart {
+                    if variants {
+                        open_id.with_value(|id| open_product(id));
+                    } else if let Some(cart) = cart {
                         id.with_value(|id| cart.add(id, 1));
                         added.set(true);
                         set_timeout(move || added.set(false), std::time::Duration::from_millis(1800));
                     }
                 }>
-                {move || if added.get() { view! { "✓ Listo" }.into_any() } else { view! { <crate::cart::BagIcon class="h-4 w-4"/>"Agregar" }.into_any() }}
+                {move || if added.get() { view! { "✓ Listo" }.into_any() } else if variants { view! { "Elegir" }.into_any() } else { view! { <crate::cart::BagIcon class="h-4 w-4"/>"Agregar" }.into_any() }}
             </button>
         }
     });
@@ -463,6 +520,171 @@ pub fn CleanCard(product: Product, show_price: bool) -> impl IntoView {
                 </div>
             </div>
             {open_cover(product.id.clone(), &product.name)}
+        </div>
+    }
+}
+
+/// Abre la ficha de un producto (para elegir color y talle antes de
+/// agregarlo). Sin ficha en la página no hace nada.
+pub fn open_product(id: &str) {
+    if let Some(crate::OpenProduct(open)) = use_context::<crate::OpenProduct>() {
+        open.set(Some(id.to_string()));
+    }
+}
+
+/// Ficha de un producto con colores y talles (diseño A aprobado): las fotos
+/// de cada color y cuadros de talle, lo agotado tachado y sin poder
+/// elegirse, y la cantidad con «Agregar al carrito». Cada opción es un
+/// `<input type="radio">` de verdad dentro de un `<fieldset>` con su
+/// `<legend>`, así se maneja con el teclado y el lector de pantalla.
+#[component]
+pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<crate::Cart>) -> impl IntoView {
+    let pick = use_context::<VariantPick>().unwrap_or_default();
+    let v = product.variants.clone();
+    let colors = v.colors.clone();
+    let sizes = v.sizes.clone();
+    let need_color = !colors.is_empty();
+    let need_size = !sizes.is_empty();
+    if colors.len() == 1 && pick.color.get_untracked().is_empty() {
+        pick.color.set(colors[0].name.clone());
+    }
+    if sizes.len() == 1 && pick.size.get_untracked().is_empty() {
+        pick.size.set(sizes[0].clone());
+    }
+    let v = StoredValue::new(v);
+    let pid = StoredValue::new(product.id.clone());
+    let main_photo = product.image_url.clone();
+    let qty = RwSignal::new(1u32);
+    let missing = RwSignal::new(false);
+    let added = RwSignal::new(false);
+    // Hay unidades de esa combinación (con el color o el talle todavía sin
+    // elegir, alcanza con que alguna tenga).
+    let available = move |color: &str, size: &str| {
+        v.with_value(|v| {
+            v.stock.iter().any(|s| {
+                s.qty > 0
+                    && (color.is_empty() || s.color == color)
+                    && (size.is_empty() || s.size == size)
+            })
+        })
+    };
+    let line = move || {
+        let (c, s) = (pick.color.get(), pick.size.get());
+        if (need_color && c.is_empty()) || (need_size && s.is_empty()) {
+            None
+        } else {
+            Some((domain::line_id(&pid.get_value(), &c, &s), v.with_value(|v| v.qty(&c, &s))))
+        }
+    };
+    let what_missing = move || match (need_color && pick.color.get().is_empty(), need_size && pick.size.get().is_empty()) {
+        (true, true) => "Elegí un color y un talle para agregarlo al carrito.",
+        (true, false) => "Elegí un color para agregarlo al carrito.",
+        (false, true) => "Elegí un talle para agregarlo al carrito.",
+        _ => "",
+    };
+    let group = format!("mk-var-{}", product.id);
+    let color_set = need_color.then(|| {
+        let name_attr = format!("{group}-color");
+        view! {
+            <fieldset class="mk-pvar-set">
+                <legend class="mk-pvar-lbl">"Color: " <span>{move || { let c = pick.color.get(); if c.is_empty() { "elegí uno".to_string() } else { c } }}</span></legend>
+                <div class="mk-pswatches">
+                    {colors.into_iter().map(|c| {
+                        let name = c.name.clone();
+                        let n2 = c.name.clone();
+                        let n3 = c.name.clone();
+                        let out = !available(&c.name, "");
+                        let photo = if c.photo.is_empty() { main_photo.clone() } else { c.photo.clone() };
+                        let face = if !c.hex.is_empty() && c.photo.is_empty() {
+                            view! { <span class="mk-pdot" style=format!("background:{}", c.hex)></span> }.into_any()
+                        } else {
+                            view! { <Image src=photo alt=""/> }.into_any()
+                        };
+                        view! {
+                            <label class="mk-pswatch" class:mk-out=out title=name.clone()>
+                                <input type="radio" class="sr-only" name=name_attr.clone() value=name.clone() disabled=out
+                                    prop:checked=move || pick.color.get() == n2
+                                    on:change=move |_| {
+                                        pick.color.set(n3.clone());
+                                        missing.set(false);
+                                        // El talle elegido puede no estar en este color.
+                                        let s = pick.size.get_untracked();
+                                        if !s.is_empty() && !available(&n3, &s) { pick.size.set(String::new()); }
+                                    }/>
+                                {face}
+                                <span class="sr-only">{if out { format!("{name}, agotado") } else { name.clone() }}</span>
+                            </label>
+                        }
+                    }).collect_view()}
+                </div>
+            </fieldset>
+        }
+    });
+    let size_set = need_size.then(|| {
+        let name_attr = format!("{group}-size");
+        view! {
+            <fieldset class="mk-pvar-set">
+                <legend class="mk-pvar-lbl">"Talle"</legend>
+                <div class="mk-psizes">
+                    {sizes.into_iter().map(|s| {
+                        let s2 = s.clone();
+                        let s3 = s.clone();
+                        let s4 = StoredValue::new(s.clone());
+                        let out = move || s4.with_value(|s4| !available(&pick.color.get(), s4));
+                        view! {
+                            <label class="mk-psize" class:mk-out=out>
+                                <input type="radio" class="sr-only" name=name_attr.clone() value=s.clone() disabled=out
+                                    prop:checked=move || pick.size.get() == s2
+                                    on:change=move |_| { pick.size.set(s3.clone()); missing.set(false); }/>
+                                <span aria-hidden="true">{s.clone()}</span>
+                                <span class="sr-only">{let s = s.clone(); move || if out() { format!("{s}, agotado") } else { s.clone() }}</span>
+                            </label>
+                        }
+                    }).collect_view()}
+                </div>
+            </fieldset>
+        }
+    });
+    let note = move || {
+        if missing.get() {
+            let t = what_missing();
+            if !t.is_empty() {
+                return view! { <p class="mk-pvar-err">{t}</p> }.into_any();
+            }
+        }
+        match line() {
+            Some((_, left)) if (1..=3).contains(&left) => {
+                let which = domain::variant_label(&pick.color.get(), &pick.size.get());
+                let t = if left == 1 { format!("Queda 1 en {which}") } else { format!("Quedan {left} en {which}") };
+                view! { <p class="mk-pvar-low">{t}</p> }.into_any()
+            }
+            _ => ().into_any(),
+        }
+    };
+    let max = Signal::derive(move || line().map_or(1, |(_, q)| q.clamp(1, crate::cart::MAX_QTY)));
+    view! {
+        <div class="mk-pbtn mk-pvar flex h-full flex-col gap-3">
+            {color_set}
+            {size_set}
+            <div aria-live="polite" class="min-h-4 empty:hidden">{note}</div>
+            <div class="flex flex-nowrap items-start gap-2">
+                {move || view! { <crate::cart::QtyStepper value=qty label="Cantidad" max=max.get() disabled=cart.is_none()/> }}
+                <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
+                    on:click=move |_| {
+                        let Some(cart) = cart else { return };
+                        match line() {
+                            None => missing.set(true),
+                            Some((id, _)) => {
+                                cart.add(&id, qty.get());
+                                qty.set(1);
+                                added.set(true);
+                                set_timeout(move || added.set(false), std::time::Duration::from_millis(2000));
+                            }
+                        }
+                    }>
+                    {move || if added.get() { "Agregado ✓".to_string() } else { label.clone() }}
+                </button>
+            </div>
         </div>
     }
 }

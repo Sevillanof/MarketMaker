@@ -20,6 +20,20 @@ pub struct BuyerMe {
 impl BuyerMe {
     /// La letra del avatar cuando no hay foto: la inicial del nombre, o del
     /// email si todavía no lo dijo.
+    /// Las iniciales del nombre y el apellido ("FS"); con una sola palabra,
+    /// la inicial ([`Self::initial`]).
+    pub fn initials(&self) -> String {
+        let mut words = self.name.split_whitespace();
+        match (words.next(), words.last()) {
+            (Some(first), Some(last)) => [first, last]
+                .iter()
+                .filter_map(|w| w.chars().next())
+                .flat_map(char::to_uppercase)
+                .collect(),
+            _ => self.initial(),
+        }
+    }
+
     pub fn initial(&self) -> String {
         let source = if self.name.trim().is_empty() {
             &self.email
@@ -101,5 +115,10 @@ mod tests {
         b.name = " Ángela Gómez ".into();
         assert_eq!(b.initial(), "Á");
         assert_eq!(b.display_name(), "Ángela Gómez");
+        assert_eq!(b.initials(), "ÁG");
+        b.name = "Francisco Javier Sevillano".into();
+        assert_eq!(b.initials(), "FS");
+        b.name = "Lucía".into();
+        assert_eq!(b.initials(), "L");
     }
 }

@@ -35,6 +35,22 @@ impl ProductFilter {
         provide_context(Self::new());
     }
 
+    /// Como [`Self::provide`], y además toma la búsqueda de `?buscar=` (la
+    /// manda el buscador del menú desde una página sin productos). Se lee
+    /// después de hidratar, así la página del servidor y la del navegador
+    /// arrancan iguales.
+    pub fn provide_from_url() {
+        let f = Self::new();
+        provide_context(f);
+        Effect::new(move |_| {
+            let Ok(search) = window().location().search() else { return };
+            let Ok(params) = web_sys::UrlSearchParams::new_with_str(&search) else { return };
+            if let Some(q) = params.get("buscar").filter(|q| !q.trim().is_empty()) {
+                f.query.set(q);
+            }
+        });
+    }
+
     fn clear(self) {
         self.tags.set(Vec::new());
         self.query.set(String::new());

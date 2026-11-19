@@ -8,7 +8,7 @@ use leptos::html::{Div, Section};
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use widgets::{node_style, render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx};
+use widgets::{render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx};
 
 use crate::icons::Icon;
 use crate::inline::{inline_at, InlineEdit, InlineEditor};
@@ -1096,10 +1096,11 @@ pub(crate) fn Canvas(
             };
             let mut nodes = state.doc.with(|d| d.layer(state.page_layer()).clone());
             grid::sort_by_position(&mut nodes);
-            nodes
+            widgets::page_nodes(&nodes)
             .into_iter()
-            .map(|node| view! {
-                <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
+            .zip(nodes)
+            .map(|((class, style), node)| view! {
+                <div class=class style=style>{render_widget(&node, &ctx)}</div>
             })
             .collect_view()
         };
