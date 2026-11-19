@@ -109,7 +109,12 @@ pub async fn buyer_account() -> Result<Option<BuyerMe>, ServerFnError> {
 /// Manda al email un enlace para entrar a la cuenta de esta tienda. La
 /// respuesta es la misma tenga o no pedidos: así nadie averigua quién compró.
 #[server]
-pub async fn buyer_request_link(email: String) -> Result<CodeRequest, ServerFnError> {
+pub async fn buyer_request_link(
+    email: String,
+    /// Producto que tocó con el corazón antes de entrar (`""` si ninguno): se
+    /// guarda en favoritos al canjear el enlace.
+    favorite: String,
+) -> Result<CodeRequest, ServerFnError> {
     let Some(email) = domain::normalize_email(&email) else {
         return Ok(CodeRequest::BadEmail);
     };
@@ -118,7 +123,8 @@ pub async fn buyer_request_link(email: String) -> Result<CodeRequest, ServerFnEr
     }
     let tenant = crate::auth::current_tenant().await?;
     let pool = pool()?;
-    match db::buyers::create_link(&pool, tenant.id, &email)
+    let favorite = favorite.trim().parse::<uuid::Uuid>().ok();
+    match db::buyers::create_link_for(&pool, tenant.id, &email, favorite)
         .await
         .map_err(internal)?
     {
@@ -268,4 +274,44 @@ pub async fn buyer_delete_account() -> Result<(), ServerFnError> {
         .map_err(internal)?;
     clear_cookie();
     Ok(())
+}
+
+/// Los productos que el comprador guardó en favoritos en esta tienda (solo
+/// sus ids, para pintar los corazones). Vacío si no entró.
+#[server]
+pub async fn buyer_favorite_ids() -> Result<Vec<String>, ServerFnError> {
+    let Some((tenant, buyer)) = current_buyer().await? else {
+        return Ok(Vec::new());
+    };
+    let ids = db::buyers::favorite_ids(&pool()?, tenant.id, buyer.id)
+        .await
+        .map_err(internal)?;
+    Ok(ids.into_iter().map(|i| i.to_string()).collect())
+}
+
+/// Marca o desmarca un favorito del comprador. `false` si no entró o no se
+/// pudo guardar (producto de otra tienda, o ya llegó al máximo).
+#[server]
+pub async fn buyer_set_favorite(product_id: String, on: bool) -> Result<bool, ServerFnError> {
+    let Some((tenant, buyer)) = current_buyer().await? else {
+        return Ok(false);
+    };
+    let Ok(product) = product_id.trim().parse::<uuid::Uuid>() else {
+        return Ok(false);
+    };
+    db::buyers::set_favorite(&pool()?, tenant.id, buyer.id, product, on)
+        .await
+        .map_err(internal)
+}
+
+/// Los favoritos del comprador, el último guardado primero. `None` si no entró.
+#[server]
+pub async fn buyer_favorites() -> Result<Option<Vec<domain::Product>>, ServerFnError> {
+    let Some((tenant, buyer)) = current_buyer().await? else {
+        return Ok(None);
+    };
+    let list = db::products::list_favorites(&pool()?, tenant.id, buyer.id)
+        .await
+        .map_err(internal)?;
+    Ok(Some(list))
 }

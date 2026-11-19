@@ -270,6 +270,11 @@
     flex: none;
     aspect-ratio: 4 / 3;
   }
+  /* Lo mismo en las tarjetas Completa y Limpia (ver `widgets::product_page`). */
+  .mk-pgrid .mk-cphoto {
+    flex: none;
+    aspect-ratio: 4 / 5;
+  }
 }
 
 /* Imágenes: skeleton mientras cargan (ver `ui::Image` y `ui::Picture`).
@@ -2099,3 +2104,33 @@ dialog.mk-open-sheet .mk-dialog-box::before {
 .mk-d4 .mk-cclean { background: var(--mk-c); color: var(--mk-cc); }
 .mk-d4 .mk-cclean-add { --btn-color: var(--mk-cc); --btn-fg: var(--mk-c); }
 .mk-d1 .mk-cclean-add, .mk-d3 .mk-cclean-add, .mk-d5 .mk-cclean-add { --btn-color: var(--mk-c, var(--color-base-content)); --btn-fg: var(--mk-cc, var(--color-base-100)); }
+
+/* Corazón de favoritos (ver `widgets::FavoriteHeart`) y el globito para
+   entrar cuando todavía no hay sesión (ver `web::buyer_ui::FavoritePrompt`). */
+.mk-fav {
+  display: grid; place-items: center; min-width: 2.25rem; min-height: 2.25rem;
+  border-radius: 9999px; cursor: pointer;
+  background: color-mix(in oklab, var(--color-base-100) 92%, transparent);
+  color: var(--color-base-content); box-shadow: 0 1px 3px #0003;
+}
+.mk-fav.is-on { color: var(--color-error); }
+.mk-fav:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .mk-fav svg { transition: transform 0.2s cubic-bezier(0.3, 1.6, 0.5, 1); }
+  .mk-fav.is-on svg { transform: scale(1.12); }
+  .mk-fav:active svg { transform: scale(0.82); }
+}
+.mk-favpop {
+  position: fixed; z-index: 60; width: min(15rem, calc(100vw - 1rem));
+  left: clamp(0.5rem, calc(var(--fx) - 15rem), calc(100vw - 15.5rem));
+  top: min(calc(var(--fy) + 0.5rem), calc(100vh - 15rem));
+  background: var(--color-base-100); color: var(--color-base-content);
+  border-radius: var(--radius-box); box-shadow: 0 8px 30px #0004; padding: 0.875rem;
+}
+@media (max-width: 639px) {
+  .mk-favpop {
+    left: 0; right: 0; top: auto; bottom: 0; width: auto;
+    border-radius: var(--radius-box) var(--radius-box) 0 0;
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  }
+}

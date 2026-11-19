@@ -430,8 +430,9 @@ pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) 
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
             <div class="mk-item mk-cfull flex h-full min-h-0 flex-col overflow-hidden rounded-box bg-base-100">
-                <div class="relative min-h-0 flex-1 overflow-hidden rounded-box bg-base-200">
+                <div class="mk-cphoto relative min-h-0 flex-1 overflow-hidden rounded-box bg-base-200">
                     <div class="absolute inset-0"><Image src=product.image_url.clone() alt=product.name.clone() fit/></div>
+                    {look.card_favorite.then(|| view! { <crate::FavoriteHeart product_id=product.id.clone() name=product.name.clone()/> })}
                     <div class="absolute left-2 top-2 flex flex-col items-start gap-1">
                         {(!product.in_stock).then(|| view! { <span class="badge badge-neutral badge-sm">"Agotado"</span> })}
                         {off.map(|n| view! { <span class="badge badge-error badge-sm">{format!("-{n}%")}</span> })}
@@ -499,7 +500,7 @@ pub fn CleanCard(product: Product, show_price: bool) -> impl IntoView {
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
             <div class="mk-item mk-cclean flex h-full min-h-0 flex-col overflow-hidden">
-                <div class="relative min-h-0 flex-1 overflow-hidden bg-base-200">
+                <div class="mk-cphoto relative min-h-0 flex-1 overflow-hidden bg-base-200">
                     <div class="absolute inset-0"><Image src=product.image_url.clone() alt=product.name.clone() fit/></div>
                     {tag.map(|t| view! { <span class="mk-cclean-tag absolute left-2 top-2">{t}</span> })}
                 </div>

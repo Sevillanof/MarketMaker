@@ -1184,7 +1184,7 @@ mod tests {
                      "button_label": "", "button_href": "" },
           "pos": { "x": 0, "y": 0 }, "size": { "w": 48, "h": 48 } },
         { "id": "n2", "type": "ProductGrid",
-          "props": { "title": "Destacados", "limit": 8, "card": "", "card_transfer": true, "card_installments": true },
+          "props": { "title": "Destacados", "limit": 8, "card": "", "card_transfer": true, "card_installments": true, "card_favorite": true },
           "pos": { "x": 0, "y": 48 }, "size": { "w": 48, "h": 60 } }
       ]
     }"#;

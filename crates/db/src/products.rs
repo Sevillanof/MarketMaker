@@ -87,6 +87,26 @@ pub async fn list_for_buyers(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Pr
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
+/// Los favoritos de `buyer` que se ven en la tienda, el último guardado
+/// primero.
+pub async fn list_favorites(
+    pool: &PgPool,
+    tenant: Uuid,
+    buyer: Uuid,
+) -> sqlx::Result<Vec<Product>> {
+    let rows = sqlx::query_as::<_, Row>(select!(
+        "FROM products WHERE tenant_id = $1 AND visible AND NOT example
+           AND id IN (SELECT product_id FROM buyer_favorites WHERE buyer_id = $2)
+         ORDER BY (SELECT created_at FROM buyer_favorites f
+                   WHERE f.buyer_id = $2 AND f.product_id = products.id) DESC"
+    ))
+    .bind(tenant)
+    .bind(buyer)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
 /// Todos los productos, el último que se tocó primero (lo que ve el dueño).
 pub async fn list_all(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<Product>> {
     let rows = sqlx::query_as::<_, Row>(select!(
