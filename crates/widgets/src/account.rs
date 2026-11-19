@@ -7,6 +7,7 @@
 
 use domain::BuyerMe;
 use leptos::prelude::*;
+use std::collections::HashSet;
 use ui::Icon;
 
 /// Qué se sabe de quien mira la tienda.
@@ -20,12 +21,29 @@ pub enum AccountState {
     In(BuyerMe),
 }
 
+/// Alguien tocó el corazón de un producto. El cajón de la cuenta (en `web`,
+/// que habla con el servidor) lo atiende: guarda el favorito o, si no entró,
+/// le ofrece entrar.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FavRequest {
+    pub product_id: String,
+    pub name: String,
+    /// Dónde está el corazón en la pantalla (borde derecho y borde de abajo),
+    /// para poner el globito pegado a él.
+    pub right: f64,
+    pub bottom: f64,
+}
+
 /// El estado de la cuenta del comprador, en el contexto de la página.
 #[derive(Clone, Copy)]
 pub struct Account {
     /// El cajón de la cuenta está abierto.
     pub open: RwSignal<bool>,
     pub state: RwSignal<AccountState>,
+    /// Ids de los productos que guardó en favoritos (de esta tienda).
+    pub favs: RwSignal<HashSet<String>>,
+    /// El último corazón que tocó (lo atiende `web`).
+    pub fav_req: RwSignal<Option<FavRequest>>,
 }
 
 impl Account {
@@ -33,6 +51,8 @@ impl Account {
         Self {
             open: RwSignal::new(false),
             state: RwSignal::new(AccountState::Loading),
+            favs: RwSignal::new(HashSet::new()),
+            fav_req: RwSignal::new(None),
         }
     }
 }
@@ -121,6 +141,56 @@ pub fn AccountFooterLink() -> impl IntoView {
                 AccountState::In(_) => "Mi cuenta",
                 _ => "Ingresar a mi cuenta",
             }}
+        </button>
+    }
+    .into_any()
+}
+
+/// El icono del corazón (contorno o relleno).
+#[component]
+pub fn HeartIcon(#[prop(into)] filled: Signal<bool>, #[prop(into, default = "size-5".to_string())] class: String) -> impl IntoView {
+    view! {
+        <svg class=class viewBox="0 0 24 24" fill=move || if filled.get() { "currentColor" } else { "none" }
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+        </svg>
+    }
+}
+
+/// El corazón para guardar un producto en favoritos. Va arriba a la derecha
+/// de la foto de la tarjeta (dentro de una caja `relative`) y por encima del
+/// botón que cubre la tarjeta. En el editor se ve pero no hace nada.
+#[component]
+pub fn FavoriteHeart(product_id: String, name: String) -> impl IntoView {
+    let Some(account) = use_context::<Account>() else {
+        return view! {
+            <span class="mk-fav absolute right-2 top-2 z-10" aria-hidden="true"><HeartIcon filled=false/></span>
+        }
+        .into_any();
+    };
+    let id = StoredValue::new(product_id);
+    let name = StoredValue::new(name);
+    let on = Memo::new(move |_| id.with_value(|id| account.favs.with(|f| f.contains(id))));
+    view! {
+        <button type="button" class="mk-fav absolute right-2 top-2 z-10"
+            class:is-on=move || on.get()
+            aria-pressed=move || on.get().to_string()
+            aria-label=move || name.with_value(|n| if on.get() { format!("Quitar {n} de favoritos") } else { format!("Agregar {n} a favoritos") })
+            on:click=move |ev| {
+                use wasm_bindgen::JsCast;
+                ev.stop_propagation();
+                let rect = ev
+                    .current_target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                    .map(|el| el.get_bounding_client_rect());
+                account.fav_req.set(Some(FavRequest {
+                    product_id: id.get_value(),
+                    name: name.get_value(),
+                    right: rect.as_ref().map_or(0.0, |r| r.right()),
+                    bottom: rect.as_ref().map_or(0.0, |r| r.bottom()),
+                }));
+            }>
+            <HeartIcon filled=on/>
         </button>
     }
     .into_any()

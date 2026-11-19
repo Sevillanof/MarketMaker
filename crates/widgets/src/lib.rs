@@ -22,7 +22,10 @@ pub mod cart;
 pub mod product_page;
 pub mod tags;
 pub use product_page::{ProductImageWidget, ProductPriceWidget};
-pub use account::{Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar};
+pub use account::{
+    Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar, FavRequest,
+    FavoriteHeart, HeartIcon,
+};
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
 pub use tags::{FilteredProducts, ProductFilter};
 
@@ -1817,4 +1820,22 @@ mod tests {
         assert_eq!(split_seconds(90_061), [1, 1, 1, 1]);
         assert_eq!(split_seconds(-5), [0, 0, 0, 0]);
     }
+}
+
+/// Si la dirección trae `?ver=<producto>` (por ejemplo desde «Mis favoritos»),
+/// abre la ficha de ese producto. Solo en el navegador.
+pub fn open_from_query(open: RwSignal<Option<String>>) {
+    Effect::new(move |_| {
+        let search = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .unwrap_or_default();
+        let id = search
+            .trim_start_matches('?')
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("ver="))
+            .filter(|v| v.len() <= 36 && v.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'));
+        if let Some(id) = id {
+            open.set(Some(id.to_string()));
+        }
+    });
 }

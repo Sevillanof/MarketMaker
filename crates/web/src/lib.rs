@@ -117,6 +117,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/mi-cuenta/entrar") view=buyer_ui::BuyerEnterPage ssr=SsrMode::Async/>
                     <Route path=path!("/mi-cuenta/pedidos") view=buyer_ui::BuyerOrdersPage ssr=SsrMode::Async/>
                     <Route path=path!("/mi-cuenta/pedidos/:id") view=buyer_ui::BuyerOrderPage ssr=SsrMode::Async/>
+                    <Route path=path!("/mi-cuenta/favoritos") view=buyer_ui::BuyerFavoritesPage ssr=SsrMode::Async/>
                     <Route path=path!("/mi-cuenta/datos") view=|| view! { <buyer_ui::BuyerProfilePage section="datos"/> } ssr=SsrMode::Async/>
                     <Route path=path!("/mi-cuenta/direcciones") view=|| view! { <buyer_ui::BuyerProfilePage section="direcciones"/> } ssr=SsrMode::Async/>
                     <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>

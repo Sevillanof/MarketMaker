@@ -29,6 +29,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     // Tocar un producto abre su ficha (ver `widgets::ProductDialog`).
     let open = RwSignal::new(None::<String>);
     provide_context(OpenProduct(open));
+    widgets::open_from_query(open);
     if let Some(hook) = use_context::<widgets::UsageHook>() {
         Effect::new(move |_| {
             if open.get().is_some() {

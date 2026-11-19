@@ -8,8 +8,9 @@
 //! antes de salir.
 
 use crate::buyer::{
-    buyer_delete_account, buyer_logout, buyer_account, buyer_order, buyer_orders, buyer_redeem,
-    buyer_request_link, buyer_save_avatar, buyer_save_profile,
+    buyer_delete_account, buyer_favorite_ids, buyer_favorites, buyer_logout, buyer_account,
+    buyer_order, buyer_orders, buyer_redeem, buyer_request_link, buyer_save_avatar,
+    buyer_save_profile, buyer_set_favorite,
 };
 use crate::checkout::{StoreFrame, StoreHeader};
 use crate::products::error_text;
@@ -17,7 +18,7 @@ use domain::{BuyerMe, BuyerProfile, CodeRequest, Delivery, Order, OrderStatus};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use ui::{format_price, BuyerPageKind, BuyerPageSkeleton, Icon, Image};
-use widgets::{Account, AccountState, BuyerAvatar};
+use widgets::{Account, AccountState, BuyerAvatar, FavRequest, HeartIcon};
 
 // ───────────────────────── Datos chicos ─────────────────────────
 
@@ -152,12 +153,20 @@ pub(crate) fn BuyerScope(store_name: String, children: Children) -> impl IntoVie
                 Ok(Some(me)) => AccountState::In(me),
                 _ => AccountState::Out,
             };
+            let signed_in = matches!(state, AccountState::In(_));
             account.state.set(state);
+            // Sus favoritos, para pintar los corazones de la tienda.
+            if signed_in {
+                if let Ok(ids) = buyer_favorite_ids().await {
+                    account.favs.set(ids.into_iter().collect());
+                }
+            }
         });
     });
     view! {
         {children()}
-        <BuyerDrawer account store_name/>
+        <BuyerDrawer account store_name=store_name.clone()/>
+        <FavoritePrompt account store_name/>
     }
 }
 
@@ -166,6 +175,7 @@ fn sign_out(account: Account) {
     spawn_local(async move {
         _ = buyer_logout().await;
         account.state.set(AccountState::Out);
+        account.favs.set(Default::default());
         account.open.set(false);
         _ = window().location().set_href("/");
     });
@@ -276,6 +286,16 @@ fn SignedInPanel(me: BuyerMe, account: Account) -> impl IntoView {
                             <span>"Todos mis pedidos"</span>
                             <span class="flex items-center gap-1 text-sm text-base-content/70">
                                 {move || orders.get().map(|l| l.len().to_string())}
+                                <Icon name="chevron-right" class="h-4 w-4"/>
+                            </span>
+                        </a></li>
+                        <li><a class="flex items-center justify-between border-b border-base-200 py-4" href="/mi-cuenta/favoritos">
+                            <span class="flex items-center gap-2"><HeartIcon filled=false class="size-4"/>"Mis favoritos"</span>
+                            <span class="flex items-center gap-1.5 text-sm text-base-content/70">
+                                {move || {
+                                    let n = account.favs.with(|f| f.len());
+                                    (n > 0).then(|| view! { <span class="badge badge-error badge-sm">{n}</span> })
+                                }}
                                 <Icon name="chevron-right" class="h-4 w-4"/>
                             </span>
                         </a></li>
@@ -423,7 +443,7 @@ fn SignInForm(store_name: String, #[prop(into)] title_id: String) -> impl IntoVi
         problem.set(None);
         busy.set(true);
         spawn_local(async move {
-            match buyer_request_link(addr.clone()).await {
+            match buyer_request_link(addr.clone(), String::new()).await {
                 Ok(CodeRequest::Sent) => step.set(Step::Sent(addr.trim().to_lowercase())),
                 Ok(CodeRequest::BadEmail) => problem.set(Some(
                     "Revisá el email: no parece una dirección válida.".into(),
@@ -513,14 +533,14 @@ fn db_link_minutes() -> i32 {
 
 // ───────────────────────── Páginas ─────────────────────────
 
-/// Pestañas de la cuenta: Pedidos, Mis datos y Direcciones.
+/// Pestañas de la cuenta: Pedidos, Favoritos, Mis datos y Direcciones.
 #[component]
 fn AccountTabs(active: &'static str) -> impl IntoView {
     let tab = move |key: &'static str, href: &'static str, label: &'static str| {
         let on = key == active;
         view! {
             <a href=href aria-current=on.then_some("page")
-                class=if on { "border-b-2 border-primary px-4 py-2.5 text-sm font-semibold text-primary" } else { "border-b-2 border-transparent px-4 py-2.5 text-sm font-semibold text-base-content/70 hover:text-base-content" }>
+                class=if on { "whitespace-nowrap border-b-2 border-primary px-4 py-2.5 text-sm font-semibold text-primary" } else { "whitespace-nowrap border-b-2 border-transparent px-4 py-2.5 text-sm font-semibold text-base-content/70 hover:text-base-content" }>
                 {label}
             </a>
         }
@@ -528,6 +548,7 @@ fn AccountTabs(active: &'static str) -> impl IntoView {
     view! {
         <nav class="flex overflow-x-auto border-b border-base-300" aria-label="Mi cuenta">
             {tab("pedidos", "/mi-cuenta/pedidos", "Pedidos")}
+            {tab("favoritos", "/mi-cuenta/favoritos", "Favoritos")}
             {tab("datos", "/mi-cuenta/datos", "Mis datos")}
             {tab("direcciones", "/mi-cuenta/direcciones", "Direcciones")}
         </nav>
@@ -995,4 +1016,273 @@ pub fn BuyerEnterPage() -> impl IntoView {
         </Suspense>
     }
     .into_any()
+}
+
+// ───────────────────────── Favoritos ─────────────────────────
+
+/// Marca o desmarca un favorito de inmediato y lo confirma con el servidor;
+/// si el servidor no lo acepta, deja todo como estaba. Devuelve el aviso.
+fn toggle_favorite(account: Account, id: String, name: String, notice: RwSignal<Option<FavNotice>>) {
+    let was = account.favs.with_untracked(|f| f.contains(&id));
+    account.favs.update(|f| {
+        if was {
+            f.remove(&id);
+        } else {
+            f.insert(id.clone());
+        }
+    });
+    spawn_local(async move {
+        let ok = buyer_set_favorite(id.clone(), !was).await.unwrap_or(false);
+        if ok {
+            show_notice(notice, if was { FavNotice::Removed(name) } else { FavNotice::Saved(name) });
+        } else {
+            account.favs.update(|f| {
+                if was {
+                    f.insert(id);
+                } else {
+                    f.remove(&id);
+                }
+            });
+            show_notice(notice, FavNotice::Failed);
+        }
+    });
+}
+
+/// Los avisos que deja el corazón.
+#[derive(Clone, PartialEq)]
+enum FavNotice {
+    Saved(String),
+    Removed(String),
+    Failed,
+}
+
+/// Muestra un aviso unos segundos (si llega otro, el viejo no lo borra).
+fn show_notice(notice: RwSignal<Option<FavNotice>>, what: FavNotice) {
+    notice.set(Some(what.clone()));
+    set_timeout(
+        move || {
+            if notice.get_untracked() == Some(what.clone()) {
+                notice.set(None);
+            }
+        },
+        std::time::Duration::from_millis(3500),
+    );
+}
+
+/// Atiende los corazones de la tienda: con sesión guarda el favorito; sin
+/// sesión abre un globito (en el celular, una hoja desde abajo) que pide el
+/// email, y el producto queda anotado en el enlace para guardarse al entrar.
+/// También dibuja el aviso «Guardado en favoritos».
+#[component]
+fn FavoritePrompt(account: Account, store_name: String) -> impl IntoView {
+    let target = RwSignal::new(None::<FavRequest>);
+    let notice = RwSignal::new(None::<FavNotice>);
+    let email = RwSignal::new(String::new());
+    let sent = RwSignal::new(false);
+    let busy = RwSignal::new(false);
+    let problem = RwSignal::new(None::<String>);
+    let input = NodeRef::<leptos::html::Input>::new();
+    let store_name = StoredValue::new(store_name);
+    Effect::new(move |_| {
+        let Some(req) = account.fav_req.get() else {
+            return;
+        };
+        account.fav_req.set(None);
+        match account.state.get_untracked() {
+            AccountState::In(_) => toggle_favorite(account, req.product_id, req.name, notice),
+            _ => {
+                sent.set(false);
+                problem.set(None);
+                target.set(Some(req));
+            }
+        }
+    });
+    // Al abrirse, el cursor va al campo del email.
+    Effect::new(move |_| {
+        if target.with(|t| t.is_some()) && !sent.get() {
+            if let Some(el) = input.get() {
+                _ = el.focus();
+            }
+        }
+    });
+    let close = move || target.set(None);
+    let send = move |req: FavRequest| {
+        let addr = email.get_untracked();
+        if addr.trim().is_empty() {
+            problem.set(Some("Escribí tu email.".into()));
+            return;
+        }
+        problem.set(None);
+        busy.set(true);
+        spawn_local(async move {
+            match buyer_request_link(addr, req.product_id).await {
+                Ok(CodeRequest::Sent) => sent.set(true),
+                Ok(CodeRequest::BadEmail) => problem.set(Some(
+                    "Revisá el email: no parece una dirección válida.".into(),
+                )),
+                Ok(CodeRequest::TooMany | CodeRequest::NotAllowed) => problem.set(Some(
+                    "Pediste muchos enlaces seguidos. Probá de nuevo en un rato.".into(),
+                )),
+                Err(e) => problem.set(Some(error_text(&e))),
+            }
+            busy.set(false);
+        });
+    };
+    view! {
+        {move || target.get().map(|req| {
+            let name = req.name.clone();
+            let style = format!("--fx:{}px;--fy:{}px", req.right, req.bottom);
+            view! {
+                <div class="fixed inset-0 z-50" on:click=move |_| close()></div>
+                <div class="mk-favpop" role="dialog" aria-labelledby="mk-fav-title" style=style
+                    on:keydown=move |ev| { if ev.key() == "Escape" { close(); } }>
+                    {move || if sent.get() {
+                        view! {
+                            <h2 id="mk-fav-title" class="mk-h font-bold">"Revisá tu email"</h2>
+                            <p role="status" class="mt-1 text-xs leading-snug text-base-content/70">
+                                {format!("Si podés entrar con esa dirección, te mandamos un enlace. «{}» se guarda en tus favoritos cuando lo abras.", name.clone())}
+                            </p>
+                            <button type="button" class="btn btn-sm btn-primary btn-block mt-3" on:click=move |_| close()>"Listo"</button>
+                        }.into_any()
+                    } else {
+                        let req = req.clone();
+                        view! {
+                            <form novalidate on:submit=move |ev: leptos::ev::SubmitEvent| {
+                                ev.prevent_default();
+                                send(req.clone());
+                            }>
+                                <h2 id="mk-fav-title" class="mk-h font-bold">"Guardá tus favoritos"</h2>
+                                <p class="mt-1 text-xs leading-snug text-base-content/70">
+                                    {format!("Dejanos tu email y te mandamos un enlace. «{}» queda guardado cuando entres a tu cuenta en {}.", name.clone(), store_name.get_value())}
+                                </p>
+                                <label class="sr-only" for="mk-fav-email">"Tu email"</label>
+                                <input id="mk-fav-email" node_ref=input class="input input-sm mt-2.5 w-full" type="email" name="email"
+                                    inputmode="email" autocomplete="email" placeholder="nombre@email.com"
+                                    aria-invalid=move || problem.get().is_some().to_string()
+                                    aria-describedby="mk-fav-note"
+                                    prop:value=move || email.get()
+                                    on:input=move |ev| { email.set(event_target_value(&ev)); problem.set(None); }/>
+                                <p id="mk-fav-note" role="status" class="min-h-4 pt-1 text-xs text-error">{move || problem.get()}</p>
+                                <button type="submit" class="btn btn-sm btn-primary btn-block mt-1" disabled=move || busy.get()>
+                                    {move || if busy.get() { "Enviando…" } else { "Recibir enlace" }}
+                                </button>
+                            </form>
+                        }.into_any()
+                    }}
+                </div>
+            }
+        })}
+        // Zona de avisos: siempre está, así los lectores de pantalla anuncian los cambios.
+        <div role="status" class="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center px-4">
+            {move || notice.get().map(|n| view! {
+                <p class="pointer-events-auto flex items-center gap-2 rounded-full bg-neutral px-4 py-2 text-sm text-neutral-content shadow-lg">
+                    {match n {
+                        FavNotice::Saved(_) => view! {
+                            <HeartIcon filled=true class="size-4 text-error"/>
+                            "Guardado en favoritos"
+                            <a class="link font-semibold" href="/mi-cuenta/favoritos">"Ver"</a>
+                        }.into_any(),
+                        FavNotice::Removed(_) => view! { "Quitado de favoritos" }.into_any(),
+                        FavNotice::Failed => view! { "No pudimos guardar el favorito. Probá de nuevo." }.into_any(),
+                    }}
+                </p>
+            })}
+        </div>
+    }
+}
+
+/// `/mi-cuenta/favoritos`: los productos que guardó, con el mismo corazón
+/// para quitarlos y un enlace a cada ficha.
+#[component]
+pub fn BuyerFavoritesPage() -> impl IntoView {
+    if crate::site::current_site() == domain::Site::Platform {
+        return not_a_store();
+    }
+    let page = Resource::new(|| (), |_| crate::load_page("home".to_string()));
+    let favs = Resource::new(|| (), |_| buyer_favorites());
+    view! {
+        <leptos_meta::Title text="Mis favoritos"/>
+        <Suspense fallback=|| view! { <BuyerPageSkeleton kind=BuyerPageKind::Favorites/> }>
+            {move || Suspend::new(async move {
+                match (page.await, favs.await) {
+                    (Ok(view), Ok(Some(list))) => view! { <FavoritesList view list/> }.into_any(),
+                    (Ok(view), Ok(None)) => view! { <SignedOut view/> }.into_any(),
+                    _ => view! { <crate::platform::StoreNotFound/> }.into_any(),
+                }
+            })}
+        </Suspense>
+    }
+    .into_any()
+}
+
+#[component]
+fn FavoritesList(view: domain::PageView, list: Vec<domain::Product>) -> impl IntoView {
+    let items = RwSignal::new(list);
+    let failed = RwSignal::new(false);
+    let remove = move |id: String| {
+        let before = items.get_untracked();
+        items.update(|l| l.retain(|p| p.id != id));
+        failed.set(false);
+        spawn_local(async move {
+            if !buyer_set_favorite(id, false).await.unwrap_or(false) {
+                items.set(before);
+                failed.set(true);
+            }
+        });
+    };
+    view! {
+        <AccountFrame view>
+            <h1 class="mk-h text-2xl font-bold">"Mi cuenta"</h1>
+            <AccountTabs active="favoritos"/>
+            {move || failed.get().then(|| view! {
+                <p role="status" class="text-sm text-error">"No pudimos quitar el favorito. Probá de nuevo."</p>
+            })}
+            {move || if items.with(|l| l.is_empty()) {
+                view! {
+                    <div class="card bg-base-100 shadow-sm"><div class="card-body items-center gap-2 py-10 text-center">
+                        <HeartIcon filled=false class="size-9 text-error"/>
+                        <h2 class="mk-h text-lg font-bold">"Todavía no guardaste nada"</h2>
+                        <p class="text-base-content/70">"Tocá el corazón de un producto para guardarlo acá."</p>
+                        <a class="btn btn-primary mt-2" href="/">"Ver productos"</a>
+                    </div></div>
+                }.into_any()
+            } else {
+                view! {
+                    <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        <For each=move || items.get() key=|p| p.id.clone() let:p>
+                            <FavoriteCard product=p remove/>
+                        </For>
+                    </ul>
+                }.into_any()
+            }}
+        </AccountFrame>
+    }
+}
+
+#[component]
+fn FavoriteCard(product: domain::Product, remove: impl Fn(String) + Copy + Send + Sync + 'static) -> impl IntoView {
+    let id = product.id.clone();
+    let name = product.name.clone();
+    let fit = product.fit(&product.image_url);
+    let href = format!("/?ver={}", product.id);
+    view! {
+        <li class="card overflow-hidden bg-base-100 shadow-sm">
+            <div class="relative aspect-[4/5] bg-base-200">
+                <a href=href.clone() class="absolute inset-0" aria-label=format!("Ver {name}")>
+                    <Image src=product.image_url.clone() alt=name.clone() fit/>
+                </a>
+                <button type="button" class="mk-fav is-on absolute right-2 top-2 z-10"
+                    aria-pressed="true" aria-label=format!("Quitar {name} de favoritos")
+                    on:click=move |_| remove(id.clone())>
+                    <HeartIcon filled=true/>
+                </button>
+                {(!product.in_stock).then(|| view! { <span class="badge badge-neutral badge-sm absolute bottom-2 left-2">"Agotado"</span> })}
+            </div>
+            <div class="flex flex-col gap-0.5 p-3">
+                <h2 class="truncate text-sm font-semibold">{product.name.clone()}</h2>
+                <p class="text-sm font-bold">{format_price(product.price_cents)}</p>
+                <a class="btn btn-sm btn-primary btn-soft mt-1.5" href=href>"Ver producto"</a>
+            </div>
+        </li>
+    }
 }

@@ -46,6 +46,17 @@ pub async fn create_link(
     tenant: Uuid,
     email: &str,
 ) -> sqlx::Result<Result<String, TooMany>> {
+    create_link_for(pool, tenant, email, None).await
+}
+
+/// Como [`create_link`], pero anota un producto para dejarlo en favoritos
+/// cuando la persona entre con este enlace.
+pub async fn create_link_for(
+    pool: &PgPool,
+    tenant: Uuid,
+    email: &str,
+    favorite: Option<Uuid>,
+) -> sqlx::Result<Result<String, TooMany>> {
     let (hour, day): (i64, i64) = sqlx::query_as(
         "SELECT count(*) FILTER (WHERE created_at > now() - interval '1 hour'), count(*)
          FROM buyer_links
@@ -69,13 +80,14 @@ pub async fn create_link(
     .execute(&mut *tx)
     .await?;
     sqlx::query(
-        "INSERT INTO buyer_links (tenant_id, email, key_hash, expires_at)
-         VALUES ($1, $2, $3, now() + make_interval(mins => $4))",
+        "INSERT INTO buyer_links (tenant_id, email, key_hash, expires_at, pending_favorite)
+         VALUES ($1, $2, $3, now() + make_interval(mins => $4), $5)",
     )
     .bind(tenant)
     .bind(email)
     .bind(hash(&key))
     .bind(LINK_MINUTES)
+    .bind(favorite)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -87,16 +99,16 @@ pub async fn create_link(
 /// primera vez con el nombre y el teléfono de su último pedido.
 pub async fn redeem_link(pool: &PgPool, tenant: Uuid, key: &str) -> sqlx::Result<Option<Uuid>> {
     let mut tx = pool.begin().await?;
-    let email: Option<(String,)> = sqlx::query_as(
+    let email: Option<(String, Option<Uuid>)> = sqlx::query_as(
         "UPDATE buyer_links SET used_at = now()
          WHERE tenant_id = $1 AND key_hash = $2 AND used_at IS NULL AND expires_at > now()
-         RETURNING email",
+         RETURNING email, pending_favorite",
     )
     .bind(tenant)
     .bind(hash(key))
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((email,)) = email else {
+    let Some((email, favorite)) = email else {
         return Ok(None);
     };
     // Los datos de su último pedido con este email, para no pedírselos de nuevo.
@@ -125,8 +137,89 @@ pub async fn redeem_link(pool: &PgPool, tenant: Uuid, key: &str) -> sqlx::Result
     .bind(city)
     .fetch_one(&mut *tx)
     .await?;
+    if let Some(product) = favorite {
+        add_favorite(&mut *tx, tenant, id, product).await?;
+    }
     tx.commit().await?;
     Ok(Some(id))
+}
+
+/// Cuántos favoritos puede tener un comprador, para que nadie llene la base.
+pub const FAVORITES_MAX: i64 = 200;
+
+/// Guarda `product` en los favoritos de `buyer`. Solo si el producto es de la
+/// misma tienda que el comprador (y no se pasó del máximo). Devuelve si quedó
+/// guardado.
+async fn add_favorite(
+    conn: &mut sqlx::PgConnection,
+    tenant: Uuid,
+    buyer: Uuid,
+    product: Uuid,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query(
+        "INSERT INTO buyer_favorites (buyer_id, product_id)
+         SELECT $2, p.id FROM products p
+         WHERE p.id = $3 AND p.tenant_id = $1
+           AND (SELECT count(*) FROM buyer_favorites WHERE buyer_id = $2) < $4
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(tenant)
+    .bind(buyer)
+    .bind(product)
+    .bind(FAVORITES_MAX)
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// Marca (`on`) o desmarca un favorito. Con `on`, devuelve si quedó
+/// guardado (`false` si el producto no es de esta tienda o se llegó al
+/// máximo); al quitar, `true`.
+pub async fn set_favorite(
+    pool: &PgPool,
+    tenant: Uuid,
+    buyer: Uuid,
+    product: Uuid,
+    on: bool,
+) -> sqlx::Result<bool> {
+    if on {
+        let mut conn = pool.acquire().await?;
+        let saved = add_favorite(&mut conn, tenant, buyer, product).await?;
+        if saved {
+            return Ok(true);
+        }
+        // Ya estaba: también es "guardado".
+        let (exists,): (bool,) = sqlx::query_as(
+            "SELECT EXISTS (SELECT 1 FROM buyer_favorites f JOIN products p ON p.id = f.product_id
+             WHERE f.buyer_id = $1 AND f.product_id = $2 AND p.tenant_id = $3)",
+        )
+        .bind(buyer)
+        .bind(product)
+        .bind(tenant)
+        .fetch_one(&mut *conn)
+        .await?;
+        Ok(exists)
+    } else {
+        sqlx::query("DELETE FROM buyer_favorites WHERE buyer_id = $1 AND product_id = $2")
+            .bind(buyer)
+            .bind(product)
+            .execute(pool)
+            .await?;
+        Ok(true)
+    }
+}
+
+/// Los productos favoritos de `buyer` que se pueden ver en la tienda.
+pub async fn favorite_ids(pool: &PgPool, tenant: Uuid, buyer: Uuid) -> sqlx::Result<Vec<Uuid>> {
+    sqlx::query_scalar(
+        "SELECT f.product_id FROM buyer_favorites f JOIN products p ON p.id = f.product_id
+         WHERE f.buyer_id = $1 AND p.tenant_id = $2 AND p.visible AND NOT p.example
+         ORDER BY f.created_at DESC",
+    )
+    .bind(buyer)
+    .bind(tenant)
+    .fetch_all(pool)
+    .await
 }
 
 /// Abre una sesión y devuelve el token para la cookie.

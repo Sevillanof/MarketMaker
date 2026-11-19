@@ -127,6 +127,9 @@ pub struct CardOptions {
     /// En la completa: las cuotas sin interés (de Cobros).
     #[serde(default = "yes")]
     pub card_installments: bool,
+    /// En la completa: el corazón para guardar el producto en favoritos.
+    #[serde(default = "yes")]
+    pub card_favorite: bool,
 }
 
 impl Default for CardOptions {
@@ -135,6 +138,7 @@ impl Default for CardOptions {
             card: String::new(),
             card_transfer: true,
             card_installments: true,
+            card_favorite: true,
         }
     }
 }
@@ -593,6 +597,7 @@ const PRODUCT_GRID_FIELDS: &[Field] = &[
     ),
     adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
     adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
+    adv("card_favorite", "Tarjeta completa: corazón de favoritos", FieldKind::Bool),
 ];
 const TAG_FILTER_FIELDS: &[Field] = &[
     field("title", "Título (opcional)", text(60)),
@@ -628,6 +633,7 @@ const TAG_TABS_FIELDS: &[Field] = &[
     ),
     adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
     adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
+    adv("card_favorite", "Tarjeta completa: corazón de favoritos", FieldKind::Bool),
 ];
 const FEATURED_PRODUCT_FIELDS: &[Field] = &[
     field("product_id", "Producto", FieldKind::ProductRef),
@@ -641,6 +647,7 @@ const FEATURED_PRODUCT_FIELDS: &[Field] = &[
     ),
     adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
     adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
+    adv("card_favorite", "Tarjeta completa: corazón de favoritos", FieldKind::Bool),
 ];
 
 const LINK_ITEM: &[Field] = &[
@@ -1065,6 +1072,7 @@ const PRODUCT_CAROUSEL_FIELDS: &[Field] = &[
     ),
     adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
     adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
+    adv("card_favorite", "Tarjeta completa: corazón de favoritos", FieldKind::Bool),
 ];
 
 pub const VARIANT_SOCIAL: &[(&str, &str)] = &[
