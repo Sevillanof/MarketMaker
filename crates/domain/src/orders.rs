@@ -560,18 +560,30 @@ pub struct CheckoutInfo {
 }
 
 /// Un producto dentro de un pedido, como estaba al comprarlo.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct OrderItem {
     pub product_id: String,
+    /// Con variantes: el nombre lleva la combinación ("Zapatillas · Azul · 40").
     pub name: String,
     pub image_url: String,
     pub unit_cents: i64,
     pub qty: u32,
+    /// La combinación que se compró, si el producto tiene variantes (su stock
+    /// es el que se descuenta).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub color: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub size: String,
 }
 
 impl OrderItem {
     pub fn total_cents(&self) -> i64 {
         self.unit_cents * i64::from(self.qty)
+    }
+
+    /// Es de una combinación de color o talle.
+    pub fn is_variant(&self) -> bool {
+        !self.color.is_empty() || !self.size.is_empty()
     }
 }
 

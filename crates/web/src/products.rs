@@ -838,6 +838,8 @@ struct Form {
     length: RwSignal<String>,
     width: RwSignal<String>,
     height: RwSignal<String>,
+    /// Colores y talles, con el stock de cada combinación.
+    variants: crate::variants_field::VariantsForm,
 }
 
 impl Form {
@@ -868,6 +870,7 @@ impl Form {
             length: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.length_mm)).unwrap_or_default()),
             width: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.width_mm)).unwrap_or_default()),
             height: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.height_mm)).unwrap_or_default()),
+            variants: crate::variants_field::VariantsForm::new(&p.variants),
         }
     }
 
@@ -911,6 +914,12 @@ impl Form {
                 }
             }
         };
+        let variants = self.variants.variants().unwrap_or_else(|e| {
+            errors.push(e);
+            domain::Variants::default()
+        });
+        // Con variantes, el stock es la suma de las combinaciones.
+        let stock = if variants.is_empty() { stock } else { Some(variants.total()) };
         let parcel = domain::parse_parcel(
             &self.weight.get(),
             &self.length.get(),
@@ -937,6 +946,7 @@ impl Form {
             photo_fits: self.fits.get(),
             example: false,
             parcel,
+            variants,
         };
         if errors.is_empty() {
             Ok(p)
@@ -1032,6 +1042,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         form.length.track();
         form.width.track();
         form.height.track();
+        form.variants.track();
         if first.is_some() {
             dirty.set(true);
             saved.set(false);
@@ -1212,8 +1223,17 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                     {field_error("description")}
                 </fieldset>
                 <TagsField form store_tags=store_tags.get_value()/>
+                <crate::variants_field::VariantsField form=form.variants photos=form.photos/>
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <fieldset class="fieldset">
+                    {move || form.variants.active().then(|| view! {
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">"Stock"</legend>
+                            <p class="text-sm">{move || format!("{} unidades en total", form.variants.total())}</p>
+                            <p class="label whitespace-normal">"Se cuenta por color y talle. Cada venta descuenta de la combinación elegida."</p>
+                            {field_error("stock")}
+                        </fieldset>
+                    })}
+                    <fieldset class="fieldset" class:hidden=move || form.variants.active()>
                         <legend class="fieldset-legend">"Stock"</legend>
                         <label class="fieldset-label" for="p-stock">"Cantidad disponible " <span class="text-base-content/60">"(opcional)"</span></label>
                         <input id="p-stock" class="input w-40" class:input-error=move || has_error("stock") inputmode="numeric" placeholder="Sin contar"

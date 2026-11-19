@@ -62,6 +62,8 @@ impl Cart {
     /// Crea el carrito, lo lee del navegador al hidratar, lo guarda en cada
     /// cambio y lo deja en el contexto.
     pub fn provide(products: Vec<Product>) -> Self {
+        // Cada combinación de color y talle es un renglón propio.
+        let products: Vec<Product> = products.iter().flat_map(Product::sellable).collect();
         let cart = Self {
             lines: RwSignal::new(Vec::new()),
             products: StoredValue::new(products),
@@ -376,6 +378,16 @@ pub fn CardCartButton(product: Product) -> impl IntoView {
         }
         .into_any();
     };
+    if product.has_variants() {
+        // Con colores o talles se elige en la ficha.
+        let id = product.id.clone();
+        return view! {
+            <button type="button" class="btn btn-sm btn-block btn-soft btn-primary mk-cart-add relative z-10 mt-2"
+                aria-label=format!("Elegir color o talle de {}", product.name)
+                on:click=move |_| crate::product_page::open_product(&id)>"Elegir opciones"</button>
+        }
+        .into_any();
+    }
     let id = StoredValue::new(product.id);
     let name = product.name;
     // Solo cambia al entrar o salir del carrito: sumar uno no vuelve a
@@ -529,6 +541,9 @@ pub fn AddToCart(
 ) -> impl IntoView {
     let qty = RwSignal::new(1u32);
     let cart = use_context::<Cart>().filter(|_| !editing);
+    if let Some(p) = product.clone().filter(|p| p.has_variants()) {
+        return view! { <crate::product_page::VariantBuy product=p label cart/> }.into_any();
+    }
     let Some((cart, product)) = cart.zip(product.filter(|p| !p.id.is_empty())) else {
         // En el editor: igual que en la tienda, pero quieto.
         return view! {
