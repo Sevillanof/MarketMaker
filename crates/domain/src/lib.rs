@@ -419,7 +419,32 @@ impl PageDoc {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProductModal {
     pub nodes: Vec<Node>,
+    /// Cómo se abre: `""` ventana al centro, `drawer` cajón a la derecha,
+    /// `sheet` hoja desde abajo, `auto` cajón en compu y hoja en celular.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub open: String,
+    /// Barra de compra que aparece al bajar: `""` sin barra, `light`
+    /// flotante clara, `dark` flotante oscura, `color` pegada abajo con el
+    /// color de la tienda.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub buybar: String,
 }
+
+/// Las formas de abrir la ficha.
+pub const MODAL_OPEN_OPTIONS: &[(&str, &str)] = &[
+    ("", "Ventana al centro"),
+    ("drawer", "Cajón a la derecha"),
+    ("sheet", "Hoja que sube desde abajo"),
+    ("auto", "Cajón en compu, hoja en celular"),
+];
+
+/// Los estilos de la barra de compra al bajar.
+pub const MODAL_BUYBAR_OPTIONS: &[(&str, &str)] = &[
+    ("", "Sin barra"),
+    ("light", "Flotante clara"),
+    ("dark", "Flotante oscura"),
+    ("color", "Pegada abajo, color de la tienda"),
+];
 
 impl ProductModal {
     pub fn is_default(&self) -> bool {
@@ -440,10 +465,12 @@ impl Default for ProductModal {
             nodes: vec![
                 at("m1", "ProductImage", 0, 0, 24, 52),
                 at("m2", "ProductName", 24, 0, 24, 9),
-                at("m3", "ProductPrice", 24, 9, 24, 8),
-                at("m4", "ProductDescription", 24, 17, 24, 26),
+                at("m3", "ProductPrice", 24, 9, 24, 9),
+                at("m4", "ProductDescription", 24, 18, 24, 25),
                 at("m5", "ProductButton", 24, 43, 24, 7),
             ],
+            open: String::new(),
+            buybar: String::new(),
         }
     }
 }
@@ -1015,6 +1042,12 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
             doc.product_modal.nodes.len()
         ));
     }
+    if !MODAL_OPEN_OPTIONS.iter().any(|(v, _)| *v == doc.product_modal.open) {
+        errors.push(format!("forma de abrir la ficha desconocida: {}", doc.product_modal.open));
+    }
+    if !MODAL_BUYBAR_OPTIONS.iter().any(|(v, _)| *v == doc.product_modal.buybar) {
+        errors.push(format!("barra de compra desconocida: {}", doc.product_modal.buybar));
+    }
 
     if doc.pages.len() > MAX_PAGES {
         errors.push(format!(
@@ -1243,6 +1276,18 @@ mod tests {
             assert!(l.min_h <= l.max_h && l.min_h >= 1, "{t}");
         }
         assert_eq!(Widget::defaults("Nada"), None);
+    }
+
+    #[test]
+    fn product_modal_open_and_buybar_are_checked() {
+        let m: ProductModal = serde_json::from_value(serde_json::json!({"nodes": []})).unwrap();
+        assert_eq!((m.open.as_str(), m.buybar.as_str()), ("", ""));
+        let mut doc = PageDoc::default();
+        doc.product_modal.open = "drawer".into();
+        doc.product_modal.buybar = "dark".into();
+        assert!(validate(&doc).is_ok());
+        doc.product_modal.open = "flotante".into();
+        assert!(validate(&doc).is_err());
     }
 
     #[test]

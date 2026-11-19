@@ -244,8 +244,37 @@ pub fn DevProductStylesPage() -> impl IntoView {
         node.size = domain::Size { w: 20, h: if *v == "d" { 22 } else { 10 } };
         cases.push((format!("Precio · {label}"), node));
     }
+    // Las formas de abrir la ficha, con barra de compra (ficha larga para
+    // que el botón quede arriba al bajar).
+    let dialog_product = ctx.product.clone().unwrap_or_default();
+    let dialogs = [("", "light"), ("drawer", "dark"), ("sheet", "color"), ("auto", "light")]
+        .into_iter()
+        .map(|(open_mode, bar)| {
+            let mut modal = domain::ProductModal::default();
+            modal.open = open_mode.to_string();
+            modal.buybar = bar.to_string();
+            for n in &mut modal.nodes {
+                match n.id.as_str() {
+                    "m5" => n.pos.y = 18,
+                    "m4" => {
+                        n.pos.y = 25;
+                        n.size.h = 120;
+                    }
+                    _ => {}
+                }
+            }
+            let open = RwSignal::new(None::<String>);
+            let id = dialog_product.id.clone();
+            let label = format!("Abrir ficha «{}» con barra «{bar}»", if open_mode.is_empty() { "centro" } else { open_mode });
+            view! {
+                <button type="button" class="btn btn-sm mr-2 mb-2" data-open=open_mode.to_string() on:click=move |_| open.set(Some(id.clone()))>{label}</button>
+                <widgets::ProductDialog modal products=vec![dialog_product.clone()] open/>
+            }
+        })
+        .collect_view();
     view! {
         <div data-theme="light" class="mk-store min-h-screen bg-base-200 p-6 text-base-content">
+            <section class="mb-8">{dialogs}</section>
             {cases.into_iter().map(|(title, mut node)| {
                 node.pos = domain::Pos { x: 0, y: 0 };
                 let style = node_style(&node);

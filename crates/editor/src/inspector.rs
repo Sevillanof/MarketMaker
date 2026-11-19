@@ -100,6 +100,7 @@ fn EmptyInspector() -> impl IntoView {
             {move || if state.in_modal() {
                 view! {
                     <p class="text-sm">"Estás en la ficha del producto. Hacé clic en uno de sus bloques para cambiarlo aquí, o sumá bloques desde la izquierda."</p>
+                    <ModalSettings/>
                     <button type="button" class="btn btn-sm self-start" on:click=move |_| actions.close_modal()>"Volver a la página"</button>
                 }.into_any()
             } else {
@@ -118,6 +119,43 @@ fn EmptyInspector() -> impl IntoView {
                 </dl>
             </details>
         </div>
+    }
+}
+
+/// Ajustes de toda la ficha: cómo se abre y la barra de compra al bajar.
+#[component]
+fn ModalSettings() -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let select = move |id: &'static str,
+                       label: &'static str,
+                       help: &'static str,
+                       options: &'static [(&'static str, &'static str)],
+                       get: fn(&domain::ProductModal) -> &String,
+                       set: fn(&mut domain::ProductModal, String)| {
+        view! {
+            <fieldset class="fieldset py-0">
+                <label class="fieldset-legend" for=id>{label}</label>
+                <select id=id class="select select-sm w-full"
+                    on:change=move |ev| {
+                        let v = event_target_value(&ev);
+                        state.apply(|d| set(&mut d.product_modal, v));
+                    }>
+                    {options.iter().map(|(v, l)| view! {
+                        <option value=*v selected=move || state.doc.with(|d| get(&d.product_modal) == v)>{*l}</option>
+                    }).collect_view()}
+                </select>
+                <p class="label whitespace-normal">{help}</p>
+            </fieldset>
+        }
+    };
+    view! {
+        <section class="flex flex-col gap-3 rounded-box border border-base-300 p-3" aria-labelledby="mk-modal-settings">
+            <h3 id="mk-modal-settings" class="text-sm font-bold">"Toda la ficha"</h3>
+            {select("mk-modal-open", "Cómo se abre", "Se ve en la vista previa y en tu tienda.",
+                domain::MODAL_OPEN_OPTIONS, |m| &m.open, |m, v| m.open = v)}
+            {select("mk-modal-buybar", "Barra de compra al bajar", "Aparece cuando el botón de compra queda fuera de la vista. En el celular no hace falta: el botón ya queda abajo.",
+                domain::MODAL_BUYBAR_OPTIONS, |m| &m.buybar, |m, v| m.buybar = v)}
+        </section>
     }
 }
 
