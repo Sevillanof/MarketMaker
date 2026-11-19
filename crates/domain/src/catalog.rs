@@ -375,6 +375,14 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     if p.stock.is_some_and(|s| s > STOCK_MAX) {
         errors.push(format!("La cantidad puede ser hasta {STOCK_MAX}."));
     }
+    let photos = p.photos.clone();
+    errors.extend(p.variants.tidy(&photos));
+    if p.has_variants() {
+        // Con variantes, el stock del producto es la suma de las combinaciones.
+        p.stock = Some(p.variants.total());
+    } else {
+        p.variants = crate::Variants::default();
+    }
     if p.stock.is_some() {
         // La cantidad manda: en 0 se ve "Agotado".
         p.in_stock = true;

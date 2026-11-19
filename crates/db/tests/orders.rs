@@ -41,6 +41,7 @@ fn item(id: Uuid, qty: u32) -> OrderItem {
         image_url: String::new(),
         unit_cents: 1000,
         qty,
+        ..Default::default()
     }
 }
 
@@ -331,4 +332,57 @@ async fn the_transfer_discount_is_saved_and_lowers_the_total(pool: PgPool) {
     orders::save_payment_options(&pool, t, &p).await.unwrap();
     let info = db::auth::store_info(&pool, t).await.unwrap();
     assert_eq!(info.offers.transfer_discount, 0);
+}
+
+/// Con colores y talles, se descuenta la combinación comprada (y el total
+/// del producto), nunca se vende de más y vuelve al cancelar.
+#[sqlx::test(migrations = "../../migrations")]
+async fn variant_stock_goes_down_per_combo_and_back_on_cancel(pool: PgPool) {
+    let t = tenant(&pool, "zapas").await;
+    let mut p = Product {
+        name: "Zapatillas".into(),
+        ..Product::default()
+    };
+    p.variants = domain::Variants {
+        colors: vec![
+            domain::VariantColor { name: "Azul".into(), ..Default::default() },
+            domain::VariantColor { name: "Rojo".into(), ..Default::default() },
+        ],
+        sizes: vec!["40".into(), "41".into()],
+        stock: Vec::new(),
+    };
+    p.variants.set_qty("Azul", "40", 2);
+    p.variants.set_qty("Rojo", "41", 5);
+    assert!(domain::tidy_product(&mut p).is_empty());
+    assert_eq!(p.stock, Some(7));
+    let id = products::create(&pool, t, &p).await.unwrap();
+    let combo = |color: &str, size: &str, qty: u32| OrderItem {
+        color: color.into(),
+        size: size.into(),
+        ..item(id, qty)
+    };
+
+    let items = [combo("Azul", "40", 2)];
+    let Created::Saved { id: first, .. } = orders::create(&pool, t, &order(&items)).await.unwrap() else {
+        panic!("tenía que alcanzar");
+    };
+    let got = products::get(&pool, t, id).await.unwrap().unwrap();
+    assert_eq!(got.variants.qty("Azul", "40"), 0);
+    assert_eq!(got.variants.qty("Rojo", "41"), 5);
+    assert_eq!(got.stock, Some(5));
+
+    // No quedan Azul 40: no se guarda nada.
+    let items = [combo("Rojo", "41", 1), combo("Azul", "40", 1)];
+    match orders::create(&pool, t, &order(&items)).await.unwrap() {
+        Created::Short { left, .. } => assert_eq!(left, 0),
+        Created::Saved { .. } => panic!("no alcanzaba"),
+    }
+    let got = products::get(&pool, t, id).await.unwrap().unwrap();
+    assert_eq!(got.variants.qty("Rojo", "41"), 5, "el otro renglón tampoco se descontó");
+
+    // Cancelar devuelve las unidades a su combinación.
+    assert!(orders::set_status(&pool, t, first, OrderStatus::Cancelled).await.unwrap());
+    let got = products::get(&pool, t, id).await.unwrap().unwrap();
+    assert_eq!(got.variants.qty("Azul", "40"), 2);
+    assert_eq!(got.stock, Some(7));
 }

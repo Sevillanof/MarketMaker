@@ -294,6 +294,9 @@ pub fn ProductDialog(
                     </button>
                 </form>
                 {move || product.get().map(|p| {
+                    // Color y talle elegidos, compartidos por la foto y el botón.
+                    provide_context(product_page::VariantPick::new());
+                    let shown = grow_for_variants(nodes.get_value(), &p);
                     let ctx = RenderCtx {
                         products: products.get_value(),
                         editing,
@@ -301,8 +304,7 @@ pub fn ProductDialog(
                     };
                     view! {
                         <div class="mk-grid">
-                            {nodes
-                                .get_value()
+                            {shown
                                 .into_iter()
                                 .map(|node| view! {
                                     <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
@@ -328,6 +330,34 @@ pub fn ProductDialog(
     }
 }
 
+/// Con colores o talles, el bloque del botón crece para los selectores y lo
+/// que está debajo de él baja lo mismo.
+fn grow_for_variants(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
+    if !p.has_variants() {
+        return nodes;
+    }
+    let extra: u16 = 4
+        + if p.variants.colors.is_empty() { 0 } else { 11 }
+        + if p.variants.sizes.is_empty() { 0 } else { 11 };
+    let Some(b) = nodes
+        .iter()
+        .find(|n| matches!(n.widget, Widget::ProductButton(_)))
+        .cloned()
+    else {
+        return nodes;
+    };
+    let bottom = b.pos.y + u16::from(b.size.h);
+    let (bx, bw) = (b.pos.x, b.size.w);
+    for n in &mut nodes {
+        if n.id == b.id {
+            n.size.h = (u16::from(n.size.h) + extra).min(255) as u8;
+        } else if n.pos.y >= bottom && n.pos.x < bx + bw && bx < n.pos.x + n.size.w {
+            n.pos.y += extra;
+        }
+    }
+    nodes
+}
+
 /// Barra de compra de la ficha: foto, nombre, precio y "Agregar". Aparece
 /// cuando el botón de la ficha quedó fuera de la vista y se puede cerrar.
 #[component]
@@ -346,6 +376,7 @@ fn BuyBar(product: Product, style: String, editing: bool, on_close: Callback<()>
     let added = RwSignal::new(false);
     let label = if style == "color" { "Agregar al carrito" } else { "Agregar" };
     let in_stock = product.in_stock;
+    let variants = product.has_variants();
     view! {
         <div class=format!("mk-buybar mk-buybar-{style}") role="region" aria-label="Comprar">
             <div class="mk-buybar-img"><Image src=product.image_url.clone() alt=""/></div>
@@ -357,13 +388,22 @@ fn BuyBar(product: Product, style: String, editing: bool, on_close: Callback<()>
                 view! {
                     <button type="button" class="btn btn-sm mk-buybar-btn"
                         on:click=move |_| {
+                            if variants {
+                                // Lleva a los colores y talles para elegir.
+                                if let Some(el) = document().query_selector(".mk-dialog .mk-pvar").ok().flatten() {
+                                    let opts = web_sys::ScrollIntoViewOptions::new();
+                                    opts.set_block(web_sys::ScrollLogicalPosition::Center);
+                                    el.scroll_into_view_with_scroll_into_view_options(&opts);
+                                }
+                                return;
+                            }
                             if let Some(cart) = cart {
                                 id.with_value(|id| cart.add(id, 1));
                                 added.set(true);
                                 set_timeout(move || added.set(false), std::time::Duration::from_millis(2000));
                             }
                         }>
-                        {move || if added.get() { "Agregado ✓" } else { label }}
+                        {move || if added.get() { "Agregado ✓" } else if variants { "Elegir" } else { label }}
                     </button>
                 }.into_any()
             } else {

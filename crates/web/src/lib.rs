@@ -43,6 +43,7 @@ mod sales;
 #[cfg(feature = "ssr")]
 pub mod shipments;
 mod store_info;
+mod variants_field;
 pub mod server;
 pub mod site;
 pub mod stores;

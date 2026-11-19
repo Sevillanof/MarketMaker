@@ -153,6 +153,7 @@ async fn paid_order(pool: &PgPool, t: Uuid) -> Uuid {
         image_url: String::new(),
         unit_cents: 150000,
         qty: 1,
+        ..Default::default()
     }];
     let sh = Shipment {
         service: AndreaniService::Home,

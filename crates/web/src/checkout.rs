@@ -116,16 +116,17 @@ async fn andreani_quote(
     sorted.sort();
     let ids: Vec<uuid::Uuid> = sorted
         .iter()
-        .filter_map(|(id, _)| uuid::Uuid::parse_str(id).ok())
+        .filter_map(|(line, _)| uuid::Uuid::parse_str(domain::parse_line_id(line).0).ok())
         .collect();
     let products = db::products::by_ids(pool, tenant, &ids)
         .await
         .map_err(internal)?;
     let mut items = Vec::new();
-    for (id, qty) in &sorted {
+    for (line, qty) in &sorted {
+        let id = domain::parse_line_id(line).0;
         if let Some(p) = products
             .iter()
-            .find(|p| p.id == *id && p.visible && !p.example)
+            .find(|p| p.id == id && p.visible && !p.example)
         {
             items.push(crate::andreani::Line {
                 parcel: p.parcel.unwrap_or(settings.parcel),
@@ -386,7 +387,8 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     }
     let changed = |message: String| Ok(PlaceOrder::CartChanged { message });
     let mut ids = Vec::new();
-    for (id, _) in &form.lines {
+    for (line, _) in &form.lines {
+        let (id, _, _) = domain::parse_line_id(line);
         match uuid::Uuid::parse_str(id) {
             Ok(id) => ids.push(id),
             Err(_) => return changed("Un producto del carrito ya no está en la tienda.".into()),
@@ -396,15 +398,32 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         .await
         .map_err(internal)?;
     let mut items = Vec::new();
-    for (id, qty) in &form.lines {
-        let Some(p) = products
+    for (line, qty) in &form.lines {
+        let (id, color, size) = domain::parse_line_id(line);
+        let Some(base) = products
             .iter()
-            .find(|p| p.id == *id && p.visible && !p.example)
+            .find(|p| p.id == id && p.visible && !p.example)
         else {
             return changed(
                 "Un producto del carrito ya no está en la tienda. Revisá el carrito.".into(),
             );
         };
+        // Con variantes, el renglón es una combinación de color y talle.
+        let variant = base.has_variants() || !color.is_empty() || !size.is_empty();
+        let p = if variant {
+            match base.for_variant(color, size) {
+                Some(p) => p,
+                None => {
+                    return changed(format!(
+                        "\"{}\" cambió sus colores o talles. Sacalo del carrito y elegilo de nuevo.",
+                        base.name
+                    ))
+                }
+            }
+        } else {
+            base.clone()
+        };
+        let p = &p;
         if !p.in_stock {
             return changed(format!(
                 "\"{}\" se agotó. Sacalo del carrito para seguir.",
@@ -412,11 +431,13 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             ));
         }
         items.push(domain::OrderItem {
-            product_id: p.id.clone(),
+            product_id: base.id.clone(),
             name: p.name.clone(),
             image_url: p.image_url.clone(),
             unit_cents: p.price_cents,
             qty: (*qty).min(widgets::cart::MAX_QTY),
+            color: color.to_string(),
+            size: size.to_string(),
         });
     }
     // Con Andreani: el envío se cobra con la cotización de recién (la misma

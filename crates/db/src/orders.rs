@@ -158,6 +158,16 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
         let Ok(product) = Uuid::parse_str(&item.product_id) else {
             continue;
         };
+        if item.is_variant() {
+            if let Err(left) = move_variant(&mut tx, tenant, product, item, -i64::from(item.qty), true, attempt).await? {
+                tx.rollback().await?;
+                return Ok(Created::Short {
+                    name: item.name.clone(),
+                    left,
+                });
+            }
+            continue;
+        }
         // Solo baja si alcanza; la fila queda bloqueada hasta el final, así
         // dos compras a la vez no se llevan la misma unidad.
         let done = if attempt {
@@ -239,6 +249,54 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     })
 }
 
+/// Suma `delta` unidades (negativo: resta) a la combinación de color y
+/// talle de `item`, y deja el stock del producto en la suma. Con `strict`,
+/// si no alcanzan no cambia nada y devuelve las que quedan; con `check`,
+/// solo revisa. Una combinación que el dueño ya borró se ignora. La fila
+/// queda bloqueada hasta el final de la transacción.
+async fn move_variant(
+    tx: &mut sqlx::PgConnection,
+    tenant: Uuid,
+    product: Uuid,
+    item: &OrderItem,
+    delta: i64,
+    strict: bool,
+    check: bool,
+) -> sqlx::Result<Result<(), u32>> {
+    let row: Option<sqlx::types::Json<domain::Variants>> = sqlx::query_scalar(
+        "SELECT variants FROM products WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+    )
+    .bind(tenant)
+    .bind(product)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(sqlx::types::Json(mut v)) = row else {
+        return Ok(Ok(()));
+    };
+    if !v.has(&item.color, &item.size) {
+        return Ok(Ok(()));
+    }
+    let left = v.qty(&item.color, &item.size);
+    if strict && i64::from(left) + delta < 0 {
+        return Ok(Err(left));
+    }
+    if check {
+        return Ok(Ok(()));
+    }
+    let now = (i64::from(left) + delta).clamp(0, i64::from(u32::MAX)) as u32;
+    v.set_qty(&item.color, &item.size, now);
+    sqlx::query(
+        "UPDATE products SET variants = $3, stock = $4 WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant)
+    .bind(product)
+    .bind(sqlx::types::Json(&v))
+    .bind(v.total() as i32)
+    .execute(&mut *tx)
+    .await?;
+    Ok(Ok(()))
+}
+
 /// El próximo número de pedido de la tienda (bloquea su fila hasta el final).
 async fn next_number(tx: &mut sqlx::PgConnection, tenant: Uuid) -> sqlx::Result<i32> {
     sqlx::query_scalar(
@@ -282,6 +340,10 @@ pub async fn mark_paid(
             let Ok(product) = Uuid::parse_str(&item.product_id) else {
                 continue;
             };
+            if item.is_variant() {
+                _ = move_variant(&mut tx, tenant, product, &item, -i64::from(item.qty), false, false).await?;
+                continue;
+            }
             sqlx::query(
                 "UPDATE products SET stock = GREATEST(stock - $3, 0)
                  WHERE tenant_id = $1 AND id = $2 AND stock IS NOT NULL",
@@ -460,6 +522,11 @@ pub async fn set_status(
             let Ok(product) = Uuid::parse_str(&item.product_id) else {
                 continue;
             };
+            if item.is_variant() {
+                let delta = i64::from(sign) * i64::from(item.qty);
+                _ = move_variant(&mut tx, tenant, product, &item, delta, false, false).await?;
+                continue;
+            }
             sqlx::query(
                 "UPDATE products SET stock = GREATEST(stock + $3, 0)
                  WHERE tenant_id = $1 AND id = $2 AND stock IS NOT NULL",
