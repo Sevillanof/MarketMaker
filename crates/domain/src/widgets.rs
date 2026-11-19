@@ -208,6 +208,29 @@ pub struct NavbarProps {
     pub links: Vec<LinkItem>,
     pub button_label: String,
     pub button_href: String,
+    /// `a` clásico, `b` flotante sobre la portada, `c` logo al centro.
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    /// Fondo: `""` claro, `glass` vidrio, `dark` oscuro, `color` color del
+    /// bloque, `soft` color suave del bloque.
+    #[serde(default)]
+    pub tone: String,
+    /// Enlaces en mayúsculas.
+    #[serde(default)]
+    pub upper: bool,
+    /// Buscador de productos (filtra los productos de la página).
+    #[serde(default)]
+    pub search: bool,
+    /// En el desplegable «En columnas»: fondo con el color del bloque.
+    #[serde(default)]
+    pub menu_color: bool,
+}
+
+impl NavbarProps {
+    /// Flota sobre el bloque de abajo (la portada).
+    pub fn floats(&self) -> bool {
+        self.variant == "b"
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -390,6 +413,15 @@ pub struct AnnouncementProps {
     #[serde(default = "variant_a")]
     pub variant: String,
     pub items: Vec<AnnouncementItem>,
+    /// Estilo `d` (cupón): el código que se copia, por ejemplo `HOTSALE`.
+    #[serde(default)]
+    pub code: String,
+    /// Estilo `d`: aclaración corta al costado, por ejemplo "Hasta el domingo".
+    #[serde(default)]
+    pub note: String,
+    /// Estilo `d`: `notch` recortable, `solid` sólido, `soft` suave, `line` línea.
+    #[serde(default)]
+    pub coupon: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -647,11 +679,39 @@ const LINK_ITEM: &[Field] = &[
     field("label", "Texto", text(30)),
     field("href", "Enlace", FieldKind::Url),
 ];
-pub const NAV_MENU_OPTIONS: &[(&str, &str)] =
-    &[("list", "Lista simple"), ("panel", "Panel ancho con foto")];
+pub const NAV_MENU_OPTIONS: &[(&str, &str)] = &[
+    ("list", "Lista simple"),
+    ("panel", "Panel ancho con foto"),
+    ("columns", "En columnas con título"),
+];
+pub const VARIANT_NAVBAR: &[(&str, &str)] = &[
+    ("a", "Clásico"),
+    ("b", "Flotante sobre la portada"),
+    ("c", "Logo al centro"),
+];
+pub const NAV_TONE_OPTIONS: &[(&str, &str)] = &[
+    ("", "Claro"),
+    ("glass", "Vidrio (se ve la foto a través)"),
+    ("dark", "Oscuro"),
+    ("color", "Color del bloque"),
+    ("soft", "Color suave del bloque"),
+];
+const SUBLINK_LEAF: &[Field] = &[
+    field("label", "Texto", text(30)),
+    field("href", "Enlace", FieldKind::Url),
+];
 const SUBLINK_ITEM: &[Field] = &[
     field("label", "Texto", text(30)),
     field("href", "Enlace", FieldKind::Url),
+    adv(
+        "children",
+        "Enlaces de la columna (desplegable en columnas)",
+        FieldKind::List {
+            item: SUBLINK_LEAF,
+            min: 0,
+            max: 8,
+        },
+    ),
 ];
 const NAV_LINK_ITEM: &[Field] = &[
     field("label", "Texto", text(30)),
@@ -668,6 +728,20 @@ const NAV_LINK_ITEM: &[Field] = &[
     adv("image_url", "Foto del panel ancho", FieldKind::Url),
 ];
 const NAVBAR_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_NAVBAR,
+        },
+    ),
+    field(
+        "tone",
+        "Fondo",
+        FieldKind::Select {
+            options: NAV_TONE_OPTIONS,
+        },
+    ),
     field("brand", "Nombre de la tienda", text(40)),
     field("logo_url", "Logo", FieldKind::Url),
     field(
@@ -686,6 +760,9 @@ const NAVBAR_FIELDS: &[Field] = &[
             options: NAV_MENU_OPTIONS,
         },
     ),
+    adv("menu_color", "Desplegable en columnas con fondo de color", FieldKind::Bool),
+    adv("search", "Buscador de productos", FieldKind::Bool),
+    adv("upper", "Enlaces en mayúsculas", FieldKind::Bool),
     adv("button_label", "Texto del botón", text(30)),
     adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
@@ -946,6 +1023,13 @@ pub const VARIANT_ANNOUNCEMENT: &[(&str, &str)] = &[
     ("a", "Simple (muestra el primer mensaje)"),
     ("b", "Mensajes que rotan"),
     ("c", "Con botón para cerrarla"),
+    ("d", "Cupón con código para copiar"),
+];
+pub const COUPON_LOOK_OPTIONS: &[(&str, &str)] = &[
+    ("", "Recortable (con muescas)"),
+    ("solid", "Sólido"),
+    ("soft", "Suave"),
+    ("line", "Minimal, con línea"),
 ];
 const ANNOUNCEMENT_ITEM: &[Field] = &[
     field("text", "Mensaje", text(100)),
@@ -967,6 +1051,15 @@ const ANNOUNCEMENT_FIELDS: &[Field] = &[
             item: ANNOUNCEMENT_ITEM,
             min: 1,
             max: 5,
+        },
+    ),
+    field("code", "Código del cupón (estilo cupón)", text(24)),
+    field("note", "Aclaración (estilo cupón), ej. «Hasta el domingo»", text(40)),
+    field(
+        "coupon",
+        "Forma del cupón",
+        FieldKind::Select {
+            options: COUPON_LOOK_OPTIONS,
         },
     ),
 ];
@@ -1288,6 +1381,11 @@ impl Widget {
                 links: vec![link("Inicio", "/")],
                 button_label: String::new(),
                 button_href: String::new(),
+                variant: s("a"),
+                tone: String::new(),
+                upper: false,
+                search: false,
+                menu_color: false,
             }),
             "Carousel" => Widget::Carousel(CarouselProps {
                 slides: (1..=3)
@@ -1466,6 +1564,9 @@ impl Widget {
                         link_href: String::new(),
                     },
                 ],
+                code: s("BIENVENIDA"),
+                note: String::new(),
+                coupon: String::new(),
             }),
             "Stats" => Widget::Stats(StatsProps {
                 variant: s("a"),

@@ -10,7 +10,7 @@ use domain::{
     AnnouncementProps, ProductCarouselProps, SocialProps, StatsProps, StepsProps,
     BannerProps, BenefitsProps, CardProps, ContactProps, CarouselProps, CategoriesProps, CountdownProps,
     FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps, ImageProps, LogosProps,
-    NavbarProps, Node, Product, ProductButtonProps, ProductGridProps,
+    LinkItem, NavbarProps, Node, Product, ProductButtonProps, ProductGridProps,
     ProductModal, TabsProps, TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
@@ -392,6 +392,50 @@ pub fn node_style(node: &Node) -> String {
     )
 }
 
+/// Clase y estilo de cada nodo de una página, en el mismo orden. Un menú
+/// flotante ([`NavbarProps::floats`]) se monta sobre el bloque que tiene
+/// justo abajo (la portada): ese bloque sube hasta la fila del menú y crece
+/// lo mismo, y el menú queda encima. En el celular, apilados, el bloque sube
+/// con un margen negativo (ver `.mk-node-under`).
+pub fn page_nodes(nodes: &[Node]) -> Vec<(&'static str, String)> {
+    let mut out: Vec<(&'static str, String)> =
+        nodes.iter().map(|n| ("mk-node", node_style(n))).collect();
+    for (k, nav) in nodes.iter().enumerate() {
+        let Widget::Navbar(p) = &nav.widget else { continue };
+        if !p.floats() {
+            continue;
+        }
+        let (nx, nw) = (u32::from(nav.pos.x), u32::from(nav.size.w));
+        let bottom = u32::from(nav.pos.y) + u32::from(nav.size.h);
+        let under = nodes
+            .iter()
+            .enumerate()
+            .filter(|(i, n)| {
+                let (x, w) = (u32::from(n.pos.x), u32::from(n.size.w));
+                *i != k && u32::from(n.pos.y) >= bottom && x < nx + nw && nx < x + w
+            })
+            .min_by_key(|(_, n)| n.pos.y);
+        let Some((i, b)) = under else { continue };
+        if matches!(out[i].0, "mk-node mk-node-under") {
+            continue;
+        }
+        let lift = u32::from(b.pos.y) - u32::from(nav.pos.y);
+        out[k].0 = "mk-node mk-node-float";
+        out[i] = (
+            "mk-node mk-node-under",
+            format!(
+                "--x:{}; --y:{}; --w:{}; --h:{}; --lift:{lift}; --up:{}",
+                u32::from(b.pos.x) + 1,
+                u32::from(nav.pos.y) + 1,
+                b.size.w,
+                u32::from(b.size.h) + lift,
+                nav.size.h
+            ),
+        );
+    }
+    out
+}
+
 /// Enlace si hay `href` y no se está editando; si no, un `div` con la misma
 /// clase. Mientras se edita, el `div` lleva el enlace en `data-href`: el
 /// editor lo usa para ir a esa página al tocarlo.
@@ -585,6 +629,112 @@ fn place_popover(ev: leptos::ev::MouseEvent, pop_id: &str, wide: bool) {
     }
 }
 
+/// El contenido de un desplegable «En columnas»: cada opción con sus propias
+/// opciones es una columna con título; las opciones sueltas van juntas en la
+/// primera columna. La foto, si hay, va a la derecha.
+fn mega_panel(l: &LinkItem, editing: bool) -> AnyView {
+    let (titled, loose): (Vec<LinkItem>, Vec<LinkItem>) =
+        l.children.iter().cloned().partition(|c| !c.children.is_empty());
+    let cols = titled.len() + usize::from(!loose.is_empty());
+    let has_image = !l.image_url.is_empty();
+    let class = if has_image { "mk-mega mk-mega-img" } else { "mk-mega" };
+    let all_href = l.href.clone();
+    let label = l.label.clone();
+    let image = l.image_url.clone();
+    view! {
+        <div class=class style=format!("--cols:{}", cols.max(1))>
+            {(!loose.is_empty()).then(|| view! {
+                <ul class="mk-mega-col">
+                    {loose.into_iter().map(|c| view! {
+                        <li><MaybeLink href=c.href editing class="mk-link mk-mega-lead">{c.label}</MaybeLink></li>
+                    }).collect_view()}
+                </ul>
+            })}
+            {titled.into_iter().map(|c| view! {
+                <div class="mk-mega-col">
+                    <MaybeLink href=c.href editing class="mk-link mk-mega-h">{c.label}</MaybeLink>
+                    <ul>
+                        {c.children.into_iter().map(|g| view! {
+                            <li><MaybeLink href=g.href editing class="mk-link">{g.label}</MaybeLink></li>
+                        }).collect_view()}
+                    </ul>
+                </div>
+            }).collect_view()}
+            {has_image.then(|| view! {
+                <MaybeLink href=all_href editing class="mk-mega-pic relative block overflow-hidden">
+                    <div class="aspect-[16/10] w-full"><Image src=image alt=""/></div>
+                    <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-sm font-semibold text-white">{format!("{label} →")}</span>
+                </MaybeLink>
+            })}
+        </div>
+    }
+    .into_any()
+}
+
+/// Buscador del menú: escribe en el filtro de productos de la página (ver
+/// `tags::ProductFilter`). Si la página no muestra productos, al apretar
+/// Enter va al inicio de la tienda con la búsqueda (`/?buscar=`).
+#[component]
+fn NavSearch(editing: bool, #[prop(into)] class: String) -> impl IntoView {
+    let filter = use_context::<crate::tags::ProductFilter>();
+    view! {
+        <form role="search" action="/" method="get" class=format!("mk-navsearch {class}")
+            on:submit=move |ev| {
+                if editing {
+                    ev.prevent_default();
+                    return;
+                }
+                let list = document().query_selector(".mk-filtered, .mk-pgrid").ok().flatten();
+                if let Some(list) = list {
+                    ev.prevent_default();
+                    let opts = web_sys::ScrollIntoViewOptions::new();
+                    opts.set_block(web_sys::ScrollLogicalPosition::Center);
+                    list.scroll_into_view_with_scroll_into_view_options(&opts);
+                }
+            }>
+            <label class="input input-sm mk-navsearch-box">
+                <Icon name="search" class="h-4 w-4 opacity-70"/>
+                <input type="search" name="buscar" placeholder="¿Qué estás buscando?"
+                    aria-label="Buscar productos" autocomplete="off" enterkeyhint="search"
+                    tabindex=editing.then_some("-1")
+                    prop:value=move || filter.map(|f| f.query.get()).unwrap_or_default()
+                    on:input=move |ev| { if let Some(f) = filter { f.query.set(event_target_value(&ev)); } }/>
+            </label>
+        </form>
+    }
+}
+
+/// Un enlace del menú del celular: si tiene opciones, un botón que las
+/// muestra u oculta debajo (`aria-expanded`), con un nivel más para las
+/// columnas del desplegable «En columnas».
+fn mobile_link(l: LinkItem, editing: bool, uid: &str) -> AnyView {
+    if l.children.is_empty() {
+        return view! {
+            <li><MaybeLink href=l.href editing class="mk-link">{l.label}</MaybeLink></li>
+        }
+        .into_any();
+    }
+    let open = RwSignal::new(false);
+    let id = format!("{uid}-sub");
+    view! {
+        <li>
+            <button type="button" class="mk-link justify-between" aria-controls=id.clone()
+                aria-expanded=move || open.get().to_string()
+                on:click=move |_| open.update(|o| *o = !*o)>
+                {l.label}
+                <Icon name="chevron-down" class="h-4 w-4 transition-transform in-aria-expanded:rotate-180"/>
+            </button>
+            <ul id=id hidden=move || !open.get()>
+                {l.children.into_iter().enumerate().map(|(j, c)| mobile_link(c, editing, &format!("{uid}-{j}"))).collect_view()}
+                {(!l.href.is_empty()).then(|| view! {
+                    <li><MaybeLink href=l.href.clone() editing class="mk-link font-semibold">"Ver todo"</MaybeLink></li>
+                })}
+            </ul>
+        </li>
+    }
+    .into_any()
+}
+
 #[component]
 pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl IntoView {
     let has_button = !props.button_label.is_empty();
@@ -592,7 +742,11 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
     let brand = or_store(&props.brand, &store.name);
     let logo_url = or_store(&props.logo_url, &store.logo_url);
-    let wide = props.menu == "panel";
+    let columns = props.menu == "columns";
+    let wide = props.menu == "panel" || columns;
+    let centered = props.variant == "c";
+    let floats = props.floats();
+    let search = props.search;
     let links = props.links;
     let desktop = links
         .clone()
@@ -609,12 +763,13 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
             }
             let pid = format!("{uid}-m{i}");
             let pid_click = pid.clone();
-            let children = l.children.clone();
-            let image = l.image_url.clone();
-            let all_href = l.href.clone();
-            let label = l.label.clone();
-            let label_btn = l.label.clone();
-            let panel = if wide {
+            let panel = if columns {
+                mega_panel(&l, editing)
+            } else if wide {
+                let children = l.children.clone();
+                let image = l.image_url.clone();
+                let all_href = l.href.clone();
+                let label = l.label.clone();
                 view! {
                     <div class="grid gap-6 p-5 @3xl:grid-cols-[1fr_1fr_1.2fr]">
                         {children
@@ -640,9 +795,10 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                 }
                 .into_any()
             } else {
+                let all_href = l.href.clone();
                 view! {
                     <ul class="menu w-52 p-1">
-                        {children.into_iter().map(|c| view! {
+                        {l.children.clone().into_iter().map(|c| view! {
                             <li><MaybeLink href=c.href editing class="mk-link">{c.label}</MaybeLink></li>
                         }).collect_view()}
                         {(!all_href.is_empty()).then(|| view! {
@@ -652,13 +808,17 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                 }
                 .into_any()
             };
-            let pop_class = if wide { "mk-navpop mk-navpop-wide @container" } else { "mk-navpop" };
+            let pop_class = match (wide, columns && props.menu_color) {
+                (true, true) => "mk-navpop mk-navpop-wide mk-navpop-color @container",
+                (true, false) => "mk-navpop mk-navpop-wide @container",
+                _ => "mk-navpop",
+            };
             view! {
                 <li>
                     <button type="button" class="mk-link btn btn-ghost btn-sm font-normal whitespace-nowrap"
                         popovertarget=pid.clone()
                         on:click=move |ev| place_popover(ev, &pid_click, wide)>
-                        {label_btn}
+                        {l.label}
                         <Icon name="chevron-down" class="h-4 w-4"/>
                     </button>
                     <div id=pid popover="auto" class=pop_class>{panel}</div>
@@ -671,56 +831,81 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
     let mobile_click = mobile_id.clone();
     let mobile = links
         .into_iter()
-        .map(|l| {
-            if l.children.is_empty() {
-                view! {
-                    <li><MaybeLink href=l.href editing class="mk-link">{l.label}</MaybeLink></li>
-                }
-                .into_any()
-            } else {
-                view! {
-                    <li>
-                        <details>
-                            <summary>{l.label}</summary>
-                            <ul>
-                                {l.children.into_iter().map(|c| view! {
-                                    <li><MaybeLink href=c.href editing class="mk-link">{c.label}</MaybeLink></li>
-                                }).collect_view()}
-                            </ul>
-                        </details>
-                    </li>
-                }
-                .into_any()
-            }
-        })
+        .enumerate()
+        .map(|(i, l)| mobile_link(l, editing, &format!("{uid}-mm{i}")))
         .collect_view();
+    let mut nav_class = String::from("mk-box mk-nav navbar @container h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm");
+    if matches!(props.tone.as_str(), "glass" | "dark" | "color" | "soft") {
+        nav_class.push_str(" mk-tone-");
+        nav_class.push_str(&props.tone);
+    }
+    if floats {
+        nav_class.push_str(" mk-nav-float");
+    }
+    if centered {
+        nav_class.push_str(" mk-nav-center");
+    }
+    if props.upper {
+        nav_class.push_str(" mk-nav-upper");
+    }
+    let brand_view = view! {
+        <MaybeLink href="/" editing class="mk-nav-brand flex shrink-0 items-center gap-2">
+            {(!logo_url.is_empty()).then(|| view! {
+                <img class="h-8 w-8 object-contain" src=logo_url.clone() alt="" draggable="false"/>
+            })}
+            <span class="mk-brand mk-h text-lg font-bold whitespace-nowrap">{brand}</span>
+        </MaybeLink>
+    };
+    let burger = view! {
+        <button type="button" class="btn btn-ghost btn-square @2xl:hidden" aria-label="Abrir el menú"
+            popovertarget=mobile_id.clone()
+            on:click=move |ev| place_popover(ev, &mobile_click, true)>
+            <Icon name="menu" class="h-6 w-6"/>
+        </button>
+    };
+    let tools = view! {
+        {search.then(|| view! { <NavSearch editing class="hidden @2xl:block"/> })}
+        {has_button.then(|| view! {
+            <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
+        })}
+        <AccountNavButton/>
+        <CartNavButton/>
+    };
+    let mobile_pop = view! {
+        <div id=mobile_id popover="auto" class="mk-navpop mk-navpop-wide">
+            {search.then(|| view! { <NavSearch editing class="p-2 pb-0"/> })}
+            <ul class="menu w-full p-2">{mobile}</ul>
+        </div>
+    };
+    if centered {
+        // Enlaces a la izquierda, el logo al centro y a la derecha el
+        // buscador, la cuenta y el carrito.
+        return view! {
+            <nav class=nav_class>
+                <div class="flex min-w-0 items-center">
+                    {burger}
+                    <ul class="menu menu-horizontal hidden min-w-0 flex-nowrap items-center px-0 @2xl:flex">{desktop}</ul>
+                </div>
+                {brand_view}
+                <div class="flex min-w-0 items-center justify-end gap-2">{tools}</div>
+                {mobile_pop}
+            </nav>
+        }
+        .into_any();
+    }
     view! {
-        <nav class="mk-box mk-nav navbar @container h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm">
-            <MaybeLink href="/" editing class="flex shrink-0 items-center gap-2">
-                {(!logo_url.is_empty()).then(|| view! {
-                    <img class="h-8 w-8 object-contain" src=logo_url.clone() alt="" draggable="false"/>
-                })}
-                <span class="mk-brand mk-h text-lg font-bold whitespace-nowrap">{brand}</span>
-            </MaybeLink>
+        <nav class=nav_class>
+            {brand_view}
             <ul class="menu menu-horizontal hidden min-w-0 flex-1 flex-nowrap items-center justify-end px-0 @2xl:flex">
                 {desktop}
             </ul>
             <div class="flex-1 @2xl:hidden"></div>
-            {has_button.then(|| view! {
-                <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
-            })}
-            <AccountNavButton/>
-            <CartNavButton/>
-            <button type="button" class="btn btn-ghost btn-square @2xl:hidden" aria-label="Abrir el menú"
-                popovertarget=mobile_id.clone()
-                on:click=move |ev| place_popover(ev, &mobile_click, true)>
-                <Icon name="menu" class="h-6 w-6"/>
-            </button>
-            <div id=mobile_id popover="auto" class="mk-navpop mk-navpop-wide">
-                <ul class="menu w-full p-2">{mobile}</ul>
-            </div>
+            {tools}
+            {burger}
+            {mobile_pop}
         </nav>
     }
+    .into_any()
 }
 
 #[component]
@@ -905,8 +1090,109 @@ fn cols_2xl(n: usize) -> &'static str {
     }
 }
 
+/// Copia `text` al portapapeles y avisa con `done(true)` o `done(false)`.
+fn copy_text(text: &str, done: impl Fn(bool) + 'static) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::{closure::Closure, JsValue};
+        let promise = window().navigator().clipboard().write_text(text);
+        let done = std::rc::Rc::new(done);
+        let d2 = done.clone();
+        let ok = Closure::once(move |_: JsValue| done(true));
+        let err = Closure::once(move |_: JsValue| d2(false));
+        let _ = promise.then2(&ok, &err);
+        // Viven hasta que el navegador responde (una vez por clic).
+        ok.forget();
+        err.forget();
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = text;
+        done(false);
+    }
+}
+
+/// Estilo «Cupón» del anuncio: el código bien visible y un botón que lo
+/// copia. El aviso de «Copiado» es el mismo texto visible y una región
+/// `role="status"`, así lo leen también los lectores de pantalla.
+#[component]
+fn CouponWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
+    let text = props.items.first().map(|m| m.text.clone()).unwrap_or_default();
+    let look = match props.coupon.as_str() {
+        "solid" | "soft" | "line" => props.coupon.clone(),
+        _ => "notch".to_string(),
+    };
+    let code = props.code.trim().to_string();
+    let has_code = !code.is_empty();
+    // None: nada que avisar; Some(true): copiado; Some(false): no se pudo.
+    let state = RwSignal::new(None::<bool>);
+    let generation = StoredValue::new(0u32);
+    let copy = {
+        let code = code.clone();
+        move |_| {
+            if editing {
+                return;
+            }
+            generation.update_value(|g| *g += 1);
+            let mine = generation.get_value();
+            state.set(None);
+            copy_text(&code, move |ok| {
+                state.set(Some(ok));
+                set_timeout(
+                    move || {
+                        if generation.get_value() == mine {
+                            state.set(None);
+                        }
+                    },
+                    std::time::Duration::from_secs(2),
+                );
+            });
+        }
+    };
+    let label = if look == "solid" { "Copiar" } else { "Copiar código" };
+    view! {
+        <div class=format!("mk-box mk-ann mk-coupon mk-coupon-{look} @container flex h-full items-center gap-3 overflow-hidden px-4 text-sm")>
+            {(look == "line").then(|| view! { <span class="mk-coupon-kicker">"Cupón"</span> })}
+            {(look == "notch" && has_code).then(|| view! {
+                <span class="mk-coupon-seg hidden @xl:inline-flex">"Código"<span class="mk-coupon-code">{code.clone()}</span></span>
+            })}
+            <p class="mk-coupon-text min-w-0 flex-1 text-balance">
+                {(look == "solid" || look == "soft").then(|| view! { <Icon name="ticket" class="mr-1.5 inline h-5 w-5 align-[-0.3em]"/> })}
+                {text}
+                {(look != "notch" && has_code).then(|| view! { " " <span class="mk-coupon-code">{code.clone()}</span> })}
+                {(look == "notch" && has_code).then(|| view! { <span class="ml-2 @xl:hidden"><span class="mk-coupon-code">{code.clone()}</span></span> })}
+            </p>
+            {(!props.note.is_empty()).then(|| view! { <span class="mk-coupon-note hidden @2xl:inline">{props.note.clone()}</span> })}
+            {has_code.then(|| view! {
+                <span class="relative shrink-0">
+                    <button type="button" class="mk-coupon-btn btn btn-sm"
+                        tabindex=editing.then_some("-1")
+                        aria-label=format!("Copiar el código {code}")
+                        on:click=copy>
+                        {move || match state.get() {
+                            Some(true) => view! { <Icon name="check" class="h-4 w-4"/> "Copiado" }.into_any(),
+                            _ => view! { <Icon name="copy" class="h-4 w-4"/> {label} }.into_any(),
+                        }}
+                    </button>
+                    <span class="sr-only" role="status">{move || match state.get() {
+                        Some(true) => "Código copiado",
+                        Some(false) => "No pudimos copiar el código. Copialo a mano.",
+                        None => "",
+                    }}</span>
+                </span>
+            })}
+            {move || (state.get() == Some(false)).then(|| view! {
+                <span class="mk-coupon-fail text-xs" aria-hidden="true">"No pudimos copiarlo"</span>
+            })}
+        </div>
+    }
+}
+
 #[component]
 pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
+    if props.variant == "d" {
+        return view! { <CouponWidget props editing/> }.into_any();
+    }
     let variant = props.variant.clone();
     let count = props.items.len().max(1);
     let items = StoredValue::new(props.items);
@@ -974,6 +1260,7 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
             {(!rotating && !closable).then(|| view! { <span class="w-0 flex-1"></span> })}
         </div>
     }
+    .into_any()
 }
 
 #[component]
@@ -1809,7 +2096,34 @@ fn or_store(own: &str, store: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::split_seconds;
+    use super::{page_nodes, split_seconds};
+    use domain::{Node, Pos, Size, Widget};
+
+    fn node(id: &str, kind: &str, y: u16, h: u8) -> Node {
+        let mut n = Node::new(id.to_string(), Widget::defaults(kind).unwrap());
+        n.pos = Pos { x: 0, y };
+        n.size = Size { w: 48, h };
+        n
+    }
+
+    /// El menú flotante se monta sobre la portada: la portada sube a la fila
+    /// del menú y crece lo mismo; sin flotar, nada cambia.
+    #[test]
+    fn floating_navbar_overlaps_the_block_below() {
+        let mut nav = node("nav", "Navbar", 0, 12);
+        let nodes = vec![nav.clone(), node("ban", "Banner", 12, 48), node("txt", "Text", 60, 10)];
+        let plain = page_nodes(&nodes);
+        assert!(plain.iter().all(|(c, _)| *c == "mk-node"));
+        if let Widget::Navbar(p) = &mut nav.widget {
+            p.variant = "b".to_string();
+        }
+        let nodes = vec![nav, node("ban", "Banner", 12, 48), node("txt", "Text", 60, 10)];
+        let out = page_nodes(&nodes);
+        assert_eq!(out[0].0, "mk-node mk-node-float");
+        assert_eq!(out[1].0, "mk-node mk-node-under");
+        assert!(out[1].1.contains("--y:1;") && out[1].1.contains("--h:60;"), "{}", out[1].1);
+        assert_eq!(out[2].0, "mk-node");
+    }
 
     #[test]
     fn splits_seconds_into_units() {

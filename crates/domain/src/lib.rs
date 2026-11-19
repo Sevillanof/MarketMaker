@@ -1139,6 +1139,24 @@ mod tests {
         assert!(p.show_installments && p.show_transfer);
     }
 
+    /// Menús y anuncios guardados antes de los estilos nuevos: se ven igual.
+    #[test]
+    fn old_navbar_and_announcement_keep_their_look() {
+        let w: Widget = serde_json::from_value(serde_json::json!({"type": "Navbar", "props": {
+            "brand": "", "logo_url": "", "links": [], "button_label": "", "button_href": ""
+        }}))
+        .unwrap();
+        let Widget::Navbar(p) = w else { panic!("menú") };
+        assert_eq!((p.variant.as_str(), p.tone.as_str()), ("a", ""));
+        assert!(!p.floats() && !p.search && !p.upper && !p.menu_color);
+        let w: Widget = serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
+            "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
+        }}))
+        .unwrap();
+        let Widget::Announcement(p) = w else { panic!("anuncio") };
+        assert_eq!((p.code.as_str(), p.coupon.as_str()), ("", ""));
+    }
+
     /// Los enlaces guardados antes de los desplegables no traen `children`
     /// ni `image_url`; la tienda tiene que seguir abriendo igual.
     #[test]

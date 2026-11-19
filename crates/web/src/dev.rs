@@ -305,3 +305,149 @@ pub fn DevProductStylesPage() -> impl IntoView {
     }
     .into_any()
 }
+
+/// Ruta de desarrollo `/dev/menus`: los estilos del menú (con la portada
+/// debajo cuando flota), el desplegable en columnas y el anuncio «Cupón».
+#[component]
+pub fn DevMenusPage() -> impl IntoView {
+    if !cfg!(debug_assertions) {
+        return view! { "Página no encontrada." }.into_any();
+    }
+    provide_sample_store();
+    let account = widgets::Account::new();
+    account.state.set(widgets::AccountState::In(domain::BuyerMe {
+        email: "fran@example.com".to_string(),
+        name: "Francisco Sevillano".to_string(),
+        ..Default::default()
+    }));
+    provide_context(account);
+    widgets::ProductFilter::provide();
+    let ctx = RenderCtx {
+        products: sample_products(),
+        editing: false,
+        product: None,
+    };
+    let leaf = |l: &str| domain::LinkItem {
+        label: l.to_string(),
+        href: "/".to_string(),
+        ..Default::default()
+    };
+    let col = |t: &str, items: &[&str]| domain::LinkItem {
+        children: items.iter().map(|l| leaf(l)).collect(),
+        ..leaf(t)
+    };
+    let mega = domain::LinkItem {
+        children: vec![
+            col("Destacados", &["Lo nuevo", "Más vendidos", "Ofertas"]),
+            col("Zapatillas", &["Running", "Urbanas", "Training", "Básquet"]),
+            col("Ropa", &["Remeras", "Buzos", "Shorts"]),
+            col("Accesorios", &["Medias", "Mochilas", "Gorras"]),
+        ],
+        image_url: "/img/product-5.webp".to_string(),
+        ..leaf("Hombre")
+    };
+    let links = vec![leaf("Ofertas"), mega, leaf("Mujer"), leaf("Niños")];
+    let nav = |variant: &str, tone: &str, upper: bool, search: bool, menu: &str, menu_color: bool| {
+        Widget::Navbar(domain::NavbarProps {
+            menu: menu.to_string(),
+            brand: "Casa Luna".to_string(),
+            logo_url: "/img/logo.svg".to_string(),
+            links: links.clone(),
+            button_label: String::new(),
+            button_href: String::new(),
+            variant: variant.to_string(),
+            tone: tone.to_string(),
+            upper,
+            search,
+            menu_color,
+        })
+    };
+    // (título, menú, color del bloque, con portada debajo)
+    let cases = vec![
+        ("Flotante · claro", nav("b", "", true, false, "list", false), "", true),
+        ("Flotante · vidrio", nav("b", "glass", true, false, "list", false), "", true),
+        ("Flotante · oscuro", nav("b", "dark", true, false, "list", false), "", true),
+        ("Flotante · color del bloque", nav("b", "color", true, false, "list", false), "#e85d04", true),
+        ("Logo al centro · claro con buscador", nav("c", "", false, true, "columns", false), "", false),
+        ("Logo al centro · oscuro en mayúsculas", nav("c", "dark", true, true, "list", false), "", false),
+        ("Logo al centro · suave, sin buscador", nav("c", "soft", false, false, "list", false), "secondary", false),
+        ("Clásico · desplegable en columnas", nav("a", "", false, true, "columns", false), "", false),
+        ("Clásico · columnas con fondo de color", nav("a", "", false, false, "columns", true), "#e3001b", false),
+        ("Clásico · columnas con fondo de color (azul noche)", nav("a", "color", false, false, "columns", true), "#1e1b4b", false),
+    ];
+    let menus = cases
+        .into_iter()
+        .enumerate()
+        .map(|(i, (title, widget, color, cover))| {
+            let mut n = Node::new(format!("nav{i}"), widget);
+            n.size = Size { w: 48, h: 11 };
+            n.look.color = color.to_string();
+            let mut nodes = vec![n];
+            if cover {
+                let mut b = Node::new(format!("ban{i}"), Widget::defaults("Banner").expect("tipo conocido"));
+                if let Widget::Banner(p) = &mut b.widget {
+                    p.title = "Zapatillas para todos los días".to_string();
+                    p.subtitle = "Nueva temporada".to_string();
+                    p.image_url = "/img/hero.webp".to_string();
+                }
+                b.pos.y = 11;
+                b.size = Size { w: 48, h: 44 };
+                nodes.push(b);
+            }
+            let grid = widgets::page_nodes(&nodes)
+                .into_iter()
+                .zip(nodes)
+                .map(|((class, style), node)| {
+                    let content = render_widget(&node, &ctx);
+                    view! { <div class=class style=style>{content}</div> }
+                })
+                .collect_view();
+            view! {
+                <section class="mb-8" data-case=format!("nav{i}")>
+                    <h2 class="mb-2 text-sm font-semibold opacity-75">{title}</h2>
+                    <div class="mk-grid" style="width:min(1136px,100%)">{grid}</div>
+                </section>
+            }
+        })
+        .collect_view();
+    let coupons = [
+        ("", "#e85d04", "15% OFF en toda la tienda", "HOTSALE", "Hasta el domingo"),
+        ("", "#111111", "15% OFF en toda la tienda", "HOTSALE", "Hasta el domingo"),
+        ("solid", "", "Usá el código y llevate 10% off en tu primera compra", "BIENVENIDA", ""),
+        ("soft", "", "10% off en tu primera compra con", "BIENVENIDA", ""),
+        ("line", "accent", "20% OFF con el código · solo hoy", "AMIGOS20", ""),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, (look, color, text, code, note))| {
+        let mut w = Widget::defaults("Announcement").expect("tipo conocido");
+        if let Widget::Announcement(p) = &mut w {
+            p.variant = "d".to_string();
+            p.coupon = look.to_string();
+            p.code = code.to_string();
+            p.note = note.to_string();
+            p.items.truncate(1);
+            p.items[0].text = text.to_string();
+            p.items[0].link_label.clear();
+        }
+        let mut n = Node::new(format!("cup{i}"), w);
+        n.size = Size { w: 48, h: 9 };
+        n.look.color = color.to_string();
+        let style = node_style(&n);
+        let content = render_widget(&n, &ctx);
+        view! {
+            <section class="mb-6" data-case=format!("cup{i}")>
+                <h2 class="mb-2 text-sm font-semibold opacity-75">{format!("Cupón · {}", if look.is_empty() { "recortable" } else { look })}</h2>
+                <div class="mk-grid" style="width:min(1136px,100%)"><div class="mk-node" style=style>{content}</div></div>
+            </section>
+        }
+    })
+    .collect_view();
+    view! {
+        <div data-theme="light" class="mk-store min-h-screen bg-base-200 p-6 text-base-content max-md:p-2">
+            {menus}
+            {coupons}
+        </div>
+    }
+    .into_any()
+}

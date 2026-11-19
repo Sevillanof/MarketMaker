@@ -123,6 +123,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
                     <Route path=path!("/dev/ficha") view=dev::DevProductStylesPage/>
+                    <Route path=path!("/dev/menus") view=dev::DevMenusPage/>
                     // Las demás páginas de la tienda (/ofertas, /categorias…).
                     <Route path=WildcardSegment("any") view=Home ssr=SsrMode::Async/>
                 </Routes>

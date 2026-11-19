@@ -3,7 +3,7 @@
 use domain::{Layer, PageView};
 use leptos::prelude::*;
 use widgets::{
-    node_style, render_widget, Cart, CartBar, CartDrawer, OpenProduct, ProductDialog,
+    render_widget, Cart, CartBar, CartDrawer, OpenProduct, ProductDialog,
     ProductFilter, RenderCtx,
 };
 
@@ -37,7 +37,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         });
     }
     // Lo que el comprador eligió en los filtros por etiqueta (ver `widgets::tags`).
-    ProductFilter::provide();
+    ProductFilter::provide_from_url();
     // Carrito del comprador, guardado en su navegador (ver `widgets::cart`).
     Cart::provide(products.clone());
     let ctx = RenderCtx {
@@ -53,12 +53,12 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         <div data-theme=doc.theme class="mk-store min-h-screen bg-base-200 text-base-content" style=format!("{}; {}", doc.typography.css_vars(), doc.style.css_vars())>
             <div class="mk-wrap" style=doc.layout.css_vars()>
                 <div class="mk-grid">
-                    {nodes
+                    {widgets::page_nodes(&nodes)
                         .into_iter()
-                        .map(|node| {
-                            let style = node_style(&node);
+                        .zip(nodes)
+                        .map(|((class, style), node)| {
                             let content = render_widget(&node, &ctx);
-                            view! { <div class="mk-node" style=style>{content}</div> }
+                            view! { <div class=class style=style>{content}</div> }
                         })
                         .collect_view()}
                 </div>

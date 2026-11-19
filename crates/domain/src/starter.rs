@@ -56,6 +56,11 @@ pub fn starter_doc(name: &str) -> PageDoc {
             }],
             button_label: String::new(),
             button_href: String::new(),
+            variant: s("a"),
+            tone: String::new(),
+            upper: false,
+            search: false,
+            menu_color: false,
         }),
         Widget::Banner(BannerProps {
             title: format!("Bienvenidos a {name}"),

@@ -43,7 +43,7 @@ impl Default for Account {
     }
 }
 
-/// El avatar: la foto si hay, o la inicial sobre el color de la tienda.
+/// El avatar: la foto si hay, o las iniciales sobre el color de la tienda.
 #[component]
 pub fn BuyerAvatar(
     me: BuyerMe,
@@ -52,14 +52,14 @@ pub fn BuyerAvatar(
     size: String,
 ) -> impl IntoView {
     let class = format!(
-        "inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-primary font-bold text-primary-content {size}"
+        "mk-avatar-buyer inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-primary font-bold text-primary-content {size}"
     );
     match me.avatar.clone() {
         Some(src) => view! {
             <span class=class><img class="h-full w-full object-cover" src=src alt="" draggable="false"/></span>
         }
         .into_any(),
-        None => view! { <span class=class aria-hidden="true">{me.initial()}</span> }.into_any(),
+        None => view! { <span class=class aria-hidden="true">{me.initials()}</span> }.into_any(),
     }
 }
 
