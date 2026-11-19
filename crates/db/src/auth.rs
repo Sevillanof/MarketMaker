@@ -528,6 +528,25 @@ pub async fn account_by_id(pool: &PgPool, id: Uuid) -> sqlx::Result<Option<Accou
     .await
 }
 
+/// ¿Falta mostrarle la bienvenida a la cuenta `id`?
+pub async fn welcome_pending(pool: &PgPool, id: Uuid) -> sqlx::Result<bool> {
+    let pending: Option<bool> =
+        sqlx::query_scalar("SELECT NOT welcome_seen FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(pending.unwrap_or(false))
+}
+
+/// Anota que la cuenta `id` ya vio la bienvenida.
+pub async fn mark_welcome_seen(pool: &PgPool, id: Uuid) -> sqlx::Result<()> {
+    sqlx::query("UPDATE users SET welcome_seen = true WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Anota un intento fallido. Al llegar a [`PASSWORD_ATTEMPTS`] la cuenta
 /// espera [`LOCK_MINUTES`] y el contador vuelve a cero. Devuelve `true` si
 /// este intento la dejó esperando.

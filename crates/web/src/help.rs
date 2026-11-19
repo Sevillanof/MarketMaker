@@ -266,6 +266,18 @@ fn tick(
     );
 }
 
+/// Pedido para abrir la Ayuda en una película (por ejemplo, el "Ver cómo" de
+/// los Primeros pasos). Lo provee el panel; `HelpButton` lo atiende.
+#[derive(Clone, Copy)]
+pub struct HelpRequest(pub RwSignal<Option<usize>>);
+
+/// Películas: la 0 es cargar un producto, la 1 Cobros, la 2 Andreani y la 3
+/// el recorrido del editor.
+pub const FILM_PRODUCT: usize = 0;
+pub const FILM_PAYMENTS: usize = 1;
+pub const FILM_ANDREANI: usize = 2;
+pub const FILM_EDITOR: usize = FIRST_EDITOR;
+
 /// El botón "?" (se agranda y dice "Ayuda" al pasar el mouse) y su ventana.
 #[component]
 pub fn HelpButton(
@@ -297,13 +309,7 @@ pub fn HelpButton(
             }
         });
     };
-    let start = move |_| {
-        let n = match section.get_untracked() {
-            _ if editor => FIRST_EDITOR,
-            Section::Payments => 1,
-            Section::Delivery => 2,
-            _ => 0,
-        };
+    let open_at = move |n: usize| {
         paused.set(false);
         open.set(true);
         if let Some(d) = dialog.get() {
@@ -311,6 +317,24 @@ pub fn HelpButton(
         }
         play(n);
     };
+    let start = move |_| {
+        let n = match section.get_untracked() {
+            _ if editor => FIRST_EDITOR,
+            Section::Payments => 1,
+            Section::Delivery => 2,
+            _ => 0,
+        };
+        open_at(n);
+    };
+    // "Ver cómo" de los Primeros pasos.
+    if let Some(req) = use_context::<HelpRequest>() {
+        Effect::new(move |_| {
+            if let Some(n) = req.0.get() {
+                req.0.set(None);
+                open_at(n);
+            }
+        });
+    }
 
     // El cursor sigue al elemento al que apunta el instante actual.
     Effect::new(move |_| {

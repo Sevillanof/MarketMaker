@@ -267,8 +267,16 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                         <div class="flex items-center gap-3"><Skeleton class="size-11"/><div class="grow">{sk_line("w-full")}</div></div>
                     }).collect_view()}
                 }.into_any()))}
+                // Primeros pasos: título, barra de progreso y un paso por fila (círculo, dos líneas y botones).
                 {sk_card("", Box::new(|| view! {
-                    {sk_line("w-1/3")}{sk_line("w-full")}{sk_line("w-full")}{sk_line("w-2/3")}{sk_line("w-full")}
+                    {sk_line("w-1/3")}<Skeleton class="h-2 w-full"/>
+                    {(0..4).map(|_| view! {
+                        <div class="flex items-center gap-3">
+                            <Skeleton class="size-6 shrink-0 rounded-full"/>
+                            <div class="flex grow flex-col gap-2">{sk_line("w-2/3")}{sk_line("w-1/2")}</div>
+                            <Skeleton class="h-8 w-24 shrink-0"/>
+                        </div>
+                    }).collect_view()}
                 }.into_any()))}
             </div>
         }
@@ -460,6 +468,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "chevron-left" => "M15 6l-6 6 6 6",
         "chevron-right" => "M9 6l6 6-6 6",
         "close" => "M6 6l12 12M18 6L6 18",
+        "play" => "M8 5l11 7-11 7z",
         "search" => "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4",
         "copy" => "M9 9h10v11H9zM5 15V4h10",
         "ticket" => "M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4zM14 7v10",

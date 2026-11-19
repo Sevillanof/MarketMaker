@@ -24,6 +24,7 @@ mod dev;
 pub mod email;
 mod help;
 mod help_editor;
+mod welcome;
 mod landing;
 mod legal;
 #[cfg(feature = "ssr")]
