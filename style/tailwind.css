@@ -1821,3 +1821,30 @@ dialog.mk-open-sheet .mk-dialog-box::before {
 @media (max-width: 767px) {
   .mk-buybar { display: none; }
 }
+
+/* Tarjeta de producto «Completa» (ver `widgets::product_page::FullCard`):
+   sin borde, foto redondeada y renglones de precio, transferencia y cuotas. */
+.mk-cfull .mk-cfull-tr { color: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content)); }
+.mk-d2 .mk-cfull { border: 2px solid var(--mk-c); padding: 0.4rem; }
+.mk-d3 .mk-cfull { background: var(--mk-soft); padding: 0.4rem; }
+.mk-d4 .mk-cfull { background: var(--mk-c); color: var(--mk-cc); padding: 0.4rem; }
+.mk-d4 .mk-cfull .mk-cfull-tr { color: inherit; }
+.mk-d5 .mk-cfull .mk-cfull-price { color: var(--mk-ct); }
+
+/* Tarjeta «Limpia con Agregar» (ver `widgets::product_page::CleanCard`):
+   blanca, redondeada, sin borde, con «Agregar» en una pastilla. */
+.mk-cclean { background: var(--color-base-100); border-radius: calc(var(--radius-box) * 1.4); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
+.mk-cclean-tag {
+  font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.55rem; border-radius: 999px;
+  background: color-mix(in oklab, var(--color-base-200) 85%, var(--color-base-content));
+  color: var(--color-base-content);
+}
+.mk-cclean-add {
+  flex: none; gap: 0.3rem; border-radius: 999px; border: 0;
+  --btn-color: var(--color-base-content); --btn-fg: var(--color-base-100);
+}
+.mk-d2 .mk-cclean { border: 2px solid var(--mk-c); }
+.mk-d3 .mk-cclean { background: var(--mk-soft); }
+.mk-d4 .mk-cclean { background: var(--mk-c); color: var(--mk-cc); }
+.mk-d4 .mk-cclean-add { --btn-color: var(--mk-cc); --btn-fg: var(--mk-c); }
+.mk-d1 .mk-cclean-add, .mk-d3 .mk-cclean-add, .mk-d5 .mk-cclean-add { --btn-color: var(--mk-c, var(--color-base-content)); --btn-fg: var(--mk-cc, var(--color-base-100)); }

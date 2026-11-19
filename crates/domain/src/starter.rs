@@ -65,6 +65,7 @@ pub fn starter_doc(name: &str) -> PageDoc {
             button_href: String::new(),
         }),
         Widget::ProductGrid(ProductGridProps {
+                cards: crate::CardOptions::default(),
             title: s("Productos"),
             limit: 8,
         }),

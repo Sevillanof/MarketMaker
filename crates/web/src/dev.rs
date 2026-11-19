@@ -219,8 +219,10 @@ pub fn DevProductStylesPage() -> impl IntoView {
     let mut product = sample_products().remove(0);
     product.photos = (1..=5).map(|i| format!("/img/product-{i}.webp")).collect();
     product.stock = Some(3);
+    let mut grid_products = sample_products();
+    grid_products[1].stock = Some(2);
     let ctx = RenderCtx {
-        products: Vec::new(),
+        products: grid_products,
         editing: false,
         product: Some(product),
     };
@@ -243,6 +245,17 @@ pub fn DevProductStylesPage() -> impl IntoView {
         let mut node = Node::new(format!("price-{v}"), w);
         node.size = domain::Size { w: 20, h: if *v == "d" { 22 } else { 10 } };
         cases.push((format!("Precio · {label}"), node));
+    }
+    for (v, label) in domain::CARD_STYLE_OPTIONS {
+        let mut w = Widget::defaults("ProductGrid").expect("tipo conocido");
+        if let Widget::ProductGrid(p) = &mut w {
+            p.cards.card = (*v).to_string();
+            p.limit = 4;
+            p.title = "Novedades".to_string();
+        }
+        let mut node = Node::new(format!("cards-{}", if v.is_empty() { "classic" } else { v }), w);
+        node.size = domain::Size { w: 48, h: 50 };
+        cases.push((format!("Tarjetas · {label}"), node));
     }
     // Las formas de abrir la ficha, con barra de compra (ficha larga para
     // que el botón quede arriba al bajar).
