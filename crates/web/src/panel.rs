@@ -284,6 +284,8 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
     let location = leptos_router::hooks::use_location();
     let opening = RwSignal::new(false);
     provide_context(OpeningEditor(opening));
+    // Los "Ver cómo" de los Primeros pasos abren la Ayuda en su película.
+    provide_context(crate::help::HelpRequest(RwSignal::new(None)));
     // Se vuelve a pedir en cada cambio de página para refrescar el número de
     // pedidos por preparar; con `Transition` el menú no se vacía mientras tanto.
     let nav = Resource::new(
@@ -378,6 +380,7 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
                 <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/>
             })}
             <crate::help::HelpButton section/>
+            <crate::welcome::WelcomeTour section/>
         </div>
     }
 }
@@ -429,7 +432,7 @@ fn SideNav(
         let on = move || s == section.get();
         view! {
             <li>
-                <a href=href class=move || if on() { "bg-primary/15 font-semibold text-primary shadow-[inset_3px_0_0_var(--color-primary)]" } else { "focus:bg-transparent focus-visible:bg-base-200" } aria-current=move || on().then_some("page")>
+                <a href=href data-tour=label class=move || if on() { "bg-primary/15 font-semibold text-primary shadow-[inset_3px_0_0_var(--color-primary)]" } else { "focus:bg-transparent focus-visible:bg-base-200" } aria-current=move || on().then_some("page")>
                     <ui::Icon class="size-[18px]" name=icon/>
                     {label}
                     {(badge > 0).then(|| view! {
@@ -506,7 +509,7 @@ fn SideNav(
             <ul class="menu mk-panel-menu w-full gap-0.5 p-0">
                 {item(Section::Home, base.clone(), "home", "Inicio", 0)}
                 <li>
-                    <button type="button" disabled=move || open.pending().get()
+                    <button type="button" data-tour="Diseño" disabled=move || open.pending().get()
                         on:click=move |_| { open.dispatch(design_slug.clone()); }>
                         <ui::Icon class="size-[18px]" name="pencil"/>"Diseño"
                         <span class="ml-auto text-xs text-base-content/70 max-sm:hidden">"Abre el editor"</span>
@@ -681,7 +684,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
     };
 
     // Lo que falta para vender: cada paso con su enlace.
-    let steps: Vec<(bool, &'static str, String, Option<(String, &'static str)>)> = vec![
+    let steps: Vec<(bool, &'static str, String, Option<(String, &'static str)>, usize)> = vec![
         (
             o.products > 0,
             "Cargá tus productos",
@@ -691,6 +694,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 n => format!("{n} productos"),
             },
             Some((format!("{base}/productos"), "Cargar")),
+            crate::help::FILM_PRODUCT,
         ),
         (
             o.publish != PublishState::Never,
@@ -703,12 +707,14 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 }
             },
             None,
+            crate::help::FILM_EDITOR,
         ),
         (
             o.delivery_ready,
             "Elegí cómo entregás",
             "Retiro en el local, envío o los dos.".to_string(),
             Some((format!("{base}/ventas"), "Elegir")),
+            crate::help::FILM_ANDREANI,
         ),
         (
             o.pay_ready,
@@ -719,6 +725,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 "Sin una forma de cobro, tu tienda no puede vender.".to_string()
             },
             Some((format!("{base}/cobros"), "Elegir")),
+            crate::help::FILM_PAYMENTS,
         ),
     ];
     let done = steps.iter().filter(|s| s.0).count();
@@ -796,15 +803,19 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 </div>
             </section>
 
-            <section class="card border border-base-300 bg-base-100" aria-labelledby="lista-para-vender">
+            <section data-tour="Primeros pasos" class="card border border-base-300 bg-base-100" aria-labelledby="lista-para-vender">
                 <div class="card-body gap-0 p-5">
                     <div class="mb-2 flex items-center">
-                        <h2 id="lista-para-vender" class="grow text-lg font-semibold">"Tu tienda, lista para vender"</h2>
+                        <h2 id="lista-para-vender" class="grow text-lg font-semibold">
+                            {if done == total { "Tu tienda, lista para vender" } else { "Primeros pasos" }}
+                        </h2>
                         <span class="text-sm text-base-content/60">{format!("{done} de {total}")}</span>
                     </div>
+                    <progress class="progress progress-primary mb-2 h-2 w-full" value=done max=total
+                        aria-label=format!("{done} de {total} pasos listos")></progress>
                     <ul>
-                        {steps.into_iter().map(|(ok, title, detail, action)| view! {
-                            <li class="flex items-start gap-3 border-t border-base-300 py-3">
+                        {steps.into_iter().map(|(ok, title, detail, action, film)| view! {
+                            <li class="flex flex-wrap items-start gap-x-3 gap-y-2 border-t border-base-300 py-3">
                                 <span class=if ok {
                                     "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-success text-success-content"
                                 } else {
@@ -812,13 +823,26 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                                 }>
                                     {ok.then(|| view! { <ui::Icon class="size-[18px]" name="check"/> })}
                                 </span>
-                                <span class="grow">
+                                <span class="min-w-0 grow basis-40">
                                     <span class="block">{title}<span class="sr-only">{if ok { " (listo)" } else { " (pendiente)" }}</span></span>
                                     <span class="block text-sm text-base-content/60">{detail}</span>
                                 </span>
-                                {(!ok).then(|| action.map(|(href, text)| view! {
-                                    <a class="btn btn-outline btn-sm" href=href>{text}</a>
-                                }))}
+                                {(!ok).then(|| view! {
+                                    <span class="flex shrink-0 items-center gap-1">
+                                        <button type="button" class="btn btn-ghost btn-sm text-primary"
+                                            aria-label=format!("Ver cómo: {title}")
+                                            on:click=move |_| {
+                                                if let Some(req) = use_context::<crate::help::HelpRequest>() {
+                                                    req.0.set(Some(film));
+                                                }
+                                            }>
+                                            <ui::Icon class="size-4" name="play"/>"Ver cómo"
+                                        </button>
+                                        {action.map(|(href, text)| view! {
+                                            <a class="btn btn-outline btn-sm" href=href>{text}</a>
+                                        })}
+                                    </span>
+                                })}
                             </li>
                         }).collect_view()}
                     </ul>
