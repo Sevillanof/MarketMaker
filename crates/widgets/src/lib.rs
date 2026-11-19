@@ -10,7 +10,7 @@ use domain::{
     AnnouncementProps, ProductCarouselProps, SocialProps, StatsProps, StepsProps,
     BannerProps, BenefitsProps, CardProps, ContactProps, CarouselProps, CategoriesProps, CountdownProps,
     FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps, ImageProps, LogosProps,
-    NavbarProps, Node, Product, ProductButtonProps, ProductGridProps, ProductImageProps,
+    NavbarProps, Node, Product, ProductButtonProps, ProductGridProps,
     ProductModal, TabsProps, TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
@@ -19,7 +19,9 @@ use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
 pub mod account;
 pub mod cart;
+pub mod product_page;
 pub mod tags;
+pub use product_page::{ProductImageWidget, ProductPriceWidget};
 pub use account::{Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar};
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
 pub use tags::{FilteredProducts, ProductFilter};
@@ -137,18 +139,10 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             }
             .into_any()
         }
-        Widget::ProductPrice(_) => {
-            let (cents, was, off) = ctx.product.as_ref().map_or((0, 0, None), |p| {
-                (p.price_cents, p.compare_at_cents, p.discount_pct())
-            });
-            view! {
-                <div class="mk-pprice flex h-full flex-wrap items-start gap-2 overflow-hidden text-xl">
-                    <span class="mk-pricetag"><PriceWas cents was/></span>
-                    {off.map(|n| view! { <span class="badge badge-error">{format!("-{n}%")}</span> })}
-                </div>
-            }
-            .into_any()
+        Widget::ProductPrice(p) => view! {
+            <ProductPriceWidget props=p.clone() product=ctx.product.clone() editing/>
         }
+        .into_any(),
         Widget::ProductDescription(_) => {
             let text = ctx
                 .product
@@ -172,57 +166,6 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
                 .into_any()
         }
     }
-}
-
-#[component]
-pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
-    let (photos, alt, fits) =
-        product.map_or_else(Default::default, |p| (p.all_photos(), p.name, p.photo_fits));
-    let contain = props.fit == "contain";
-    if photos.len() < 2 {
-        let src = photos.into_iter().next().unwrap_or_default();
-        let fit = fits.get(&src).copied();
-        return view! {
-            <div class="mk-box mk-image h-full overflow-hidden rounded-box bg-base-200">
-                <Image src alt contain fit/>
-            </div>
-        }
-        .into_any();
-    }
-    // Varias fotos: la grande arriba y las miniaturas abajo para cambiarla.
-    let shown = RwSignal::new(0usize);
-    let photos = StoredValue::new(photos);
-    let fits = StoredValue::new(fits);
-    let total = photos.with_value(Vec::len);
-    view! {
-        <div class="mk-image flex h-full flex-col gap-2">
-            <div class="mk-box relative min-h-0 flex-1 overflow-hidden rounded-box bg-base-200">
-                {move || {
-                    let i = shown.get();
-                    let src = photos.with_value(|p| p[i].clone());
-                    let fit = fits.with_value(|f| f.get(&src).copied());
-                    view! { <Image src alt=format!("{alt}, foto {} de {total}", i + 1) contain fit/> }
-                }}
-            </div>
-            <div class="flex shrink-0 gap-2 overflow-x-auto" role="group" aria-label="Fotos del producto">
-                {(0..total).map(|i| {
-                    let src = photos.with_value(|p| p[i].clone());
-                    let fit = fits.with_value(|f| f.get(&src).copied());
-                    view! {
-                        <button type="button"
-                            class="h-14 w-14 shrink-0 overflow-hidden rounded-field -outline-offset-2 outline-primary"
-                            class:outline-2=move || shown.get() == i
-                            aria-label=format!("Ver foto {}", i + 1)
-                            aria-pressed=move || (shown.get() == i).to_string()
-                            on:click=move |_| shown.set(i)>
-                            <Image src alt="" fit/>
-                        </button>
-                    }
-                }).collect_view()}
-            </div>
-        </div>
-    }
-    .into_any()
 }
 
 /// Texto del botón de la ficha. Las fichas viejas decían "Consultar por este

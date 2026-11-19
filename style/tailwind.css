@@ -952,6 +952,82 @@ dialog.mk-cart::backdrop {
 .mk-d3 .mk-pprice .mk-pricetag { background: var(--mk-soft); border-radius: 999px; padding: 0.15rem 0.9rem; }
 .mk-d4 .mk-pprice .mk-pricetag { background: var(--mk-c); color: var(--mk-cc); border-radius: var(--radius-field); padding: 0.2rem 0.9rem; }
 .mk-d5 .mk-pprice .mk-pricetag { font-size: 1.5em; text-decoration: underline 3px var(--mk-c); text-underline-offset: 0.3em; }
+
+/* Bloque Precio: cuotas, transferencia y cajita de formas de pago. */
+.mk-pprice .mk-psave {
+  font-size: 0.75rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px;
+  background: color-mix(in oklab, var(--color-success) 22%, var(--color-base-100));
+  color: color-mix(in oklab, var(--color-success) 55%, black);
+}
+.mk-pprice .mk-paybox {
+  display: grid; width: 100%; margin-top: 0.25rem;
+  border: 1px solid var(--color-base-300); border-radius: var(--radius-box);
+}
+.mk-pprice .mk-paybox > div {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 0.9rem; font-size: 0.85rem;
+}
+.mk-pprice .mk-paybox > div + div { border-top: 1px solid var(--color-base-300); }
+.mk-pprice .mk-paybox b { font-size: 0.95rem; white-space: nowrap; }
+.mk-d2 .mk-pprice .mk-paybox { border: 2px solid var(--mk-c); }
+.mk-d3 .mk-pprice .mk-paybox { background: var(--mk-soft); border-color: transparent; }
+.mk-d4 .mk-pprice .mk-paybox { background: var(--mk-c); color: var(--mk-cc); border-color: transparent; }
+.mk-d4 .mk-pprice .mk-paybox > div + div { border-color: color-mix(in oklab, var(--mk-cc) 25%, transparent); }
+.mk-d5 .mk-pprice .mk-paybox { border-width: 0 0 0 3px; border-color: var(--mk-c); border-radius: 0; }
+
+/* Foto de la ficha: carteles, carril que se desliza, flechas y puntitos. */
+.mk-ptag {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 999px;
+  background: var(--color-base-100); color: var(--color-base-content);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+}
+.mk-ptag-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #f59e0b; box-shadow: 0 0 0 3px #f59e0b33; }
+.mk-ptrack {
+  display: flex; height: 100%; overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory; scrollbar-width: none;
+}
+.mk-ptrack::-webkit-scrollbar { display: none; }
+.mk-ptrack:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.mk-pslide { flex: 0 0 100%; height: 100%; scroll-snap-align: center; scroll-snap-stop: always; }
+@media (prefers-reduced-motion: no-preference) {
+  .mk-ptrack { scroll-behavior: smooth; }
+}
+.mk-parrow { border: 0; background: var(--color-base-100); color: var(--color-base-content); box-shadow: 0 1px 4px rgb(0 0 0 / 0.15); }
+.mk-parrow:disabled { opacity: 0; pointer-events: none; }
+.mk-parrow-glass { background: color-mix(in oklab, var(--color-base-100) 80%, transparent); backdrop-filter: blur(6px); }
+.mk-pdots { display: flex; align-items: center; }
+.mk-pdots button { display: grid; place-items: center; padding: 0.5rem 0.2rem; cursor: pointer; }
+.mk-pdots i { display: block; width: 0.45rem; height: 0.45rem; border-radius: 999px; transition: width 0.2s; }
+.mk-pdots-light i { background: rgb(255 255 255 / 0.6); box-shadow: 0 0 2px rgb(0 0 0 / 0.3); }
+.mk-pdots-light [aria-current] i { width: 1.1rem; background: #fff; }
+.mk-pdots-dark i { width: 0.5rem; height: 0.5rem; background: color-mix(in oklab, var(--color-base-content) 25%, transparent); }
+.mk-pdots-dark [aria-current] i { background: var(--color-base-content); }
+/* Mosaico: dos altas y una ancha, y se repite. */
+.mk-pmosaic { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: max-content; gap: 0.4rem; align-content: start; scrollbar-width: thin; }
+.mk-pmosaic > .mk-box { height: auto; min-height: 0; }
+.mk-pmosaic > .mk-box { aspect-ratio: 4 / 5; }
+.mk-pmosaic > .mk-box:nth-child(3n) { grid-column: span 2; aspect-ratio: 2 / 1; }
+.mk-pmosaic[data-n="1"], .mk-pmosaic[data-n="2"] { grid-auto-rows: 1fr; }
+.mk-pmosaic[data-n="1"] { grid-template-columns: 1fr; }
+.mk-pmosaic[data-n="1"] > .mk-box { aspect-ratio: auto; height: 100%; }
+.mk-pmosaic[data-n="2"] > .mk-box { aspect-ratio: auto; height: 100%; }
+.mk-d3 .mk-pmosaic, .mk-d4 .mk-pmosaic { padding: 0; }
+/* Miniaturas al costado. */
+.mk-pside { grid-template-columns: 4rem 1fr; }
+.mk-pthumb {
+  width: 4rem; height: 4rem; flex: none; overflow: hidden; cursor: pointer;
+  border-radius: var(--radius-field); outline: 1px solid var(--color-base-300); outline-offset: -1px;
+}
+.mk-pthumb[aria-pressed="true"] { outline: 2px solid var(--color-base-content); outline-offset: -2px; }
+.mk-d3 .mk-pside, .mk-d4 .mk-pside { padding: 0; }
+/* Visor: caja suave y redondeada, foto adentro y puntitos abajo. */
+.mk-pvisor {
+  background: var(--color-base-200); border-radius: calc(var(--radius-box) * 2.5);
+  padding: 1.25rem 1.25rem 0.5rem;
+}
+.mk-pvisor-img { border-radius: calc(var(--radius-box) * 1.5); }
+.mk-pvisor:not(:has(.mk-pdots)) { padding-bottom: 1.25rem; }
 .mk-d3 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-soft); --btn-fg: var(--mk-ct); --btn-shadow: none; }
 .mk-d4 .mk-pbtn { align-items: stretch; }
 .mk-d4 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-c); --btn-fg: var(--mk-cc); width: 100%; box-shadow: 0 8px 20px -8px var(--mk-c); }

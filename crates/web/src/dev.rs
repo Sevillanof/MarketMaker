@@ -16,6 +16,11 @@ fn provide_sample_store() {
         whatsapp: "11 5555-1234".to_string(),
         instagram: "lahuerta".to_string(),
         email: "hola@lahuerta.com.ar".to_string(),
+        offers: domain::PriceOffers {
+            installments: 3,
+            transfer_discount: 10,
+            coordinate: true,
+        },
     });
 }
 
@@ -198,6 +203,62 @@ pub fn DevDesignsPage() -> impl IntoView {
                     </section>
                 })
                 .collect_view()}
+        </div>
+    }
+    .into_any()
+}
+
+/// Ruta de desarrollo `/dev/ficha`: los estilos de la foto y del precio de
+/// la ficha, con un producto de varias fotos y pocas unidades.
+#[component]
+pub fn DevProductStylesPage() -> impl IntoView {
+    if !cfg!(debug_assertions) {
+        return view! { "Página no encontrada." }.into_any();
+    }
+    provide_sample_store();
+    let mut product = sample_products().remove(0);
+    product.photos = (1..=5).map(|i| format!("/img/product-{i}.webp")).collect();
+    product.stock = Some(3);
+    let ctx = RenderCtx {
+        products: Vec::new(),
+        editing: false,
+        product: Some(product),
+    };
+    let mut cases: Vec<(String, Node)> = Vec::new();
+    for (v, label) in domain::VARIANT_PRODUCT_IMAGE {
+        let mut w = Widget::defaults("ProductImage").expect("tipo conocido");
+        if let Widget::ProductImage(p) = &mut w {
+            p.variant = (*v).to_string();
+            p.badge = "Más vendido".to_string();
+        }
+        let mut node = Node::new(format!("img-{v}"), w);
+        node.size = domain::Size { w: 28, h: 56 };
+        cases.push((format!("Foto · {label}"), node));
+    }
+    for (v, label) in domain::VARIANT_PRODUCT_PRICE {
+        let mut w = Widget::defaults("ProductPrice").expect("tipo conocido");
+        if let Widget::ProductPrice(p) = &mut w {
+            p.variant = (*v).to_string();
+        }
+        let mut node = Node::new(format!("price-{v}"), w);
+        node.size = domain::Size { w: 20, h: if *v == "d" { 22 } else { 10 } };
+        cases.push((format!("Precio · {label}"), node));
+    }
+    view! {
+        <div data-theme="light" class="mk-store min-h-screen bg-base-200 p-6 text-base-content">
+            {cases.into_iter().map(|(title, mut node)| {
+                node.pos = domain::Pos { x: 0, y: 0 };
+                let style = node_style(&node);
+                let content = render_widget(&node, &ctx);
+                view! {
+                    <section class="mb-8" data-case=node.id.clone()>
+                        <h2 class="mb-2 text-sm font-semibold opacity-75">{title}</h2>
+                        <div class="mk-grid rounded-box bg-base-100 p-4" style="width:1136px">
+                            <div class="mk-node" style=style>{content}</div>
+                        </div>
+                    </section>
+                }
+            }).collect_view()}
         </div>
     }
     .into_any()

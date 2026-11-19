@@ -168,6 +168,8 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     let alias = RwSignal::new(o.transfer_alias);
     let holder = RwSignal::new(o.transfer_holder);
     let coordinate = RwSignal::new(o.coordinate);
+    let installments = RwSignal::new(o.installments);
+    let discount = RwSignal::new(o.transfer_discount);
     let saving = RwSignal::new(Saving::Idle);
     let alias_problem = RwSignal::new(None::<String>);
     let save_problem = RwSignal::new(None::<String>);
@@ -192,6 +194,8 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
             transfer_alias: alias.get_untracked(),
             transfer_holder: holder.get_untracked(),
             coordinate: coordinate.get_untracked(),
+            installments: installments.get_untracked(),
+            transfer_discount: discount.get_untracked(),
         };
         // Transferencia sin alias: espera a que lo escriba (no se guarda a medias).
         if options.transfer && options.transfer_alias.trim().is_empty() {
@@ -249,6 +253,23 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                         </div>
                     })}
                     {move || mp_problem.get().map(|e| view! { <p class="mt-1 text-sm text-error">{e}</p> })}
+                    {move || link.with(|l| l.is_some()).then(|| view! {
+                        <fieldset class="fieldset mt-2 max-w-xs py-0">
+                            <label class="fieldset-legend" for="pay-installments">"Cuotas sin interés para mostrar"</label>
+                            <select id="pay-installments" class="select w-full"
+                                on:change=move |ev| {
+                                    installments.set(event_target_value(&ev).parse().unwrap_or(0));
+                                    save_now();
+                                }>
+                                {domain::INSTALLMENT_CHOICES.into_iter().map(|n| view! {
+                                    <option value=n.to_string() selected=move || installments.get() == n>
+                                        {if n == 0 { "No mostrar".to_string() } else { format!("{n} cuotas sin interés") }}
+                                    </option>
+                                }).collect_view()}
+                            </select>
+                            <p class="label whitespace-normal">"Se muestran en los precios. Activalas también en tu cuenta de Mercado Pago, que es la que las cobra."</p>
+                        </fieldset>
+                    })}
                 </div>
                 {move || match link.get() {
                     Some(_) => view! {
@@ -303,6 +324,21 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                                     on:change=move |_| { save_now(); }/>
                             </fieldset>
                         </div>
+                        <fieldset class="fieldset mt-1 max-w-xs py-0">
+                            <label class="fieldset-legend" for="pay-discount">"Descuento por transferencia "<span class="font-normal text-base-content/60">"(opcional)"</span></label>
+                            <label class="input w-32">
+                                <input id="pay-discount" type="number" inputmode="numeric" min="0" max=domain::TRANSFER_DISCOUNT_MAX
+                                    prop:value=move || discount.get().to_string()
+                                    on:change=move |ev| {
+                                        let v = event_target_value(&ev).trim().parse::<i64>().unwrap_or(0)
+                                            .clamp(0, domain::TRANSFER_DISCOUNT_MAX as i64) as u8;
+                                        discount.set(v);
+                                        save_now();
+                                    }/>
+                                <span class="text-base-content/60">"%"</span>
+                            </label>
+                            <p class="label whitespace-normal">"Se descuenta del total al pagar con transferencia y se muestra en los precios."</p>
+                        </fieldset>
                         <p class="mt-1 text-xs text-base-content/60">
                             {move || if alias.with(|a| a.trim().is_empty()) && alias_problem.get().is_none() {
                                 "Escribí tu alias, CBU o CVU para activar la transferencia."

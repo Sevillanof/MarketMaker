@@ -143,6 +143,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
             whatsapp: whatsapp.get_untracked(),
             instagram: instagram.get_untracked(),
             email: email.get_untracked(),
+            ..StoreInfo::default()
         };
         // Se ve como queda guardado (por ejemplo, Instagram sin la dirección).
         let _ = domain::tidy_store_info(&mut info);

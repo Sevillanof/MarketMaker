@@ -758,6 +758,7 @@ fn OrderDetail(view: domain::PageView, order: Order) -> impl IntoView {
                     }).collect_view()}
                 </ul>
                 <div class="flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{format_price(order.subtotal_cents)}</span></div>
+                {(order.discount_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>"Descuento por transferencia"</span><span>{format!("−{}", format_price(order.discount_cents))}</span></div> })}
                 <div class="-mt-2 flex justify-between text-sm text-base-content/75"><span>{delivery}</span><span>{shipping_text}</span></div>
                 <div class="flex justify-between text-lg font-bold"><span>"Total"</span><span>{format_price(order.total_cents)}</span></div>
                 {(!where_.is_empty()).then(|| view! {

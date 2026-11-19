@@ -376,6 +376,9 @@ pub struct StoreInfo {
     /// Usuario sin @, por ejemplo "lahuerta".
     pub instagram: String,
     pub email: String,
+    /// Cuotas y descuento por transferencia que muestran los precios (de Cobros).
+    #[serde(default)]
+    pub offers: crate::PriceOffers,
 }
 
 impl StoreInfo {

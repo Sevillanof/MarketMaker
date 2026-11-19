@@ -440,8 +440,8 @@ impl Default for ProductModal {
             nodes: vec![
                 at("m1", "ProductImage", 0, 0, 24, 52),
                 at("m2", "ProductName", 24, 0, 24, 9),
-                at("m3", "ProductPrice", 24, 9, 24, 6),
-                at("m4", "ProductDescription", 24, 15, 24, 28),
+                at("m3", "ProductPrice", 24, 9, 24, 8),
+                at("m4", "ProductDescription", 24, 17, 24, 26),
                 at("m5", "ProductButton", 24, 43, 24, 7),
             ],
         }
@@ -1088,6 +1088,23 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Las fichas guardadas antes de los estilos de foto y precio se siguen
+    /// viendo como antes (estilo clásico y solo el precio).
+    #[test]
+    fn old_product_photo_and_price_keep_their_look() {
+        let w: Widget = serde_json::from_value(
+            serde_json::json!({"type": "ProductImage", "props": {"fit": "cover"}}),
+        )
+        .unwrap();
+        let Widget::ProductImage(p) = w else { panic!("foto") };
+        assert_eq!((p.variant.as_str(), p.badge.as_str(), p.stock_note), ("a", "", true));
+        let w: Widget =
+            serde_json::from_value(serde_json::json!({"type": "ProductPrice", "props": {}})).unwrap();
+        let Widget::ProductPrice(p) = w else { panic!("precio") };
+        assert_eq!(p.variant, "a");
+        assert!(p.show_installments && p.show_transfer);
+    }
 
     /// Los enlaces guardados antes de los desplegables no traen `children`
     /// ni `image_url`; la tienda tiene que seguir abriendo igual.

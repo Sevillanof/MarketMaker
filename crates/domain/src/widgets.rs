@@ -47,13 +47,34 @@ pub enum Widget {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ProductImageProps {
     pub fit: String,
+    /// `a` clásico (foto grande y miniaturas abajo), `b` galería grande,
+    /// `c` mosaico, `d` miniaturas al costado, `e` visor con flechas.
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    /// Cartel sobre la foto, por ejemplo "Más vendido". Vacío: no se muestra.
+    #[serde(default)]
+    pub badge: String,
+    /// Avisa cuando quedan pocas unidades ("Quedan 3").
+    #[serde(default = "yes")]
+    pub stock_note: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ProductNameProps {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct ProductPriceProps {}
+pub struct ProductPriceProps {
+    /// `a` solo el precio, `b` con cuotas, `c` transferencia destacada,
+    /// `d` cajita con las formas de pago.
+    #[serde(default = "variant_a")]
+    pub variant: String,
+    /// Las cuotas sin interés de Cobros (si la tienda las configuró).
+    #[serde(default = "yes")]
+    pub show_installments: bool,
+    /// El precio con transferencia de Cobros (si la tienda tiene descuento).
+    #[serde(default = "yes")]
+    pub show_transfer: bool,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ProductDescriptionProps {}
@@ -307,6 +328,10 @@ pub struct ContactProps {
 /// Estilo por defecto de los widgets con variantes (`a`, `b` o `c`).
 fn variant_a() -> String {
     "a".to_string()
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn variant_list() -> String {
@@ -781,13 +806,49 @@ const IMAGE_FIELDS: &[Field] = &[
     ),
 ];
 
-const PRODUCT_IMAGE_FIELDS: &[Field] = &[field(
-    "fit",
-    "Ajuste",
-    FieldKind::Select {
-        options: IMAGE_FIT_OPTIONS,
-    },
-)];
+pub const VARIANT_PRODUCT_IMAGE: &[(&str, &str)] = &[
+    ("a", "Clásico: foto y miniaturas abajo"),
+    ("b", "Galería grande con flechas"),
+    ("c", "Mosaico de fotos"),
+    ("d", "Miniaturas al costado"),
+    ("e", "Visor que se desliza"),
+];
+const PRODUCT_IMAGE_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_PRODUCT_IMAGE,
+        },
+    ),
+    field("badge", "Cartel sobre la foto (opcional)", text(24)),
+    field("stock_note", "Avisar cuando quedan pocas", FieldKind::Bool),
+    adv(
+        "fit",
+        "Ajuste",
+        FieldKind::Select {
+            options: IMAGE_FIT_OPTIONS,
+        },
+    ),
+];
+
+pub const VARIANT_PRODUCT_PRICE: &[(&str, &str)] = &[
+    ("a", "Solo el precio"),
+    ("b", "Con cuotas"),
+    ("c", "Transferencia destacada"),
+    ("d", "Cajita con formas de pago"),
+];
+const PRODUCT_PRICE_FIELDS: &[Field] = &[
+    field(
+        "variant",
+        "Estilo",
+        FieldKind::Select {
+            options: VARIANT_PRODUCT_PRICE,
+        },
+    ),
+    field("show_installments", "Mostrar cuotas sin interés (se eligen en Cobros)", FieldKind::Bool),
+    field("show_transfer", "Mostrar precio con transferencia (se elige en Cobros)", FieldKind::Bool),
+];
 /// El botón de la ficha agrega al carrito: ya no lleva enlace (`href`
 /// queda solo para leer fichas viejas).
 const PRODUCT_BUTTON_FIELDS: &[Field] = &[field("label", "Texto del botón", text(30))];
@@ -1046,7 +1107,7 @@ impl Widget {
             Widget::Social(_) => limits(12, 48, 4, 40, 48, 12),
             Widget::ProductImage(_) => limits(8, 48, 12, 120, 24, 52),
             Widget::ProductName(_) => limits(8, 48, 5, 24, 24, 9),
-            Widget::ProductPrice(_) => limits(6, 48, 4, 16, 24, 6),
+            Widget::ProductPrice(_) => limits(6, 48, 4, 32, 24, 8),
             Widget::ProductDescription(_) => limits(8, 48, 6, 96, 24, 28),
             Widget::ProductButton(_) => limits(8, 48, 6, 12, 24, 7),
         }
@@ -1081,7 +1142,8 @@ impl Widget {
             Widget::ProductCarousel(_) => PRODUCT_CAROUSEL_FIELDS,
             Widget::Social(_) => SOCIAL_FIELDS,
             Widget::ProductImage(_) => PRODUCT_IMAGE_FIELDS,
-            Widget::ProductName(_) | Widget::ProductPrice(_) | Widget::ProductDescription(_) => &[],
+            Widget::ProductPrice(_) => PRODUCT_PRICE_FIELDS,
+            Widget::ProductName(_) | Widget::ProductDescription(_) => &[],
             Widget::ProductButton(_) => PRODUCT_BUTTON_FIELDS,
         }
     }
@@ -1382,9 +1444,18 @@ impl Widget {
                 tiktok: String::new(),
                 label: s("¿Dudas? Escribinos"),
             }),
-            "ProductImage" => Widget::ProductImage(ProductImageProps { fit: s("cover") }),
+            "ProductImage" => Widget::ProductImage(ProductImageProps {
+                fit: s("cover"),
+                variant: s("a"),
+                badge: String::new(),
+                stock_note: true,
+            }),
             "ProductName" => Widget::ProductName(ProductNameProps {}),
-            "ProductPrice" => Widget::ProductPrice(ProductPriceProps {}),
+            "ProductPrice" => Widget::ProductPrice(ProductPriceProps {
+                variant: s("b"),
+                show_installments: true,
+                show_transfer: true,
+            }),
             "ProductDescription" => Widget::ProductDescription(ProductDescriptionProps {}),
             "ProductButton" => Widget::ProductButton(ProductButtonProps {
                 label: s("Agregar al carrito"),

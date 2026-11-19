@@ -122,6 +122,13 @@ pub struct PaymentOptions {
     #[serde(default)]
     pub transfer_holder: String,
     pub coordinate: bool,
+    /// Cuotas sin interés que la tienda ofrece con Mercado Pago, para
+    /// mostrarlas en los precios (0: no se muestran).
+    #[serde(default)]
+    pub installments: u8,
+    /// Descuento por pagar con transferencia, en por ciento (0: sin descuento).
+    #[serde(default)]
+    pub transfer_discount: u8,
 }
 
 impl PaymentOptions {
@@ -131,6 +138,79 @@ impl PaymentOptions {
             self.transfer_alias.clone()
         } else {
             format!("{}\nTitular: {}", self.transfer_alias, self.transfer_holder)
+        }
+    }
+}
+
+/// Las cuotas que se pueden mostrar.
+pub const INSTALLMENT_CHOICES: [u8; 6] = [0, 3, 6, 9, 12, 18];
+/// El descuento más grande por transferencia.
+pub const TRANSFER_DISCOUNT_MAX: u8 = 50;
+
+/// El descuento por transferencia sobre un importe, en centavos (redondeado
+/// hacia abajo a pesos enteros, a favor del comprador).
+pub fn transfer_discount_cents(amount_cents: i64, pct: u8) -> i64 {
+    if pct == 0 || amount_cents <= 0 {
+        return 0;
+    }
+    let d = amount_cents * pct.min(TRANSFER_DISCOUNT_MAX) as i64 / 100;
+    // Redondea el precio final a pesos: el descuento absorbe los centavos.
+    let final_cents = (amount_cents - d) / 100 * 100;
+    amount_cents - final_cents
+}
+
+/// Lo que ve el comprador de las cuotas y la transferencia, sin datos
+/// privados (va a la página de la tienda).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub struct PriceOffers {
+    pub installments: u8,
+    /// Descuento por transferencia, solo si la tienda cobra por transferencia.
+    pub transfer_discount: u8,
+    /// Acepta pagos acordados (por ejemplo, efectivo al retirar).
+    #[serde(default)]
+    pub coordinate: bool,
+}
+
+impl PriceOffers {
+    /// Valores de muestra para ver el estilo en el editor cuando la tienda
+    /// todavía no eligió cuotas ni descuento.
+    pub fn or_sample(self) -> Self {
+        if self.installments == 0 && self.transfer_discount == 0 {
+            Self {
+                installments: 3,
+                transfer_discount: 10,
+                coordinate: true,
+            }
+        } else {
+            self
+        }
+    }
+
+    /// Cada cuota de `price_cents` (redondeada hacia arriba al centavo).
+    pub fn installment_cents(&self, price_cents: i64) -> Option<i64> {
+        (self.installments > 0 && price_cents > 0).then(|| {
+            let n = i64::from(self.installments);
+            (price_cents + n - 1) / n
+        })
+    }
+
+    /// El precio pagando con transferencia, si hay descuento.
+    pub fn transfer_cents(&self, price_cents: i64) -> Option<i64> {
+        (self.transfer_discount > 0 && price_cents > 0)
+            .then(|| price_cents - transfer_discount_cents(price_cents, self.transfer_discount))
+    }
+}
+
+impl PaymentOptions {
+    pub fn offers(&self, mp_linked: bool) -> PriceOffers {
+        PriceOffers {
+            installments: if mp_linked { self.installments } else { 0 },
+            transfer_discount: if self.transfer {
+                self.transfer_discount
+            } else {
+                0
+            },
+            coordinate: self.coordinate,
         }
     }
 }
@@ -148,6 +228,10 @@ pub fn tidy_payment_options(p: &mut PaymentOptions) -> Option<String> {
             .join(" "),
         TRANSFER_HOLDER_MAX,
     );
+    if !INSTALLMENT_CHOICES.contains(&p.installments) {
+        p.installments = 0;
+    }
+    p.transfer_discount = p.transfer_discount.min(TRANSFER_DISCOUNT_MAX);
     (p.transfer && p.transfer_alias.is_empty())
         .then(|| "Escribí tu alias, CBU o CVU para activar la transferencia.".to_string())
 }
@@ -467,6 +551,9 @@ pub struct CheckoutInfo {
     /// Las formas de pago que ofrece la tienda (vacío: todavía no vende).
     #[serde(default)]
     pub pay_methods: Vec<PayMethod>,
+    /// Descuento por pagar con transferencia, en por ciento (0: sin descuento).
+    #[serde(default)]
+    pub transfer_discount: u8,
     /// Quien entró a su cuenta: sus datos completan el formulario.
     #[serde(default)]
     pub buyer: Option<crate::BuyerMe>,
@@ -552,6 +639,9 @@ pub struct Order {
     pub items: Vec<OrderItem>,
     pub subtotal_cents: i64,
     pub shipping_cents: i64,
+    /// Descuento por pagar con transferencia (0 si no hubo).
+    #[serde(default)]
+    pub discount_cents: i64,
     pub total_cents: i64,
     /// Cuándo se hizo, RFC 3339.
     pub created_at: String,
@@ -990,5 +1080,56 @@ mod regret_tests {
             .map(|e| e.field)
             .collect();
         assert_eq!(fields, ["name", "email", "number"]);
+    }
+}
+
+#[cfg(test)]
+mod offers_tests {
+    use super::*;
+
+    #[test]
+    fn the_transfer_discount_rounds_to_whole_pesos_in_favor_of_the_buyer() {
+        // $89.990 con 10 %: $80.991.
+        assert_eq!(transfer_discount_cents(8_999_000, 10), 899_900);
+        // $1.234,56 con 10 %: $1.111,10 → $1.111 (el comprador paga menos).
+        assert_eq!(1_234_56 - transfer_discount_cents(1_234_56, 10), 1_111_00);
+        assert_eq!(transfer_discount_cents(8_999_000, 0), 0);
+        assert_eq!(transfer_discount_cents(0, 10), 0);
+        // Nunca más del tope.
+        assert_eq!(transfer_discount_cents(10_000, 90), 5_000);
+    }
+
+    #[test]
+    fn offers_show_only_what_the_store_can_charge() {
+        let p = PaymentOptions {
+            transfer: false,
+            installments: 6,
+            transfer_discount: 15,
+            ..PaymentOptions::default()
+        };
+        // Sin Mercado Pago no hay cuotas; sin transferencia, no hay descuento.
+        assert_eq!(p.offers(false), PriceOffers::default());
+        let o = PaymentOptions {
+            transfer: true,
+            ..p
+        }
+        .offers(true);
+        assert_eq!((o.installments, o.transfer_discount), (6, 15));
+        assert_eq!(o.installment_cents(1_000_00), Some(16_667));
+        assert_eq!(o.transfer_cents(1_000_00), Some(850_00));
+    }
+
+    #[test]
+    fn tidy_keeps_installments_and_discount_in_range() {
+        let mut p = PaymentOptions {
+            installments: 7,
+            transfer_discount: 80,
+            ..PaymentOptions::default()
+        };
+        assert_eq!(tidy_payment_options(&mut p), None);
+        assert_eq!(
+            (p.installments, p.transfer_discount),
+            (0, TRANSFER_DISCOUNT_MAX)
+        );
     }
 }

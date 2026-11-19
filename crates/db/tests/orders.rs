@@ -28,6 +28,7 @@ fn order<'a>(items: &'a [OrderItem]) -> NewOrder<'a> {
         notes: "",
         items,
         shipping_cents: 0,
+        discount_cents: 0,
         pay: domain::PayMethod::Coordinate,
         shipment: None,
     }
@@ -260,6 +261,7 @@ async fn andreani_orders_keep_their_shipment(pool: PgPool) {
         delivery: Delivery::Andreani(AndreaniService::Branch),
         postal_code: "1425",
         shipping_cents: 450_000,
+        discount_cents: 0,
         shipment: Some(&shipment),
         ..order(&items)
     };
@@ -282,4 +284,51 @@ async fn andreani_orders_keep_their_shipment(pool: PgPool) {
     orders::save_shipment(&pool, t, o, &failed).await.unwrap();
     assert!(orders::claim_shipment(&pool, t, o).await.unwrap());
     assert_eq!(orders::tenant_of(&pool, o).await.unwrap(), Some(t));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_transfer_discount_is_saved_and_lowers_the_total(pool: PgPool) {
+    let t = tenant(&pool, "eva").await;
+    let id = products::create(
+        &pool,
+        t,
+        &Product {
+            name: "Taza".into(),
+            ..Product::default()
+        },
+    )
+    .await
+    .unwrap();
+    let items = [item(id, 2)];
+    let new = NewOrder {
+        pay: domain::PayMethod::Transfer,
+        shipping_cents: 500,
+        discount_cents: 200,
+        ..order(&items)
+    };
+    let Created::Saved { id: o, .. } = orders::create(&pool, t, &new).await.unwrap() else {
+        panic!("guardado");
+    };
+    let got = orders::get(&pool, t, o).await.unwrap().unwrap();
+    assert_eq!((got.subtotal_cents, got.discount_cents), (2000, 200));
+    assert_eq!(got.total_cents, 2000 - 200 + 500);
+
+    // Cobros guarda las cuotas y el descuento, y la tienda los muestra
+    // solo si puede cobrarlos.
+    let mut p = domain::PaymentOptions {
+        transfer: true,
+        transfer_alias: "mi.alias".into(),
+        installments: 3,
+        transfer_discount: 10,
+        ..Default::default()
+    };
+    orders::save_payment_options(&pool, t, &p).await.unwrap();
+    assert_eq!(orders::payment_options(&pool, t).await.unwrap(), p);
+    let info = db::auth::store_info(&pool, t).await.unwrap();
+    // Sin Mercado Pago vinculado no hay cuotas para mostrar.
+    assert_eq!((info.offers.installments, info.offers.transfer_discount), (0, 10));
+    p.transfer = false;
+    orders::save_payment_options(&pool, t, &p).await.unwrap();
+    let info = db::auth::store_info(&pool, t).await.unwrap();
+    assert_eq!(info.offers.transfer_discount, 0);
 }

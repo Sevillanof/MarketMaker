@@ -35,6 +35,7 @@ async fn place_order(pool: &PgPool, t: Uuid, email: &str, status: OrderStatus) -
         notes: "",
         items: &items,
         shipping_cents: 0,
+        discount_cents: 0,
         pay: domain::PayMethod::Coordinate,
         shipment: None,
     };
