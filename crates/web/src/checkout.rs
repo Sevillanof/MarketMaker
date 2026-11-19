@@ -21,9 +21,13 @@ pub async fn load_checkout() -> Result<CheckoutInfo, ServerFnError> {
     use crate::server::pool;
     let tenant = crate::auth::current_tenant().await?;
     let pool = pool()?;
+    let options = db::orders::payment_options(&pool, tenant.id)
+        .await
+        .map_err(crate::server::internal)?;
     Ok(CheckoutInfo {
         delivery: delivery_with_andreani(&pool, tenant.id).await?,
         pay_methods: methods(&pool, tenant.id).await?,
+        transfer_discount: options.offers(false).transfer_discount,
         store_name: tenant.name,
         buyer: crate::buyer::current_buyer()
             .await?
@@ -472,6 +476,18 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         shipment = Some(s);
     }
     let pay_online = form.pay == domain::PayMethod::MercadoPago;
+    // Con transferencia, el descuento que configuró la tienda en Cobros.
+    let discount_cents = if form.pay == domain::PayMethod::Transfer {
+        let pct = db::orders::payment_options(&pool, tenant.id)
+            .await
+            .map_err(internal)?
+            .offers(false)
+            .transfer_discount;
+        let subtotal: i64 = items.iter().map(domain::OrderItem::total_cents).sum();
+        domain::transfer_discount_cents(subtotal, pct)
+    } else {
+        0
+    };
     let new = db::orders::NewOrder {
         status: if pay_online {
             domain::OrderStatus::PendingPayment
@@ -488,6 +504,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         notes: &form.notes,
         items: &items,
         shipping_cents,
+        discount_cents,
         pay: form.pay,
         shipment: shipment.as_ref(),
     };
@@ -687,6 +704,17 @@ struct Fields {
     dni: RwSignal<String>,
     /// La última cotización de Andreani para `postal`.
     quote: RwSignal<Option<AndreaniQuote>>,
+    /// Descuento por transferencia de la tienda, en por ciento.
+    transfer_off: u8,
+}
+
+/// El descuento que corresponde ahora (solo si eligió transferencia).
+fn discount_cents(f: Fields, subtotal: i64) -> i64 {
+    if f.pay.get() == domain::PayMethod::Transfer {
+        domain::transfer_discount_cents(subtotal, f.transfer_off)
+    } else {
+        0
+    }
 }
 
 /// Lo que cuesta el envío elegido (con Andreani, según la cotización).
@@ -802,6 +830,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         branch: RwSignal::new(String::new()),
         dni: RwSignal::new(String::new()),
         quote: RwSignal::new(None),
+        transfer_off: info.transfer_discount,
     };
     remember_buyer(&f);
     let has_andreani = d.with_value(|d| !d.andreani.is_empty());
@@ -1413,6 +1442,8 @@ fn PayChoice(
                     P::Transfer => ("Transferencia", "Te pasamos el alias al confirmar"),
                     P::Coordinate => ("Acordar con la tienda", "Por ejemplo, efectivo al retirar"),
                 };
+                let off = (kind == P::Transfer && f.transfer_off > 0)
+                    .then(|| view! { <span class="badge badge-success badge-soft badge-sm shrink-0">{format!("{}% off", f.transfer_off)}</span> });
                 view! {
                     <label class="flex cursor-pointer items-center gap-3 px-4 py-3 has-checked:bg-primary/8">
                         <input type="radio" name="pay" class="radio radio-primary radio-sm" id=format!("f-pay-{i}")
@@ -1426,6 +1457,7 @@ fn PayChoice(
                             <span class="block font-semibold">{title}</span>
                             <span class="block text-sm text-base-content/70">{detail}</span>
                         </span>
+                        {off}
                     </label>
                 }
             }).collect_view()}
@@ -1494,8 +1526,11 @@ fn Totals(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
     let shipping_text = move || d.with_value(|d| ship_text(f, d));
     view! {
         <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span class="tabular-nums">{move || format_price(subtotal())}</span></div>
+        {move || (discount_cents(f, subtotal()) > 0).then(|| view! {
+            <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Descuento por transferencia ({}%)", f.transfer_off)}</span><span class="tabular-nums">{move || format!("−{}", format_price(discount_cents(f, subtotal())))}</span></div>
+        })}
         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
-        <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span class="tabular-nums">{move || format_price(subtotal() + shipping())}</span></div>
+        <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span class="tabular-nums">{move || format_price(subtotal() - discount_cents(f, subtotal()) + shipping())}</span></div>
     }
 }
 
@@ -1503,7 +1538,10 @@ fn Totals(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
 #[component]
 fn MobileSummary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
     let d2 = d.clone();
-    let total = move || cart.total_cents() + ship_cents(f, &d2);
+    let total = move || {
+        let sub = cart.total_cents();
+        sub - discount_cents(f, sub) + ship_cents(f, &d2)
+    };
     view! {
         <details class="group rounded-box bg-base-100 shadow-sm lg:hidden">
             <summary class="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm [&::-webkit-details-marker]:hidden">
@@ -1642,6 +1680,7 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
                         }).collect_view()}
                     </ul>
                     <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{format_price(order.subtotal_cents)}</span></div>
+                    {(order.discount_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>"Descuento por transferencia"</span><span>{format!("−{}", format_price(order.discount_cents))}</span></div> })}
                     <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
                     <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span>{format_price(order.total_cents)}</span></div>
                     <h3 class="mt-5 font-semibold">{order.delivery.label()}</h3>

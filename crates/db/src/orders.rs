@@ -37,19 +37,28 @@ pub async fn delivery(pool: &PgPool, tenant: Uuid) -> sqlx::Result<DeliverySetti
 
 /// Formas de cobro de la tienda además de Mercado Pago.
 pub async fn payment_options(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::PaymentOptions> {
-    let (transfer, transfer_alias, transfer_holder, coordinate): (bool, String, String, bool) =
-        sqlx::query_as(
-            "SELECT pay_transfer, transfer_alias, transfer_holder, pay_coordinate
+    let (transfer, transfer_alias, transfer_holder, coordinate, installments, transfer_discount): (
+        bool,
+        String,
+        String,
+        bool,
+        i16,
+        i16,
+    ) = sqlx::query_as(
+        "SELECT pay_transfer, transfer_alias, transfer_holder, pay_coordinate,
+                    installments, transfer_discount
              FROM tenants WHERE id = $1",
-        )
-        .bind(tenant)
-        .fetch_one(pool)
-        .await?;
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await?;
     Ok(domain::PaymentOptions {
         transfer,
         transfer_alias,
         transfer_holder,
         coordinate,
+        installments: installments.clamp(0, 255) as u8,
+        transfer_discount: transfer_discount.clamp(0, 255) as u8,
     })
 }
 
@@ -60,7 +69,7 @@ pub async fn save_payment_options(
 ) -> sqlx::Result<()> {
     sqlx::query(
         "UPDATE tenants SET pay_transfer = $2, transfer_alias = $3, transfer_holder = $4,
-                            pay_coordinate = $5
+                            pay_coordinate = $5, installments = $6, transfer_discount = $7
          WHERE id = $1",
     )
     .bind(tenant)
@@ -68,6 +77,8 @@ pub async fn save_payment_options(
     .bind(&p.transfer_alias)
     .bind(&p.transfer_holder)
     .bind(p.coordinate)
+    .bind(p.installments as i16)
+    .bind(p.transfer_discount as i16)
     .execute(pool)
     .await?;
     Ok(())
@@ -113,6 +124,8 @@ pub struct NewOrder<'a> {
     pub notes: &'a str,
     pub items: &'a [OrderItem],
     pub shipping_cents: i64,
+    /// Descuento sobre los productos (por transferencia).
+    pub discount_cents: i64,
     pub pay: domain::PayMethod,
     /// Con Andreani: sucursal, DNI y cotización.
     pub shipment: Option<&'a domain::Shipment>,
@@ -135,6 +148,7 @@ pub enum Created {
 /// de los productos que lo cuentan, todo junto: si no alcanza, no se guarda.
 pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Result<Created> {
     let subtotal: i64 = o.items.iter().map(OrderItem::total_cents).sum();
+    let discount = o.discount_cents.clamp(0, subtotal);
     let items = serde_json::to_value(o.items).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
     let mut tx = pool.begin().await?;
     // Esperando el pago online es solo un intento: se revisa que alcance,
@@ -193,8 +207,9 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     let (id,): (Uuid,) = sqlx::query_as(
         "INSERT INTO orders (tenant_id, number, status, customer_name, email, phone, delivery,
                              address, postal_code, city, notes, items,
-                             subtotal_cents, shipping_cents, total_cents, payment, shipment)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                             subtotal_cents, shipping_cents, total_cents, payment, shipment,
+                             discount_cents)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING id",
     )
     .bind(tenant)
@@ -211,9 +226,10 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     .bind(items)
     .bind(subtotal)
     .bind(o.shipping_cents)
-    .bind(subtotal + o.shipping_cents)
+    .bind(subtotal - discount + o.shipping_cents)
     .bind(o.pay.as_str())
     .bind(o.shipment.map(sqlx::types::Json))
+    .bind(discount)
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -313,6 +329,7 @@ struct OrderRow {
     items: serde_json::Value,
     subtotal_cents: i64,
     shipping_cents: i64,
+    discount_cents: i64,
     total_cents: i64,
     created_at: String,
     payment: String,
@@ -337,6 +354,7 @@ impl From<OrderRow> for Order {
             items: serde_json::from_value(r.items).unwrap_or_default(),
             subtotal_cents: r.subtotal_cents,
             shipping_cents: r.shipping_cents,
+            discount_cents: r.discount_cents,
             total_cents: r.total_cents,
             created_at: r.created_at,
             pay: domain::PayMethod::from_str(&r.payment),
@@ -351,7 +369,7 @@ macro_rules! select {
     ($rest:literal) => {
         concat!(
             "SELECT id, COALESCE(number, 0) AS number, status, customer_name, email, phone, delivery, address, ",
-            "postal_code, city, notes, items, subtotal_cents, shipping_cents, total_cents, ",
+            "postal_code, city, notes, items, subtotal_cents, shipping_cents, discount_cents, total_cents, ",
             "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, payment, regret_code, shipment ",
             "FROM orders ",
             $rest

@@ -182,6 +182,7 @@ async fn paid_order(pool: &PgPool, t: Uuid) -> Uuid {
             notes: "",
             items: &items,
             shipping_cents: 500000,
+            discount_cents: 0,
             pay: PayMethod::MercadoPago,
             shipment: Some(&sh),
         },

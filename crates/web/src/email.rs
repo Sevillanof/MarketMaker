@@ -161,6 +161,13 @@ fn order_lines(o: &Order) -> (String, String) {
         Delivery::Pickup => "Retiro".to_string(),
         _ => o.shipping_text(ui::format_price),
     };
+    if o.discount_cents > 0 {
+        let d = format!("−{}", ui::format_price(o.discount_cents));
+        html.push_str(&format!(
+            r#"<tr><td style="padding:6px 0;color:#15803d">Descuento por transferencia</td><td style="padding:6px 0;text-align:right;color:#15803d">{d}</td></tr>"#
+        ));
+        text.push_str(&format!("Descuento por transferencia  {d}\n"));
+    }
     html.push_str(&format!(
         r#"<tr><td style="padding:6px 0;color:#52525b">Envío</td><td style="padding:6px 0;text-align:right;color:#52525b">{}</td></tr>
 <tr><td style="padding:6px 0;font-weight:700;font-size:16px">Total</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px">{}</td></tr></table>"#,

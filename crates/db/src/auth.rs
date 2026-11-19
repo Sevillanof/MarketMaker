@@ -635,19 +635,46 @@ pub async fn set_avatar(
 
 /// Nombre, logo y contacto de la tienda.
 pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::StoreInfo> {
-    let (name, logo, whatsapp, instagram, email): (String, Option<Uuid>, String, String, String) =
-        sqlx::query_as(
-            "SELECT name, logo_id, whatsapp, instagram, contact_email FROM tenants WHERE id = $1",
-        )
-        .bind(tenant)
-        .fetch_one(pool)
-        .await?;
+    #[allow(clippy::type_complexity)]
+    let (name, logo, whatsapp, instagram, email, mp, transfer, installments, discount, coordinate): (
+        String,
+        Option<Uuid>,
+        String,
+        String,
+        String,
+        bool,
+        bool,
+        i16,
+        i16,
+        bool,
+    ) = sqlx::query_as(
+        "SELECT name, logo_id, whatsapp, instagram, contact_email, mp_user_id IS NOT NULL,
+                pay_transfer AND transfer_alias <> '', installments, transfer_discount,
+                pay_coordinate
+         FROM tenants WHERE id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await?;
     Ok(domain::StoreInfo {
         name,
         logo_url: logo.map(domain::avatar_url).unwrap_or_default(),
         whatsapp,
         instagram,
         email,
+        offers: domain::PriceOffers {
+            installments: if mp {
+                installments.clamp(0, 255) as u8
+            } else {
+                0
+            },
+            transfer_discount: if transfer {
+                discount.clamp(0, 255) as u8
+            } else {
+                0
+            },
+            coordinate,
+        },
     })
 }
 
