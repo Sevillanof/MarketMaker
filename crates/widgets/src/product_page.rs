@@ -303,7 +303,7 @@ pub fn ProductPriceWidget(
         .then(|| offers.transfer_cents(cents))
         .flatten();
     let head = view! {
-        <div class="flex flex-wrap items-center gap-2 text-xl">
+        <div class="flex flex-wrap items-center gap-2 text-xl leading-tight">
             <span class="mk-pricetag"><PriceWas cents was/></span>
             {off.map(|n| view! { <span class="badge badge-error">{format!("-{n}%")}</span> })}
         </div>
@@ -311,7 +311,7 @@ pub fn ProductPriceWidget(
     let body = match props.variant.as_str() {
         "b" => per
             .map(|c| view! {
-                <p class="mk-pcuotas flex items-center gap-2 text-sm">{card_icon()}<span>"Desde "<b>{format_price(c)}</b>{format!(" por mes, en {n} cuotas sin interés")}</span></p>
+                <p class="mk-pcuotas flex items-center gap-2 text-sm">{card_icon()}<span><b>{format!("{n} cuotas sin interés")}</b>{format!(" de {}", format_price(c))}</span></p>
             })
             .into_any(),
         "c" => view! {
@@ -343,7 +343,7 @@ pub fn ProductPriceWidget(
         _ => ().into_any(),
     };
     view! {
-        <div class="mk-pprice flex h-full flex-col items-start gap-1.5 overflow-hidden">
+        <div class="mk-pprice flex h-full flex-col items-start gap-1 overflow-hidden">
             {head}
             {body}
         </div>

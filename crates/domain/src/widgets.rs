@@ -1107,7 +1107,7 @@ impl Widget {
             Widget::Social(_) => limits(12, 48, 4, 40, 48, 12),
             Widget::ProductImage(_) => limits(8, 48, 12, 120, 24, 52),
             Widget::ProductName(_) => limits(8, 48, 5, 24, 24, 9),
-            Widget::ProductPrice(_) => limits(6, 48, 4, 32, 24, 8),
+            Widget::ProductPrice(_) => limits(6, 48, 4, 32, 24, 9),
             Widget::ProductDescription(_) => limits(8, 48, 6, 96, 24, 28),
             Widget::ProductButton(_) => limits(8, 48, 6, 12, 24, 7),
         }

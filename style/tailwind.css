@@ -1741,3 +1741,83 @@ dialog.mk-sheet::backdrop {
 @media (prefers-reduced-motion: no-preference) {
   dialog.mk-sheet[open] { animation: mk-acct-in 0.2s ease-out; }
 }
+
+/* Formas de abrir la ficha (ver `widgets::ProductDialog`): ventana al
+   centro (la de siempre), cajón a la derecha, hoja desde abajo o automático
+   (cajón en compu, hoja en celular). En el cajón los bloques se apilan, como
+   en el celular, porque no entra el diseño a dos columnas. */
+dialog.mk-open-drawer { place-items: stretch end; }
+dialog.mk-open-sheet { place-items: end center; }
+@media (min-width: 768px) { dialog.mk-open-auto { place-items: stretch end; } }
+@media (max-width: 767px) { dialog.mk-open-auto { place-items: end center; } }
+dialog.mk-open-drawer .mk-dialog-box {
+  width: min(520px, 100%); max-width: none; height: 100dvh; max-height: none;
+  border-radius: 0; translate: 0 0;
+}
+dialog.mk-open-sheet .mk-dialog-box {
+  width: min(832px, 100%); max-width: none; max-height: 90dvh;
+  border-radius: var(--radius-box) var(--radius-box) 0 0;
+}
+@media (min-width: 768px) {
+  dialog.mk-open-auto .mk-dialog-box {
+    width: min(520px, 100%); max-width: none; height: 100dvh; max-height: none; border-radius: 0;
+  }
+}
+@media (max-width: 767px) {
+  dialog.mk-open-auto .mk-dialog-box,
+  dialog.mk-open-drawer .mk-dialog-box {
+    width: 100%; max-width: none; height: auto; max-height: 90dvh;
+    border-radius: var(--radius-box) var(--radius-box) 0 0;
+  }
+  dialog.mk-open-drawer { place-items: end center; }
+}
+dialog.mk-open-drawer .mk-grid,
+dialog.mk-open-auto .mk-grid { display: flex; flex-direction: column; }
+dialog.mk-open-drawer .mk-node,
+dialog.mk-open-auto .mk-node { height: calc(var(--h) * 8px - 16px); flex: none; }
+/* La hoja lleva su manija arriba. */
+dialog.mk-open-sheet .mk-dialog-box::before {
+  content: ""; position: absolute; top: 0.6rem; left: 50%; translate: -50% 0;
+  width: 2.5rem; height: 0.3rem; border-radius: 999px; background: var(--color-base-300);
+}
+@media (max-width: 767px) {
+  dialog.mk-open-auto .mk-dialog-box::before {
+    content: ""; position: absolute; top: 0.6rem; left: 50%; translate: -50% 0;
+    width: 2.5rem; height: 0.3rem; border-radius: 999px; background: var(--color-base-300);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.mk-open-drawer[open] .mk-dialog-box { animation: mk-drawer-in 0.22s ease-out; }
+  dialog.mk-open-sheet[open] .mk-dialog-box { animation: mk-sheet-in 0.22s ease-out; }
+  @media (min-width: 768px) { dialog.mk-open-auto[open] .mk-dialog-box { animation: mk-drawer-in 0.22s ease-out; } }
+  @media (max-width: 767px) { dialog.mk-open-auto[open] .mk-dialog-box { animation: mk-sheet-in 0.22s ease-out; } }
+}
+@keyframes mk-drawer-in { from { transform: translateX(40px); opacity: 0; } }
+@keyframes mk-sheet-in { from { transform: translateY(40px); opacity: 0; } }
+
+/* Barra de compra de la ficha: aparece al bajar, cuando el botón quedó
+   arriba. En el celular no hace falta: ahí el botón ya queda pegado abajo. */
+.mk-buybar {
+  position: sticky; bottom: 0; z-index: 20;
+  display: flex; align-items: center; gap: 0.75rem;
+  margin-top: 1rem; padding: 0.5rem;
+  border-radius: calc(var(--radius-box) * 1.5);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+}
+.mk-buybar-img { width: 2.75rem; height: 2.75rem; flex: none; overflow: hidden; border-radius: var(--radius-field); }
+.mk-buybar-light { background: var(--color-base-100); color: var(--color-base-content); border: 1px solid var(--color-base-300); }
+.mk-buybar-light .mk-buybar-btn { --btn-color: var(--color-primary); --btn-fg: var(--color-primary-content); }
+.mk-buybar-dark { background: #18181b; color: #fff; }
+.mk-buybar-dark .mk-buybar-btn { --btn-color: #fff; --btn-fg: #18181b; }
+.mk-buybar-color {
+  bottom: -1rem; margin: 1rem -1rem -1rem; padding: 0.6rem 1rem;
+  border-radius: 0; background: var(--color-primary); color: var(--color-primary-content);
+  box-shadow: 0 -4px 18px rgb(0 0 0 / 0.1);
+}
+.mk-buybar-color .mk-buybar-btn { --btn-color: var(--color-primary-content); --btn-fg: var(--color-primary); }
+@media (prefers-reduced-motion: no-preference) {
+  .mk-buybar { animation: mk-sheet-in 0.2s ease-out; }
+}
+@media (max-width: 767px) {
+  .mk-buybar { display: none; }
+}
