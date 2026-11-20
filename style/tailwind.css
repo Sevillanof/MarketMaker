@@ -305,6 +305,31 @@
   .mk-node:has(.mk-text, .mk-benefits) {
     height: auto;
   }
+  /* Lo mismo con los bloques que en el celular se apilan o bajan de
+     renglón: con el alto de escritorio se cortaban (pasos, cifras, logos,
+     listas de etiquetas y categorías, el anuncio y la franja de redes). */
+  .mk-node:has(.mk-ann, .mk-tagrow, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social) {
+    height: auto;
+  }
+  .mk-ann {
+    min-height: 2rem;
+    padding-block: 0.375rem;
+  }
+  /* Texto corrido: el enlace sigue a la última palabra, no salta solo a
+     otro renglón (el espacio antes del «·» no se corta). */
+  .mk-ann-msg {
+    display: block;
+    white-space: normal;
+    text-align: center;
+  }
+  .mk-ann-text {
+    overflow: visible;
+    white-space: normal;
+  }
+  .mk-logos > div {
+    flex-wrap: wrap;
+    row-gap: 1rem;
+  }
   .mk-text .mk-title,
   .mk-footer .mk-brand {
     white-space: normal;
@@ -922,8 +947,11 @@ dialog.mk-cart::backdrop {
 /* Opiniones */
 .mk-d5 .mk-testi .mk-item { border: 0; border-left: 3px solid var(--mk-c); }
 
-/* Filtro por etiquetas */
+/* Filtro por etiquetas. `relative`: la cantidad en palabras para el lector
+   de pantalla (`.sr-only`, absoluta) queda dentro de la pastilla; si no, se
+   escapa de la fila con scroll y ensancha la página en el celular. */
 .mk-chip {
+  position: relative;
   display: inline-flex; align-items: center; gap: 0.4rem; flex-shrink: 0; white-space: nowrap;
   border-radius: 999px; padding: 0.4rem 0.95rem; font-size: 0.9em; cursor: pointer;
   border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
@@ -931,7 +959,8 @@ dialog.mk-cart::backdrop {
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 .mk-chip:hover { border-color: var(--mk-c); }
-.mk-chip:focus-visible { outline: 2px solid var(--mk-c); outline-offset: 2px; }
+/* Hacia adentro: la fila con scroll recorta lo que sale de la pastilla. */
+.mk-chip:focus-visible { outline: 2px solid var(--mk-c); outline-offset: -2px; }
 .mk-chip[aria-pressed="true"] { background: var(--mk-c); border-color: var(--mk-c); color: var(--mk-cc); }
 .mk-chip .mk-chip-n { opacity: 0.65; font-size: 0.85em; }
 .mk-d2 .mk-chip { border: 1.5px solid var(--mk-line); }

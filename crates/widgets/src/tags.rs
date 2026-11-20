@@ -249,7 +249,7 @@ fn TagRow(props: TagFilterProps, products: Vec<Product>, editing: bool) -> impl 
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-title text-lg font-bold truncate">{props.title.clone()}</h2>
             })}
-            <div class="flex gap-2 overflow-x-auto py-1" role="group" aria-label=group_label(&props.title)>
+            <div class="flex gap-2 relative overflow-x-auto py-1" role="group" aria-label=group_label(&props.title)>
                 {chip(all, None, products.len())}
                 {tags.into_iter().map(|t| {
                     let n = count(&t);
@@ -370,7 +370,7 @@ fn TagPhotos(props: TagFilterProps, products: Vec<Product>, editing: bool) -> im
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-title text-lg font-bold truncate">{props.title.clone()}</h2>
             })}
-            <div class="mk-circles-row flex gap-4 overflow-x-auto py-1" role="group" aria-label=group_label(&props.title)>
+            <div class="mk-circles-row flex gap-4 relative overflow-x-auto py-1" role="group" aria-label=group_label(&props.title)>
                 {all}
                 {items}
             </div>
@@ -433,7 +433,7 @@ fn TagSearch(
                     }}
                 </button>
             })}
-            <div class="flex min-w-0 gap-2 overflow-x-auto py-1">
+            <div class="flex min-w-0 gap-2 relative overflow-x-auto py-1">
                 {move || chosen().into_iter().map(|t| {
                     let t2 = t.clone();
                     view! {
@@ -503,7 +503,7 @@ fn TagTabs(props: domain::TagTabsProps, products: Vec<Product>, editing: bool) -
                 {(!props.title.is_empty()).then(|| view! {
                     <h2 class="mk-title shrink-0 pb-2 text-xl font-bold">{props.title.clone()}</h2>
                 })}
-                <div class="flex min-w-0 grow gap-6 overflow-x-auto" role="group" aria-label="Ver por etiqueta">
+                <div class="flex min-w-0 grow gap-6 relative overflow-x-auto" role="group" aria-label="Ver por etiqueta">
                     {all}
                     {tabs}
                 </div>

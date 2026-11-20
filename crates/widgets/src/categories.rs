@@ -109,7 +109,7 @@ fn CategoryTabs(
             })}
             <div class="flex items-center gap-2 py-1" role="group" aria-label=group_label_cat(&props.title)>
                 {chip(label_or(&props.all_label, "Todas"), String::new(), products.len())}
-                <div class="mk-scrollrow flex min-w-0 grow gap-2 overflow-x-auto py-1">
+                <div class="mk-scrollrow flex min-w-0 grow gap-2 relative overflow-x-auto py-1">
                     {cats.into_iter().map(|c| { let n = c.products; chip(c.name.clone(), c.name, n) }).collect_view()}
                 </div>
             </div>
@@ -200,7 +200,10 @@ fn CategoryCards(
                     class:invisible=move || !any() && !editing
                     on:click=move |_| { if let Some(f) = filter { f.pick_category("", ""); } }>{all}</button>
             </div>
-            <div class="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto @lg:grid-cols-3 @3xl:grid-cols-4" role="group" aria-label="Ver productos por categoría">
+            // Filas del alto de las tarjetas (`auto-rows-max`): con filas automáticas
+            // en un alto fijo, la grilla las achicaba y las fotos se encimaban.
+            // Lo que no entra se ve bajando dentro del bloque.
+            <div class="grid min-h-0 flex-1 auto-rows-max content-start grid-cols-2 gap-3 overflow-y-auto @lg:grid-cols-3 @3xl:grid-cols-4" role="group" aria-label="Ver productos por categoría">
                 {cats.into_iter().map(|c| {
                     let src = photo(&products, &c.name, "");
                     let (pressed, click) = (c.name.clone(), c.name.clone());
@@ -434,7 +437,7 @@ fn CategoryPage(
             <nav aria-label="Dónde estás" class="flex flex-wrap items-center gap-x-2 text-sm opacity-80">{crumbs}</nav>
             <h2 class="mk-title text-xl font-bold truncate" aria-live="polite">{heading}</h2>
             <div class="flex items-start gap-4 py-1" role="group" aria-label="Ver productos por categoría">
-                {move || { let (first, rest) = items(); view! { {first} <div class="mk-scrollrow flex min-w-0 grow gap-4 overflow-x-auto py-1">{rest}</div> } }}
+                {move || { let (first, rest) = items(); view! { {first} <div class="mk-scrollrow flex min-w-0 grow gap-4 relative overflow-x-auto py-1">{rest}</div> } }}
             </div>
         </div>
     }
