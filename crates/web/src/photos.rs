@@ -214,6 +214,7 @@ fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
             }
         });
     });
+    let chosen = move || -> Vec<String> { selected.get().into_iter().collect() };
     view! {
         <div class="card bg-base-100 shadow-sm" class:hidden=move || !list.with(Vec::is_empty)>
             <div class="card-body">
@@ -256,8 +257,12 @@ fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
                         }
                     }/>
             </ul>
-            {move || selected.get().and_then(|id| list.with(|l| l.iter().find(|(p, _, _)| p.item.id == id).map(|(p, n, _)| (p.clone(), *n))))
-                .map(|(photo, name)| view! { <PhotoDetail photo name removed shared selected/> })}
+            // El panel se arma con la foto elegida y se rehace cada vez que cambia.
+            <For each=chosen key=|id| id.clone()
+                children=move |id| {
+                    list.with_untracked(|l| l.iter().find(|(p, _, _)| p.item.id == id).map(|(p, n, _)| (p.clone(), *n)))
+                        .map(|(photo, name)| view! { <PhotoDetail photo name removed shared selected/> })
+                }/>
         </div>
     }
 }

@@ -903,16 +903,67 @@ pub fn UploadTray() -> impl IntoView {
         queue.with(|q| q.iter().any(|e| matches!(e.state, UploadState::Failed(_))))
             && queue.with(|q| q.iter().all(|e| !e.state.is_active()))
     };
+    // La lista de fotos se muestra con la flecha; si alguna falló, se abre sola
+    // para que se vea cuál.
+    let open = RwSignal::new(false);
+    Effect::new(move |_| {
+        if has_failed() {
+            open.set(true);
+        }
+    });
+    Effect::new(move |_| {
+        if !any() {
+            open.set(false);
+        }
+    });
+    let active = move || queue.with(|q| q.iter().any(|e| e.state.is_active()));
+    // Avance de todas juntas, de 0 a 100.
+    let percent = move || {
+        queue.with(|q| {
+            if q.is_empty() {
+                return 0u32;
+            }
+            let sum: u32 = q
+                .iter()
+                .map(|e| match &e.state {
+                    UploadState::Waiting => 0,
+                    UploadState::Preparing => 3,
+                    UploadState::Sending(p) => (*p).min(97),
+                    _ => 100,
+                })
+                .sum();
+            sum / q.len() as u32
+        })
+    };
     view! {
-        <div class="pointer-events-none fixed inset-x-4 bottom-20 z-50 flex justify-end sm:bottom-5 sm:right-5 sm:left-auto" class:hidden=move || !any()>
-            <section class="pointer-events-auto w-full max-w-72 rounded-box bg-base-100 p-3 shadow-xl ring-1 ring-base-300"
-                aria-label="Subida de fotos" role="status" aria-live="polite">
-                <div class="mb-1 flex items-center justify-between gap-2">
-                    <h2 class="text-sm font-semibold">{summary}</h2>
-                    <button type="button" class="btn btn-ghost btn-xs" class:hidden=move || !has_failed()
-                        on:click=move |_| queue.set(Vec::new())>"Cerrar"</button>
+        <div class="mk-upload-dock pointer-events-none" class:hidden=move || !any()>
+            <section class="pointer-events-auto w-full max-w-[40rem] rounded-box bg-base-100 px-4 py-2.5 shadow-xl ring-1 ring-base-300"
+                aria-label="Subida de fotos">
+                <div class="flex items-center gap-3">
+                    <p class="shrink-0 text-sm font-semibold" role="status">{summary}</p>
+                    <progress class="progress progress-primary min-w-0 flex-1" value=move || percent().to_string() max="100"
+                        aria-label="Avance de la subida" class:hidden=move || !active()></progress>
+                    <span class="w-10 shrink-0 text-right text-xs text-base-content/70 tabular-nums" class:hidden=move || !active()>
+                        {move || format!("{} %", percent())}
+                    </span>
+                    <span class="flex-1" class:hidden=move || active()></span>
+                    <button type="button" class="btn btn-ghost btn-sm btn-square" aria-controls="mk-upload-list"
+                        aria-expanded=move || open.get().to_string()
+                        aria-label=move || if open.get() { "Ocultar la lista de fotos" } else { "Ver la lista de fotos" }
+                        on:click=move |_| open.update(|o| *o = !*o)>
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            class="size-4 transition-transform motion-reduce:transition-none" class=("rotate-180", move || open.get()) aria-hidden="true">
+                            <path d="M5 12l5-5 5 5"/>
+                        </svg>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar"
+                        on:click=move |_| queue.set(Vec::new())>
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="size-4" aria-hidden="true">
+                            <path d="M5 5l10 10M15 5L5 15"/>
+                        </svg>
+                    </button>
                 </div>
-                <ul class="flex max-h-60 flex-col gap-1 overflow-y-auto">
+                <ul id="mk-upload-list" class="mt-2 flex max-h-60 flex-col gap-1 overflow-y-auto" class:hidden=move || !open.get()>
                     <For each=keys key=|k| *k children=move |key| view! { <UploadRow queue key/> }/>
                 </ul>
             </section>
