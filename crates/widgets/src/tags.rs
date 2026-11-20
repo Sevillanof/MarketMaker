@@ -28,6 +28,9 @@ pub struct ProductFilter {
     pub page: RwSignal<usize>,
     /// La página va en la dirección (en la tienda, no en el editor).
     pub url: bool,
+    /// Ya hay una cuadrícula que usa `page`: las demás de la página llevan
+    /// su propia página (si no, pasaban todas juntas).
+    pub page_taken: StoredValue<bool>,
 }
 
 impl ProductFilter {
@@ -39,6 +42,7 @@ impl ProductFilter {
             sub: RwSignal::new(String::new()),
             page: RwSignal::new(0),
             url: false,
+            page_taken: StoredValue::new(false),
         }
     }
 
@@ -173,7 +177,15 @@ pub fn FilteredProducts(
                 .collect::<Vec<_>>()
         })
     });
-    let page = filter.map_or_else(|| RwSignal::new(0), |f| f.page);
+    // La primera cuadrícula con páginas usa la del filtro (la de `?pagina=`);
+    // las demás, una propia que no va en la dirección.
+    let (page, url) = match filter {
+        Some(f) if paged && !f.page_taken.get_value() => {
+            f.page_taken.set_value(true);
+            (f.page, f.url)
+        }
+        _ => (RwSignal::new(0), false),
+    };
     let pages = move || {
         if paged {
             domain::page_count(matching.with(Vec::len), limit)
@@ -212,7 +224,6 @@ pub fn FilteredProducts(
         })
     };
     let grid = NodeRef::<leptos::html::Div>::new();
-    let url = filter.is_some_and(|f| f.url);
     let go = move |n: usize| {
         page.set(n);
         if url {
