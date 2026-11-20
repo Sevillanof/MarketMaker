@@ -7,7 +7,79 @@ use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
-/// Estado compartido por todos los selectores de imagen del editor.
+/// Cuántas fotos se suben a la vez.
+const CONCURRENCY: usize = 2;
+
+/// En qué paso va una foto de la bandeja.
+#[derive(Clone, PartialEq)]
+pub enum UploadState {
+    Waiting,
+    /// Calculando la huella y achicando en el dispositivo.
+    Preparing,
+    /// Mandando la foto: porcentaje enviado.
+    Sending(u32),
+    /// El servidor la está convirtiendo.
+    Optimizing,
+    Done(MediaItem),
+    /// Ya estaba en Mis fotos.
+    Duplicate(MediaItem),
+    Failed(String),
+}
+
+impl UploadState {
+    fn is_active(&self) -> bool {
+        matches!(
+            self,
+            Self::Waiting | Self::Preparing | Self::Sending(_) | Self::Optimizing
+        )
+    }
+}
+
+/// Una fila de la bandeja de subidas.
+#[derive(Clone, PartialEq)]
+pub struct Upload {
+    pub key: u32,
+    pub name: String,
+    /// Miniatura local (la foto elegida) mientras sube.
+    pub preview: Option<String>,
+    pub state: UploadState,
+}
+
+/// Lo que comparten todas las pantallas: la lista de fotos y la bandeja.
+#[derive(Clone, Copy)]
+struct Shared {
+    items: RwSignal<Option<Vec<MediaItem>>>,
+    load_error: RwSignal<Option<String>>,
+    loading: StoredValue<bool>,
+    queue: RwSignal<Vec<Upload>>,
+    next_key: StoredValue<u32>,
+    /// Una foto está volando de la bandeja a Mis fotos.
+    flying: StoredValue<bool>,
+}
+
+impl Shared {
+    fn new() -> Self {
+        Self {
+            items: RwSignal::new(None),
+            load_error: RwSignal::new(None),
+            loading: StoredValue::new(false),
+            queue: RwSignal::new(Vec::new()),
+            next_key: StoredValue::new(0),
+            flying: StoredValue::new(false),
+        }
+    }
+}
+
+/// Crea el estado compartido de fotos para toda la app. Se llama una vez,
+/// arriba de todo: así Mis fotos, productos y el editor ven la misma lista.
+pub fn provide_photos() {
+    if use_context::<Shared>().is_none() {
+        provide_context(Shared::new());
+    }
+}
+
+/// Estado de los selectores de imagen. La lista y la bandeja son una sola
+/// para toda la app; los avisos de la última subida son de cada pantalla.
 #[derive(Clone, Copy)]
 pub struct MyPhotos {
     /// `None` hasta la primera carga.
@@ -20,44 +92,46 @@ pub struct MyPhotos {
     pub upload_errors: RwSignal<Vec<String>>,
     /// Cuánto se achicó cada foto de la última subida.
     pub saved: RwSignal<Vec<String>>,
-    loading: StoredValue<bool>,
+    shared: Shared,
 }
 
 impl MyPhotos {
     pub fn new() -> Self {
+        let shared = use_context::<Shared>().unwrap_or_else(Shared::new);
         Self {
-            items: RwSignal::new(None),
-            load_error: RwSignal::new(None),
+            items: shared.items,
+            load_error: shared.load_error,
             progress: RwSignal::new(None),
             upload_errors: RwSignal::new(Vec::new()),
             saved: RwSignal::new(Vec::new()),
-            loading: StoredValue::new(false),
+            shared,
         }
     }
 
     /// Trae la lista la primera vez que se abre un selector.
     pub fn ensure_loaded(self) {
-        if self.items.get_untracked().is_some() || self.loading.get_value() {
+        let sh = self.shared;
+        if sh.items.get_untracked().is_some() || sh.loading.get_value() {
             return;
         }
-        self.loading.set_value(true);
+        sh.loading.set_value(true);
         leptos::task::spawn_local(async move {
             match request("GET", "/api/media", None).await {
                 Ok(text) => match serde_json::from_str::<Vec<MediaItem>>(&text) {
                     Ok(list) => {
-                        self.items.set(Some(list));
-                        self.load_error.set(None);
+                        sh.items.set(Some(list));
+                        sh.load_error.set(None);
                     }
-                    Err(_) => self.load_error.set(Some(GENERIC.into())),
+                    Err(_) => sh.load_error.set(Some(GENERIC.into())),
                 },
-                Err(msg) => self.load_error.set(Some(msg)),
+                Err(msg) => sh.load_error.set(Some(msg)),
             }
-            self.loading.set_value(false);
+            sh.loading.set_value(false);
         });
     }
 
-    /// Sube las fotos de a una. Si subió una sola sin problemas, la pasa a
-    /// `done` para ponerla en el bloque.
+    /// Sube las fotos (de a dos por vez). Si subió una sola sin problemas, la
+    /// pasa a `done` para ponerla en el bloque.
     pub fn upload(self, files: Vec<web_sys::File>, done: Callback<MediaItem>) {
         self.upload_with(files.into_iter().map(Source::File).collect(), done, None);
     }
@@ -96,6 +170,14 @@ impl MyPhotos {
         );
     }
 
+    fn set_state(self, key: u32, state: UploadState) {
+        self.shared.queue.update(|q| {
+            if let Some(e) = q.iter_mut().find(|e| e.key == key) {
+                e.state = state;
+            }
+        });
+    }
+
     fn upload_with(
         self,
         files: Vec<Source>,
@@ -105,62 +187,266 @@ impl MyPhotos {
         if files.is_empty() || self.progress.get_untracked().is_some() {
             return;
         }
+        let sh = self.shared;
         self.upload_errors.set(Vec::new());
         self.saved.set(Vec::new());
         let total = files.len();
-        leptos::task::spawn_local(async move {
-            let mut uploaded = Vec::new();
-            for (i, file) in files.into_iter().enumerate() {
-                let verb = match &file {
-                    Source::File(_) => "Subiendo",
-                    Source::Link(_) => "Trayendo",
-                };
-                self.progress.set(Some(if total == 1 {
-                    format!("{verb} y optimizando la foto…")
-                } else {
-                    format!("{verb} y optimizando {} de {total}…", i + 1)
-                }));
-                let (name, result) = match &file {
-                    Source::File(f) => (f.name(), upload_one(f).await),
-                    Source::Link(l) => (short_link(l), link_one(l).await),
-                };
-                match result {
-                    Ok(item) => {
-                        // Solo se avisa lo que cambia algo para la dueña: que la
-                        // foto ya estaba. Cuánto se achicó es un dato técnico.
-                        let text = item.duplicate.then(|| {
-                            format!(
-                                "{name}: ya estaba en Mis fotos como «{}», usamos esa.",
-                                item.name
-                            )
-                        });
-                        if let Some(text) = text {
-                            self.saved.update(|s| s.push(text));
-                        }
-                        let item = MediaItem {
-                            duplicate: false,
-                            ..item
-                        };
-                        self.items.update(|l| {
-                            let l = l.get_or_insert_with(Vec::new);
-                            l.retain(|p| p.id != item.id);
-                            l.insert(0, item.clone());
-                        });
-                        if let Some(each) = each {
-                            each.run(item.clone());
-                        }
-                        uploaded.push(item);
+        self.progress.set(Some(if total == 1 {
+            "Subiendo y optimizando la foto…".into()
+        } else {
+            format!("Subiendo y optimizando {total} fotos…")
+        }));
+        // Una fila por foto, ya con su miniatura.
+        let mut jobs = std::collections::VecDeque::new();
+        for src in files {
+            let key = sh.next_key.get_value();
+            sh.next_key.set_value(key + 1);
+            let (name, preview) = match &src {
+                Source::File(f) => (
+                    f.name(),
+                    web_sys::Url::create_object_url_with_blob(f).ok(),
+                ),
+                Source::Link(l) => (short_link(l), None),
+            };
+            sh.queue.update(|q| {
+                q.push(Upload {
+                    key,
+                    name,
+                    preview,
+                    state: UploadState::Waiting,
+                })
+            });
+            jobs.push_back((key, src));
+        }
+        let jobs = std::rc::Rc::new(std::cell::RefCell::new(jobs));
+        let uploaded = std::rc::Rc::new(std::cell::RefCell::new(Vec::<MediaItem>::new()));
+        let remaining = std::rc::Rc::new(std::cell::Cell::new(total));
+        for _ in 0..CONCURRENCY.min(total) {
+            let (jobs, uploaded, remaining) = (jobs.clone(), uploaded.clone(), remaining.clone());
+            leptos::task::spawn_local(async move {
+                loop {
+                    let Some((key, src)) = jobs.borrow_mut().pop_front() else {
+                        break;
+                    };
+                    if let Some(item) = self.run_one(key, src, each).await {
+                        uploaded.borrow_mut().push(item);
                     }
-                    Err(msg) => self
-                        .upload_errors
-                        .update(|e| e.push(format!("{name}: {msg}"))),
+                    remaining.set(remaining.get() - 1);
+                    if remaining.get() == 0 {
+                        self.progress.set(None);
+                        let mut up = uploaded.borrow_mut();
+                        if total == 1 && up.len() == 1 {
+                            done.run(up.remove(0));
+                        }
+                    }
                 }
+            });
+        }
+    }
+
+    /// Sube una foto y actualiza su fila. Devuelve la foto si salió bien.
+    async fn run_one(
+        self,
+        key: u32,
+        src: Source,
+        each: Option<Callback<MediaItem>>,
+    ) -> Option<MediaItem> {
+        let sh = self.shared;
+        let name = sh
+            .queue
+            .with_untracked(|q| q.iter().find(|e| e.key == key).map(|e| e.name.clone()))
+            .unwrap_or_default();
+        let result = match &src {
+            Source::File(f) => {
+                self.set_state(key, UploadState::Preparing);
+                upload_one(f, move |p| {
+                    self.set_state(
+                        key,
+                        if p >= 100 {
+                            UploadState::Optimizing
+                        } else {
+                            UploadState::Sending(p)
+                        },
+                    )
+                })
+                .await
             }
-            self.progress.set(None);
-            if total == 1 && uploaded.len() == 1 {
-                done.run(uploaded.remove(0));
+            Source::Link(l) => {
+                self.set_state(key, UploadState::Optimizing);
+                link_one(l).await
+            }
+        };
+        match result {
+            Ok(item) if item.duplicate => {
+                self.saved.update(|s| {
+                    s.push(format!(
+                        "{name}: ya estaba en Mis fotos como «{}», usamos esa.",
+                        item.name
+                    ))
+                });
+                let item = MediaItem {
+                    duplicate: false,
+                    ..item
+                };
+                self.set_state(key, UploadState::Duplicate(item.clone()));
+                self.add_item(&item);
+                if let Some(each) = each {
+                    each.run(item.clone());
+                }
+                Some(item)
+            }
+            Ok(item) => {
+                if let Some(text) = domain::savings_text(&item) {
+                    self.saved.update(|s| s.push(text));
+                }
+                self.land(key, &item).await;
+                if let Some(each) = each {
+                    each.run(item.clone());
+                }
+                Some(item)
+            }
+            Err(msg) => {
+                self.upload_errors
+                    .update(|e| e.push(format!("{name}: {msg}")));
+                self.set_state(key, UploadState::Failed(msg));
+                None
+            }
+        }
+    }
+
+    /// Anota la foto en la lista compartida (al principio).
+    fn add_item(self, item: &MediaItem) {
+        let sh = self.shared;
+        if sh.items.get_untracked().is_none() {
+            // Todavía no se bajó la lista: se baja entera, con esta incluida.
+            self.ensure_loaded();
+            return;
+        }
+        sh.items.update(|l| {
+            if let Some(l) = l {
+                l.retain(|p| p.id != item.id);
+                l.insert(0, item.clone());
             }
         });
+    }
+
+    /// La foto terminó: sale volando de la bandeja a su lugar en Mis fotos.
+    async fn land(self, key: u32, item: &MediaItem) {
+        let sh = self.shared;
+        // Que la foto ya esté bajada cuando llegue, para que no aparezca vacía.
+        if let Some(base) = domain::media_base(&item.url) {
+            preload(&format!("{base}/480.webp")).await;
+        }
+        // Una a la vez: una animación nueva cortaría a la anterior.
+        while sh.flying.get_value() {
+            sleep_ms(60).await;
+        }
+        sh.flying.set_value(true);
+        let doc = document();
+        let thumb = doc.get_element_by_id(&format!("upl-thumb-{key}"));
+        set_vt_name(thumb.as_ref(), Some(&format!("foto-{}", item.id)));
+        // Las primeras tarjetas de Mis fotos se corren para hacerle lugar.
+        let cards = name_cards(12);
+        let (this, item2) = (self, item.clone());
+        with_view_transition(move || {
+            set_vt_name(thumb.as_ref(), None);
+            this.add_item(&item2);
+            this.set_state(key, UploadState::Done(item2));
+        })
+        .await;
+        for c in cards {
+            set_vt_name(Some(&c), None);
+        }
+        // La miniatura local se libera un rato después, cuando ya no se ve.
+        if let Some(url) = sh
+            .queue
+            .with_untracked(|q| q.iter().find(|e| e.key == key).and_then(|e| e.preview.clone()))
+        {
+            set_timeout(
+                move || _ = web_sys::Url::revoke_object_url(&url),
+                std::time::Duration::from_secs(5),
+            );
+        }
+        sh.flying.set_value(false);
+    }
+}
+
+fn set_vt_name(el: Option<&web_sys::Element>, name: Option<&str>) {
+    if let Some(el) = el.and_then(|e| e.dyn_ref::<web_sys::HtmlElement>()) {
+        _ = el
+            .style()
+            .set_property("view-transition-name", name.unwrap_or("none"));
+    }
+}
+
+/// Les pone nombre a las primeras tarjetas de Mis fotos (`data-photo-card`)
+/// para que el navegador las anime al correrse. Devuelve las tarjetas.
+fn name_cards(max: u32) -> Vec<web_sys::Element> {
+    let mut out = Vec::new();
+    if let Ok(list) = document().query_selector_all("[data-photo-card]") {
+        for i in 0..list.length().min(max) {
+            if let Some(el) = list.get(i).and_then(|n| n.dyn_into::<web_sys::Element>().ok()) {
+                let id = el.get_attribute("data-photo-card").unwrap_or_default();
+                set_vt_name(Some(&el), Some(&format!("t-{id}")));
+                out.push(el);
+            }
+        }
+    }
+    out
+}
+
+async fn sleep_ms(ms: i32) {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        if let Some(w) = web_sys::window() {
+            _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);
+        }
+    });
+    _ = JsFuture::from(promise).await;
+}
+
+/// Baja la imagen para que esté lista antes de mostrarla.
+async fn preload(url: &str) {
+    if let Ok(img) = web_sys::HtmlImageElement::new() {
+        img.set_src(url);
+        _ = JsFuture::from(img.decode()).await;
+    }
+}
+
+/// Hace `update` dentro de una transición de vista del navegador (para que
+/// las fotos con el mismo `view-transition-name` viajen de un lugar al otro).
+/// Si el navegador no la tiene, o la persona pidió menos movimiento, hace el
+/// cambio directo.
+async fn with_view_transition(update: impl FnOnce() + 'static) {
+    let doc = document();
+    let reduce = web_sys::window()
+        .and_then(|w| w.match_media("(prefers-reduced-motion: reduce)").ok().flatten())
+        .is_some_and(|m| m.matches());
+    let start = js_sys::Reflect::get(&doc, &"startViewTransition".into())
+        .ok()
+        .filter(|f| f.is_function());
+    let Some(start) = start.filter(|_| !reduce) else {
+        update();
+        return;
+    };
+    let cb = wasm_bindgen::closure::Closure::once_into_js(move || -> wasm_bindgen::JsValue {
+        update();
+        // Mientras la transición espera, el navegador no dibuja cuadros (no
+        // corre `requestAnimationFrame`): se espera con un temporizador corto,
+        // lo justo para que Leptos termine de armar las tarjetas.
+        js_sys::Promise::new(&mut |resolve, _| {
+            if let Some(w) = web_sys::window() {
+                _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 40);
+            }
+        })
+        .into()
+    });
+    let Ok(vt) = start.unchecked_into::<js_sys::Function>().call1(&doc, &cb) else {
+        return;
+    };
+    if let Ok(fin) = js_sys::Reflect::get(&vt, &"finished".into()) {
+        if let Ok(p) = fin.dyn_into::<js_sys::Promise>() {
+            _ = JsFuture::from(p).await;
+        }
     }
 }
 
@@ -212,7 +498,10 @@ const SHRINK_FROM_BYTES: f64 = 800_000.0;
 /// Sube una foto. Antes de mandarla: se fija si ya está en Mis fotos (con una
 /// huella del archivo, sin subirlo) y, si es una foto grande, la achica a
 /// 1600 px en el propio dispositivo (pesa 5 a 10 veces menos).
-async fn upload_one(file: &web_sys::File) -> Result<MediaItem, String> {
+async fn upload_one(
+    file: &web_sys::File,
+    on_progress: impl Fn(u32) + 'static,
+) -> Result<MediaItem, String> {
     let hash = file_hash(file).await;
     if let Some(h) = &hash {
         if let Ok(text) = request("GET", &format!("/api/media/by-hash/{h}"), None).await {
@@ -222,6 +511,7 @@ async fn upload_one(file: &web_sys::File) -> Result<MediaItem, String> {
         }
     }
     let form = web_sys::FormData::new().map_err(|_| GENERIC.to_string())?;
+    on_progress(0);
     match shrink(file).await {
         Some(small) => {
             form.append_with_blob_and_filename("file", &small, &file.name())
@@ -237,8 +527,48 @@ async fn upload_one(file: &web_sys::File) -> Result<MediaItem, String> {
                 .map_err(|_| GENERIC.to_string())?;
         }
     }
-    let text = request("POST", "/api/media", Some(form.into())).await?;
+    let text = post_form("/api/media", &form, on_progress).await?;
     serde_json::from_str(&text).map_err(|_| GENERIC.to_string())
+}
+
+/// Manda un formulario con `XMLHttpRequest`, que a diferencia de `fetch` avisa
+/// cuánto va enviado (porcentaje).
+async fn post_form(
+    url: &str,
+    form: &web_sys::FormData,
+    on_progress: impl Fn(u32) + 'static,
+) -> Result<String, String> {
+    let xhr = web_sys::XmlHttpRequest::new().map_err(|_| GENERIC.to_string())?;
+    xhr.open("POST", url).map_err(|_| GENERIC.to_string())?;
+    let progress = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::ProgressEvent)>::new(
+        move |e: web_sys::ProgressEvent| {
+            if e.length_computable() && e.total() > 0.0 {
+                // El 100 % se avisa recién cuando responde el servidor.
+                on_progress(((e.loaded() / e.total()) * 100.0).min(99.0) as u32);
+            }
+        },
+    );
+    if let Ok(up) = xhr.upload() {
+        up.set_onprogress(Some(progress.as_ref().unchecked_ref()));
+    }
+    let finished = js_sys::Promise::new(&mut |resolve, _| {
+        let (r1, r2) = (resolve.clone(), resolve);
+        let load = wasm_bindgen::closure::Closure::once_into_js(move || {
+            _ = r1.call0(&wasm_bindgen::JsValue::NULL);
+        });
+        let fail = wasm_bindgen::closure::Closure::once_into_js(move || {
+            _ = r2.call0(&wasm_bindgen::JsValue::NULL);
+        });
+        xhr.set_onload(Some(load.unchecked_ref()));
+        xhr.set_onerror(Some(fail.unchecked_ref()));
+    });
+    xhr.send_with_opt_form_data(Some(form))
+        .map_err(|_| GENERIC.to_string())?;
+    _ = JsFuture::from(finished).await;
+    drop(progress);
+    let status = xhr.status().unwrap_or(0);
+    let text = xhr.response_text().ok().flatten().unwrap_or_default();
+    interpret(status, text)
 }
 
 /// Huella SHA-256 (en hexadecimal) del archivo, o `None` si el navegador no
@@ -366,9 +696,15 @@ async fn send(
             .unwrap_or_default(),
         Err(_) => String::new(),
     };
-    if res.ok() {
+    interpret(res.status(), text)
+}
+
+/// La respuesta del servidor: el cuerpo si salió bien; si no, su texto (ya en
+/// palabras simples) como mensaje.
+fn interpret(status: u16, text: String) -> Result<String, String> {
+    if (200..300).contains(&status) {
         Ok(text)
-    } else if res.status() == 413 {
+    } else if status == 413 {
         Err(
             "Esta foto pesa más de 10 MB, que es el máximo. Probá exportarla con menos calidad."
                 .into(),
@@ -482,5 +818,150 @@ pub fn LinkImport(
                 "La copiamos a Mis fotos y la optimizamos. Podés pegar varios enlaces juntos. Google Fotos, Instagram y Facebook no dejan: bajá la foto y subila."
             </p>
         </div>
+    }
+}
+
+/// La bandeja de subidas: aparece abajo a la derecha, en cualquier pantalla,
+/// mientras hay fotos subiéndose. Cuando una termina, su miniatura vuela hasta
+/// su lugar en Mis fotos (ver [`MyPhotos::land`]).
+#[leptos::component]
+pub fn UploadTray() -> impl IntoView {
+    let Some(shared) = use_context::<Shared>() else {
+        return ().into_any();
+    };
+    let queue = shared.queue;
+    let any = move || queue.with(|q| !q.is_empty());
+    let summary = move || {
+        queue.with(|q| {
+            let active = q.iter().filter(|e| e.state.is_active()).count();
+            let failed = q
+                .iter()
+                .filter(|e| matches!(e.state, UploadState::Failed(_)))
+                .count();
+            let new = q
+                .iter()
+                .filter(|e| matches!(e.state, UploadState::Done(_)))
+                .count();
+            if active > 0 {
+                format!("Subiendo {active} {}", if active == 1 { "foto" } else { "fotos" })
+            } else if failed > 0 {
+                format!(
+                    "{failed} {} no se pudo subir",
+                    if failed == 1 { "foto" } else { "fotos" }
+                )
+            } else if new > 0 {
+                format!(
+                    "Listo: {new} {} en Mis fotos",
+                    if new == 1 { "foto nueva" } else { "fotos nuevas" }
+                )
+            } else {
+                "Listo".to_string()
+            }
+        })
+    };
+    // Cuando todas terminaron sin problemas, la bandeja se cierra sola.
+    Effect::new(move |_| {
+        let (finished, failed, n) = queue.with(|q| {
+            (
+                !q.is_empty() && q.iter().all(|e| !e.state.is_active()),
+                q.iter().any(|e| matches!(e.state, UploadState::Failed(_))),
+                q.len(),
+            )
+        });
+        if finished && !failed {
+            set_timeout(
+                move || {
+                    let still = queue.with_untracked(|q| {
+                        q.len() == n && q.iter().all(|e| !e.state.is_active())
+                    });
+                    let failed = queue
+                        .with_untracked(|q| q.iter().any(|e| matches!(e.state, UploadState::Failed(_))));
+                    if still && !failed {
+                        queue.set(Vec::new());
+                    }
+                },
+                std::time::Duration::from_millis(2200),
+            );
+        }
+    });
+    let keys = move || -> Vec<u32> { queue.with(|q| q.iter().map(|u| u.key).collect()) };
+    let has_failed = move || {
+        queue.with(|q| q.iter().any(|e| matches!(e.state, UploadState::Failed(_))))
+            && queue.with(|q| q.iter().all(|e| !e.state.is_active()))
+    };
+    view! {
+        <div class="pointer-events-none fixed inset-x-4 bottom-20 z-50 flex justify-end sm:bottom-5 sm:right-5 sm:left-auto" class:hidden=move || !any()>
+            <section class="pointer-events-auto w-full max-w-72 rounded-box bg-base-100 p-3 shadow-xl ring-1 ring-base-300"
+                aria-label="Subida de fotos" role="status" aria-live="polite">
+                <div class="mb-1 flex items-center justify-between gap-2">
+                    <h2 class="text-sm font-semibold">{summary}</h2>
+                    <button type="button" class="btn btn-ghost btn-xs" class:hidden=move || !has_failed()
+                        on:click=move |_| queue.set(Vec::new())>"Cerrar"</button>
+                </div>
+                <ul class="flex max-h-60 flex-col gap-1 overflow-y-auto">
+                    <For each=keys key=|k| *k children=move |key| view! { <UploadRow queue key/> }/>
+                </ul>
+            </section>
+        </div>
+    }
+    .into_any()
+}
+
+#[leptos::component]
+fn UploadRow(queue: RwSignal<Vec<Upload>>, key: u32) -> impl IntoView {
+    let row = move || queue.with(|q| q.iter().find(|e| e.key == key).cloned());
+    let name = move || row().map(|r| r.name).unwrap_or_default();
+    let state = move || row().map(|r| r.state);
+    let preview = queue.with_untracked(|q| q.iter().find(|e| e.key == key).and_then(|e| e.preview.clone()));
+    let thumb = move || match state() {
+        Some(UploadState::Done(_)) => view! {
+            <svg viewBox="0 0 24 24" class="h-7 w-7 rounded-md bg-success/15 p-1 text-success" aria-hidden="true">
+                <path d="M6 12.5l3.6 3.6L18 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        }
+        .into_any(),
+        Some(UploadState::Duplicate(item)) => view! {
+            <img src=domain::media_base(&item.url).map(|b| format!("{b}/480.webp")).unwrap_or(item.url) alt="" class="h-7 w-7 rounded-md object-cover"/>
+        }
+        .into_any(),
+        _ => match preview.clone() {
+            Some(src) => view! { <img src=src alt="" class="h-7 w-7 rounded-md object-cover"/> }.into_any(),
+            None => view! { <span class="block h-7 w-7 rounded-md bg-base-300"></span> }.into_any(),
+        },
+    };
+    let status = move || match state() {
+        Some(UploadState::Waiting) | None => view! { <span class="text-xs text-base-content/60">"En espera"</span> }.into_any(),
+        Some(UploadState::Preparing) => view! {
+            <progress class="progress progress-primary w-full" aria-label=move || format!("Preparando {}", name())></progress>
+        }
+        .into_any(),
+        Some(UploadState::Sending(p)) => view! {
+            <progress class="progress progress-primary w-full" value=p.to_string() max="100"
+                aria-label=move || format!("Subiendo {}", name())></progress>
+        }
+        .into_any(),
+        Some(UploadState::Optimizing) => view! {
+            <progress class="progress progress-primary w-full" aria-label=move || format!("Optimizando {}", name())></progress>
+        }
+        .into_any(),
+        Some(UploadState::Done(item)) => {
+            let text = match (item.original_bytes, item.web_bytes) {
+                (o, w) if o > 0 && w > 0 && w < o => format!("Lista · {} % menos", (o - w) * 100 / o),
+                _ => "Lista".to_string(),
+            };
+            view! { <span class="text-xs text-success">{text}</span> }.into_any()
+        }
+        Some(UploadState::Duplicate(_)) => view! {
+            <span class="text-xs text-base-content/70">"Ya estaba en Mis fotos, usamos esa."</span>
+        }
+        .into_any(),
+        Some(UploadState::Failed(msg)) => view! { <span class="text-xs text-error">{msg}</span> }.into_any(),
+    };
+    view! {
+        <li class="grid grid-cols-[1.75rem_1fr] items-center gap-x-2.5 gap-y-0.5 py-0.5">
+            <span id=format!("upl-thumb-{key}") class="row-span-2 self-center">{thumb}</span>
+            <span class="truncate text-sm">{name}</span>
+            <span class="min-w-0">{status}</span>
+        </li>
     }
 }

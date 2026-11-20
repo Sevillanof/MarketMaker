@@ -15,7 +15,7 @@ mod inspector;
 mod look;
 mod palette;
 mod photos;
-pub use photos::{take_files, LinkImport, MyPhotos};
+pub use photos::{provide_photos, take_files, LinkImport, MyPhotos, UploadTray};
 
 /// Dirección del panel de la tienda en la plataforma. Si está en el contexto,
 /// la barra muestra a la izquierda un botón para volver ahí.

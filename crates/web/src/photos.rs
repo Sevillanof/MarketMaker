@@ -29,6 +29,18 @@ pub async fn my_photos() -> Result<Option<MyLibrary>, ServerFnError> {
     Ok(Some(MyLibrary { photos, quota }))
 }
 
+/// Cuánto usa de Mis fotos (se pide de nuevo al subir o borrar fotos).
+#[server]
+pub async fn photo_quota() -> Result<Option<domain::PhotoQuota>, ServerFnError> {
+    use crate::server::{internal, pool};
+    let Some(user) = crate::auth::current_user().await? else {
+        return Ok(None);
+    };
+    Ok(Some(
+        db::media::quota(&pool()?, user.id).await.map_err(internal)?,
+    ))
+}
+
 /// Cambia el nombre de una foto.
 #[server]
 pub async fn rename_photo(id: String, name: String) -> Result<(), ServerFnError> {
@@ -98,17 +110,8 @@ pub fn MyPhotosPage() -> impl IntoView {
         .read_untracked()
         .get("tienda")
         .unwrap_or_default();
-    let reload = RwSignal::new(0u32);
-    let photos = Resource::new(move || reload.get(), |_| my_photos());
+    let photos = Resource::new(|| (), |_| my_photos());
     let uploads = editor::MyPhotos::new();
-    // Al terminar de subir, se vuelve a pedir la lista (con dónde se usan).
-    Effect::new(move |prev: Option<bool>| {
-        let busy = uploads.progress.get().is_some();
-        if prev == Some(true) && !busy {
-            reload.update(|n| *n += 1);
-        }
-        busy
-    });
     view! {
         <leptos_meta::Title text="Mis fotos · MarketMaker"/>
         <crate::panel::StoreShell slug=store section=crate::panel::Section::Photos>
@@ -127,18 +130,6 @@ pub fn MyPhotosPage() -> impl IntoView {
                 <p class="text-base-content/80">
                     "Tus fotos sirven en todas tus tiendas. Tocá una para cambiarle el nombre o la descripción."
                 </p>
-                <div role="status" aria-live="polite" class="flex flex-col gap-1 text-sm">
-                    {move || uploads.progress.get()}
-                    {move || uploads.saved.get().into_iter().map(|t| view! { <span>{t}</span> }).collect_view()}
-                </div>
-                {move || {
-                    let errors = uploads.upload_errors.get();
-                    (!errors.is_empty()).then(|| view! {
-                        <ul role="alert" class="flex flex-col gap-0.5 text-sm text-error">
-                            {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
-                        </ul>
-                    })
-                }}
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Photos/> }>
                     {move || Suspend::new(async move {
                         match photos.await {
@@ -152,18 +143,9 @@ pub fn MyPhotosPage() -> impl IntoView {
                                 <div role="alert" class="alert alert-error">"No pudimos traer tus fotos. Recargá la página."</div>
                             }.into_any(),
                             Ok(Some(MyLibrary { photos, quota })) => {
-                                let empty = photos.is_empty();
                                 view! {
-                                    <QuotaBar quota/>
-                                    {if empty {
-                                        view! {
-                                            <div class="card bg-base-100 shadow-sm"><div class="card-body">
-                                                <p>"Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."</p>
-                                            </div></div>
-                                        }.into_any()
-                                    } else {
-                                        view! { <PhotoGrid photos reload/> }.into_any()
-                                    }}
+                                    <QuotaBar quota shared=uploads/>
+                                    <PhotoGrid initial=photos shared=uploads/>
                                 }.into_any()
                             }
                         }
@@ -176,52 +158,95 @@ pub fn MyPhotosPage() -> impl IntoView {
 
 /// Las fotos en una grilla compacta (foto, nombre y si se usa). Al tocar una,
 /// sus datos se editan en el panel de al lado (abajo, en el teléfono).
+/// Las fotos nuevas que llegan de la bandeja de subidas se suman al principio,
+/// con un `view-transition-name`: así su miniatura vuela desde la bandeja.
 #[component]
-fn PhotoGrid(photos: Vec<MyPhoto>, reload: RwSignal<u32>) -> impl IntoView {
-    // Cada foto con su nombre, que se ve en la grilla y se cambia en el panel.
-    let photos: Vec<(MyPhoto, RwSignal<String>)> = photos
-        .into_iter()
-        .map(|p| {
-            let name = RwSignal::new(p.item.name.clone());
-            (p, name)
-        })
-        .collect();
-    let all = StoredValue::new(photos.clone());
+fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
+    // Esta página ya trae la lista completa: la comparte con el resto de la app.
+    shared
+        .items
+        .set(Some(initial.iter().map(|p| p.item.clone()).collect()));
+    // Cada foto con su nombre (se ve en la grilla y se cambia en el panel) y si
+    // llegó recién subida.
+    let to_entry = |p: MyPhoto, fresh: bool| {
+        let name = RwSignal::new(p.item.name.clone());
+        (p, name, fresh)
+    };
+    let list = RwSignal::new(
+        initial
+            .into_iter()
+            .map(|p| to_entry(p, false))
+            .collect::<Vec<_>>(),
+    );
+    Effect::new(move |_| {
+        let Some(items) = shared.items.get() else {
+            return;
+        };
+        list.update(|l| {
+            let new: Vec<MediaItem> = items
+                .into_iter()
+                .filter(|i| !l.iter().any(|(p, _, _)| p.item.id == i.id))
+                .collect();
+            // `items` trae la más nueva primero.
+            for item in new.into_iter().rev() {
+                l.insert(0, to_entry(MyPhoto { item, used_in: Vec::new() }, true));
+            }
+        });
+    });
     let selected = RwSignal::new(None::<String>);
+    let removed = Callback::new(move |id: String| {
+        selected.set(None);
+        list.update(|l| l.retain(|(p, _, _)| p.item.id != id));
+        shared.items.update(|l| {
+            if let Some(l) = l {
+                l.retain(|p| p.id != id);
+            }
+        });
+    });
     view! {
-        <div class="grid items-start gap-5" class=("lg:grid-cols-[1fr_20rem]", move || selected.get().is_some())>
+        <div class="card bg-base-100 shadow-sm" class:hidden=move || !list.with(Vec::is_empty)>
+            <div class="card-body">
+                <p>"Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."</p>
+            </div>
+        </div>
+        <div class="grid items-start gap-5" class:hidden=move || list.with(Vec::is_empty)
+            class=("lg:grid-cols-[1fr_20rem]", move || selected.get().is_some())>
             <ul class="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4" aria-label="Tus fotos">
-                {photos.into_iter().map(|(p, name)| {
-                    let id = p.item.id.clone();
-                    let id2 = id.clone();
-                    let on = Memo::new(move |_| selected.get().as_deref() == Some(id.as_str()));
-                    let thumb = domain::media_base(&p.item.url)
-                        .map(|b| format!("{b}/480.webp"))
-                        .unwrap_or(p.item.url.clone());
-                    let svg = p.item.url.ends_with(".svg");
-                    let used = !p.used_in.is_empty();
-                    view! {
-                        <li>
-                            <button type="button" class="mk-photo-tile" aria-pressed=move || on.get().to_string()
-                                on:click=move |_| selected.set((!on.get_untracked()).then(|| id2.clone()))>
-                                <span class="mk-photo-tile-img">
-                                    // Un logo o una foto muy apaisada se ve entera, no recortada.
-                                    <img src=thumb alt="" loading="lazy" class=if svg { "object-contain p-3" } else { "object-cover" }
-                                        onload="if(this.naturalWidth>this.naturalHeight*1.6)this.className='object-contain p-2'"/>
-                                </span>
-                                <span class="block px-2.5 py-2">
-                                    <span class="block truncate text-sm font-semibold">{move || name.get()}</span>
-                                    <span class=if used { "block text-xs text-emerald-700" } else { "block text-xs text-base-content/60" }>
-                                        {if used { "En uso" } else { "Sin usar" }}
+                <For each=move || list.get() key=|(p, _, _)| p.item.id.clone()
+                    children=move |(p, name, fresh)| {
+                        let id = p.item.id.clone();
+                        let id2 = id.clone();
+                        let id3 = id.clone();
+                        let id4 = id.clone();
+                        let on = Memo::new(move |_| selected.get().as_deref() == Some(id.as_str()));
+                        let thumb = domain::media_base(&p.item.url)
+                            .map(|b| format!("{b}/480.webp"))
+                            .unwrap_or(p.item.url.clone());
+                        let svg = p.item.url.ends_with(".svg");
+                        let used = !p.used_in.is_empty();
+                        let fig_style = fresh.then(|| format!("view-transition-name: foto-{id3}"));
+                        view! {
+                            <li data-photo-card=id4>
+                                <button type="button" class="mk-photo-tile" aria-pressed=move || on.get().to_string()
+                                    on:click=move |_| selected.set((!on.get_untracked()).then(|| id2.clone()))>
+                                    <span class="mk-photo-tile-img" style=fig_style>
+                                        // Un logo o una foto muy apaisada se ve entera, no recortada.
+                                        <img src=thumb alt="" loading=if fresh { "eager" } else { "lazy" } class=if svg { "object-contain p-3" } else { "object-cover" }
+                                            onload="if(this.naturalWidth>this.naturalHeight*1.6)this.className='object-contain p-2'"/>
                                     </span>
-                                </span>
-                            </button>
-                        </li>
-                    }
-                }).collect_view()}
+                                    <span class="block px-2.5 py-2">
+                                        <span class="block truncate text-sm font-semibold">{move || name.get()}</span>
+                                        <span class=if used { "block text-xs text-emerald-700" } else { "block text-xs text-base-content/60" }>
+                                            {if used { "En uso" } else { "Sin usar" }}
+                                        </span>
+                                    </span>
+                                </button>
+                            </li>
+                        }
+                    }/>
             </ul>
-            {move || selected.get().and_then(|id| all.with_value(|a| a.iter().find(|(p, _)| p.item.id == id).cloned()))
-                .map(|(photo, name)| view! { <PhotoDetail photo name reload selected/> })}
+            {move || selected.get().and_then(|id| list.with(|l| l.iter().find(|(p, _, _)| p.item.id == id).map(|(p, n, _)| (p.clone(), *n))))
+                .map(|(photo, name)| view! { <PhotoDetail photo name removed shared selected/> })}
         </div>
     }
 }
@@ -231,7 +256,8 @@ fn PhotoGrid(photos: Vec<MyPhoto>, reload: RwSignal<u32>) -> impl IntoView {
 fn PhotoDetail(
     photo: MyPhoto,
     name: RwSignal<String>,
-    reload: RwSignal<u32>,
+    removed: Callback<String>,
+    shared: editor::MyPhotos,
     selected: RwSignal<Option<String>>,
 ) -> impl IntoView {
     let MyPhoto { item, used_in } = photo;
@@ -246,6 +272,7 @@ fn PhotoDetail(
     let rename =
         Action::new(|(id, name): &(String, String)| rename_photo(id.clone(), name.clone()));
     let remove = Action::new(|id: &String| delete_photo(id.clone()));
+    let id_removed = id.clone();
     let saved_alt = RwSignal::new(alt.clone());
     let alt_draft = RwSignal::new(alt);
     let alt_action =
@@ -265,19 +292,24 @@ fn PhotoDetail(
             alt_action.dispatch((id_alt.clone(), a));
         }
     };
+    let id_renamed = id.clone();
     Effect::new(move |_| match rename.value().get() {
         Some(Ok(())) => {
-            name.set(draft.get_untracked().trim().to_string());
+            let new_name = draft.get_untracked().trim().to_string();
+            // También en la lista compartida (selectores de productos y editor).
+            shared.items.update(|l| {
+                if let Some(p) = l.iter_mut().flatten().find(|p| p.id == id_renamed) {
+                    p.name = new_name.clone();
+                }
+            });
+            name.set(new_name);
             error.set(None);
         }
         Some(Err(e)) => error.set(Some(clean(e))),
         None => {}
     });
     Effect::new(move |_| match remove.value().get() {
-        Some(Ok(())) => {
-            selected.set(None);
-            reload.update(|n| *n += 1);
-        }
+        Some(Ok(())) => removed.run(id_removed.clone()),
         Some(Err(e)) => error.set(Some(clean(e))),
         None => {}
     });
@@ -360,24 +392,40 @@ fn PhotoDetail(
 
 /// Cuánto usa de Mis fotos y cuánto le queda.
 #[component]
-fn QuotaBar(quota: domain::PhotoQuota) -> impl IntoView {
-    let pct = quota.percent();
-    let class = if pct >= 90 {
-        "progress progress-error w-full"
-    } else if pct >= 75 {
-        "progress progress-warning w-full"
-    } else {
-        "progress progress-primary w-full"
+fn QuotaBar(quota: domain::PhotoQuota, shared: editor::MyPhotos) -> impl IntoView {
+    let quota = RwSignal::new(quota);
+    // Al subir o borrar fotos, se vuelve a pedir cuánto se usa.
+    Effect::new(move |prev: Option<Option<usize>>| {
+        let n = shared.items.with(|l| l.as_ref().map(Vec::len));
+        if prev.is_some_and(|p| p != n) {
+            leptos::task::spawn_local(async move {
+                if let Ok(Some(q)) = photo_quota().await {
+                    quota.set(q);
+                }
+            });
+        }
+        n
+    });
+    let pct = move || quota.get().percent();
+    let class = move || {
+        let pct = pct();
+        if pct >= 90 {
+            "progress progress-error w-full"
+        } else if pct >= 75 {
+            "progress progress-warning w-full"
+        } else {
+            "progress progress-primary w-full"
+        }
     };
     view! {
         <div class="card bg-base-100 shadow-sm">
             <div class="card-body gap-2 p-4">
                 <div class="flex flex-wrap items-baseline justify-between gap-2">
-                    <span class="font-medium">{quota.text()}</span>
-                    <span class="text-sm text-base-content/70">{quota.left_text()}</span>
+                    <span class="font-medium">{move || quota.get().text()}</span>
+                    <span class="text-sm text-base-content/70">{move || quota.get().left_text()}</span>
                 </div>
-                <progress class=class value=pct.to_string() max="100" aria-label="Espacio usado de Mis fotos"></progress>
-                {(pct >= 90).then(|| view! {
+                <progress class=class value=move || pct().to_string() max="100" aria-label="Espacio usado de Mis fotos"></progress>
+                {move || (pct() >= 90).then(|| view! {
                     <p class="text-sm text-error">"Te queda poco lugar. Borrá las fotos que no uses para poder subir otras."</p>
                 })}
             </div>

@@ -2306,3 +2306,23 @@ dialog.mk-open-sheet .mk-dialog-box::before {
   width: 0.875rem;
   height: 0.875rem;
 }
+
+/* Cuando una foto termina de subir, su miniatura vuela de la bandeja de subidas
+   a su lugar en Mis fotos (ver `editor::MyPhotos::land`). Con "menos movimiento"
+   la foto aparece directo (el código ni arranca la transición). */
+::view-transition-group(*) {
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+::view-transition-old(*),
+::view-transition-new(*) {
+  height: 100%;
+  object-fit: cover;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
