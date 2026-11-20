@@ -65,6 +65,20 @@ async fn tell_buyer(
 ) {
     use crate::email::BuyerUpdate;
     let from = o.status;
+    // Lo canceló la tienda: el comprador se entera con el motivo y cómo
+    // escribirle (antes no le llegaba nada).
+    if to == OrderStatus::Cancelled {
+        if from != OrderStatus::Cancelled {
+            crate::email::tell_cancelled(
+                pool,
+                tenant,
+                o,
+                crate::email::BuyerNotice::CancelledByStore,
+            )
+            .await;
+        }
+        return;
+    }
     let unpaid = matches!(from, OrderStatus::New | OrderStatus::PendingPayment);
     let what = match to {
         OrderStatus::Paid if unpaid => BuyerUpdate::Paid,

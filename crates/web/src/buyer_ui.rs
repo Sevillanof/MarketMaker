@@ -466,7 +466,7 @@ fn SignInForm(store_name: String, #[prop(into)] title_id: String) -> impl IntoVi
                     ev.prevent_default();
                     send(email.get_untracked());
                 }>
-                    <h2 id=title_id.clone() class="mk-h text-2xl font-bold">"Ingresá a tu cuenta"</h2>
+                    <h2 id=title_id.clone() class="mk-h text-2xl font-bold">"Ingresá o creá tu cuenta"</h2>
                     <p class="mt-1.5 text-sm text-base-content/70">{format!("Para ver tus pedidos y favoritos en {}.", store_name.get_value())}</p>
                     <label class="mt-5 text-sm font-semibold" for="mk-buyer-email">"Tu email"</label>
                     <input id="mk-buyer-email" class="input mt-1.5 w-full" type="email" name="email" inputmode="email"
@@ -479,7 +479,7 @@ fn SignInForm(store_name: String, #[prop(into)] title_id: String) -> impl IntoVi
                     <button type="submit" class="btn btn-primary btn-block mt-3" disabled=move || busy.get()>
                         {move || if busy.get() { "Enviando…" } else { "Enviarme el enlace" }}
                     </button>
-                    <p class="mt-3 text-center text-xs text-base-content/70">"Sin contraseña: te mandamos un enlace a tu email."</p>
+                    <p class="mt-3 text-center text-xs text-base-content/70">"Sin contraseña: te mandamos un enlace a tu email. Si es tu primera vez, tu cuenta se crea sola."</p>
                     <p class="mt-4 rounded-field bg-base-200 px-3.5 py-3 text-xs text-base-content/70">
                         {format!("Entrás a la cuenta de {}. Es distinta de tus cuentas en otras tiendas.", store_name.get_value())}
                     </p>
@@ -493,7 +493,7 @@ fn SignInForm(store_name: String, #[prop(into)] title_id: String) -> impl IntoVi
                     <h2 id=title_id.clone() class="mk-h mt-4 text-2xl font-bold">"Revisá tu email"</h2>
                     // La respuesta es la misma tenga o no pedidos: no decimos si esa
                     // dirección compró acá.
-                    <p role="status" class="mt-2 text-sm leading-relaxed text-base-content/70">"Si esta dirección tiene cuenta en la tienda, te llega un enlace para entrar. Revisá también la carpeta de spam."</p>
+                    <p role="status" class="mt-2 text-sm leading-relaxed text-base-content/70">"Te mandamos un enlace para entrar. Si es tu primera vez en la tienda, tu cuenta se crea sola al abrirlo."</p>
                     <p class="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-base-200 px-4 py-2 text-sm font-semibold">
                         <Icon name="mail" class="size-4 shrink-0 text-base-content/50"/>
                         <span class="truncate">{addr.clone()}</span>

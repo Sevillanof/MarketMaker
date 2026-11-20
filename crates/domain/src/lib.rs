@@ -432,7 +432,17 @@ pub struct ProductModal {
     /// color de la tienda.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub buybar: String,
+    /// Dónde va el botón Compartir: `""` arriba, junto a cerrar; `photo`
+    /// sobre la foto, debajo del corazón de favoritos.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub share: String,
 }
+
+/// Los lugares del botón Compartir de la ficha.
+pub const MODAL_SHARE_OPTIONS: &[(&str, &str)] = &[
+    ("", "Arriba, junto a cerrar"),
+    ("photo", "Sobre la foto, debajo del corazón"),
+];
 
 /// Las formas de abrir la ficha.
 pub const MODAL_OPEN_OPTIONS: &[(&str, &str)] = &[
@@ -457,7 +467,8 @@ impl ProductModal {
 }
 
 impl Default for ProductModal {
-    /// Foto a la izquierda; nombre, precio, descripción y botón a la derecha.
+    /// La foto a la izquierda, algo más de la mitad; nombre, precio,
+    /// descripción y botón a la derecha, uno debajo del otro sin huecos.
     fn default() -> Self {
         let at = |id: &str, t: &str, x: u8, y: u16, w: u8, h: u8| {
             let mut n = Node::new(id, Widget::defaults(t).expect("tipo conocido"));
@@ -467,14 +478,15 @@ impl Default for ProductModal {
         };
         Self {
             nodes: vec![
-                at("m1", "ProductImage", 0, 0, 24, 52),
-                at("m2", "ProductName", 24, 0, 24, 9),
-                at("m3", "ProductPrice", 24, 9, 24, 9),
-                at("m4", "ProductDescription", 24, 18, 24, 25),
-                at("m5", "ProductButton", 24, 43, 24, 7),
+                at("m1", "ProductImage", 0, 0, 27, 48),
+                at("m2", "ProductName", 27, 0, 21, 9),
+                at("m3", "ProductPrice", 27, 9, 21, 6),
+                at("m4", "ProductDescription", 27, 15, 21, 26),
+                at("m5", "ProductButton", 27, 41, 21, 7),
             ],
             open: String::new(),
             buybar: String::new(),
+            share: String::new(),
         }
     }
 }

@@ -66,6 +66,11 @@ pub struct StoreLinks {
     pub categories: Vec<String>,
 }
 
+/// La página tiene pie: los enlaces obligatorios («Ingresar a mi cuenta» y
+/// «Botón de arrepentimiento») van adentro del pie y no sueltos debajo.
+#[derive(Clone, Copy)]
+pub struct LegalInFooter;
+
 /// Producto abierto en la ficha de la tienda, por contexto. Si está, las
 /// tarjetas de producto se pueden tocar para abrir su ficha.
 #[derive(Clone, Copy)]
@@ -164,9 +169,16 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
                 .as_ref()
                 .map(|p| p.name.clone())
                 .unwrap_or_default();
+            // Un nombre largo va en letra algo más chica y hasta tres
+            // renglones: en la ficha tiene que poder leerse entero.
+            let class = if long_name(&name) && !editing {
+                "mk-title text-xl font-bold leading-tight line-clamp-3"
+            } else {
+                "mk-title text-2xl font-bold leading-tight line-clamp-2"
+            };
             view! {
                 <div class="mk-box mk-pad mk-pname flex h-full items-start overflow-hidden rounded-box">
-                    <h2 class="mk-title text-2xl font-bold leading-tight line-clamp-2">{name}</h2>
+                    <h2 class=class title=name.clone()>{name.clone()}</h2>
                 </div>
             }
             .into_any()
@@ -250,6 +262,7 @@ pub fn ProductDialog(
         _ => "mk-open-center",
     };
     let buybar = modal.buybar.clone();
+    let share_on_photo = modal.share == "photo";
     // La barra de compra aparece cuando el botón de la ficha quedó arriba,
     // fuera de la vista (o siempre, si la ficha no tiene botón).
     let has_button = modal
@@ -316,15 +329,19 @@ pub fn ProductDialog(
                 {move || product.get().map(|p| {
                     // Color y talle elegidos, compartidos por la foto y el botón.
                     provide_context(product_page::VariantPick::new());
-                    let shown = grow_for_variants(fit_description(nodes.get_value(), &p), &p);
+                    let shown = grow_for_variants(fit_description(fit_name(nodes.get_value(), &p), &p), &p);
                     // Lugar para "Ver carrito y comprar / Seguir comprando" al agregar.
                     let shown = if editing { shown } else { grow_button(shown, 13) };
+                    let shown = stretch_image(shown);
+                    provide_context(SharePlace { on_photo: share_on_photo });
+                    let share = (!editing && !share_on_photo).then(|| view! { <ShareButton product=p.clone() on_photo=false/> });
                     let ctx = RenderCtx {
                         products: products.get_value(),
                         editing,
                         product: Some(p),
                     };
                     view! {
+                        {share}
                         <div class="mk-grid">
                             {shown
                                 .into_iter()
@@ -390,6 +407,178 @@ fn fit_description(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
         }
     }
     nodes
+}
+
+/// ¿El nombre no entra en dos renglones de la ficha?
+fn long_name(name: &str) -> bool {
+    name.chars().count() > 44
+}
+
+/// Un nombre largo necesita tres renglones: su bloque crece y lo que está
+/// debajo baja lo mismo.
+fn fit_name(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
+    const ROWS: u8 = 11;
+    let Some(n) = nodes
+        .iter()
+        .find(|n| matches!(n.widget, Widget::ProductName(_)))
+        .cloned()
+    else {
+        return nodes;
+    };
+    if !long_name(&p.name) || n.size.h >= ROWS {
+        return nodes;
+    }
+    let extra = u16::from(ROWS - n.size.h);
+    let bottom = n.pos.y + u16::from(n.size.h);
+    let (nx, nw) = (n.pos.x, n.size.w);
+    for m in &mut nodes {
+        if m.id == n.id {
+            m.size.h = ROWS;
+        } else if m.pos.y >= bottom && m.pos.x < nx + nw && nx < m.pos.x + m.size.w {
+            m.pos.y += extra;
+        }
+    }
+    nodes
+}
+
+/// La foto llega hasta el final de la ficha cuando no tiene nada debajo:
+/// si no, al crecer la descripción o el botón queda un hueco bajo la foto.
+fn stretch_image(mut nodes: Vec<Node>) -> Vec<Node> {
+    let end = nodes
+        .iter()
+        .map(|n| n.pos.y + u16::from(n.size.h))
+        .max()
+        .unwrap_or(0);
+    let Some(img) = nodes
+        .iter()
+        .find(|n| matches!(n.widget, Widget::ProductImage(_)))
+        .cloned()
+    else {
+        return nodes;
+    };
+    let bottom = img.pos.y + u16::from(img.size.h);
+    let (ix, iw) = (img.pos.x, img.size.w);
+    let alone = !nodes.iter().any(|n| {
+        n.id != img.id && n.pos.y >= bottom && n.pos.x < ix + iw && ix < n.pos.x + n.size.w
+    });
+    // Hasta un cuadrado y medio: una foto mucho más alta que ancha queda rara.
+    let cap = u16::from(iw) * 3;
+    if alone && end > bottom {
+        if let Some(n) = nodes.iter_mut().find(|n| n.id == img.id) {
+            n.size.h = (end - img.pos.y).min(cap).min(255) as u8;
+        }
+    }
+    nodes
+}
+
+/// Dónde va el botón Compartir de la ficha (ver `ProductModal::share`).
+#[derive(Clone, Copy)]
+pub struct SharePlace {
+    pub on_photo: bool,
+}
+
+/// «Compartir»: en el celular abre el menú de compartir del teléfono; en la
+/// computadora copia el enlace del producto y avisa «Enlace copiado». Arriba
+/// de la ficha lleva texto; sobre la foto es un botón redondo.
+#[component]
+pub fn ShareButton(product: Product, on_photo: bool) -> impl IntoView {
+    let id = StoredValue::new(product.id.clone());
+    let name = StoredValue::new(product.name.clone());
+    // None: nada que avisar; Some(true): copiado; Some(false): no se pudo.
+    let state = RwSignal::new(None::<bool>);
+    let generation = StoredValue::new(0u32);
+    let share = move |_| {
+        let origin = window().location().origin().unwrap_or_default();
+        let url = format!("{origin}{}", domain::product_href(&id.get_value()));
+        if native_share(&name.get_value(), &url) {
+            return;
+        }
+        generation.update_value(|g| *g += 1);
+        let mine = generation.get_value();
+        state.set(None);
+        copy_text(&url, move |ok| {
+            _ = state.try_set(Some(ok));
+            set_timeout(
+                move || {
+                    if generation.try_get_value() == Some(mine) {
+                        _ = state.try_set(None);
+                    }
+                },
+                std::time::Duration::from_secs(2),
+            );
+        });
+    };
+    let note = move || match state.get() {
+        Some(true) => "Enlace copiado",
+        Some(false) => "No pudimos copiar el enlace",
+        None => "",
+    };
+    let icon = view! {
+        <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/>
+        </svg>
+    };
+    if on_photo {
+        view! {
+            <button type="button" class="mk-fav mk-share-photo absolute right-2 z-10" aria-label="Compartir" on:click=share>{icon}</button>
+            <span role="status" class="mk-share-note absolute right-12 z-10 rounded-field bg-base-100 px-2 py-1 text-xs shadow empty:hidden">{note}</span>
+        }
+        .into_any()
+    } else {
+        view! {
+            <div class="absolute right-12 top-2 z-10 flex items-center gap-2">
+                <span role="status" class="text-xs text-base-content/75">{note}</span>
+                <button type="button" class="btn btn-sm btn-ghost gap-2 font-medium" on:click=share>{icon}"Compartir"</button>
+            </div>
+        }
+        .into_any()
+    }
+}
+
+/// Abre el menú de compartir del teléfono, si el navegador lo tiene. En la
+/// computadora devuelve `false`: ahí conviene copiar el enlace.
+fn native_share(title: &str, url: &str) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::{JsCast, JsValue};
+        let touch = window()
+            .match_media("(pointer: coarse)")
+            .ok()
+            .flatten()
+            .is_some_and(|m| m.matches());
+        let nav: JsValue = window().navigator().into();
+        let Ok(f) = js_sys::Reflect::get(&nav, &JsValue::from_str("share")) else {
+            return false;
+        };
+        let Some(f) = f.dyn_ref::<js_sys::Function>() else {
+            return false;
+        };
+        if !touch {
+            return false;
+        }
+        let data = js_sys::Object::new();
+        _ = js_sys::Reflect::set(
+            &data,
+            &JsValue::from_str("title"),
+            &JsValue::from_str(title),
+        );
+        _ = js_sys::Reflect::set(&data, &JsValue::from_str("url"), &JsValue::from_str(url));
+        // Si la persona cierra el menú sin compartir, la promesa falla: no
+        // hay nada que avisar.
+        if let Ok(p) = f.call1(&nav, &data) {
+            if let Ok(p) = p.dyn_into::<js_sys::Promise>() {
+                let quiet = wasm_bindgen::closure::Closure::once(|_: JsValue| {});
+                _ = p.catch(&quiet);
+                quiet.forget();
+            }
+        }
+        true
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (title, url);
+        false
+    }
 }
 
 /// El bloque del botón crece `extra` filas y lo que está debajo baja lo mismo.
@@ -2405,6 +2594,9 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     let logo = store.logo_url.clone();
     let channels = store_channels(&store);
     let has_links = !props.links.is_empty();
+    // En la tienda, «Ingresar a mi cuenta» y el botón de arrepentimiento van
+    // acá adentro, a la derecha (ver `storefront::StorefrontPage`).
+    let legal_links = !editing && use_context::<LegalInFooter>().is_some();
     view! {
         <footer class="mk-box mk-footer @container flex h-full flex-col justify-center gap-4 overflow-hidden rounded-box px-6 py-5">
             <div class="mk-foot-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-8 gap-y-3 @3xl:grid-cols-[auto_minmax(0,1fr)_auto]">
@@ -2438,8 +2630,17 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
                     </div>
                 })}
             </div>
-            {(!bottom.is_empty()).then(|| view! {
-                <p class="border-t border-current/20 pt-3 text-xs opacity-70">{bottom}</p>
+            {(!bottom.is_empty() || legal_links).then(|| view! {
+                <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-current/20 pt-3 text-xs opacity-70">
+                    <p>{bottom}</p>
+                    {legal_links.then(|| view! {
+                        <p class="mk-legal flex flex-wrap items-center gap-x-2">
+                            <crate::account::AccountFooterLink/>
+                            <span aria-hidden="true">"·"</span>
+                            <a class="link link-hover" href="/arrepentimiento">"Botón de arrepentimiento"</a>
+                        </p>
+                    })}
+                </div>
             })}
         </footer>
     }
