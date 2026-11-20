@@ -204,12 +204,112 @@ async fn link_one(link: &str) -> Result<MediaItem, String> {
 const GENERIC: &str =
     "No pudimos conectarnos con el servidor. Revisá tu conexión y probá de nuevo.";
 
+/// Lado más ancho que guarda el servidor: más que esto no se usa nunca.
+const MAX_UPLOAD_WIDTH: f64 = 1600.0;
+/// Las fotos que pesan menos que esto se suben tal cual.
+const SHRINK_FROM_BYTES: f64 = 800_000.0;
+
+/// Sube una foto. Antes de mandarla: se fija si ya está en Mis fotos (con una
+/// huella del archivo, sin subirlo) y, si es una foto grande, la achica a
+/// 1600 px en el propio dispositivo (pesa 5 a 10 veces menos).
 async fn upload_one(file: &web_sys::File) -> Result<MediaItem, String> {
+    let hash = file_hash(file).await;
+    if let Some(h) = &hash {
+        if let Ok(text) = request("GET", &format!("/api/media/by-hash/{h}"), None).await {
+            if let Ok(item) = serde_json::from_str::<MediaItem>(&text) {
+                return Ok(item);
+            }
+        }
+    }
     let form = web_sys::FormData::new().map_err(|_| GENERIC.to_string())?;
-    form.append_with_blob_and_filename("file", file, &file.name())
-        .map_err(|_| GENERIC.to_string())?;
+    match shrink(file).await {
+        Some(small) => {
+            form.append_with_blob_and_filename("file", &small, &file.name())
+                .map_err(|_| GENERIC.to_string())?;
+            // El servidor anota la huella y el peso de la foto original.
+            if let Some(h) = &hash {
+                _ = form.append_with_str("sha256", h);
+            }
+            _ = form.append_with_str("original_size", &(file.size() as u64).to_string());
+        }
+        None => {
+            form.append_with_blob_and_filename("file", file, &file.name())
+                .map_err(|_| GENERIC.to_string())?;
+        }
+    }
     let text = request("POST", "/api/media", Some(form.into())).await?;
     serde_json::from_str(&text).map_err(|_| GENERIC.to_string())
+}
+
+/// Huella SHA-256 (en hexadecimal) del archivo, o `None` si el navegador no
+/// puede calcularla.
+async fn file_hash(file: &web_sys::File) -> Option<String> {
+    let subtle = web_sys::window()?.crypto().ok()?.subtle();
+    let data = JsFuture::from(file.array_buffer()).await.ok()?;
+    let digest = JsFuture::from(
+        subtle
+            .digest_with_str_and_buffer_source("SHA-256", &data.unchecked_into())
+            .ok()?,
+    )
+    .await
+    .ok()?;
+    let bytes = js_sys::Uint8Array::new(&digest).to_vec();
+    Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// La foto achicada a 1600 px de ancho en JPG, o `None` si se sube como está
+/// (es chica, es un logo o un PNG con transparencia, o el navegador no la
+/// puede abrir: el servidor se encarga igual).
+async fn shrink(file: &web_sys::File) -> Option<web_sys::Blob> {
+    let kind = file.type_();
+    // Un PNG, GIF o SVG puede tener transparencia o animación: no se toca.
+    let photo = matches!(
+        kind.as_str(),
+        "image/jpeg" | "image/webp" | "image/heic" | "image/heif"
+    );
+    let heic = matches!(kind.as_str(), "image/heic" | "image/heif");
+    if !photo || (!heic && file.size() < SHRINK_FROM_BYTES) {
+        return None;
+    }
+    let window = web_sys::window()?;
+    // Gira la foto según cómo se sacó, igual que el servidor.
+    let bitmap: web_sys::ImageBitmap = JsFuture::from(window.create_image_bitmap_with_blob(file).ok()?)
+        .await
+        .ok()?
+        .dyn_into()
+        .ok()?;
+    let (w, h) = (f64::from(bitmap.width()), f64::from(bitmap.height()));
+    if w < 1.0 || h < 1.0 || (!heic && w <= MAX_UPLOAD_WIDTH) {
+        return None;
+    }
+    let tw = w.min(MAX_UPLOAD_WIDTH);
+    let th = (h * tw / w).round().max(1.0);
+    let canvas: web_sys::HtmlCanvasElement = window
+        .document()?
+        .create_element("canvas")
+        .ok()?
+        .dyn_into()
+        .ok()?;
+    canvas.set_width(tw as u32);
+    canvas.set_height(th as u32);
+    let ctx: web_sys::CanvasRenderingContext2d = canvas.get_context("2d").ok()??.dyn_into().ok()?;
+    _ = js_sys::Reflect::set(&ctx, &"imageSmoothingQuality".into(), &"high".into());
+    ctx.draw_image_with_image_bitmap_and_dw_and_dh(&bitmap, 0.0, 0.0, tw, th)
+        .ok()?;
+    bitmap.close();
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let cb = wasm_bindgen::closure::Closure::once_into_js(move |blob: wasm_bindgen::JsValue| {
+            _ = resolve.call1(&wasm_bindgen::JsValue::NULL, &blob);
+        });
+        _ = canvas.to_blob_with_type_and_encoder_options(
+            cb.unchecked_ref(),
+            "image/jpeg",
+            &wasm_bindgen::JsValue::from_f64(0.92),
+        );
+    });
+    let blob: web_sys::Blob = JsFuture::from(promise).await.ok()?.dyn_into().ok()?;
+    // Si no quedó más liviana, mejor la original.
+    (blob.size() < file.size() || heic).then_some(blob)
 }
 
 /// Hace el pedido y devuelve el cuerpo. Si el servidor responde con error,

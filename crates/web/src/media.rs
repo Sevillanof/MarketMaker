@@ -30,6 +30,7 @@ pub fn media_routes<S: Clone + Send + Sync + 'static>(state: MediaState) -> Rout
     Router::new()
         .route("/api/media", get(list).post(upload))
         .route("/api/media/link", post(from_link))
+        .route("/api/media/by-hash/{sha256}", get(by_hash))
         .route("/api/media/{id}", delete(remove))
         .route("/media/{id}/{file}", get(serve))
         // Un poco más que el máximo, para responder "pesa demasiado" en
@@ -124,8 +125,23 @@ async fn upload(
         )
     };
     let mut file = None;
+    // Huella de la foto original, calculada en el navegador antes de achicarla.
+    let mut claimed = None;
+    // Lo que pesaba el archivo original, para mostrar cuánto se achicó.
+    let mut original_size = None;
     loop {
         match form.next_field().await {
+            Ok(Some(field)) if field.name() == Some("original_size") => {
+                original_size = field
+                    .text()
+                    .await
+                    .ok()
+                    .and_then(|t| t.trim().parse::<usize>().ok())
+                    .filter(|n| *n <= 200 * 1024 * 1024);
+            }
+            Ok(Some(field)) if field.name() == Some("sha256") => {
+                claimed = field.text().await.ok().filter(|h| valid_hash(h));
+            }
             Ok(Some(field)) if field.name() == Some("file") => {
                 let name = domain::media_name(field.file_name().unwrap_or("Foto"));
                 match field.bytes().await {
@@ -145,7 +161,50 @@ async fn upload(
         );
     };
 
-    save(&state, user.id, quota, name, bytes.to_vec()).await
+    let original = Original {
+        hash: claimed,
+        size: original_size,
+    };
+    save(&state, user.id, quota, name, bytes.to_vec(), original).await
+}
+
+/// Lo que el navegador cuenta del archivo original cuando lo achicó antes de
+/// subirlo.
+#[derive(Default)]
+struct Original {
+    hash: Option<String>,
+    size: Option<usize>,
+}
+
+/// ¿Es una huella SHA-256 en hexadecimal?
+fn valid_hash(h: &str) -> bool {
+    h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// `GET /api/media/by-hash/{sha256}`: si la foto con esa huella ya está en
+/// Mis fotos la devuelve; así el navegador no la sube otra vez.
+async fn by_hash(
+    State(state): State<MediaState>,
+    headers: HeaderMap,
+    Path(sha256): Path<String>,
+) -> Response {
+    let user = match owner(&state, &headers).await {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let sha256 = sha256.to_ascii_lowercase();
+    if !valid_hash(&sha256) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match db::media::find_by_hash(&state.pool, user.id, &sha256).await {
+        Ok(Some(item)) => Json(MediaItem {
+            duplicate: true,
+            ..item
+        })
+        .into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
 }
 
 /// `POST /api/media/link` con `{"url": "…"}`: trae la foto del enlace y la
@@ -183,6 +242,7 @@ async fn from_link(
                 quota,
                 domain::media_name(&format!("{}.x", f.name)),
                 f.bytes,
+                Original::default(),
             )
             .await
         }
@@ -198,10 +258,16 @@ async fn save(
     quota: domain::PhotoQuota,
     name: String,
     bytes: Vec<u8>,
+    original: Original,
 ) -> Response {
-    let size = bytes.len();
+    let size = original.size.unwrap_or(bytes.len());
     // La misma foto que ya subió: se usa esa, sin convertir ni guardar otra.
-    let sha256 = db::media::fingerprint(&bytes);
+    // Si el navegador achicó la foto antes de subirla, trae la huella del
+    // archivo original.
+    let sha256 = original
+        .hash
+        .map(|h| h.to_ascii_lowercase())
+        .unwrap_or_else(|| db::media::fingerprint(&bytes));
     match db::media::find_by_hash(&state.pool, owner_id, &sha256).await {
         Ok(Some(existing)) => {
             return Json(MediaItem {
