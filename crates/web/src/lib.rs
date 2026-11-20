@@ -84,6 +84,8 @@ pub fn App() -> impl IntoView {
     })));
 
     provide_context(panel::NavCache(RwSignal::new(None)));
+    // Una sola lista de fotos y una sola bandeja de subidas para toda la app.
+    editor::provide_photos();
 
     view! {
         <Title text="Marketplace"/>
@@ -131,6 +133,7 @@ pub fn App() -> impl IntoView {
                     <Route path=WildcardSegment("any") view=Home ssr=SsrMode::Async/>
                 </Routes>
             </main>
+            <editor::UploadTray/>
         </Router>
     }
 }
