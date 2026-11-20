@@ -92,6 +92,9 @@ pub struct ProductEdit {
     pub product: Product,
     /// Las etiquetas que ya usa la tienda, para sugerir.
     pub store_tags: Vec<TagCount>,
+    /// Las categorías que ya usa la tienda, para sugerir.
+    #[serde(default)]
+    pub store_categories: Vec<CategoryCount>,
     /// La tienda tiene Andreani conectado: recién ahí sirven el peso y las
     /// medidas del producto.
     #[serde(default)]
@@ -99,6 +102,80 @@ pub struct ProductEdit {
     /// La dirección de la tienda, para "Ver en mi tienda" al crear.
     #[serde(default)]
     pub store_url: String,
+}
+
+/// Largo máximo del nombre de una categoría o subcategoría.
+pub const CATEGORY_MAX: usize = 30;
+
+/// Nombre de categoría limpio: sin espacios de más y de hasta
+/// [`CATEGORY_MAX`] letras. Conserva mayúsculas ("Botas").
+pub fn clean_category(name: &str) -> String {
+    let t: Vec<&str> = name.split_whitespace().collect();
+    t.join(" ").chars().take(CATEGORY_MAX).collect()
+}
+
+/// Una categoría de la tienda, con sus subcategorías y cuántos productos hay.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CategoryCount {
+    pub name: String,
+    /// Productos en la categoría (con o sin subcategoría).
+    pub products: usize,
+    /// Subcategorías con su cantidad de productos.
+    pub subs: Vec<(String, usize)>,
+}
+
+/// Las categorías de `products` con sus subcategorías: la más usada primero
+/// y, a igual cantidad, en orden alfabético.
+pub fn count_categories(products: &[Product]) -> Vec<CategoryCount> {
+    let mut out: Vec<CategoryCount> = Vec::new();
+    for p in products.iter().filter(|p| !p.category.is_empty()) {
+        let i = match out.iter().position(|c| c.name == p.category) {
+            Some(i) => i,
+            None => {
+                out.push(CategoryCount { name: p.category.clone(), products: 0, subs: Vec::new() });
+                out.len() - 1
+            }
+        };
+        out[i].products += 1;
+        if !p.subcategory.is_empty() {
+            match out[i].subs.iter_mut().find(|s| s.0 == p.subcategory) {
+                Some(s) => s.1 += 1,
+                None => out[i].subs.push((p.subcategory.clone(), 1)),
+            }
+        }
+    }
+    for c in &mut out {
+        c.subs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    }
+    out.sort_by(|a, b| b.products.cmp(&a.products).then_with(|| a.name.cmp(&b.name)));
+    out
+}
+
+/// Arma las categorías a partir de filas (categoría, subcategoría, cantidad),
+/// como las da la base de datos.
+pub fn categories_from_pairs(pairs: &[(String, String, i64)]) -> Vec<CategoryCount> {
+    let mut out: Vec<CategoryCount> = Vec::new();
+    for (cat, sub, n) in pairs.iter().filter(|(c, _, _)| !c.is_empty()) {
+        let n = usize::try_from(*n).unwrap_or(0);
+        let i = match out.iter().position(|c| &c.name == cat) {
+            Some(i) => i,
+            None => {
+                out.push(CategoryCount { name: cat.clone(), products: 0, subs: Vec::new() });
+                out.len() - 1
+            }
+        };
+        out[i].products += n;
+        if !sub.is_empty() {
+            out[i].subs.push((sub.clone(), n));
+        }
+    }
+    out
+}
+
+/// ¿Está `p` en la categoría `cat` (y subcategoría `sub`)? Con `cat` vacío
+/// pasan todos; con `sub` vacío, toda la categoría.
+pub fn passes_category(p: &Product, cat: &str, sub: &str) -> bool {
+    (cat.is_empty() || p.category == cat) && (sub.is_empty() || p.subcategory == sub)
 }
 
 /// Una etiqueta de la tienda y en cuántos productos está.
@@ -351,6 +428,8 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     p.name = p.name.trim().to_string();
     p.description = p.description.trim().to_string();
     p.tags = clean_tags(p.tags.iter().map(String::as_str));
+    p.category = clean_category(&p.category);
+    p.subcategory = if p.category.is_empty() { String::new() } else { clean_category(&p.subcategory) };
     p.photos.retain(|u| !u.trim().is_empty());
     p.photos.dedup();
     p.image_url = p.photos.first().cloned().unwrap_or_default();
@@ -640,5 +719,54 @@ mod tests {
             Some(12)
         );
         assert_eq!(p.discount_pct(), None);
+    }
+}
+
+#[cfg(test)]
+mod category_tests {
+    use super::*;
+
+    fn p(cat: &str, sub: &str) -> Product {
+        Product { category: cat.into(), subcategory: sub.into(), ..Product::default() }
+    }
+
+    #[test]
+    fn counts_categories_with_their_subcategories() {
+        let ps = [p("Botas", "Con taco"), p("Botas", "Con taco"), p("Botas", ""), p("Sandalias", ""), p("", "")];
+        let c = count_categories(&ps);
+        assert_eq!(c.len(), 2);
+        assert_eq!((c[0].name.as_str(), c[0].products), ("Botas", 3));
+        assert_eq!(c[0].subs, vec![("Con taco".to_string(), 2)]);
+        assert_eq!(c[1].name, "Sandalias");
+    }
+
+    #[test]
+    fn filters_by_category_and_subcategory() {
+        let a = p("Botas", "Con taco");
+        assert!(passes_category(&a, "", ""));
+        assert!(passes_category(&a, "Botas", ""));
+        assert!(passes_category(&a, "Botas", "Con taco"));
+        assert!(!passes_category(&a, "Botas", "Sin taco"));
+        assert!(!passes_category(&a, "Sandalias", ""));
+    }
+
+    #[test]
+    fn tidy_cleans_names_and_drops_orphan_subcategory() {
+        let mut a = p("  Botas   altas ", " Con  taco ");
+        a.name = "Bota".into();
+        tidy_product(&mut a);
+        assert_eq!((a.category.as_str(), a.subcategory.as_str()), ("Botas altas", "Con taco"));
+        let mut b = p("   ", "Con taco");
+        b.name = "Bota".into();
+        tidy_product(&mut b);
+        assert_eq!((b.category.as_str(), b.subcategory.as_str()), ("", ""));
+    }
+
+    #[test]
+    fn builds_categories_from_database_rows() {
+        let rows = [("Botas".to_string(), "Con taco".to_string(), 2), ("Botas".to_string(), String::new(), 1)];
+        let c = categories_from_pairs(&rows);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].products, 3);
     }
 }

@@ -767,6 +767,12 @@ pub struct Product {
     /// Etiquetas para encontrar y agrupar productos.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Categoría del producto (una sola; vacío: sin categoría).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub category: String,
+    /// Subcategoría dentro de `category` (vacío: ninguna).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub subcategory: String,
     /// Cómo se encuadra cada foto en este producto (por dirección de la
     /// foto). Las que no están se ven centradas y sin zoom.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -802,6 +808,8 @@ impl Default for Product {
             visible: true,
             photos: Vec::new(),
             tags: Vec::new(),
+            category: String::new(),
+            subcategory: String::new(),
             photo_fits: BTreeMap::new(),
             example: false,
             parcel: None,

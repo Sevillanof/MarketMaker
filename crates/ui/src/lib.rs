@@ -248,6 +248,9 @@ pub enum PanelSkeletonKind {
     Form,
     /// Mis fotos: grilla de fotos.
     Photos,
+    /// Un producto: nombre, precios, descripción, fotos, categoría y
+    /// subcategoría, etiquetas y stock.
+    Product,
     /// Datos de la tienda: nombre, logo, contacto en dos columnas,
     /// descripción y horarios, y la vista previa del pie.
     StoreInfo,
@@ -354,6 +357,24 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                 }).collect_view()}
                 {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
                 {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
+                <Skeleton class="h-10 w-32"/>
+            }.into_any()))}
+        }
+        .into_any(),
+        PanelSkeletonKind::Product => view! {
+            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-56"/>{sk_line("w-72 max-w-full")}</div>
+            {sk_card("max-w-3xl gap-4 p-6", Box::new(|| view! {
+                {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-28")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
+                </div>
+                {sk_line("w-28")}<Skeleton class="h-28 w-full"/>
+                {sk_line("w-20")}
+                <div class="flex gap-3">{(0..3).map(|_| view! { <Skeleton class="size-20 shrink-0"/> }).collect_view()}</div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-32")}<Skeleton class="h-10 w-full"/>{sk_line("w-3/4")}</div> }).collect_view()}
+                </div>
+                {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
                 <Skeleton class="h-10 w-32"/>
             }.into_any()))}
         }

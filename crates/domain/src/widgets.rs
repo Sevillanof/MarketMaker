@@ -16,6 +16,11 @@ pub enum Widget {
     TagCircles(TagFilterProps),
     TagSearch(TagSearchProps),
     TagTabs(TagTabsProps),
+    CategoryTabs(CategoryFilterProps),
+    CategorySide(CategoryFilterProps),
+    CategoryCards(CategoryFilterProps),
+    CategoryDrop(CategoryFilterProps),
+    CategoryPage(CategoryFilterProps),
     FeaturedProduct(FeaturedProductProps),
     Navbar(NavbarProps),
     Carousel(CarouselProps),
@@ -157,6 +162,18 @@ pub struct TagFilterProps {
     /// Texto del botón que muestra todos los productos.
     pub all_label: String,
     /// Mostrar cuántos productos tiene cada etiqueta.
+    #[serde(default)]
+    pub show_counts: bool,
+}
+
+/// Las categorías de los productos, para que el comprador filtre las
+/// cuadrículas de la misma página (los cinco bloques de categorías).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CategoryFilterProps {
+    pub title: String,
+    /// Texto de la opción que muestra todos los productos.
+    pub all_label: String,
+    /// Mostrar cuántos productos tiene cada categoría.
     #[serde(default)]
     pub show_counts: bool,
 }
@@ -507,6 +524,11 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("TagCircles", "Etiquetas con foto"),
     ("TagSearch", "Buscador con filtros"),
     ("TagTabs", "Productos con pestañas"),
+    ("CategoryTabs", "Categorías en pestañas"),
+    ("CategorySide", "Categorías al costado"),
+    ("CategoryCards", "Categorías con foto"),
+    ("CategoryDrop", "Menú de categorías"),
+    ("CategoryPage", "Categoría con subcategorías"),
     ("FeaturedProduct", "Producto destacado"),
     ("Benefits", "Beneficios"),
     ("Countdown", "Oferta con cuenta regresiva"),
@@ -1212,6 +1234,11 @@ impl Widget {
             Widget::TagCircles(_) => "TagCircles",
             Widget::TagSearch(_) => "TagSearch",
             Widget::TagTabs(_) => "TagTabs",
+            Widget::CategoryTabs(_) => "CategoryTabs",
+            Widget::CategorySide(_) => "CategorySide",
+            Widget::CategoryCards(_) => "CategoryCards",
+            Widget::CategoryDrop(_) => "CategoryDrop",
+            Widget::CategoryPage(_) => "CategoryPage",
             Widget::FeaturedProduct(_) => "FeaturedProduct",
             Widget::Navbar(_) => "Navbar",
             Widget::Carousel(_) => "Carousel",
@@ -1262,6 +1289,11 @@ impl Widget {
             Widget::TagCircles(_) => limits(12, 48, 15, 36, 48, 19),
             Widget::TagSearch(_) => limits(16, 48, 7, 16, 48, 9),
             Widget::TagTabs(_) => limits(12, 48, 36, 144, 48, 96),
+            Widget::CategoryTabs(_) => limits(12, 48, 7, 24, 48, 9),
+            Widget::CategorySide(_) => limits(8, 24, 20, 144, 12, 44),
+            Widget::CategoryCards(_) => limits(12, 48, 20, 96, 48, 40),
+            Widget::CategoryDrop(_) => limits(6, 24, 5, 12, 12, 6),
+            Widget::CategoryPage(_) => limits(12, 48, 20, 96, 48, 36),
             Widget::FeaturedProduct(_) => limits(8, 24, 36, 96, 12, 48),
             Widget::Navbar(_) => limits(24, 48, 12, 24, 48, 12),
             Widget::Carousel(_) => limits(24, 48, 36, 96, 48, 48),
@@ -1298,6 +1330,11 @@ impl Widget {
             Widget::TagFilter(_) | Widget::TagList(_) | Widget::TagCircles(_) => TAG_FILTER_FIELDS,
             Widget::TagSearch(_) => TAG_SEARCH_FIELDS,
             Widget::TagTabs(_) => TAG_TABS_FIELDS,
+            Widget::CategoryTabs(_)
+            | Widget::CategorySide(_)
+            | Widget::CategoryCards(_)
+            | Widget::CategoryDrop(_)
+            | Widget::CategoryPage(_) => TAG_FILTER_FIELDS,
             Widget::FeaturedProduct(_) => FEATURED_PRODUCT_FIELDS,
             Widget::Navbar(_) => NAVBAR_FIELDS,
             Widget::Carousel(_) => CAROUSEL_FIELDS,
@@ -1365,6 +1402,31 @@ impl Widget {
             "TagCircles" => Widget::TagCircles(TagFilterProps {
                 title: String::new(),
                 all_label: s("Todos"),
+                show_counts: false,
+            }),
+            "CategoryTabs" => Widget::CategoryTabs(CategoryFilterProps {
+                title: String::new(),
+                all_label: s("Todas"),
+                show_counts: false,
+            }),
+            "CategorySide" => Widget::CategorySide(CategoryFilterProps {
+                title: s("Categorías"),
+                all_label: s("Todas"),
+                show_counts: true,
+            }),
+            "CategoryCards" => Widget::CategoryCards(CategoryFilterProps {
+                title: s("Comprá por categoría"),
+                all_label: s("Todas"),
+                show_counts: true,
+            }),
+            "CategoryDrop" => Widget::CategoryDrop(CategoryFilterProps {
+                title: s("Categorías"),
+                all_label: s("Todas"),
+                show_counts: false,
+            }),
+            "CategoryPage" => Widget::CategoryPage(CategoryFilterProps {
+                title: String::new(),
+                all_label: s("Todas"),
                 show_counts: false,
             }),
             "TagSearch" => Widget::TagSearch(TagSearchProps {

@@ -21,6 +21,9 @@ pub struct ProductFilter {
     pub tags: RwSignal<Vec<String>>,
     /// Lo que se escribió en el buscador.
     pub query: RwSignal<String>,
+    /// Categoría elegida (vacío: todas) y su subcategoría (vacío: ninguna).
+    pub category: RwSignal<String>,
+    pub sub: RwSignal<String>,
 }
 
 impl ProductFilter {
@@ -28,6 +31,8 @@ impl ProductFilter {
         Self {
             tags: RwSignal::new(Vec::new()),
             query: RwSignal::new(String::new()),
+            category: RwSignal::new(String::new()),
+            sub: RwSignal::new(String::new()),
         }
     }
 
@@ -54,6 +59,13 @@ impl ProductFilter {
     fn clear(self) {
         self.tags.set(Vec::new());
         self.query.set(String::new());
+        self.pick_category("", "");
+    }
+
+    /// Deja elegida la categoría `cat` y su subcategoría `sub` (vacías: todas).
+    pub(crate) fn pick_category(self, cat: &str, sub: &str) {
+        self.category.set(cat.to_string());
+        self.sub.set(sub.to_string());
     }
 
     /// Deja elegida solo `tag` (`None`: todas).
@@ -125,11 +137,14 @@ pub fn FilteredProducts(
     products.sort_by_key(|p| !p.in_stock);
     let products = StoredValue::new(products);
     let chosen = move || filter.map_or_else(Default::default, |f| (f.tags.get(), f.query.get()));
+    let category = move || filter.map_or_else(Default::default, |f| (f.category.get(), f.sub.get()));
     let shown = move || {
         let (tags, query) = chosen();
+        let (cat, sub) = category();
         products.with_value(|ps| {
             ps.iter()
                 .filter(|p| domain::passes_filter(p, &tags, &query))
+                .filter(|p| domain::passes_category(p, &cat, &sub))
                 .take(limit)
                 .cloned()
                 .collect::<Vec<_>>()
@@ -177,7 +192,7 @@ fn no_tags(editing: bool) -> AnyView {
     }
 }
 
-fn group_label(title: &str) -> String {
+pub(crate) fn group_label(title: &str) -> String {
     if title.is_empty() {
         "Filtrar productos por etiqueta".to_string()
     } else {
@@ -190,7 +205,7 @@ fn count(t: &TagCount) -> usize {
 }
 
 /// Cantidad al lado de una etiqueta (y en palabras para el lector de pantalla).
-fn count_badge(show: bool, n: usize) -> impl IntoView {
+pub(crate) fn count_badge(show: bool, n: usize) -> impl IntoView {
     show.then(|| {
         view! {
             <span class="mk-chip-n" aria-hidden="true">{n}</span>
@@ -241,7 +256,7 @@ fn TagRow(props: TagFilterProps, products: Vec<Product>, editing: bool) -> impl 
     .into_any()
 }
 
-fn label_or(text: &str, default: &str) -> String {
+pub(crate) fn label_or(text: &str, default: &str) -> String {
     if text.trim().is_empty() {
         default.to_string()
     } else {
