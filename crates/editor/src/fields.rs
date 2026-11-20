@@ -625,17 +625,6 @@ fn ImagePicker(
                     on:change=move |ev| photos.upload(take_files(&ev), done)
                 />
             </div>
-            <p class="text-xs text-base-content/70" role="status" aria-live="polite">
-                {move || photos.progress.get().unwrap_or_default()}
-            </p>
-            {move || {
-                let saved = photos.saved.get();
-                (!saved.is_empty()).then(|| view! {
-                    <ul class="flex flex-col gap-0.5 text-xs text-base-content/80" aria-label="Fotos optimizadas">
-                        {saved.into_iter().map(|t| view! { <li>{t}</li> }).collect_view()}
-                    </ul>
-                })
-            }}
             {move || {
                 let errors = photos.upload_errors.get();
                 (!errors.is_empty()).then(|| view! {

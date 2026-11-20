@@ -29,6 +29,18 @@ pub async fn my_photos() -> Result<Option<MyLibrary>, ServerFnError> {
     Ok(Some(MyLibrary { photos, quota }))
 }
 
+/// Cuánto usa de Mis fotos (se pide de nuevo al subir o borrar fotos).
+#[server]
+pub async fn photo_quota() -> Result<Option<domain::PhotoQuota>, ServerFnError> {
+    use crate::server::{internal, pool};
+    let Some(user) = crate::auth::current_user().await? else {
+        return Ok(None);
+    };
+    Ok(Some(
+        db::media::quota(&pool()?, user.id).await.map_err(internal)?,
+    ))
+}
+
 /// Cambia el nombre de una foto.
 #[server]
 pub async fn rename_photo(id: String, name: String) -> Result<(), ServerFnError> {
@@ -98,17 +110,8 @@ pub fn MyPhotosPage() -> impl IntoView {
         .read_untracked()
         .get("tienda")
         .unwrap_or_default();
-    let reload = RwSignal::new(0u32);
-    let photos = Resource::new(move || reload.get(), |_| my_photos());
+    let photos = Resource::new(|| (), |_| my_photos());
     let uploads = editor::MyPhotos::new();
-    // Al terminar de subir, se vuelve a pedir la lista (con dónde se usan).
-    Effect::new(move |prev: Option<bool>| {
-        let busy = uploads.progress.get().is_some();
-        if prev == Some(true) && !busy {
-            reload.update(|n| *n += 1);
-        }
-        busy
-    });
     view! {
         <leptos_meta::Title text="Mis fotos · MarketMaker"/>
         <crate::panel::StoreShell slug=store section=crate::panel::Section::Photos>
@@ -127,18 +130,6 @@ pub fn MyPhotosPage() -> impl IntoView {
                 <p class="text-base-content/80">
                     "Tus fotos sirven en todas tus tiendas. Las optimizamos al subirlas: tus clientes bajan una versión liviana, sin que se note la diferencia."
                 </p>
-                <div role="status" aria-live="polite" class="flex flex-col gap-1 text-sm">
-                    {move || uploads.progress.get()}
-                    {move || uploads.saved.get().into_iter().map(|t| view! { <span>{t}</span> }).collect_view()}
-                </div>
-                {move || {
-                    let errors = uploads.upload_errors.get();
-                    (!errors.is_empty()).then(|| view! {
-                        <ul role="alert" class="flex flex-col gap-0.5 text-sm text-error">
-                            {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
-                        </ul>
-                    })
-                }}
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Photos/> }>
                     {move || Suspend::new(async move {
                         match photos.await {
@@ -152,22 +143,9 @@ pub fn MyPhotosPage() -> impl IntoView {
                                 <div role="alert" class="alert alert-error">"No pudimos traer tus fotos. Recargá la página."</div>
                             }.into_any(),
                             Ok(Some(MyLibrary { photos, quota })) => {
-                                let empty = photos.is_empty();
                                 view! {
-                                    <QuotaBar quota/>
-                                    {if empty {
-                                        view! {
-                                            <div class="card bg-base-100 shadow-sm"><div class="card-body">
-                                                <p>"Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."</p>
-                                            </div></div>
-                                        }.into_any()
-                                    } else {
-                                        view! {
-                                            <ul class="grid gap-4 max-sm:grid-cols-2 max-sm:gap-2.5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tus fotos">
-                                                {photos.into_iter().map(|p| view! { <PhotoCard photo=p reload/> }).collect_view()}
-                                            </ul>
-                                        }.into_any()
-                                    }}
+                                    <QuotaBar quota shared=uploads/>
+                                    <PhotoGrid initial=photos shared=uploads/>
                                 }.into_any()
                             }
                         }
@@ -178,8 +156,65 @@ pub fn MyPhotosPage() -> impl IntoView {
     }
 }
 
+/// La grilla de fotos. Las fotos nuevas que llegan de la bandeja de subidas
+/// se suman al principio (con su `view-transition-name`, para que la miniatura
+/// de la bandeja vuele hasta acá).
 #[component]
-fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
+fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
+    // Esta página ya trae la lista completa: la comparte con el resto de la app.
+    shared
+        .items
+        .set(Some(initial.iter().map(|p| p.item.clone()).collect()));
+    let list = RwSignal::new(
+        initial
+            .into_iter()
+            .map(|p| (p, false))
+            .collect::<Vec<_>>(),
+    );
+    Effect::new(move |_| {
+        let Some(items) = shared.items.get() else {
+            return;
+        };
+        list.update(|l| {
+            let fresh: Vec<MediaItem> = items
+                .into_iter()
+                .filter(|i| !l.iter().any(|(p, _)| p.item.id == i.id))
+                .collect();
+            // `items` viene con la más nueva primero.
+            for item in fresh.into_iter().rev() {
+                l.insert(0, (MyPhoto { item, used_in: Vec::new() }, true));
+            }
+        });
+    });
+    let removed = Callback::new(move |id: String| {
+        list.update(|l| l.retain(|(p, _)| p.item.id != id));
+        shared.items.update(|l| {
+            if let Some(l) = l {
+                l.retain(|p| p.id != id);
+            }
+        });
+    });
+    view! {
+        <div class="card bg-base-100 shadow-sm" class:hidden=move || !list.with(Vec::is_empty)>
+            <div class="card-body">
+                <p>"Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."</p>
+            </div>
+        </div>
+        <ul class="grid gap-4 max-sm:grid-cols-2 max-sm:gap-2.5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tus fotos"
+            class:hidden=move || list.with(Vec::is_empty)>
+            <For each=move || list.get() key=|(p, _)| p.item.id.clone()
+                children=move |(p, fresh)| view! { <PhotoCard photo=p fresh removed shared/> }/>
+        </ul>
+    }
+}
+
+#[component]
+fn PhotoCard(
+    photo: MyPhoto,
+    fresh: bool,
+    removed: Callback<String>,
+    shared: editor::MyPhotos,
+) -> impl IntoView {
     let MyPhoto { item, used_in } = photo;
     let MediaItem {
         id,
@@ -204,6 +239,7 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
     let rename =
         Action::new(|(id, name): &(String, String)| rename_photo(id.clone(), name.clone()));
     let remove = Action::new(|id: &String| delete_photo(id.clone()));
+    let id_removed = id.clone();
     let saved_alt = RwSignal::new(alt.clone());
     let alt_draft = RwSignal::new(alt);
     let alt_action =
@@ -223,16 +259,23 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
             alt_action.dispatch((id_alt.clone(), a));
         }
     };
+    let id_renamed = id.clone();
     Effect::new(move |_| match rename.value().get() {
         Some(Ok(())) => {
-            saved_name.set(draft.get_untracked());
+            let new_name = draft.get_untracked();
+            shared.items.update(|l| {
+                if let Some(p) = l.iter_mut().flatten().find(|p| p.id == id_renamed) {
+                    p.name = new_name.clone();
+                }
+            });
+            saved_name.set(new_name);
             error.set(None);
         }
         Some(Err(e)) => error.set(Some(clean(e))),
         None => {}
     });
     Effect::new(move |_| match remove.value().get() {
-        Some(Ok(())) => reload.update(|n| *n += 1),
+        Some(Ok(())) => removed.run(id_removed.clone()),
         Some(Err(e)) => error.set(Some(clean(e))),
         None => {}
     });
@@ -250,6 +293,7 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
     let alt_id = format!("foto-{id}-alt");
     let alt_help = format!("foto-{id}-alt-ayuda");
     let uses = used_in.len();
+    let (id_card, id_fig) = (id.clone(), id.clone());
     let sizes = if original_bytes > 0 && web_bytes > 0 {
         format!(
             "{width} × {height} px · subiste {} · tus clientes bajan {}",
@@ -260,9 +304,11 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
         format!("{width} × {height} px")
     };
     view! {
-        <li class="card overflow-hidden bg-base-100 shadow-sm" class=("max-sm:col-span-2", move || open.get())>
-            <figure class="aspect-[4/3] bg-base-200" class=("max-sm:aspect-square", move || !open.get())>
-                <img src=thumb alt=move || saved_name.get() loading="lazy" class="h-full w-full object-cover"/>
+        <li class="card overflow-hidden bg-base-100 shadow-sm" class=("max-sm:col-span-2", move || open.get())
+            data-photo-card=id_card>
+            <figure class="aspect-[4/3] bg-base-200" class=("max-sm:aspect-square", move || !open.get())
+                style=fresh.then(|| format!("view-transition-name: foto-{id_fig}"))>
+                <img src=thumb alt=move || saved_name.get() loading=if fresh { "eager" } else { "lazy" } class="h-full w-full object-cover"/>
             </figure>
             <button type="button" class="flex min-h-12 w-full items-center gap-2 px-3 text-left text-sm sm:hidden"
                 aria-expanded=move || open.get().to_string()
@@ -329,24 +375,40 @@ fn PhotoCard(photo: MyPhoto, reload: RwSignal<u32>) -> impl IntoView {
 
 /// Cuánto usa de Mis fotos y cuánto le queda.
 #[component]
-fn QuotaBar(quota: domain::PhotoQuota) -> impl IntoView {
-    let pct = quota.percent();
-    let class = if pct >= 90 {
-        "progress progress-error w-full"
-    } else if pct >= 75 {
-        "progress progress-warning w-full"
-    } else {
-        "progress progress-primary w-full"
+fn QuotaBar(quota: domain::PhotoQuota, shared: editor::MyPhotos) -> impl IntoView {
+    let quota = RwSignal::new(quota);
+    // Al subir o borrar fotos, se vuelve a pedir cuánto se usa.
+    Effect::new(move |prev: Option<Option<usize>>| {
+        let n = shared.items.with(|l| l.as_ref().map(Vec::len));
+        if prev.is_some_and(|p| p != n) {
+            leptos::task::spawn_local(async move {
+                if let Ok(Some(q)) = photo_quota().await {
+                    quota.set(q);
+                }
+            });
+        }
+        n
+    });
+    let pct = move || quota.get().percent();
+    let class = move || {
+        let pct = pct();
+        if pct >= 90 {
+            "progress progress-error w-full"
+        } else if pct >= 75 {
+            "progress progress-warning w-full"
+        } else {
+            "progress progress-primary w-full"
+        }
     };
     view! {
         <div class="card bg-base-100 shadow-sm">
             <div class="card-body gap-2 p-4">
                 <div class="flex flex-wrap items-baseline justify-between gap-2">
-                    <span class="font-medium">{quota.text()}</span>
-                    <span class="text-sm text-base-content/70">{quota.left_text()}</span>
+                    <span class="font-medium">{move || quota.get().text()}</span>
+                    <span class="text-sm text-base-content/70">{move || quota.get().left_text()}</span>
                 </div>
-                <progress class=class value=pct.to_string() max="100" aria-label="Espacio usado de Mis fotos"></progress>
-                {(pct >= 90).then(|| view! {
+                <progress class=class value=move || pct().to_string() max="100" aria-label="Espacio usado de Mis fotos"></progress>
+                {move || (pct() >= 90).then(|| view! {
                     <p class="text-sm text-error">"Te queda poco lugar. Borrá las fotos que no uses para poder subir otras."</p>
                 })}
             </div>

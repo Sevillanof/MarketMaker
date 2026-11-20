@@ -202,7 +202,8 @@ async fn by_hash(
             ..item
         })
         .into_response(),
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        // Sin foto con esa huella: 204 (no es un error, así la consola no avisa).
+        Ok(None) => StatusCode::NO_CONTENT.into_response(),
         Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
 }

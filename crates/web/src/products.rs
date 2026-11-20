@@ -1507,10 +1507,6 @@ fn PhotosField(
                     }
                 })}
             </dialog>
-            <div role="status" aria-live="polite" class="flex flex-col gap-1 text-sm">
-                {move || library.progress.get()}
-                {move || library.saved.get().into_iter().map(|t| view! { <span>{t}</span> }).collect_view()}
-            </div>
             {move || {
                 let e = library.upload_errors.get();
                 (!e.is_empty()).then(|| view! {
