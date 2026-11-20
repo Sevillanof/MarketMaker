@@ -538,6 +538,8 @@ pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) 
                     {transfer.map(|c| view! { <p class="mk-cfull-tr truncate text-xs font-semibold">{format!("{} con transferencia", format_price(c))}</p> })}
                     {per.map(|c| view! { <p class="truncate text-xs opacity-70">{format!("{n} cuotas sin interés de {}", format_price(c))}</p> })}
                     {look.card_colors.then(|| view! { <ColorDots product=product.clone()/> })}
+                    // El mismo botón que la tarjeta Clásica, debajo de los precios.
+                    <crate::CardCartButton product=product.clone()/>
                 </div>
             </div>
             {open_cover(product.id.clone(), &product.name)}

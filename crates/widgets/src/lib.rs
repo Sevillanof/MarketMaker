@@ -592,6 +592,11 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
     } else {
         "mk-box mk-banner @container hero relative h-full overflow-hidden rounded-box bg-base-200"
     };
+    let title_class = if props.title.chars().count() > 50 {
+        "mk-title mk-banner-title text-lg font-bold @xl:text-2xl"
+    } else {
+        "mk-title mk-banner-title text-xl font-bold @xl:text-3xl"
+    };
     view! {
         <div class=root_class>
             {has_image.then(|| view! {
@@ -602,9 +607,11 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
             })}
             <div class="mk-banner-body hero-content relative text-center">
                 <div class="mk-banner-panel max-w-xl">
-                    <h1 class="mk-title text-xl font-bold line-clamp-2 @xl:text-3xl">{props.title.clone()}</h1>
+                    // Los textos largos se achican un poco y se parten en
+                    // renglones parejos en vez de cortarse con «…».
+                    <h1 class=title_class>{props.title.clone()}</h1>
                     {(!props.subtitle.is_empty()).then(|| view! {
-                        <p class="py-3 line-clamp-2 text-sm @xl:text-base">{props.subtitle.clone()}</p>
+                        <p class="mk-banner-sub py-3 text-sm @xl:text-base">{props.subtitle.clone()}</p>
                     })}
                     {has_button.then(|| view! {
                         <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
