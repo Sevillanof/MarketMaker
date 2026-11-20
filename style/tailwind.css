@@ -2376,3 +2376,21 @@ dialog.mk-open-sheet .mk-dialog-box::before {
   font-weight: 500;
   white-space: nowrap;
 }
+
+/* Bandeja de subida de fotos: barra centrada abajo (en el panel, centrada en el contenido, al lado del menú). */
+@layer components {
+.mk-upload-dock {
+  position: fixed;
+  inset-inline: 0.75rem;
+  bottom: 5rem;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+}
+@media (min-width: 640px) {
+  .mk-upload-dock { bottom: 1.25rem; }
+}
+@media (min-width: 1024px) {
+  body:has(#mk-panel-nav) .mk-upload-dock { inset-inline-start: calc(16rem + 0.75rem); }
+}
+}
