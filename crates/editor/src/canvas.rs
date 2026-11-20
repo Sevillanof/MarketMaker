@@ -718,10 +718,10 @@ pub(crate) fn Canvas(
         }
         preview.set(None);
         drag_pos.set(None);
-        // Un clic (sin arrastrar) sobre un producto de la página abre su ficha.
         if !d.moved && matches!(d.kind, DragKind::Move { .. }) {
-            if let Some(pid) = product_under(&d.id, ev.client_x(), ev.client_y()) {
-                actions.open_modal(Some(pid));
+            // Un clic sobre un producto elige la grilla, nada más: antes abría
+            // la ficha y desorientaba. La ficha se abre desde el panel.
+            if product_under(&d.id, ev.client_x(), ev.client_y()).is_some() {
                 return;
             }
             // Uno sobre un control del bloque (las flechas del carrusel, una
@@ -862,8 +862,8 @@ pub(crate) fn Canvas(
             }
         };
         let label = move || node.get().map_or("Bloque", |n| n.widget.label());
-        // Menú del bloque: un botón ⋯ en su esquina superior derecha que
-        // despliega las acciones. El menú es un `popover` (capa superior), así
+        // Menú del bloque: una pestaña con su nombre arriba del bloque, afuera
+        // (así no tapa su título), que despliega las acciones. El menú es un `popover` (capa superior), así
         // no lo recorta el bloque ni lo achica la escala del lienzo.
         let toolbar = {
             let id = id.clone();
@@ -890,10 +890,12 @@ pub(crate) fn Canvas(
                         <button
                             type="button"
                             data-theme="light"
-                            class="mk-menu-trigger btn btn-sm btn-square absolute right-2 top-2 z-20 border-base-300 bg-base-100 text-base-content shadow-md"
+                            class="mk-menu-trigger"
+                            // El primer bloque no tiene lugar arriba: la pestaña va adentro.
+                            class:mk-menu-trigger-in=move || node.get().is_some_and(|n| n.pos.y == 0)
                             popovertarget=menu_id.clone()
                             // Mismo tamaño en pantalla con cualquier escala del lienzo.
-                            style=move || format!("transform-origin:top right; transform:scale({:.4})", 1.0 / scale.get().max(0.01))
+                            style=move || format!("--mk-unscale:{:.4}", 1.0 / scale.get().max(0.01))
                             aria-label=move || format!("Opciones de {}", label())
                             title="Opciones del bloque"
                             on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
@@ -910,7 +912,9 @@ pub(crate) fn Canvas(
                                 }
                             }
                         >
-                            <Icon name="more"/>
+                            <span class="max-w-40 truncate">{label}</span>
+                            <span class="opacity-50" aria-hidden="true">"|"</span>
+                            "Opciones"<Icon name="chevron-down" class="h-3.5 w-3.5"/>
                         </button>
                         <div
                             node_ref=menu_ref
@@ -1006,10 +1010,10 @@ pub(crate) fn Canvas(
             >
                 <div class="mk-anode-box">
                     <div class="mk-content h-full">{content}</div>
-                    {toolbar}
                     {badge}
                     {handles}
                 </div>
+                {toolbar}
             </div>
         }
     };

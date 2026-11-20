@@ -367,8 +367,8 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
         }
     };
 
-    // Una miniatura de la tira: solo el dibujo; el nombre va en la lupa y
-    // en el nombre accesible del botón.
+    // Una miniatura de la tira, con su nombre y para qué sirve debajo (la
+    // lupa la muestra en grande al pasar el mouse).
     let card = move |type_name: &'static str, desc: &'static str| {
         view! {
             <li>
@@ -386,6 +386,10 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
                 >
                     <span class=STAGE style=format!("height:{}px", THUMB_H + 12.0) aria-hidden="true">
                         <Thumb type_name products tw=THUMB_W th_max=THUMB_H/>
+                    </span>
+                    <span class="mt-1 block px-0.5 pb-1.5 text-left leading-tight" aria-hidden="true">
+                        <span class="block text-[13px] font-semibold">{label_of(type_name)}</span>
+                        <span class="mt-0.5 block text-[11.5px] text-base-content/65">{desc}</span>
                     </span>
                 </button>
             </li>

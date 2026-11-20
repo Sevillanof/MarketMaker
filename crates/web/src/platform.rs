@@ -13,13 +13,18 @@ pub(crate) fn go(url: &str) {
 }
 
 #[component]
-fn Shell(children: Children) -> impl IntoView {
+fn Shell(
+    /// Más ancho, para elegir la plantilla viéndola en grande.
+    #[prop(optional)]
+    wide: bool,
+    children: Children,
+) -> impl IntoView {
     view! {
         <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">
             <header class="flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-3">
                 <a href="/" class="text-lg"><crate::account::Logo/></a>
             </header>
-            <div class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">{children()}</div>
+            <div class=if wide { "mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10" } else { "mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10" }>{children()}</div>
         </div>
     }
 }
@@ -45,7 +50,7 @@ pub fn PlatformHome() -> impl IntoView {
                             Some(s) => view! { <Redirect path=format!("/tienda/{}", s.slug)/> }.into_any(),
                             None => view! {
                                 <leptos_meta::Title text="Tu primera tienda · MarketMaker"/>
-                                <Shell><FirstStore email=me.email/></Shell>
+                                <Shell wide=true><FirstStore email=me.email/></Shell>
                             }.into_any(),
                         }
                     }
@@ -130,7 +135,7 @@ pub(crate) fn NewStore(
     let busy = move || create.pending().get() || opening.get();
     Effect::new(move |_| match create.value().get() {
         Some(Ok(NewStoreOutcome::Created { open })) => {
-            // Sigue diciendo "Creando tu tienda…" hasta que abre el editor.
+            // Sigue diciendo "Creando tu tienda…" hasta que abre su Inicio.
             opening.set(true);
             go(&open)
         }
@@ -203,6 +208,7 @@ pub(crate) fn NewStore(
                     <h2 id="crear-tienda-titulo" class="text-xl font-bold">{if first { "Tu tienda" } else { "Crear tienda" }}</h2>
                     <p class="text-sm text-base-content/70">"Arrancás con un diseño de ejemplo y lo cambiás cuando quieras."</p>
                 </div>
+                <div class="grid items-start gap-4 sm:grid-cols-2">
                 <div class="flex flex-col gap-1">
                     <label class="font-medium" for="nueva-tienda-nombre">"Nombre de la tienda"</label>
                     <input id="nueva-tienda-nombre" class="input w-full" class:input-error=move || name_error.get().is_some()
@@ -253,26 +259,48 @@ pub(crate) fn NewStore(
                     </div>
                     <div aria-live="polite">{slug_note}</div>
                 </div>
+                </div>
                 <fieldset class="flex flex-col gap-2">
                     <legend class="font-medium">"Diseño de partida"</legend>
                     <span id="nueva-tienda-diseno-ayuda" class="text-sm text-base-content/70">"Elegí el que más se parezca a lo que querés. Después cambiás todo."</span>
-                    <div class="grid grid-cols-2 gap-3" aria-describedby="nueva-tienda-diseno-ayuda">
-                        {domain::STORE_TEMPLATES.iter().map(|t| {
-                            let id = t.id;
+                    // A la izquierda las plantillas; a la derecha, la elegida en grande.
+                    <div class="grid items-start gap-4 sm:grid-cols-[17rem_1fr]">
+                        <div class="flex flex-col gap-2" aria-describedby="nueva-tienda-diseno-ayuda">
+                            {domain::STORE_TEMPLATES.iter().map(|t| {
+                                let id = t.id;
+                                view! {
+                                    <label class="mk-template-card">
+                                        <input type="radio" name="template" value=id class="mk-template-input"
+                                            prop:checked=move || template.get() == id
+                                            on:change=move |_| template.set(id.to_string())/>
+                                        <picture>
+                                            <source srcset=format!("{}.avif", t.preview) type="image/avif"/>
+                                            <img src=format!("{}.webp", t.preview) alt="" width="96" height="60" loading="lazy" class="mk-template-img"/>
+                                        </picture>
+                                        <span class="flex min-w-0 flex-col">
+                                            <span class="font-semibold">{t.name}</span>
+                                            <span class="text-xs text-base-content/70">{t.hint}</span>
+                                        </span>
+                                    </label>
+                                }
+                            }).collect_view()}
+                        </div>
+                        {move || {
+                            let id = template.get();
+                            let t = domain::STORE_TEMPLATES.iter().find(|t| t.id == id).unwrap_or(&domain::STORE_TEMPLATES[0]);
                             view! {
-                                <label class="mk-template-card">
-                                    <input type="radio" name="template" value=id class="mk-template-input"
-                                        prop:checked=move || template.get() == id
-                                        on:change=move |_| template.set(id.to_string())/>
+                                <figure class="overflow-hidden rounded-box border border-base-300 bg-base-200">
                                     <picture>
                                         <source srcset=format!("{}.avif", t.preview) type="image/avif"/>
-                                        <img src=format!("{}.webp", t.preview) alt="" width="640" height="400" loading="lazy" class="mk-template-img"/>
+                                        <img src=format!("{}.webp", t.preview) alt=format!("Vista previa de la plantilla {}", t.name)
+                                            width="1280" height="800" class="block aspect-[8/5] w-full object-cover object-top"/>
                                     </picture>
-                                    <span class="font-semibold">{t.name}</span>
-                                    <span class="text-xs text-base-content/70">{t.hint}</span>
-                                </label>
+                                    <figcaption class="border-t border-base-300 bg-base-100 px-3 py-2 text-sm">
+                                        <b>{t.name}</b>" · Así arranca tu tienda. Los textos y las fotos son de ejemplo."
+                                    </figcaption>
+                                </figure>
                             }
-                        }).collect_view()}
+                        }}
                     </div>
                 </fieldset>
                 {move || problem.get().map(|p| view! { <p role="alert" class="text-sm text-error">{p}</p> })}
@@ -284,7 +312,7 @@ pub(crate) fn NewStore(
                         {move || if busy() {
                             view! { <span class="loading loading-spinner loading-sm"></span>"Creando tu tienda…" }.into_any()
                         } else {
-                            view! { "Crear y empezar a editar" }.into_any()
+                            view! { "Crear mi tienda" }.into_any()
                         }}
                     </button>
                 </div>

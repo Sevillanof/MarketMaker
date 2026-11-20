@@ -48,22 +48,19 @@ impl PhotoQuota {
         by_photos.max(by_bytes).min(100)
     }
 
-    /// "Usás 23,4 MB de 500 MB · 34 de 1000 fotos".
+    /// "Usás 34 de 1000 fotos".
     pub fn text(&self) -> String {
-        format!(
-            "Usás {} de {} · {} de {} fotos",
-            format_bytes(self.bytes),
-            format_bytes(PHOTO_BYTES_MAX_PER_OWNER),
-            self.photos,
-            PHOTOS_MAX_PER_OWNER
-        )
+        format!("Usás {} de {} fotos", self.photos, PHOTOS_MAX_PER_OWNER)
     }
 
-    /// "Te quedan 476,6 MB y 966 fotos".
+    /// "Espacio usado: 5 %" (sin megas, que no le dicen nada a nadie).
     pub fn left_text(&self) -> String {
-        let bytes = PHOTO_BYTES_MAX_PER_OWNER.saturating_sub(self.bytes);
-        let photos = PHOTOS_MAX_PER_OWNER.saturating_sub(self.photos);
-        format!("Te quedan {} y {photos} fotos", format_bytes(bytes))
+        let pct = self.bytes * 100 / PHOTO_BYTES_MAX_PER_OWNER;
+        if pct == 0 && self.bytes > 0 {
+            "Espacio usado: menos del 1 %".into()
+        } else {
+            format!("Espacio usado: {pct} %")
+        }
     }
 
     /// Si se puede sumar una foto que ocupa `bytes`; si no, por qué.
@@ -187,8 +184,8 @@ mod tests {
             photos: 34,
             bytes: 24 * 1024 * 1024,
         };
-        assert_eq!(q.text(), "Usás 24,0 MB de 500,0 MB · 34 de 1000 fotos");
-        assert_eq!(q.left_text(), "Te quedan 476,0 MB y 966 fotos");
+        assert_eq!(q.text(), "Usás 34 de 1000 fotos");
+        assert_eq!(q.left_text(), "Espacio usado: 4 %");
         assert_eq!(q.percent(), 4);
         assert!(q.room_for(1024).is_ok());
         assert!(q.room_for(480 * 1024 * 1024).is_err());

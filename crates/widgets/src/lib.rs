@@ -299,7 +299,9 @@ pub fn ProductDialog(
                 {move || product.get().map(|p| {
                     // Color y talle elegidos, compartidos por la foto y el botón.
                     provide_context(product_page::VariantPick::new());
-                    let shown = grow_for_variants(nodes.get_value(), &p);
+                    let shown = grow_for_variants(fit_description(nodes.get_value(), &p), &p);
+                    // Lugar para "Ver carrito y comprar / Seguir comprando" al agregar.
+                    let shown = if editing { shown } else { grow_button(shown, 13) };
                     let ctx = RenderCtx {
                         products: products.get_value(),
                         editing,
@@ -331,6 +333,67 @@ pub fn ProductDialog(
             </form>
         </dialog>
     }
+}
+
+/// La descripción ocupa lo que necesita su texto (más o menos, según el
+/// largo de cada producto) y lo que está debajo sube o baja lo mismo: sin
+/// el hueco grande de una descripción corta ni la barra de una larga.
+fn fit_description(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
+    let Some(d) = nodes
+        .iter()
+        .find(|n| matches!(n.widget, Widget::ProductDescription(_)))
+        .cloned()
+    else {
+        return nodes;
+    };
+    // La ficha mide hasta 800 px por dentro, repartidos en las columnas.
+    let col_px = 800.0 / f64::from(domain::GRID_COLS);
+    let width_px = (f64::from(d.size.w) * col_px - 24.0).max(80.0);
+    let per_line = (width_px / 8.6).floor().max(10.0);
+    let lines: f64 = p
+        .description
+        .lines()
+        .map(|l| (l.chars().count() as f64 / per_line).ceil().max(1.0))
+        .sum::<f64>()
+        .max(1.0);
+    // 26 px por renglón, más los márgenes del bloque y un poco de aire.
+    let rows = ((lines * 26.0 + 28.0) / 8.0).ceil().clamp(4.0, 80.0) as i32;
+    let old = i32::from(d.size.h);
+    let delta = rows - old;
+    if delta == 0 {
+        return nodes;
+    }
+    let bottom = i32::from(d.pos.y) + old;
+    let (dx, dw) = (d.pos.x, d.size.w);
+    for n in &mut nodes {
+        if n.id == d.id {
+            n.size.h = rows as u8;
+        } else if i32::from(n.pos.y) >= bottom && n.pos.x < dx + dw && dx < n.pos.x + n.size.w {
+            n.pos.y = (i32::from(n.pos.y) + delta).max(0) as u16;
+        }
+    }
+    nodes
+}
+
+/// El bloque del botón crece `extra` filas y lo que está debajo baja lo mismo.
+fn grow_button(mut nodes: Vec<Node>, extra: u16) -> Vec<Node> {
+    let Some(b) = nodes
+        .iter()
+        .find(|n| matches!(n.widget, Widget::ProductButton(_)))
+        .cloned()
+    else {
+        return nodes;
+    };
+    let bottom = b.pos.y + u16::from(b.size.h);
+    let (bx, bw) = (b.pos.x, b.size.w);
+    for n in &mut nodes {
+        if n.id == b.id {
+            n.size.h = (u16::from(n.size.h) + extra).min(255) as u8;
+        } else if n.pos.y >= bottom && n.pos.x < bx + bw && bx < n.pos.x + n.size.w {
+            n.pos.y += extra;
+        }
+    }
+    nodes
 }
 
 /// Con colores o talles, el bloque del botón crece para los selectores y lo

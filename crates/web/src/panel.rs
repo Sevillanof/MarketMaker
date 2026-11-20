@@ -572,7 +572,7 @@ fn SideNav(
             </div>
         </details>
         <dialog node_ref=dialog class="modal" aria-labelledby="crear-tienda-titulo">
-            <div class="modal-box max-w-lg">
+            <div class="modal-box max-w-4xl">
                 <crate::platform::NewStore first=false on_cancel=close_dialog/>
             </div>
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
@@ -698,17 +698,15 @@ fn Overview(o: StoreOverview) -> impl IntoView {
             Some(crate::help::FILM_PRODUCT),
         ),
         (
-            o.publish != PublishState::Never,
-            "Publicá tu tienda",
-            match o.publish {
-                PublishState::Changes => "Tenés cambios guardados sin publicar.".to_string(),
-                PublishState::Published => "Tus clientes ya la pueden ver.".to_string(),
-                PublishState::Never => {
-                    "Tocá \"Editar diseño\", cambiá lo que quieras y tocá Publicar.".to_string()
-                }
+            o.pay_ready,
+            "Elegí cómo te pagan",
+            if o.pay_ready {
+                "Mercado Pago, transferencia o coordinar.".to_string()
+            } else {
+                "Sin una forma de cobro, tu tienda no puede vender.".to_string()
             },
-            None,
-            Some(crate::help::FILM_EDITOR),
+            Some((format!("{base}/cobros"), "Elegir")),
+            Some(crate::help::FILM_PAYMENTS),
         ),
         (
             o.delivery_ready,
@@ -720,19 +718,107 @@ fn Overview(o: StoreOverview) -> impl IntoView {
             None,
         ),
         (
-            o.pay_ready,
-            "Elegí cómo te pagan",
-            if o.pay_ready {
-                "Mercado Pago, transferencia o coordinar.".to_string()
-            } else {
-                "Sin una forma de cobro, tu tienda no puede vender.".to_string()
+            o.publish != PublishState::Never,
+            "Publicá tu tienda",
+            match o.publish {
+                PublishState::Changes => "Tenés cambios guardados sin publicar.".to_string(),
+                PublishState::Published => "Tus clientes ya la pueden ver.".to_string(),
+                PublishState::Never => "Cambiá el diseño a tu gusto y tocá Publicar.".to_string(),
             },
-            Some((format!("{base}/cobros"), "Elegir")),
-            Some(crate::help::FILM_PAYMENTS),
+            None,
+            Some(crate::help::FILM_EDITOR),
         ),
     ];
     let done = steps.iter().filter(|s| s.0).count();
     let total = steps.len();
+    // Mientras falten pasos, van arriba de todo y a lo ancho; con todo listo,
+    // quedan en la columna de al lado de los pedidos.
+    let starting = done < total;
+    let steps_head = move || view! {
+        <div class="mb-2 flex items-center">
+            <h2 id="lista-para-vender" class="grow text-lg font-semibold">
+                {if done == total { "Tu tienda, lista para vender" } else { "Primeros pasos" }}
+            </h2>
+            <span class="text-sm text-base-content/60">{format!("{done} de {total}")}</span>
+        </div>
+        <progress class="progress progress-primary mb-2 h-2 w-full" value=done max=total
+            aria-label=format!("{done} de {total} pasos listos")></progress>
+    };
+    let see_how = move |title: &'static str, film: Option<usize>| film.map(|film| view! {
+        <button type="button" class="btn btn-ghost btn-sm text-primary"
+            aria-label=format!("Ver cómo: {title}")
+            on:click=move |_| {
+                if let Some(req) = use_context::<crate::help::HelpRequest>() {
+                    req.0.set(Some(film));
+                }
+            }>
+            <ui::Icon class="size-4" name="play"/>"Ver cómo"
+        </button>
+    });
+    let first_open = steps.iter().position(|s| !s.0);
+    let step_slug = o.slug.clone();
+    let (cards, rows) = if starting {
+        let cards = steps.into_iter().enumerate().map(|(i, (ok, title, detail, action, film))| {
+            let main = if first_open == Some(i) { "btn btn-primary btn-sm" } else { "btn btn-outline btn-sm" };
+            let step_slug = step_slug.clone();
+            view! {
+                <li class="flex flex-col items-start gap-2.5 rounded-box border border-base-300 p-4">
+                    {if ok {
+                        view! { <span class="grid size-7 place-items-center rounded-full bg-success text-success-content"><ui::Icon class="size-[18px]" name="check"/></span> }.into_any()
+                    } else {
+                        view! { <span aria-hidden="true" class="grid size-7 place-items-center rounded-full border-2 border-base-300 text-xs font-bold text-base-content/60">{i + 1}</span> }.into_any()
+                    }}
+                    <span>
+                        <span class="block font-semibold">{title}<span class="sr-only">{if ok { " (listo)" } else { " (pendiente)" }}</span></span>
+                        <span class="mt-0.5 block text-sm text-base-content/60">{detail}</span>
+                    </span>
+                    {if ok {
+                        view! { <span class="mt-auto text-sm font-semibold text-emerald-700">"Listo"</span> }.into_any()
+                    } else {
+                        view! {
+                            <span class="mt-auto flex flex-wrap items-center gap-1">
+                                {match action {
+                                    Some((href, text)) => view! { <a class=main href=href>{text}</a> }.into_any(),
+                                    // Publicar se hace desde el editor, que es solo para computadora.
+                                    None => view! {
+                                        <button type="button" class=format!("{main} max-sm:hidden") disabled=move || open.pending().get()
+                                            on:click=move |_| { open.dispatch(step_slug.clone()); }>"Editar diseño"</button>
+                                    }.into_any(),
+                                }}
+                                {see_how(title, film)}
+                            </span>
+                        }.into_any()
+                    }}
+                </li>
+            }
+        }).collect_view().into_any();
+        (Some(cards), None)
+    } else {
+        let rows = steps.into_iter().map(|(ok, title, detail, action, film)| view! {
+            <li class="flex flex-wrap items-start gap-x-3 gap-y-2 border-t border-base-300 py-3">
+                <span class=if ok {
+                    "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-success text-success-content"
+                } else {
+                    "mt-0.5 size-6 shrink-0 rounded-full border-2 border-base-300"
+                }>
+                    {ok.then(|| view! { <ui::Icon class="size-[18px]" name="check"/> })}
+                </span>
+                <span class="min-w-0 grow basis-40">
+                    <span class="block">{title}<span class="sr-only">{if ok { " (listo)" } else { " (pendiente)" }}</span></span>
+                    <span class="block text-sm text-base-content/60">{detail}</span>
+                </span>
+                {(!ok).then(|| view! {
+                    <span class="flex shrink-0 items-center gap-1">
+                        {see_how(title, film)}
+                        {action.map(|(href, text)| view! {
+                            <a class="btn btn-outline btn-sm" href=href>{text}</a>
+                        })}
+                    </span>
+                })}
+            </li>
+        }).collect_view().into_any();
+        (None, Some(rows))
+    };
 
     view! {
         <header class="flex flex-wrap items-center gap-4">
@@ -762,8 +848,18 @@ fn Overview(o: StoreOverview) -> impl IntoView {
         })}
         <EditorOpening open/>
         {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
+        {cards.map(|cards| view! {
+            {(o.publish == PublishState::Never).then(|| view! {
+                <p class="text-base-content/80"><b>"¡Listo, creaste tu tienda!"</b>" Seguí estos pasos para empezar a vender. Podés hacerlos en el orden que quieras."</p>
+            })}
+            <section data-tour="Primeros pasos" class="card border border-base-300 bg-base-100" aria-labelledby="lista-para-vender">
+                <div class="card-body gap-0 p-5">
+                    {steps_head()}
+                    <ol class="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards}</ol>
+                </div>
+            </section>
+        })}
         {(o.examples > 0).then(|| view! { <ExamplesNotice slug=o.slug.clone() count=o.examples/> })}
-
         <section aria-label="Resumen" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Kpi label="Para preparar" value=o.to_prepare.to_string() link=(orders_href.clone(), "Ver pedidos")/>
             <Kpi label="Esperando pago" value=o.awaiting_payment.to_string() link=(orders_href.clone(), "Ver pedidos")/>
@@ -771,7 +867,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
             <Kpi label="Sin stock" value=o.out_of_stock.to_string() link=(format!("{base}/productos"), "Ver productos")/>
         </section>
 
-        <div class="grid items-start gap-4 lg:grid-cols-[3fr_2fr]">
+        <div class=if starting { "grid items-start gap-4" } else { "grid items-start gap-4 lg:grid-cols-[3fr_2fr]" }>
             <section class="card border border-base-300 bg-base-100" aria-labelledby="ultimos-pedidos">
                 <div class="card-body gap-0 p-5">
                     <div class="mb-2 flex items-center">
@@ -805,54 +901,14 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                     }}
                 </div>
             </section>
-
-            <section data-tour="Primeros pasos" class="card border border-base-300 bg-base-100" aria-labelledby="lista-para-vender">
-                <div class="card-body gap-0 p-5">
-                    <div class="mb-2 flex items-center">
-                        <h2 id="lista-para-vender" class="grow text-lg font-semibold">
-                            {if done == total { "Tu tienda, lista para vender" } else { "Primeros pasos" }}
-                        </h2>
-                        <span class="text-sm text-base-content/60">{format!("{done} de {total}")}</span>
+            {rows.map(|rows| view! {
+                <section data-tour="Primeros pasos" class="card border border-base-300 bg-base-100" aria-labelledby="lista-para-vender">
+                    <div class="card-body gap-0 p-5">
+                        {steps_head()}
+                        <ul>{rows}</ul>
                     </div>
-                    <progress class="progress progress-primary mb-2 h-2 w-full" value=done max=total
-                        aria-label=format!("{done} de {total} pasos listos")></progress>
-                    <ul>
-                        {steps.into_iter().map(|(ok, title, detail, action, film)| view! {
-                            <li class="flex flex-wrap items-start gap-x-3 gap-y-2 border-t border-base-300 py-3">
-                                <span class=if ok {
-                                    "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-success text-success-content"
-                                } else {
-                                    "mt-0.5 size-6 shrink-0 rounded-full border-2 border-base-300"
-                                }>
-                                    {ok.then(|| view! { <ui::Icon class="size-[18px]" name="check"/> })}
-                                </span>
-                                <span class="min-w-0 grow basis-40">
-                                    <span class="block">{title}<span class="sr-only">{if ok { " (listo)" } else { " (pendiente)" }}</span></span>
-                                    <span class="block text-sm text-base-content/60">{detail}</span>
-                                </span>
-                                {(!ok).then(|| view! {
-                                    <span class="flex shrink-0 items-center gap-1">
-                                        {film.map(|film| view! {
-                                            <button type="button" class="btn btn-ghost btn-sm text-primary"
-                                                aria-label=format!("Ver cómo: {title}")
-                                                on:click=move |_| {
-                                                    if let Some(req) = use_context::<crate::help::HelpRequest>() {
-                                                        req.0.set(Some(film));
-                                                    }
-                                                }>
-                                                <ui::Icon class="size-4" name="play"/>"Ver cómo"
-                                            </button>
-                                        })}
-                                        {action.map(|(href, text)| view! {
-                                            <a class="btn btn-outline btn-sm" href=href>{text}</a>
-                                        })}
-                                    </span>
-                                })}
-                            </li>
-                        }).collect_view()}
-                    </ul>
-                </div>
-            </section>
+                </section>
+            })}
         </div>
     }
 }

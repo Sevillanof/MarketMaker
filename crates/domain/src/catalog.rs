@@ -96,6 +96,9 @@ pub struct ProductEdit {
     /// medidas del producto.
     #[serde(default)]
     pub andreani: bool,
+    /// La dirección de la tienda, para "Ver en mi tienda" al crear.
+    #[serde(default)]
+    pub store_url: String,
 }
 
 /// Una etiqueta de la tienda y en cuántos productos está.

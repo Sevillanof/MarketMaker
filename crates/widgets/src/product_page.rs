@@ -697,6 +697,7 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
         })
     };
     let max = Signal::derive(move || room().map_or(1, |r| r.max(1)));
+    let notice = RwSignal::new(None::<String>);
     view! {
         <div class="mk-pbtn mk-pvar flex h-full flex-col gap-3">
             {color_set}
@@ -712,9 +713,16 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
                             None => missing.set(true),
                             Some((_, _)) if room() == Some(0) => {}
                             Some((id, _)) => {
-                                cart.add(&id, qty.get());
+                                let q = qty.get();
+                                cart.add(&id, q);
                                 qty.set(1);
                                 added.set(true);
+                                let which = domain::variant_label(&pick.color.get_untracked(), &pick.size.get_untracked());
+                                notice.set(Some(if which.is_empty() {
+                                    format!("Agregaste {q} al carrito")
+                                } else {
+                                    format!("Agregaste {q} al carrito · {which}")
+                                }));
                                 set_timeout(move || added.set(false), std::time::Duration::from_millis(2000));
                             }
                         }
@@ -722,6 +730,7 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
                     {move || if added.get() { "Agregado ✓".to_string() } else { label.clone() }}
                 </button>
             </div>
+            {cart.map(|cart| view! { <crate::cart::AddedNotice notice cart/> })}
         </div>
     }
 }
