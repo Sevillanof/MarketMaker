@@ -120,6 +120,42 @@
 .mk-anode:hover > .mk-anode-box {
   outline-color: var(--color-primary);
 }
+/* El bloque elegido queda arriba de los vecinos: su pestaña de opciones
+   asoma sobre el de arriba. */
+.mk-anode.mk-selected {
+  z-index: 20;
+}
+/* La pestaña "Nombre | Opciones": pegada arriba a la derecha del contorno,
+   afuera del bloque para no tapar su título. */
+.mk-menu-trigger {
+  position: absolute;
+  right: 6px;
+  bottom: calc(100% - 6px);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 1.75rem;
+  padding-inline: 0.65rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transform-origin: bottom right;
+  transform: scale(var(--mk-unscale, 1));
+}
+.mk-menu-trigger:focus-visible {
+  outline: 3px solid var(--color-base-content);
+  outline-offset: 2px;
+}
+.mk-menu-trigger-in {
+  bottom: auto;
+  top: 10px;
+  transform-origin: top right;
+  border-radius: 0 0 0 0.5rem;
+}
 /* Mientras se arrastra un bloque, se ven todos para ubicarse. */
 .mk-grid-guides .mk-anode-box {
   outline-color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
@@ -1245,8 +1281,8 @@ dialog.mk-cart::backdrop {
 .mk-template-card {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.75rem;
   padding: 0.5rem;
   border: 2px solid var(--color-base-300);
   border-radius: var(--radius-box);
@@ -1274,8 +1310,12 @@ dialog.mk-cart::backdrop {
   border: 0;
   white-space: nowrap;
 }
+.mk-template-card > picture {
+  flex: none;
+}
 .mk-template-img {
-  width: 100%;
+  flex: none;
+  width: 6rem;
   height: auto;
   aspect-ratio: 8 / 5;
   object-fit: cover;
@@ -1950,6 +1990,11 @@ dialog.mk-cart::backdrop {
     height: auto;
     min-height: calc(var(--h) * 8px - 16px);
   }
+  /* Con el aviso de «Agregaste…» el bloque de compra crece lo que necesite. */
+  .mk-dialog-box .mk-node:has(.mk-added) {
+    height: auto;
+    min-height: calc(var(--h) * 8px - 16px);
+  }
 }
 
 /* Mensaje de carga del editor: 7 frases, cada una visible 2 s (ciclo de 14 s).
@@ -2073,6 +2118,8 @@ dialog.mk-open-drawer .mk-grid,
 dialog.mk-open-auto .mk-grid { display: flex; flex-direction: column; }
 dialog.mk-open-drawer .mk-node,
 dialog.mk-open-auto .mk-node { height: calc(var(--h) * 8px - 16px); flex: none; }
+dialog.mk-open-drawer .mk-node:has(.mk-added),
+dialog.mk-open-auto .mk-node:has(.mk-added) { height: auto; min-height: calc(var(--h) * 8px - 16px); }
 /* La hoja lleva su manija arriba. */
 dialog.mk-open-sheet .mk-dialog-box::before {
   content: ""; position: absolute; top: 0.6rem; left: 50%; translate: -50% 0;
@@ -2175,6 +2222,89 @@ dialog.mk-open-sheet .mk-dialog-box::before {
     border-radius: var(--radius-box) var(--radius-box) 0 0;
     padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
   }
+}
+
+/* Mis fotos: grilla compacta; la foto elegida se edita en el panel de al lado. */
+.mk-photo-tile {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  background: var(--color-base-100);
+  text-align: left;
+  cursor: pointer;
+}
+.mk-photo-tile:hover {
+  border-color: color-mix(in oklab, var(--color-primary) 50%, var(--color-base-300));
+}
+.mk-photo-tile[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+.mk-photo-tile:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.mk-photo-tile-img {
+  display: block;
+  aspect-ratio: 1;
+  background: var(--color-base-200);
+}
+.mk-photo-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border-radius: var(--radius-field);
+  background: var(--color-base-200);
+}
+@media (max-width: 63.99rem) {
+  .mk-photo-preview { max-height: 30dvh; }
+}
+.mk-photo-tile-img img {
+  width: 100%;
+  height: 100%;
+}
+@media (min-width: 64rem) {
+  .mk-photo-detail {
+    position: sticky;
+    top: 1rem;
+  }
+}
+@media (max-width: 63.99rem) {
+  .mk-photo-detail {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 45;
+    max-height: 85dvh;
+    overflow-y: auto;
+    border-radius: var(--radius-box) var(--radius-box) 0 0;
+    box-shadow: 0 -12px 40px rgb(0 0 0 / 0.2);
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Ficha: después de agregar, ir al carrito o seguir comprando. */
+.mk-added {
+  border: 1px solid color-mix(in oklab, var(--color-success) 45%, transparent);
+  background: color-mix(in oklab, var(--color-success) 10%, var(--color-base-100));
+  border-radius: var(--radius-box);
+  padding: 0.75rem 0.875rem;
+}
+.mk-added-check {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  flex: none;
+  border-radius: 999px;
+  background: var(--color-success);
+  color: var(--color-success-content);
+}
+.mk-added-check svg {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 /* Cuando una foto termina de subir, su miniatura vuela de la bandeja de subidas

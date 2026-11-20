@@ -1090,6 +1090,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         }
     });
 
+    let first_live = RwSignal::new(false);
     // Resultado de publicar.
     Effect::new(move |_| {
         let Some(result) = publish.value().get() else {
@@ -1097,8 +1098,14 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         };
         match result {
             Ok(version) => {
+                // La primera vez es el gran momento: una ventana para festejar
+                // y compartir la dirección. Después, el aviso de siempre.
+                if state.published.get_untracked() == 0 {
+                    first_live.set(true);
+                } else {
+                    ui.toast("Publicado. Tu tienda ya muestra estos cambios.", false);
+                }
                 state.published.set(version);
-                ui.toast("Publicado. Tu tienda ya muestra estos cambios.", false);
             }
             Err(e) => status.set(Status::Error(e.to_string())),
         }
@@ -1247,9 +1254,8 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
             <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4 max-[1099px]:gap-1.5 max-[1099px]:px-2">
                 <h1 class="sr-only">"Editor de tu tienda"</h1>
                 {use_context::<PanelLink>().map(|PanelLink(href)| view! {
-                    <a href=href class="btn btn-ghost btn-square h-11 w-11" aria-label="Volver a tus tiendas"
-                        title="Volver a tus tiendas">
-                        <Icon name="arrow-left" class="h-5 w-5"/>
+                    <a href=href class="btn btn-ghost h-11 gap-1.5 px-2.5" title="Volver al panel de tu tienda">
+                        <Icon name="arrow-left" class="h-5 w-5"/><span class="max-[1099px]:sr-only">"Panel"</span>
                     </a>
                 })}
                 <StoreMenu/>
@@ -1356,6 +1362,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     {move || if publish.pending().get() || publish_after.get() { "Publicando…" } else { "Publicar" }}
                 </button>
             </header>
+            {move || first_live.get().then(|| view! { <FirstPublish open=first_live/> })}
             {move || publish_check.get().map(|items| view! {
                 <PublishCheck items examples photos=sample_photos.get_untracked() check=publish_check
                     publish=Callback::new(move |_| { publish_check.set(None); publish_now(); })/>
@@ -1606,6 +1613,69 @@ mod tests {
             "Carrusel › Diapositivas 2 › Enlace del botón: Escribí una dirección que empiece con https://, http:// o /."
         );
     }
+}
+
+/// La primera publicación: la dirección de la tienda para copiarla,
+/// compartirla por WhatsApp o abrirla.
+#[component]
+fn FirstPublish(open: RwSignal<bool>) -> impl IntoView {
+    let dialog = NodeRef::<leptos::html::Dialog>::new();
+    let url = window().location().origin().unwrap_or_default();
+    let address = url.split_once("://").map_or(url.clone(), |(_, a)| a.to_string());
+    let copied = RwSignal::new(false);
+    let share = format!(
+        "https://wa.me/?text={}",
+        share_encode(&format!("¡Ya está online mi tienda! Mirala acá: {url}"))
+    );
+    Effect::new(move |_| {
+        if let Some(d) = dialog.get() {
+            if !d.open() {
+                _ = d.show_modal();
+            }
+        }
+    });
+    let url_copy = url.clone();
+    view! {
+        <dialog node_ref=dialog class="modal" closedby="any" aria-labelledby="mk-live-title"
+            on:close=move |_| open.set(false)>
+            <div class="modal-box max-w-lg p-8 text-center">
+                <form method="dialog" class="absolute right-3 top-3">
+                    <button class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar"><Icon name="close" class="h-4 w-4"/></button>
+                </form>
+                <div class="mx-auto grid size-14 place-items-center rounded-full bg-success/15 text-success" aria-hidden="true">
+                    <Icon name="check" class="h-7 w-7"/>
+                </div>
+                <h2 id="mk-live-title" class="mt-3 text-2xl font-bold">"¡Tu tienda está en línea!"</h2>
+                <p class="mt-1 text-base-content/75">"Ya la puede ver cualquiera. Compartí la dirección con tus clientes."</p>
+                <div class="mt-5 flex gap-2">
+                    <span class="flex min-w-0 grow items-center truncate rounded-field border border-base-300 bg-base-200 px-3 font-mono text-sm">{address}</span>
+                    <button type="button" class="btn btn-outline" autofocus=true on:click=move |_| {
+                        widgets::copy_text(&url_copy, move |ok| copied.set(ok));
+                    }>{move || if copied.get() { "Copiada ✓" } else { "Copiar" }}</button>
+                </div>
+                <p class="sr-only" role="status">{move || if copied.get() { "Dirección copiada." } else { "" }}</p>
+                <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                    <a class="btn btn-success" href=share target="_blank" rel="noopener">"Compartir por WhatsApp"</a>
+                    <a class="btn btn-outline" href=url target="_blank" rel="noopener">
+                        "Ver mi tienda"<Icon name="external" class="h-4 w-4"/><span class="sr-only">" (se abre en otra pestaña)"</span>
+                    </a>
+                </div>
+                <p class="mt-5 text-sm text-base-content/65">"Los cambios que hagas desde ahora se ven cuando tocás Publicar de nuevo."</p>
+                <form method="dialog" class="mt-2"><button class="btn btn-ghost btn-sm">"Seguir editando"</button></form>
+            </div>
+        </dialog>
+    }
+}
+
+/// Texto para un enlace (`wa.me/?text=`): todo lo que no es letra, número
+/// o `-_.~` va como `%XX`.
+fn share_encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 /// Ventana de antes de publicar: avisa que quedan textos de ejemplo, uno por

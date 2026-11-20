@@ -167,6 +167,7 @@ pub async fn product_to_edit(
             .await
             .map_err(internal)?
             .is_some(),
+        store_url: crate::email::store_url(&slug),
     }))
 }
 
@@ -318,10 +319,12 @@ pub fn ProductsPage() -> impl IntoView {
 fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     let products = RwSignal::new(data.products);
     // Las etiquetas salen de los productos, así se actualizan al cambiarlas
-    // desde "Etiquetas".
+    // desde "Etiquetas". Las de los productos de ejemplo (audio, calzado…)
+    // no ensucian los filtros de la tienda.
     let tags = Memo::new(move |_| {
         products.with(|ps| {
-            let mut t: Vec<String> = domain::count_tags(ps).into_iter().map(|c| c.tag).collect();
+            let own: Vec<Product> = ps.iter().filter(|p| !p.example).cloned().collect();
+            let mut t: Vec<String> = domain::count_tags(&own).into_iter().map(|c| c.tag).collect();
             t.sort();
             t
         })
@@ -375,6 +378,38 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
         }
     });
 
+    // Borrar desde la lista, preguntando antes.
+    let confirm = NodeRef::<leptos::html::Dialog>::new();
+    let doomed = RwSignal::new(None::<(String, String)>);
+    let remove = Action::new(move |id: &String| {
+        let id = id.clone();
+        async move {
+            match delete_product(slug.get_value(), id.clone()).await {
+                Ok(()) => {
+                    problem.set(None);
+                    products.update(|ps| ps.retain(|p| p.id != id));
+                    if let Some(d) = confirm.get_untracked() { d.close(); }
+                }
+                Err(e) => problem.set(Some(error_text(&e))),
+            }
+        }
+    });
+    let ask_delete = move |id: String, name: String| {
+        doomed.set(Some((id, name)));
+        if let Some(d) = confirm.get() { _ = d.show_modal(); }
+    };
+    // Los productos de ejemplo de la tienda nueva, con el botón para borrarlos.
+    let examples = Memo::new(move |_| products.with(|ps| ps.iter().filter(|p| p.example).count()));
+    let clear_examples = Action::new(move |_: &()| async move {
+        match crate::panel::delete_examples(slug.get_value()).await {
+            Ok(()) => {
+                problem.set(None);
+                products.update(|ps| ps.retain(|p| !p.example));
+            }
+            Err(e) => problem.set(Some(error_text(&e))),
+        }
+    });
+
     let new_href = format!("{base}/nuevo");
     let base_phone = base.clone();
     let empty = products.with_untracked(Vec::is_empty);
@@ -396,6 +431,34 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
             </div>
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
         </dialog>
+        <dialog node_ref=confirm class="modal" aria-labelledby="borrar-producto-titulo">
+            <div class="modal-box max-w-sm">
+                <h2 id="borrar-producto-titulo" class="text-lg font-semibold">
+                    {move || doomed.get().map(|(_, n)| format!("¿Borrar «{n}»?")).unwrap_or_default()}
+                </h2>
+                <p class="mt-1 text-sm text-base-content/70">"Deja de verse en tu tienda y no se puede deshacer. Los pedidos que ya tenga no cambian y sus fotos siguen en Mis fotos."</p>
+                <div class="modal-action mt-4">
+                    <form method="dialog"><button class="btn btn-ghost">"No, dejarlo"</button></form>
+                    <button type="button" class="btn btn-error" disabled=move || remove.pending().get()
+                        on:click=move |_| { if let Some((id, _)) = doomed.get_untracked() { remove.dispatch(id); } }>
+                        {move || if remove.pending().get() { "Borrando…" } else { "Sí, borrar" }}
+                    </button>
+                </div>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
+        {move || (examples.get() > 0).then(|| view! {
+            <div role="region" aria-label="Productos de ejemplo" class="flex flex-wrap items-center gap-3 rounded-box border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                <p class="grow text-sm">
+                    <b>{move || match examples.get() { 1 => "1 producto es de ejemplo.".to_string(), n => format!("{n} productos son de ejemplo.") }}</b>
+                    " Tus clientes no los ven. Borralos cuando cargues los tuyos."
+                </p>
+                <button type="button" class="btn btn-sm" disabled=move || clear_examples.pending().get()
+                    on:click=move |_| { clear_examples.dispatch(()); }>
+                    {move || if clear_examples.pending().get() { "Borrando…" } else { "Borrar los de ejemplo" }}
+                </button>
+            </div>
+        })}
         {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
         {if empty {
             view! {
@@ -502,6 +565,8 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                 {
                                     let href = format!("{base}/{}", p.id);
                                     let id = p.id.clone();
+                                    let (del_id, del_name) = (p.id.clone(), p.name.clone());
+                                    let del_label = format!("Borrar {}", p.name);
                                     let visible = p.visible;
                                     let label = format!("Mostrar {} en la tienda", p.name);
                                     view! {
@@ -553,7 +618,13 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                                     disabled=move || toggle.pending().get()
                                                     on:change=move |ev| { toggle.dispatch((id.clone(), event_target_checked(&ev))); }/>
                                             </td>
-                                            <td><a class="btn btn-ghost btn-sm" href=href>"Editar"</a></td>
+                                            <td class="whitespace-nowrap text-right">
+                                                <a class="btn btn-ghost btn-sm" href=href>"Editar"</a>
+                                                <button type="button" class="btn btn-ghost btn-sm text-red-700" aria-label=del_label
+                                                    on:click=move |_| ask_delete(del_id.clone(), del_name.clone())>
+                                                    <ui::Icon class="size-4" name="trash"/>"Borrar"
+                                                </button>
+                                            </td>
                                         </tr>
                                     }
                                 }
@@ -1032,6 +1103,9 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     let errors = RwSignal::new(Vec::<String>::new());
     let saved = RwSignal::new(false);
     let dirty = RwSignal::new(false);
+    // El nombre del producto recién creado: muestra qué hacer después.
+    let created = RwSignal::new(None::<(String, bool)>);
+    let store_url = edit.store_url.clone();
     // Cualquier cambio en el formulario saca el "Guardado".
     Effect::new(move |first: Option<()>| {
         form.name.track();
@@ -1069,6 +1143,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             dirty.set(false);
             saved.set(true);
             if id.get_untracked().is_empty() {
+                created.set(Some((form.name.get_untracked().trim().to_string(), form.visible.get_untracked())));
                 id.set(new_id.clone());
                 // Cambia la dirección sin volver a cargar el formulario.
                 if let Ok(history) = window().history() {
@@ -1189,6 +1264,23 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             })}
             <span class="contents max-sm:hidden">{save_button()}</span>
         </div>
+        {move || created.get().filter(|_| !dirty.get()).map(|(name, shown)| {
+            let again = format!("/tienda/{}/productos/nuevo", slug.get_value());
+            let list = format!("/tienda/{}/productos", slug.get_value());
+            let store = store_url.clone();
+            view! {
+                <div role="status" class="flex flex-wrap items-center gap-3 rounded-box border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
+                    <span class="grid size-7 shrink-0 place-items-center rounded-full bg-success text-success-content"><ui::Icon class="size-[18px]" name="check"/></span>
+                    <p class="min-w-0 grow"><b>{format!("Creaste «{name}».")}</b>{if shown { " Ya está en tu tienda." } else { " Está oculto: tus clientes no lo ven hasta que lo muestres." }}</p>
+                    // Recarga entera: el formulario arranca vacío.
+                    <a class="btn btn-primary btn-sm" href=again rel="external">"+ Cargar otro producto"</a>
+                    <a class="btn btn-outline btn-sm" href=store target="_blank" rel="noopener">
+                        "Ver en mi tienda"<ui::Icon class="size-4" name="external"/><span class="sr-only">" (se abre en otra pestaña)"</span>
+                    </a>
+                    <a class="btn btn-ghost btn-sm" href=list>"Volver a la lista"</a>
+                </div>
+            }
+        })}
         {move || confirm_delete.get().then(|| view! {
             <div role="alert" class="alert alert-warning flex flex-wrap max-sm:fixed max-sm:inset-x-3 max-sm:bottom-24 max-sm:z-40 max-sm:shadow-xl">
                 <span class="grow">"¿Borrar este producto? Deja de verse en la tienda y no se puede deshacer. Sus fotos siguen en Mis fotos."</span>

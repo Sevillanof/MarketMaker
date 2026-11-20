@@ -562,9 +562,11 @@ pub fn AddToCart(
     let room = Memo::new(move |_| id.with_value(|id| cart.limit(id)).saturating_sub(in_cart()));
     let open_product = use_context::<crate::OpenProduct>();
     let qty_label = format!("Cantidad de {}", product.name);
-    // Todo en una línea: el bloque recorta lo que no entra.
+    let notice = RwSignal::new(None::<String>);
+    // La cantidad y el botón en una línea; debajo, lo que sigue al agregar.
     view! {
-        <div class="mk-pbtn flex h-full flex-nowrap items-start gap-2">
+        <div class="mk-pbtn flex h-full flex-col gap-2">
+        <div class="flex flex-nowrap items-start gap-2">
             {move || view! { <QtyStepper value=qty label=qty_label.clone() max=room.get().max(1)/> }}
             <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
                 disabled=move || room.get() == 0 && !added.get()
@@ -572,9 +574,11 @@ pub fn AddToCart(
                     if room.get_untracked() == 0 {
                         return;
                     }
-                    id.with_value(|id| cart.add(id, qty.get()));
+                    let q = qty.get();
+                    id.with_value(|id| cart.add(id, q));
                     qty.set(1);
                     added.set(true);
+                    notice.set(Some(format!("Agregaste {q} al carrito")));
                     set_timeout(move || added.set(false), std::time::Duration::from_millis(2000));
                 }>
                 {move || if added.get() {
@@ -585,7 +589,7 @@ pub fn AddToCart(
                     view! { <span class="truncate">{label.clone()}</span> }.into_any()
                 }}
             </button>
-            <Show when=move || has.get()>
+            <Show when=move || has.get() && notice.with(Option::is_none)>
                 <button type="button" class="btn btn-outline btn-primary mk-view-cart shrink-0" aria-haspopup="dialog"
                     aria-label=move || format!("Ver carrito, tenés {} de este producto", in_cart())
                     on:click=move |_| {
@@ -601,8 +605,46 @@ pub fn AddToCart(
                 {move || added.get().then(|| format!("Agregado. Tenés {} en el carrito.", in_cart()))}
             </span>
         </div>
+        <AddedNotice notice cart/>
+        </div>
     }
     .into_any()
+}
+
+/// Lo que sigue después de agregar desde la ficha: ir al carrito o seguir
+/// mirando (las dos cierran la ficha).
+#[component]
+pub fn AddedNotice(notice: RwSignal<Option<String>>, cart: Cart) -> impl IntoView {
+    let open_product = use_context::<crate::OpenProduct>();
+    let close = move || {
+        notice.set(None);
+        if let Some(crate::OpenProduct(open)) = open_product {
+            open.set(None);
+        }
+    };
+    // En el celular la ficha es una hoja con desplazamiento: el aviso puede
+    // quedar debajo del borde, así que se trae a la vista al aparecer.
+    let el = NodeRef::<leptos::html::Div>::new();
+    Effect::new(move |_| {
+        if let Some(el) = el.get() {
+            let opts = web_sys::ScrollIntoViewOptions::new();
+            opts.set_block(web_sys::ScrollLogicalPosition::Nearest);
+            el.scroll_into_view_with_scroll_into_view_options(&opts);
+        }
+    });
+    move || notice.get().map(|text| view! {
+        <div class="mk-added" node_ref=el>
+            <p class="flex items-center gap-2 font-semibold">
+                <span class="mk-added-check" aria-hidden="true">{check_icon()}</span>{text}
+            </p>
+            <div class="mt-2.5 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary mk-btn flex-1 basis-40 whitespace-nowrap" aria-haspopup="dialog"
+                    on:click=move |_| { close(); cart.open.set(true); }>"Ver carrito y comprar"</button>
+                <button type="button" class="btn btn-outline btn-primary mk-btn flex-1 basis-40 whitespace-nowrap"
+                    on:click=move |_| close()>"Seguir comprando"</button>
+            </div>
+        </div>
+    })
 }
 
 /// Barra fija abajo mientras haya algo en el carrito: fotos, cuántos

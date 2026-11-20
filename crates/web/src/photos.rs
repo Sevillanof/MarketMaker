@@ -128,7 +128,7 @@ pub fn MyPhotosPage() -> impl IntoView {
                     <editor::LinkImport photos=uploads done=Callback::new(|_| ()) uid="mis-fotos"/>
                 </div>
                 <p class="text-base-content/80">
-                    "Tus fotos sirven en todas tus tiendas. Las optimizamos al subirlas: tus clientes bajan una versión liviana, sin que se note la diferencia."
+                    "Tus fotos sirven en todas tus tiendas. Tocá una para cambiarle el nombre o la descripción."
                 </p>
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Photos/> }>
                     {move || Suspend::new(async move {
@@ -156,19 +156,26 @@ pub fn MyPhotosPage() -> impl IntoView {
     }
 }
 
-/// La grilla de fotos. Las fotos nuevas que llegan de la bandeja de subidas
-/// se suman al principio (con su `view-transition-name`, para que la miniatura
-/// de la bandeja vuele hasta acá).
+/// Las fotos en una grilla compacta (foto, nombre y si se usa). Al tocar una,
+/// sus datos se editan en el panel de al lado (abajo, en el teléfono).
+/// Las fotos nuevas que llegan de la bandeja de subidas se suman al principio,
+/// con un `view-transition-name`: así su miniatura vuela desde la bandeja.
 #[component]
 fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
     // Esta página ya trae la lista completa: la comparte con el resto de la app.
     shared
         .items
         .set(Some(initial.iter().map(|p| p.item.clone()).collect()));
+    // Cada foto con su nombre (se ve en la grilla y se cambia en el panel) y si
+    // llegó recién subida.
+    let to_entry = |p: MyPhoto, fresh: bool| {
+        let name = RwSignal::new(p.item.name.clone());
+        (p, name, fresh)
+    };
     let list = RwSignal::new(
         initial
             .into_iter()
-            .map(|p| (p, false))
+            .map(|p| to_entry(p, false))
             .collect::<Vec<_>>(),
     );
     Effect::new(move |_| {
@@ -176,18 +183,20 @@ fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
             return;
         };
         list.update(|l| {
-            let fresh: Vec<MediaItem> = items
+            let new: Vec<MediaItem> = items
                 .into_iter()
-                .filter(|i| !l.iter().any(|(p, _)| p.item.id == i.id))
+                .filter(|i| !l.iter().any(|(p, _, _)| p.item.id == i.id))
                 .collect();
-            // `items` viene con la más nueva primero.
-            for item in fresh.into_iter().rev() {
-                l.insert(0, (MyPhoto { item, used_in: Vec::new() }, true));
+            // `items` trae la más nueva primero.
+            for item in new.into_iter().rev() {
+                l.insert(0, to_entry(MyPhoto { item, used_in: Vec::new() }, true));
             }
         });
     });
+    let selected = RwSignal::new(None::<String>);
     let removed = Callback::new(move |id: String| {
-        list.update(|l| l.retain(|(p, _)| p.item.id != id));
+        selected.set(None);
+        list.update(|l| l.retain(|(p, _, _)| p.item.id != id));
         shared.items.update(|l| {
             if let Some(l) = l {
                 l.retain(|p| p.id != id);
@@ -200,42 +209,64 @@ fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
                 <p>"Todavía no subiste fotos. Tocá Subir fotos para agregar las de tus productos."</p>
             </div>
         </div>
-        <ul class="grid gap-4 max-sm:grid-cols-2 max-sm:gap-2.5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tus fotos"
-            class:hidden=move || list.with(Vec::is_empty)>
-            <For each=move || list.get() key=|(p, _)| p.item.id.clone()
-                children=move |(p, fresh)| view! { <PhotoCard photo=p fresh removed shared/> }/>
-        </ul>
+        <div class="grid items-start gap-5" class:hidden=move || list.with(Vec::is_empty)
+            class=("lg:grid-cols-[1fr_20rem]", move || selected.get().is_some())>
+            <ul class="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4" aria-label="Tus fotos">
+                <For each=move || list.get() key=|(p, _, _)| p.item.id.clone()
+                    children=move |(p, name, fresh)| {
+                        let id = p.item.id.clone();
+                        let id2 = id.clone();
+                        let id3 = id.clone();
+                        let id4 = id.clone();
+                        let on = Memo::new(move |_| selected.get().as_deref() == Some(id.as_str()));
+                        let thumb = domain::media_base(&p.item.url)
+                            .map(|b| format!("{b}/480.webp"))
+                            .unwrap_or(p.item.url.clone());
+                        let svg = p.item.url.ends_with(".svg");
+                        let used = !p.used_in.is_empty();
+                        let fig_style = fresh.then(|| format!("view-transition-name: foto-{id3}"));
+                        view! {
+                            <li data-photo-card=id4>
+                                <button type="button" class="mk-photo-tile" aria-pressed=move || on.get().to_string()
+                                    on:click=move |_| selected.set((!on.get_untracked()).then(|| id2.clone()))>
+                                    <span class="mk-photo-tile-img" style=fig_style>
+                                        <img src=thumb alt="" loading=if fresh { "eager" } else { "lazy" } class=if svg { "object-contain p-3" } else { "object-cover" }/>
+                                    </span>
+                                    <span class="block px-2.5 py-2">
+                                        <span class="block truncate text-sm font-semibold">{move || name.get()}</span>
+                                        <span class=if used { "block text-xs text-emerald-700" } else { "block text-xs text-base-content/60" }>
+                                            {if used { "En uso" } else { "Sin usar" }}
+                                        </span>
+                                    </span>
+                                </button>
+                            </li>
+                        }
+                    }/>
+            </ul>
+            {move || selected.get().and_then(|id| list.with(|l| l.iter().find(|(p, _, _)| p.item.id == id).map(|(p, n, _)| (p.clone(), *n))))
+                .map(|(photo, name)| view! { <PhotoDetail photo name removed shared selected/> })}
+        </div>
     }
 }
 
+/// Los datos de la foto elegida: nombre, descripción, dónde se usa y borrar.
 #[component]
-fn PhotoCard(
+fn PhotoDetail(
     photo: MyPhoto,
-    fresh: bool,
+    name: RwSignal<String>,
     removed: Callback<String>,
     shared: editor::MyPhotos,
+    selected: RwSignal<Option<String>>,
 ) -> impl IntoView {
     let MyPhoto { item, used_in } = photo;
-    let MediaItem {
-        id,
-        url,
-        name,
-        width,
-        height,
-        original_bytes,
-        web_bytes,
-        alt,
-        ..
-    } = item;
-    let thumb = domain::media_base(&url)
+    let MediaItem { id, url, alt, .. } = item;
+    let preview = domain::media_base(&url)
         .map(|b| format!("{b}/480.webp"))
-        .unwrap_or(url);
-    let saved_name = RwSignal::new(name.clone());
-    let draft = RwSignal::new(name);
+        .unwrap_or(url.clone());
+    let svg = url.ends_with(".svg");
+    let draft = RwSignal::new(name.get_untracked());
     let error = RwSignal::new(None::<String>);
     let confirm = RwSignal::new(false);
-    // Teléfono: cada foto es una miniatura; al tocarla se abren sus datos.
-    let open = RwSignal::new(false);
     let rename =
         Action::new(|(id, name): &(String, String)| rename_photo(id.clone(), name.clone()));
     let remove = Action::new(|id: &String| delete_photo(id.clone()));
@@ -262,13 +293,14 @@ fn PhotoCard(
     let id_renamed = id.clone();
     Effect::new(move |_| match rename.value().get() {
         Some(Ok(())) => {
-            let new_name = draft.get_untracked();
+            let new_name = draft.get_untracked().trim().to_string();
+            // También en la lista compartida (selectores de productos y editor).
             shared.items.update(|l| {
                 if let Some(p) = l.iter_mut().flatten().find(|p| p.id == id_renamed) {
                     p.name = new_name.clone();
                 }
             });
-            saved_name.set(new_name);
+            name.set(new_name);
             error.set(None);
         }
         Some(Err(e)) => error.set(Some(clean(e))),
@@ -283,93 +315,76 @@ fn PhotoCard(
     let save = move || {
         let n = draft.get_untracked().trim().to_string();
         if n.is_empty() {
-            draft.set(saved_name.get_untracked());
-        } else if n != saved_name.get_untracked() {
+            draft.set(name.get_untracked());
+        } else if n != name.get_untracked() {
             rename.dispatch((id_save.clone(), n));
         }
     };
     let save2 = save.clone();
+    let save3 = save.clone();
+    let save_alt2 = save_alt.clone();
     let input_id = format!("foto-{id}");
     let alt_id = format!("foto-{id}-alt");
     let alt_help = format!("foto-{id}-alt-ayuda");
     let uses = used_in.len();
-    let (id_card, id_fig) = (id.clone(), id.clone());
-    let sizes = if original_bytes > 0 && web_bytes > 0 {
-        format!(
-            "{width} × {height} px · subiste {} · tus clientes bajan {}",
-            domain::format_bytes(original_bytes),
-            domain::format_bytes(web_bytes)
-        )
-    } else {
-        format!("{width} × {height} px")
-    };
     view! {
-        <li class="card overflow-hidden bg-base-100 shadow-sm" class=("max-sm:col-span-2", move || open.get())
-            data-photo-card=id_card>
-            <figure class="aspect-[4/3] bg-base-200" class=("max-sm:aspect-square", move || !open.get())
-                style=fresh.then(|| format!("view-transition-name: foto-{id_fig}"))>
-                <img src=thumb alt=move || saved_name.get() loading=if fresh { "eager" } else { "lazy" } class="h-full w-full object-cover"/>
-            </figure>
-            <button type="button" class="flex min-h-12 w-full items-center gap-2 px-3 text-left text-sm sm:hidden"
-                aria-expanded=move || open.get().to_string()
-                on:click=move |_| open.update(|v| *v = !*v)>
-                <span class="min-w-0 grow">
-                    <span class="block truncate font-medium">{move || saved_name.get()}</span>
-                    <span class="block truncate text-xs text-base-content/60">{if uses == 0 { "Sin usar".to_string() } else { format!("En {uses} {}", if uses == 1 { "lugar" } else { "lugares" }) }}</span>
-                </span>
-                <span aria-hidden="true" class="text-base-content/60">{move || if open.get() { "▴" } else { "▾" }}</span>
-            </button>
-            <div class="card-body gap-2 p-4" class=("max-sm:hidden", move || !open.get())>
-                <label for=input_id.clone() class="text-xs font-medium text-base-content/70">"Nombre"</label>
-                <input id=input_id class="input input-sm w-full" maxlength="80" prop:value=move || draft.get()
-                    on:input=move |ev| draft.set(event_target_value(&ev))
-                    on:blur=move |_| save()
-                    on:keydown=move |ev| if ev.key() == "Enter" { save2() }/>
-                <label for=alt_id.clone() class="text-xs font-medium text-base-content/70">"Qué se ve en la foto"</label>
-                <textarea id=alt_id class="textarea textarea-sm w-full" rows="2" maxlength=domain::PHOTO_ALT_MAX
-                    aria-describedby=alt_help.clone()
-                    placeholder="Ej.: Remera azul de algodón, vista de frente"
-                    prop:value=move || alt_draft.get()
-                    on:input=move |ev| alt_draft.set(event_target_value(&ev))
-                    on:blur=move |_| save_alt()></textarea>
-                <p id=alt_help class="text-xs text-base-content/60">
-                    {move || if saved_alt.with(String::is_empty) {
-                        "Ayuda a que Google la encuentre y a quien no ve la pantalla. Se usa en los bloques donde la pongas."
-                    } else {
-                        "Guardado. Se usa en los bloques nuevos donde la pongas."
-                    }}
-                </p>
-                <p class="text-xs text-base-content/70">{sizes}</p>
-                <p class="text-xs">
-                    {if uses == 0 {
-                        "No la usás en ninguna tienda.".to_string()
-                    } else {
-                        format!("Se usa en: {}", used_in.join(", "))
-                    }}
-                </p>
-                {move || error.get().map(|e| view! { <p role="alert" class="text-xs text-error">{e}</p> })}
-                <div class="card-actions mt-1 justify-end">
-                    {move || {
-                        let id = id.clone();
-                        if confirm.get() {
-                            let warn = if uses == 0 {
-                                "¿Borrarla?".to_string()
-                            } else {
-                                format!("Se usa en {uses} {}. Esos bloques quedan sin imagen. ¿Borrarla igual?", if uses == 1 { "página" } else { "páginas" })
-                            };
-                            view! {
-                                <span class="text-xs grow">{warn}</span>
-                                <button class="btn btn-ghost btn-xs" on:click=move |_| confirm.set(false)>"No"</button>
-                                <button class="btn btn-error btn-xs" disabled=move || remove.pending().get()
-                                    on:click=move |_| { remove.dispatch(id.clone()); }>"Sí, borrar"</button>
-                            }.into_any()
+        // Computadora: al costado de la grilla. Teléfono: una hoja abajo.
+        <aside aria-label="Datos de la foto" class="mk-photo-detail flex flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4">
+            <img src=preview alt="" class=if svg { "mk-photo-preview p-4" } else { "mk-photo-preview" }/>
+            <label for=input_id.clone() class="mt-1 text-sm font-semibold">"Nombre"</label>
+            <input id=input_id class="input input-sm w-full" maxlength="80" prop:value=move || draft.get()
+                on:input=move |ev| draft.set(event_target_value(&ev))
+                on:blur=move |_| save()
+                on:keydown=move |ev| if ev.key() == "Enter" { save2() }/>
+            <label for=alt_id.clone() class="mt-1 text-sm font-semibold">"Qué se ve en la foto"</label>
+            <textarea id=alt_id class="textarea textarea-sm w-full" rows="2" maxlength=domain::PHOTO_ALT_MAX
+                aria-describedby=alt_help.clone()
+                placeholder="Ej.: Maceta de barro con flores, vista de frente"
+                prop:value=move || alt_draft.get()
+                on:input=move |ev| alt_draft.set(event_target_value(&ev))
+                on:blur=move |_| save_alt()></textarea>
+            <p id=alt_help class="text-xs text-base-content/60">
+                {move || if saved_alt.with(String::is_empty) {
+                    "Ayuda a que Google la encuentre y a quien no ve la pantalla."
+                } else {
+                    "Guardado. Se usa en los bloques nuevos donde la pongas."
+                }}
+            </p>
+            <p class="mt-1 text-sm font-semibold">"Dónde se usa"</p>
+            {if uses == 0 {
+                view! { <p class="text-sm text-base-content/70">"Todavía no la usás en ninguna tienda."</p> }.into_any()
+            } else {
+                view! { <ul class="text-sm">{used_in.into_iter().map(|u| view! { <li>{u}</li> }).collect_view()}</ul> }.into_any()
+            }}
+            {move || error.get().map(|e| view! { <p role="alert" class="text-xs text-error">{e}</p> })}
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+                {move || {
+                    let id = id.clone();
+                    if confirm.get() {
+                        let warn = if uses == 0 {
+                            "¿Borrarla?".to_string()
                         } else {
-                            view! { <button class="btn btn-ghost btn-xs" on:click=move |_| confirm.set(true)>"Borrar"</button> }.into_any()
-                        }
-                    }}
-                </div>
+                            format!("Se usa en {uses} {}. Esos bloques quedan sin imagen. ¿Borrarla igual?", if uses == 1 { "lugar" } else { "lugares" })
+                        };
+                        view! {
+                            <span class="w-full text-sm">{warn}</span>
+                            <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| confirm.set(false)>"No, dejarla"</button>
+                            <button type="button" class="btn btn-error btn-sm" disabled=move || remove.pending().get()
+                                on:click=move |_| { remove.dispatch(id.clone()); }>"Sí, borrar"</button>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <button type="button" class="btn btn-ghost btn-sm grow-0 text-red-700" on:click=move |_| confirm.set(true)>"Borrar foto"</button>
+                        }.into_any()
+                    }
+                }}
+                <button type="button" class="btn btn-primary btn-sm ml-auto" on:click=move |_| {
+                    save3();
+                    save_alt2();
+                    selected.set(None);
+                }>"Listo"</button>
             </div>
-        </li>
+        </aside>
     }
 }
 

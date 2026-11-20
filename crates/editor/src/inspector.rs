@@ -246,23 +246,33 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                     <h2 id="mk-inspector-title" tabindex="-1" class="text-lg font-bold leading-tight">{label}</h2>
                     <p class="text-sm text-base-content/75">{description}</p>
                 </div>
-                <div class="flex shrink-0 gap-1" role="group" aria-label="Acciones del bloque">
-                    <button
-                        type="button"
-                        class="btn btn-ghost btn-sm btn-square"
-                        aria-label=format!("Duplicar {}", label.to_lowercase())
-                        title="Duplicar"
-                        on:click=move |_| sid.with_value(|id| actions.duplicate(id))
-                    ><Icon name="copy"/></button>
-                    <button
-                        type="button"
-                        class="btn btn-ghost btn-sm btn-square text-red-700 hover:bg-red-700 hover:text-white"
-                        aria-label=format!("Borrar {}", label.to_lowercase())
-                        title="Borrar (Suprimir)"
-                        on:click=move |_| sid.with_value(|id| actions.delete(id))
-                    ><Icon name="trash"/></button>
-                </div>
             </div>
+            <div class="-mt-1 flex gap-2" role="group" aria-label="Acciones del bloque">
+                <button
+                    type="button"
+                    class="btn btn-outline btn-sm gap-1.5 border-base-300"
+                    aria-label=format!("Duplicar {}", label.to_lowercase())
+                    on:click=move |_| sid.with_value(|id| actions.duplicate(id))
+                ><Icon name="copy"/>"Duplicar"</button>
+                <button
+                    type="button"
+                    class="btn btn-outline btn-sm gap-1.5 border-base-300 text-red-700 hover:border-red-700 hover:bg-red-700 hover:text-white"
+                    aria-label=format!("Borrar {}", label.to_lowercase())
+                    title="Borrar (Suprimir)"
+                    on:click=move |_| sid.with_value(|id| actions.delete(id))
+                ><Icon name="trash"/>"Borrar"</button>
+            </div>
+
+            {opens_modal.then(|| view! {
+                <section class="flex flex-col gap-2 rounded-box border border-base-300 bg-primary/5 p-3" aria-labelledby="mk-modal-help-title">
+                    <h3 id="mk-modal-help-title" class="text-sm font-semibold">"Ficha del producto"</h3>
+                    <p class="text-sm text-base-content/75">"Es la ventana que ven tus clientes al tocar un producto. Es la misma para todos tus productos."</p>
+                    <button type="button" class="btn btn-outline btn-sm self-start" on:click=move |_| actions.open_modal(None)>
+                        <Icon name="featured"/>
+                        "Diseñar la ficha"
+                    </button>
+                </section>
+            })}
 
             <div role="tablist" aria-label="Qué querés cambiar" class="tabs tabs-box tabs-sm grid grid-cols-2" on:keydown=on_tab_key>
                 {tab_button(Tab::Content, "Contenido")}
@@ -322,16 +332,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                         })
                     }
                 })}
-                {opens_modal.then(|| view! {
-                    <section class="flex flex-col gap-2 rounded-box border border-base-300 p-3" aria-labelledby="mk-modal-help-title">
-                        <h3 id="mk-modal-help-title" class="text-sm font-semibold">"Ficha del producto"</h3>
-                        <p class="text-sm text-base-content/75">"En tu tienda, tocar un producto abre su ficha con el fondo oscurecido. Es la misma para todos tus productos. También podés abrirla haciendo clic en un producto del lienzo."</p>
-                        <button type="button" class="btn btn-sm self-start" on:click=move |_| actions.open_modal(None)>
-                            <Icon name="featured"/>
-                            "Diseñar la ficha"
-                        </button>
-                    </section>
-                })}
+
                 {has_advanced.then(|| view! {
                     <details class="collapse collapse-arrow border border-base-300">
                         <summary class="collapse-title text-sm font-medium">"Más opciones"</summary>

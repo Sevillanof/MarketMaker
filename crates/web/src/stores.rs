@@ -109,8 +109,10 @@ pub async fn create_store(
     }
     crate::analytics::record_event("tienda_creada", None).await;
     warm_certificate(&slug).await;
+    // Primero Inicio, con los primeros pasos: el editor es la pantalla más
+    // difícil para arrancar.
     Ok(NewStoreOutcome::Created {
-        open: pass_url(&pool, user.id, &slug).await?,
+        open: format!("/tienda/{slug}"),
     })
 }
 
