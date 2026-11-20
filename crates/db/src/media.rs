@@ -121,6 +121,25 @@ pub async fn insert(pool: &PgPool, m: &NewMedia<'_>) -> sqlx::Result<MediaItem> 
     ))
 }
 
+/// Suma los tamaños grandes de una foto que se terminaron de generar por
+/// detrás: lo que ocupan en total y lo que baja un visitante (`web_bytes`).
+pub async fn add_sizes(
+    pool: &PgPool,
+    id: Uuid,
+    extra_stored: usize,
+    web_bytes: usize,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "UPDATE media SET stored_bytes = stored_bytes + $2, web_bytes = $3 WHERE id = $1",
+    )
+    .bind(id)
+    .bind(extra_stored as i64)
+    .bind(web_bytes as i64)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Cambia la descripción de una foto del dueño. Devuelve si existía.
 pub async fn set_alt(pool: &PgPool, owner_id: Uuid, id: Uuid, alt: &str) -> sqlx::Result<bool> {
     let r = sqlx::query("UPDATE media SET alt = $3 WHERE id = $1 AND owner_id = $2")

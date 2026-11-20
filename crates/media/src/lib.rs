@@ -72,9 +72,41 @@ impl Processed {
     }
 }
 
-/// Lee la foto, la gira, y genera AVIF + WebP en cada ancho de [`WIDTHS`].
-/// Tarda (AVIF es lento de codificar): llamarla con `spawn_blocking`.
-pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
+/// Lo que falta de una foto cuando el tamaño más chico ya está listo: los
+/// otros anchos ya achicados, esperando a codificarse.
+pub struct Pending {
+    sizes: Vec<(u32, DynamicImage)>,
+}
+
+impl Pending {
+    /// Codifica los anchos que faltan (de menor a mayor), cada uno en su hilo.
+    /// Tarda: llamarla con `spawn_blocking`.
+    pub fn finish(self) -> Result<Vec<Variant>, MediaError> {
+        let per_width: Vec<Result<[Variant; 2], MediaError>> = std::thread::scope(|s| {
+            let jobs: Vec<_> = self
+                .sizes
+                .iter()
+                .map(|(target, img)| s.spawn(move || encode_width(img, *target)))
+                .collect();
+            jobs.into_iter()
+                .map(|j| {
+                    j.join()
+                        .unwrap_or_else(|_| Err(MediaError::Encode("falló un hilo".into())))
+                })
+                .collect()
+        });
+        let mut variants = Vec::new();
+        for pair in per_width {
+            variants.extend(pair?);
+        }
+        Ok(variants)
+    }
+}
+
+/// Lee la foto, la gira, y genera ya el tamaño más chico (el que alcanza para
+/// mostrarla en Mis fotos). Lo demás queda en [`Pending`], para terminarlo
+/// por detrás mientras la persona ya puede usar la foto.
+pub fn process_fast(bytes: &[u8]) -> Result<(Processed, Pending), MediaError> {
     if bytes.len() > MAX_BYTES {
         return Err(MediaError::TooBig(bytes.len().div_ceil(1024 * 1024)));
     }
@@ -94,36 +126,36 @@ pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
 
     // Cada ancho se achica a partir del anterior (más chico), no de la foto
     // entera: achicar una foto de 12 MP tres veces tardaba más de 1 s cada vez.
+    // El primer paso, desde una foto muy grande, usa un filtro más rápido.
     let mut scaled: Vec<(u32, DynamicImage)> = Vec::new();
     for &target in WIDTHS.iter().rev() {
         let next = match scaled.last() {
-            Some((_, prev)) => resized(prev, target),
-            None => resized(&rgba, target),
+            Some((_, prev)) => resized(prev, target, Quality::Best),
+            None if width > 2 * target => resized(&rgba, target, Quality::Fast),
+            None => resized(&rgba, target, Quality::Best),
         };
         scaled.push((target, next));
     }
-    // Los tres anchos se codifican a la vez, cada uno en su hilo.
-    let per_width: Vec<Result<[Variant; 2], MediaError>> = std::thread::scope(|s| {
-        let jobs: Vec<_> = scaled
-            .iter()
-            .map(|(target, img)| s.spawn(move || encode_width(img, *target)))
-            .collect();
-        jobs.into_iter()
-            .map(|j| {
-                j.join()
-                    .unwrap_or_else(|_| Err(MediaError::Encode("falló un hilo".into())))
-            })
-            .collect()
-    });
-    let mut variants = Vec::new();
-    for pair in per_width.into_iter().rev() {
-        variants.extend(pair?);
-    }
-    Ok(Processed {
-        width,
-        height,
-        variants,
-    })
+    // `scaled` va de mayor a menor: el último es el que se codifica ahora.
+    let (small_w, small) = scaled.pop().expect("hay al menos un ancho");
+    let variants = encode_width(&small, small_w)?.into();
+    scaled.reverse();
+    Ok((
+        Processed {
+            width,
+            height,
+            variants,
+        },
+        Pending { sizes: scaled },
+    ))
+}
+
+/// Lee la foto, la gira, y genera AVIF + WebP en cada ancho de [`WIDTHS`].
+/// Tarda (AVIF es lento de codificar): llamarla con `spawn_blocking`.
+pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
+    let (mut processed, pending) = process_fast(bytes)?;
+    processed.variants.extend(pending.finish()?);
+    Ok(processed)
 }
 
 /// Lee una foto JPG, PNG, WebP o GIF y la gira según cómo se sacó.
@@ -206,12 +238,24 @@ fn svg_to_image(bytes: &[u8]) -> Result<DynamicImage, MediaError> {
         .ok_or(MediaError::Broken)
 }
 
+/// Qué filtro se usa al achicar.
+#[derive(Clone, Copy)]
+enum Quality {
+    Best,
+    /// Casi el doble de rápido: para el primer paso desde una foto enorme.
+    Fast,
+}
+
 /// La foto achicada a `target` de ancho (sin agrandarla).
-fn resized(img: &DynamicImage, target: u32) -> DynamicImage {
+fn resized(img: &DynamicImage, target: u32, quality: Quality) -> DynamicImage {
     let (width, height) = (img.width(), img.height());
     if width > target {
         let th = (u64::from(height) * u64::from(target) / u64::from(width)).max(1) as u32;
-        img.resize_exact(target, th, image::imageops::FilterType::Lanczos3)
+        let filter = match quality {
+            Quality::Best => image::imageops::FilterType::Lanczos3,
+            Quality::Fast => image::imageops::FilterType::CatmullRom,
+        };
+        img.resize_exact(target, th, filter)
     } else {
         img.clone()
     }
