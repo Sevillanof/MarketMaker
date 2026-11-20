@@ -466,7 +466,7 @@ fn SignInForm(store_name: String, #[prop(into)] title_id: String) -> impl IntoVi
                     send(email.get_untracked());
                 }>
                     <h2 id=title_id.clone() class="mk-h text-2xl font-bold">"Ingresá a tu cuenta"</h2>
-                    <p class="mt-1.5 text-sm text-base-content/70">{format!("Para ver tus pedidos en {}.", store_name.get_value())}</p>
+                    <p class="mt-1.5 text-sm text-base-content/70">{format!("Para ver tus pedidos y favoritos en {}.", store_name.get_value())}</p>
                     <label class="mt-5 text-sm font-semibold" for="mk-buyer-email">"Tu email"</label>
                     <input id="mk-buyer-email" class="input mt-1.5 w-full" type="email" name="email" inputmode="email"
                         autocomplete="email" placeholder="nombre@email.com" autofocus

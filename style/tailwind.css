@@ -262,6 +262,30 @@
   .mk-node:has(.mk-contact, .mk-footer) {
     height: auto;
   }
+  /* Texto y beneficios también: con el ancho del celular el texto ocupa
+     otras líneas que en la computadora, así que el alto fijo dejaba un hueco
+     enorme o lo cortaba. El título baja de línea en vez de cortarse con "…"
+     y los beneficios van uno abajo del otro. */
+  .mk-node:has(.mk-text, .mk-benefits) {
+    height: auto;
+  }
+  .mk-text .mk-title,
+  .mk-footer .mk-brand {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+  .mk-benefits > div {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: 1fr;
+    overflow: visible;
+    padding-block: 0.5rem;
+  }
+  .mk-benefits .mk-sub {
+    white-space: normal;
+  }
   .mk-pgrid {
     flex: none;
     grid-auto-rows: auto;
@@ -666,8 +690,17 @@ dialog.mk-cart::backdrop {
 }
 .mk-look {
   --mk-ct: color-mix(in oklab, var(--mk-c) 70%, var(--color-base-content));
+  /* Texto chico en el color (precios): más mezclado con el texto del tema
+     para que se lea también con colores muy claros, como los del tema Pastel. */
+  --mk-ink: color-mix(in oklab, var(--mk-c) 40%, var(--color-base-content));
   --mk-soft: color-mix(in oklab, var(--mk-c) 14%, var(--color-base-100));
   --mk-line: color-mix(in oklab, var(--mk-c) 45%, transparent);
+}
+
+/* Botones suaves del color (como "Elegir opciones"): el texto, en el tono
+   oscuro del color; con colores claros el texto del color no se leía. */
+.mk-store .btn-soft.btn-primary:not(:hover, :focus-visible, :disabled) {
+  color: color-mix(in oklab, var(--mk-c, var(--color-primary)) 40%, var(--color-base-content));
 }
 
 /* Botones: rellenos del color en todos los diseños, salvo que se diga otra cosa. */
@@ -704,7 +737,7 @@ dialog.mk-cart::backdrop {
   --btn-shadow: none;
   background-image: none;
 }
-.mk-look .mk-price { color: var(--mk-ct); }
+.mk-look .mk-price { color: var(--mk-ink); }
 .mk-d4 .mk-box:not(.mk-pad) .mk-price { color: inherit; }
 
 /* Sin relleno, la caja recorta el trazo de la primera letra (la "N" de Nunito
@@ -740,7 +773,7 @@ dialog.mk-cart::backdrop {
 .mk-d4 .mk-item { background: var(--color-base-100); color: var(--color-base-content); border-color: transparent; }
 .mk-d4 .mk-icon { background: color-mix(in oklab, var(--mk-cc) 18%, transparent); color: var(--mk-cc); }
 .mk-d4 .mk-avatar { background: var(--mk-c); color: var(--mk-cc); }
-.mk-d4 .mk-item .mk-price { color: var(--mk-ct); }
+.mk-d4 .mk-item .mk-price { color: var(--mk-ink); }
 
 /* 5 · Minimal: sin caja, títulos en mayúsculas con una línea del color. */
 .mk-d5 .mk-box { background: transparent; border-color: transparent; box-shadow: none; border-radius: 0; }
@@ -966,7 +999,7 @@ dialog.mk-cart::backdrop {
 .mk-d1 .mk-pdesc, .mk-d5 .mk-pdesc { padding: 0 4px; }
 .mk-d2 .mk-pdesc { border: 0; border-left: 4px solid var(--mk-c); border-radius: 0; padding: 0 0 0 1rem; }
 .mk-d5 .mk-pdesc p::first-letter { float: left; font-size: 2.6em; line-height: 0.9; padding-right: 0.12em; font-weight: 700; color: var(--mk-ct); }
-.mk-pprice .mk-pricetag { color: var(--mk-ct); }
+.mk-pprice .mk-pricetag { color: var(--mk-ink); }
 .mk-pprice .mk-pricetag .mk-price { color: inherit; }
 .mk-d2 .mk-pprice .mk-pricetag { border: 2px solid var(--mk-c); border-radius: 999px; padding: 0.15rem 0.9rem; }
 .mk-d3 .mk-pprice .mk-pricetag { background: var(--mk-soft); border-radius: 999px; padding: 0.15rem 0.9rem; }
@@ -2094,7 +2127,7 @@ dialog.mk-open-sheet .mk-dialog-box::before {
 .mk-d3 .mk-cfull { background: var(--mk-soft); padding: 0.4rem; }
 .mk-d4 .mk-cfull { background: var(--mk-c); color: var(--mk-cc); padding: 0.4rem; }
 .mk-d4 .mk-cfull .mk-cfull-tr { color: inherit; }
-.mk-d5 .mk-cfull .mk-cfull-price { color: var(--mk-ct); }
+.mk-d5 .mk-cfull .mk-cfull-price { color: var(--mk-ink); }
 
 /* Tarjeta «Limpia con Agregar» (ver `widgets::product_page::CleanCard`):
    blanca, redondeada, sin borde, con «Agregar» en una pastilla. */
@@ -2122,7 +2155,7 @@ dialog.mk-open-sheet .mk-dialog-box::before {
   background: color-mix(in oklab, var(--color-base-100) 92%, transparent);
   color: var(--color-base-content); box-shadow: 0 1px 3px #0003;
 }
-.mk-fav.is-on { color: var(--color-error); }
+.mk-fav.is-on { color: oklch(0.6 0.23 25); } /* rojo fijo: el "error" de algunos temas es rosa */
 .mk-fav:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) {
   .mk-fav svg { transition: transform 0.2s cubic-bezier(0.3, 1.6, 0.5, 1); }

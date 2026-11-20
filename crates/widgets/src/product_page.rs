@@ -63,6 +63,12 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
         .as_ref()
         .filter(|_| props.stock_note)
         .and_then(Product::few_left);
+    // El corazón de favoritos, arriba a la derecha de la foto (como en las
+    // tarjetas), si el bloque de productos lo tiene prendido.
+    let heart = product
+        .as_ref()
+        .filter(|_| use_context::<domain::CardOptions>().unwrap_or_default().card_favorite)
+        .map(|p| (p.id.clone(), p.name.clone()));
     let (mut photos, alt, fits) =
         product.map_or_else(Default::default, |p| (p.all_photos(), p.name, p.photo_fits));
     if photos.is_empty() {
@@ -89,7 +95,7 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
         view! { <Image src alt=alt_for(i) contain fit/> }.into_any()
     };
 
-    match props.variant.as_str() {
+    let body = match props.variant.as_str() {
         // Mosaico: dos fotos altas y una ancha, y así sigue (se desplaza
         // dentro del bloque si hay más).
         "c" => view! {
@@ -119,6 +125,16 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
         }
         .into_any(),
         _ => classic(total, photo, badge, few, photos, fits, target).into_any(),
+    };
+    match heart {
+        None => body,
+        Some((product_id, name)) => view! {
+            <div class="mk-pheart relative h-full">
+                {body}
+                <crate::FavoriteHeart product_id name/>
+            </div>
+        }
+        .into_any(),
     }
 }
 
@@ -461,7 +477,7 @@ pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) 
 /// Tarjeta «Limpia con Agregar»: tarjeta blanca redondeada, nombre en
 /// mayúsculas y «Agregar» siempre a la vista (suma uno al carrito).
 #[allow(non_snake_case)]
-pub fn CleanCard(product: Product, show_price: bool) -> impl IntoView {
+pub fn CleanCard(product: Product, show_price: bool, favorite: bool) -> impl IntoView {
     let fit = product.fit(&product.image_url);
     let cart = use_context::<crate::Cart>();
     let id = StoredValue::new(product.id.clone());
@@ -503,6 +519,7 @@ pub fn CleanCard(product: Product, show_price: bool) -> impl IntoView {
                 <div class="mk-cphoto relative min-h-0 flex-1 overflow-hidden bg-base-200">
                     <div class="absolute inset-0"><Image src=product.image_url.clone() alt=product.name.clone() fit/></div>
                     {tag.map(|t| view! { <span class="mk-cclean-tag absolute left-2 top-2">{t}</span> })}
+                    {favorite.then(|| view! { <crate::FavoriteHeart product_id=product.id.clone() name=product.name.clone()/> })}
                 </div>
                 <div class="flex shrink-0 flex-col gap-1 p-3">
                     <h3 class="mk-sub truncate text-sm font-bold uppercase tracking-wide">{product.name.clone()}</h3>
