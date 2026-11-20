@@ -404,7 +404,7 @@ impl Actions {
     }
 
     pub fn add(&self, type_name: &str) {
-        let Some(widget) = domain::Widget::defaults(type_name) else {
+        let Some(widget) = fresh_widget(type_name) else {
             return;
         };
         if !domain::allowed_in(type_name, self.state.layer.get_untracked()) {
@@ -1599,7 +1599,7 @@ mod tests {
         assert_eq!(found[0].node_id, "n1");
         assert!(found[0]
             .text
-            .starts_with("Banner › Imagen: Escribí una dirección"));
+            .starts_with("Banner › Imagen: Escribí una página de tu tienda"));
         assert_eq!(new_node_id(&doc), "n2");
     }
 
@@ -1633,7 +1633,7 @@ mod tests {
         doc.nodes.push(node);
         assert_eq!(
             problems(&doc)[0].text,
-            "Carrusel › Diapositivas 2 › Enlace del botón: Escribí una dirección que empiece con https://, http:// o /."
+            "Carrusel › Diapositivas 2 › Enlace del botón: Escribí una página de tu tienda (/ofertas), una dirección (https://…) o un email."
         );
     }
 }
@@ -1799,4 +1799,24 @@ fn PublishCheck(
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
         </dialog>
     }
+}
+
+/// Bloque recién agregado: los valores de ejemplo de `Widget::defaults` más
+/// los que dependen del momento. La cuenta regresiva termina en 7 días; con
+/// una fecha fija, desde ese día todas nacían «terminadas».
+pub fn fresh_widget(type_name: &str) -> Option<domain::Widget> {
+    let mut widget = domain::Widget::defaults(type_name)?;
+    if let domain::Widget::Countdown(c) = &mut widget {
+        if let Some(end) = in_a_week() {
+            c.ends_at = end;
+        }
+    }
+    Some(widget)
+}
+
+/// Dentro de 7 días a las 23:59.
+fn in_a_week() -> Option<String> {
+    let now = js_sys::Date::now();
+    now.is_finite()
+        .then(|| domain::countdown_end((now / 1000.0) as i64, 7))
 }

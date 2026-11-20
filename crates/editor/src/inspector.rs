@@ -327,7 +327,11 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                         });
                         (total > limit).then(|| view! {
                             <p role="status" class="rounded-box bg-warning/15 px-3 py-2 text-sm">
-                                {format!("Mostrás {limit} de tus {total} productos. Subí la cantidad o agregá otra cuadrícula para que se vean todos.")}
+                                {if limit < 12 {
+                                    format!("Mostrás {limit} de tus {total} productos. Podés subir la cantidad hasta 12.")
+                                } else {
+                                    format!("Se ven 12 de tus {total} productos, el máximo por cuadrícula. Para que encuentren los demás, sumá un buscador o un filtro por etiquetas.")
+                                }}
                             </p>
                         })
                     }

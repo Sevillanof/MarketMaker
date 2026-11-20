@@ -1297,6 +1297,55 @@ const SOCIAL_FIELDS: &[Field] = &[
     adv("tiktok", "TikTok (enlace)", FieldKind::Url),
 ];
 
+/// Fin de una cuenta regresiva nueva: `days` días después de `unix_secs`, a
+/// las 23:59, como lo da `<input type="datetime-local">` (`2026-11-27T23:59`).
+/// Con una fecha fija en los valores de ejemplo, desde ese día todas las
+/// cuentas regresivas nuevas nacían terminadas.
+pub fn countdown_end(unix_secs: i64, days: i64) -> String {
+    // Días desde 1970 → fecha civil (algoritmo de Howard Hinnant).
+    let z = unix_secs.div_euclid(86_400) + days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}T23:59")
+}
+
+impl crate::PageDoc {
+    /// Pone `ends_at` en todas las cuentas regresivas de la tienda (para una
+    /// tienda recién creada desde una plantilla).
+    pub fn set_countdowns_end(&mut self, ends_at: &str) {
+        let pages = self.pages.iter_mut().map(|p| &mut p.nodes);
+        for nodes in std::iter::once(&mut self.nodes).chain(pages) {
+            for n in nodes.iter_mut() {
+                if let Widget::Countdown(c) = &mut n.widget {
+                    c.ends_at = ends_at.to_string();
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod countdown_tests {
+    use super::countdown_end;
+
+    #[test]
+    fn countdown_end_dates() {
+        assert_eq!(countdown_end(0, 0), "1970-01-01T23:59");
+        // 2026-11-20 12:00 UTC + 7 días
+        assert_eq!(countdown_end(1_795_176_000, 7), "2026-11-27T23:59");
+        // cruza el año y un 29 de febrero
+        assert_eq!(countdown_end(1_795_176_000, 41), "2026-12-31T23:59");
+        assert_eq!(countdown_end(1_795_176_000, 42), "2027-01-01T23:59");
+        assert_eq!(countdown_end(1_826_798_400, 100), "2028-02-29T23:59");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Límites de tamaño
 
@@ -1534,7 +1583,8 @@ impl Widget {
             }),
             "Navbar" => Widget::Navbar(NavbarProps {
                 menu: s("list"),
-                brand: s("Nombre de tu tienda"),
+                // Vacío: muestra el nombre de Datos de la tienda.
+                brand: String::new(),
                 logo_url: s("/img/logo.svg"),
                 links: vec![link("Inicio", "/")],
                 button_label: String::new(),
@@ -1703,10 +1753,11 @@ impl Widget {
                 address: String::new(),
             }),
             "Footer" => Widget::Footer(FooterProps {
-                brand: s("Nombre de tu tienda"),
+                // Vacíos: muestran el nombre de Datos de la tienda.
+                brand: String::new(),
                 description: s("Una frase corta sobre tu tienda."),
                 links: vec![link("Inicio", "/")],
-                legal: s("© Nombre de tu tienda"),
+                legal: String::new(),
             }),
             "Announcement" => Widget::Announcement(AnnouncementProps {
                 variant: s("a"),

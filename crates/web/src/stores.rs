@@ -102,8 +102,13 @@ pub async fn create_store(
         return Ok(NewStoreOutcome::Problem(problem.into()));
     }
     let pool = crate::server::pool()?;
-    let doc = serde_json::to_value(domain::template_doc(&template, &name))
-        .map_err(crate::server::internal)?;
+    let mut doc = domain::template_doc(&template, &name);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    // Las plantillas con oferta traen una cuenta regresiva: termina en un mes.
+    doc.set_countdowns_end(&domain::countdown_end(now, 30));
+    let doc = serde_json::to_value(doc).map_err(crate::server::internal)?;
     let created = db::auth::create_store(&pool, &name, &slug, user.id, "demo", &doc)
         .await
         .map_err(crate::server::internal)?;

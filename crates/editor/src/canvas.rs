@@ -490,7 +490,7 @@ pub(crate) fn Canvas(
             ev.prevent_default();
             if !nd.active {
                 nd.active = true;
-                let Some(widget) = Widget::defaults(nd.type_name) else {
+                let Some(widget) = crate::fresh_widget(nd.type_name) else {
                     cancel_new_drag();
                     return;
                 };
