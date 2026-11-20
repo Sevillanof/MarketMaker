@@ -2342,6 +2342,9 @@ dialog.mk-open-sheet .mk-dialog-box::before {
   background: color-mix(in oklab, var(--color-base-100) 92%, transparent);
   color: var(--color-base-content); box-shadow: 0 1px 3px #0003;
 }
+/* Compartir sobre la foto de la ficha: debajo del corazón. */
+.mk-share-photo { top: 3.25rem; }
+.mk-share-note { top: 3.6rem; }
 .mk-fav.is-on { color: oklch(0.6 0.23 25); } /* rojo fijo: el "error" de algunos temas es rosa */
 .mk-fav:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) {

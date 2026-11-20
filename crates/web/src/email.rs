@@ -890,6 +890,189 @@ pub fn update_to_buyer(
     }
 }
 
+/// Avisos al comprador por un pedido que no avanza.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuyerNotice {
+    /// Pasó un día y falta la transferencia: todavía está a tiempo.
+    Reminder,
+    /// Pasaron 48 horas sin el pago: se canceló solo.
+    Expired,
+    /// Lo canceló la tienda.
+    CancelledByStore,
+}
+
+impl BuyerNotice {
+    /// Cómo queda anotado en el pedido, para no mandarlo dos veces.
+    pub fn key(self) -> &'static str {
+        match self {
+            BuyerNotice::Reminder => "recordatorio",
+            BuyerNotice::Expired | BuyerNotice::CancelledByStore => "cancelado",
+        }
+    }
+}
+
+/// Al comprador: «te falta la transferencia» o «tu pedido se canceló», con
+/// qué pasó, qué puede hacer y cómo escribirle a la tienda. `transfer` son
+/// los datos para transferir (solo en el recordatorio).
+pub fn notice_to_buyer(
+    what: BuyerNotice,
+    store_name: &str,
+    slug: &str,
+    o: &Order,
+    whatsapp_url: Option<&str>,
+    transfer: &str,
+) -> Email {
+    let first = o.customer_name.split_whitespace().next().unwrap_or("");
+    let store = store_name;
+    let order_url = format!("{}/pedido/{}", store_url(slug), o.id);
+    let shop_url = store_url(slug);
+    let (subject, title, intro, side_label, side, button, url) = match what {
+        BuyerNotice::Reminder => (
+            format!("Te falta transferir · pedido #{}", o.number),
+            if first.is_empty() {
+                "Te falta la transferencia".to_string()
+            } else {
+                format!("{first}, te falta la transferencia")
+            },
+            format!("Tu pedido en {store} está reservado. Para que no se cancele, hacé la transferencia en las próximas 24 horas y mandá el comprobante."),
+            "Adónde transferir",
+            if transfer.trim().is_empty() {
+                format!("Importe: {}", ui::format_price(o.total_cents))
+            } else {
+                format!("Alias o CBU: {}\nImporte: {}", transfer.trim(), ui::format_price(o.total_cents))
+            },
+            "Ver mi pedido",
+            order_url,
+        ),
+        BuyerNotice::Expired => (
+            format!("Tu pedido #{} se canceló", o.number),
+            "Tu pedido se canceló".to_string(),
+            "Pasaron 48 horas y no recibimos el pago, así que el pedido se canceló y los productos volvieron a estar disponibles. No se te cobró nada.".to_string(),
+            "¿Ya habías pagado?",
+            format!("Escribile a {store} con el comprobante y lo resuelven."),
+            "Volver a la tienda",
+            shop_url,
+        ),
+        BuyerNotice::CancelledByStore => (
+            format!("Tu pedido #{} se canceló", o.number),
+            "Tu pedido se canceló".to_string(),
+            format!("{store} canceló tu pedido. Si ya habías pagado, escribile a la tienda para coordinar la devolución."),
+            "¿Tenés dudas?",
+            format!("Escribile a {store} y te cuentan qué pasó."),
+            "Volver a la tienda",
+            shop_url,
+        ),
+    };
+    let (lines_html, lines_text) = order_summary(o);
+    let side_html = side.lines().map(esc).collect::<Vec<_>>().join("<br>");
+    let wa_label = if what == BuyerNotice::Reminder {
+        "Mandar comprobante por WhatsApp"
+    } else {
+        "Escribir por WhatsApp"
+    };
+    let wa_html = whatsapp_url.map_or_else(String::new, |u| {
+        format!(
+            r#" <a href="{}" style="display:inline-block;color:#4f46e5;text-decoration:none;font-weight:600;padding:12px 14px">{wa_label}</a>"#,
+            esc(u)
+        )
+    });
+    let html = format!(
+        r#"<!doctype html><html lang="es"><body style="margin:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+<div style="max-width:560px;margin:0 auto;padding:32px 16px">
+<p style="font-weight:700;font-size:18px;margin:0 0 16px">{}</p>
+<div style="background:#fff;border-radius:12px;padding:32px 28px">
+<h1 style="font-size:22px;line-height:1.3;margin:0 0 12px">{}</h1>
+<p style="margin:0;color:#52525b;line-height:1.6;font-size:15px">{}</p>
+{}<p style="margin:0;color:#3f3f46;line-height:1.6;font-size:14px">{side_html}</p>
+{}{lines_html}
+<p style="margin:32px 0 0"><a href="{}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:8px">{button}</a>{wa_html}</p></div>
+<p style="color:#71717a;font-size:12px;margin:20px 0 0;text-align:center">Hecho con MarketMaker</p>
+</div></body></html>"#,
+        esc(store),
+        esc(&title),
+        esc(&intro),
+        label(side_label),
+        label(&format!("Tu pedido #{}", o.number)),
+        esc(&url)
+    );
+    let text = format!(
+        "{title}\n{intro}\n\n{side_label}\n{side}\n\nTu pedido #{}\n{lines_text}\n{button}: {url}\n{}",
+        o.number,
+        whatsapp_url.map_or_else(String::new, |u| format!("{wa_label}: {u}\n"))
+    );
+    Email {
+        to: vec![o.email.clone()],
+        subject,
+        html,
+        text,
+    }
+}
+
+/// Manda un aviso de [`BuyerNotice`] por el pedido `o` (una sola vez).
+pub async fn tell_cancelled(pool: &db::Pool, tenant: uuid::Uuid, o: Order, what: BuyerNotice) {
+    if o.email.trim().is_empty() || o.number <= 0 {
+        return;
+    }
+    if !db::orders::note_buyer_update(pool, tenant, &o.id, what.key())
+        .await
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Ok(Some((name, slug))) = db::mp::name_and_slug(pool, tenant).await else {
+        return;
+    };
+    let whatsapp = db::auth::store_info(pool, tenant)
+        .await
+        .ok()
+        .and_then(|i| i.whatsapp_url());
+    let transfer = if what == BuyerNotice::Reminder {
+        db::orders::payment_options(pool, tenant)
+            .await
+            .map(|p| p.transfer_text())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    send(notice_to_buyer(
+        what,
+        &name,
+        &slug,
+        &o,
+        whatsapp.as_deref(),
+        &transfer,
+    ));
+}
+
+/// Les recuerda la transferencia a quienes compraron hace más de `hours`
+/// horas y todavía no pagaron (una vez por pedido).
+pub async fn remind_unpaid(pool: &db::Pool, hours: i32) {
+    match db::orders::unpaid_transfers(pool, hours).await {
+        Ok(list) => {
+            for (tenant, o) in list {
+                tell_cancelled(pool, tenant, o, BuyerNotice::Reminder).await;
+            }
+        }
+        Err(e) => {
+            leptos::logging::log!("Pedidos: no pudimos buscar a quién recordarle el pago: {e}")
+        }
+    }
+}
+
+/// Cancela los pedidos sin pagar hace más de `hours` horas (ver
+/// `db::orders::expire_unpaid`) y le avisa a cada comprador. Devuelve cuántos
+/// sacó en total.
+pub async fn expire_unpaid(pool: &db::Pool, hours: i32) -> Result<usize, String> {
+    let (dropped, cancelled) = db::orders::expire_unpaid_listed(pool, hours)
+        .await
+        .map_err(|e| e.to_string())?;
+    let n = dropped + cancelled.len();
+    for (tenant, o) in cancelled {
+        tell_cancelled(pool, tenant, o, BuyerNotice::Expired).await;
+    }
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

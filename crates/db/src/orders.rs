@@ -650,6 +650,16 @@ pub async fn set_status(
 /// por transferencia o a coordinar que el dueño no marcó como pagados en ese
 /// tiempo se cancelan, y sus unidades vuelven al stock. Devuelve cuántos sacó.
 pub async fn expire_unpaid(pool: &PgPool, hours: i32) -> sqlx::Result<usize> {
+    let (dropped, cancelled) = expire_unpaid_listed(pool, hours).await?;
+    Ok(dropped + cancelled.len())
+}
+
+/// Como [`expire_unpaid`], y dice cuáles pedidos canceló (tienda y pedido,
+/// como estaban antes de cancelarse) para avisarle a cada comprador.
+pub async fn expire_unpaid_listed(
+    pool: &PgPool,
+    hours: i32,
+) -> sqlx::Result<(usize, Vec<(Uuid, Order)>)> {
     let dropped = sqlx::query(
         "DELETE FROM orders
          WHERE status = 'pending_payment' AND number IS NULL
@@ -667,13 +677,38 @@ pub async fn expire_unpaid(pool: &PgPool, hours: i32) -> sqlx::Result<usize> {
     .bind(hours)
     .fetch_all(pool)
     .await?;
-    let mut done = dropped;
+    let mut cancelled = Vec::new();
     for (tenant, id) in stale {
+        let before = get(pool, tenant, id).await?;
         if set_status(pool, tenant, id, OrderStatus::Cancelled).await? {
-            done += 1;
+            if let Some(o) = before {
+                cancelled.push((tenant, o));
+            }
         }
     }
-    Ok(done)
+    Ok((dropped, cancelled))
+}
+
+/// Los pedidos por transferencia que siguen sin pagar hace más de `hours`
+/// horas (para recordarle al comprador antes de que se cancelen).
+pub async fn unpaid_transfers(pool: &PgPool, hours: i32) -> sqlx::Result<Vec<(Uuid, Order)>> {
+    let ids: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT tenant_id, id FROM orders
+         WHERE status IN ('new', 'pending_payment') AND number IS NOT NULL
+           AND payment = 'transfer'
+           AND NOT ('recordatorio' = ANY(buyer_updates))
+           AND updated_at < now() - make_interval(hours => $1)",
+    )
+    .bind(hours)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::new();
+    for (tenant, id) in ids {
+        if let Some(o) = get(pool, tenant, id).await? {
+            out.push((tenant, o));
+        }
+    }
+    Ok(out)
 }
 
 /// Números de la tienda para su Inicio en el panel.

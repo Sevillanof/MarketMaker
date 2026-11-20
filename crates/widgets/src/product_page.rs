@@ -49,6 +49,7 @@ impl Default for VariantPick {
 
 #[component]
 pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
+    let whole = product.clone();
     // Al elegir un color en la ficha, la foto va a la de ese color.
     let colors = product
         .as_ref()
@@ -141,11 +142,16 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
         .into_any(),
         _ => classic(total, photo, badge, few, photos, fits, target).into_any(),
     };
+    // Compartir sobre la foto, si la tienda lo eligió así.
+    let share = whole
+        .filter(|_| use_context::<crate::SharePlace>().is_some_and(|s| s.on_photo))
+        .map(|product| view! { <crate::ShareButton product on_photo=true/> });
     match heart {
         None => body,
         Some((product_id, name)) => view! {
             <div class="mk-pheart relative h-full">
                 {body}
+                {share}
                 <crate::FavoriteHeart product_id name/>
             </div>
         }

@@ -387,6 +387,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     let offered = methods(&pool, tenant.id).await?;
     if !open || offered.is_empty() {
         return Ok(PlaceOrder::CartChanged {
+            remove: Vec::new(),
             message: "Esta tienda todavía no está recibiendo compras.".into(),
         });
     }
@@ -407,6 +408,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         std::time::Duration::from_secs(10 * 60),
     ) {
         return Ok(PlaceOrder::CartChanged {
+            remove: Vec::new(),
             message: "Recibimos varios pedidos seguidos desde tu conexión. Esperá unos minutos y probá de nuevo.".into(),
         });
     }
@@ -418,6 +420,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         let to = form.email.trim().to_lowercase();
         if !crate::limits::allow(&format!("order-mail|{to}"), 6, day) {
             return Ok(PlaceOrder::CartChanged {
+                remove: Vec::new(),
                 message: "Ya recibimos varios pedidos con ese email hoy. Si necesitás hacer otro, escribile a la tienda.".into(),
             });
         }
@@ -427,11 +430,24 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             std::time::Duration::from_secs(60 * 60),
         ) {
             return Ok(PlaceOrder::CartChanged {
+                remove: Vec::new(),
                 message: "La tienda está recibiendo muchos pedidos en este momento. Probá de nuevo en unos minutos.".into(),
             });
         }
     }
-    let changed = |message: String| Ok(PlaceOrder::CartChanged { message });
+    let changed = |message: String| {
+        Ok(PlaceOrder::CartChanged {
+            message,
+            remove: Vec::new(),
+        })
+    };
+    // El problema es de un renglón del carrito: la compra ofrece quitarlo.
+    let changed_line = |message: String, line: &str| {
+        Ok(PlaceOrder::CartChanged {
+            message,
+            remove: vec![line.to_string()],
+        })
+    };
     let mut ids = Vec::new();
     for (line, _) in &form.lines {
         let (id, _, _) = domain::parse_line_id(line);
@@ -460,10 +476,13 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             match base.for_variant(color, size) {
                 Some(p) => p,
                 None => {
-                    return changed(format!(
-                    "\"{}\" cambió sus colores o talles. Sacalo del carrito y elegilo de nuevo.",
-                    base.name
-                ))
+                    return changed_line(
+                        format!(
+                            "\"{}\" cambió sus colores o talles. Quitalo y elegilo de nuevo en la tienda.",
+                            base.name
+                        ),
+                        line,
+                    )
                 }
             }
         } else {
@@ -471,10 +490,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         };
         let p = &p;
         if !p.in_stock {
-            return changed(format!(
-                "\"{}\" se agotó. Sacalo del carrito para seguir.",
-                p.name
-            ));
+            return changed_line(format!("\"{}\" se agotó mientras comprabas.", p.name), line);
         }
         items.push(domain::OrderItem {
             product_id: base.id.clone(),
@@ -605,9 +621,19 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             return invalid("coupon", "Este cupón ya no tiene usos disponibles.")
         }
         db::orders::Created::Short { name, left: 0 } => {
-            return changed(format!(
-                "\"{name}\" se agotó. Sacalo del carrito para seguir."
-            ))
+            // El renglón del carrito con ese producto, para ofrecer quitarlo.
+            let line = items
+                .iter()
+                .position(|i| i.name == name)
+                .and_then(|i| form.lines.get(i));
+            return match line {
+                Some((line, _)) => {
+                    changed_line(format!("\"{name}\" se agotó mientras comprabas."), line)
+                }
+                None => changed(format!(
+                    "\"{name}\" se agotó. Sacalo del carrito para seguir."
+                )),
+            };
         }
         db::orders::Created::Short { name, left } => {
             return changed(format!(
@@ -787,6 +813,7 @@ struct Fields {
     delivery: RwSignal<Delivery>,
     address: RwSignal<String>,
     city: RwSignal<String>,
+    province: RwSignal<String>,
     notes: RwSignal<String>,
     pay: RwSignal<domain::PayMethod>,
     /// Con Andreani: código postal, sucursal y DNI.
@@ -860,7 +887,8 @@ fn ship_text(f: Fields, d: &DeliverySettings) -> String {
 fn step_of(field: &str) -> u8 {
     match field {
         "name" | "email" | "phone" => 1,
-        "delivery" | "address" | "postal_code" | "city" | "notes" | "dni" | "branch" => 2,
+        "delivery" | "address" | "postal_code" | "city" | "province" | "notes" | "dni"
+        | "branch" => 2,
         _ => 3,
     }
 }
@@ -877,6 +905,7 @@ fn buyer_storage() -> Option<leptos::web_sys::Storage> {
 fn remember_buyer(f: &Fields) {
     let (name, email, phone, address, city, postal, dni) =
         (f.name, f.email, f.phone, f.address, f.city, f.postal, f.dni);
+    let province = f.province;
     // Después de hidratar: recupera lo guardado en los campos vacíos.
     Effect::new(move |_| {
         let Some(raw) = buyer_storage().and_then(|s| s.get_item(BUYER_KEY).ok().flatten()) else {
@@ -891,6 +920,7 @@ fn remember_buyer(f: &Fields) {
             (phone, "phone"),
             (address, "address"),
             (city, "city"),
+            (province, "province"),
             (postal, "postal"),
             (dni, "dni"),
         ] {
@@ -904,7 +934,8 @@ fn remember_buyer(f: &Fields) {
     Effect::new(move |prev: Option<()>| {
         let v = serde_json::json!({
             "name": name.get(), "email": email.get(), "phone": phone.get(),
-            "address": address.get(), "city": city.get(), "postal": postal.get(), "dni": dni.get(),
+            "address": address.get(), "city": city.get(), "province": province.get(),
+            "postal": postal.get(), "dni": dni.get(),
         });
         // La primera vez corre antes de recuperar: no pisa lo guardado con vacío.
         if prev.is_some() {
@@ -1025,13 +1056,16 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     };
     // Quien entró a su cuenta ya tiene sus datos puestos.
     let buyer = info.buyer.clone().unwrap_or_default();
+    // La cuenta guarda «Rosario, Santa Fe»: acá va cada parte en su campo.
+    let (city, province) = split_province(&buyer.city);
     let f = Fields {
         name: RwSignal::new(buyer.name),
         email: RwSignal::new(buyer.email),
         phone: RwSignal::new(buyer.phone),
         delivery: RwSignal::new(first),
         address: RwSignal::new(buyer.address),
-        city: RwSignal::new(buyer.city),
+        city: RwSignal::new(city),
+        province: RwSignal::new(province),
         notes: RwSignal::new(String::new()),
         pay: RwSignal::new(info.pay_methods.first().copied().unwrap_or_default()),
         postal: RwSignal::new(buyer.postal_code),
@@ -1117,6 +1151,8 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         now.max(reached.unwrap_or(1))
     });
     let problem = RwSignal::new(None::<String>);
+    // Los renglones del carrito que hay que quitar para poder seguir.
+    let gone = RwSignal::new(Vec::<String>::new());
     // Muestra los errores: abre el paso del primero y lleva el foco ahí.
     let show_errors = move |e: Vec<FieldError>| {
         if let Some(c) = e.iter().find(|e| e.field == "coupon") {
@@ -1144,7 +1180,10 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             _ = window().location().set_href(&url);
         }
         Some(Ok(PlaceOrder::Invalid { errors: e })) => show_errors(e),
-        Some(Ok(PlaceOrder::CartChanged { message })) => problem.set(Some(message)),
+        Some(Ok(PlaceOrder::CartChanged { message, remove })) => {
+            gone.set(remove);
+            problem.set(Some(message));
+        }
         Some(Err(e)) => problem.set(Some(error_text(&e))),
         None => {}
     });
@@ -1156,6 +1195,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         address: f.address.get_untracked(),
         postal_code: f.postal.get_untracked(),
         city: f.city.get_untracked(),
+        province: f.province.get_untracked(),
         notes: f.notes.get_untracked(),
         pay: f.pay.get_untracked(),
         lines: lines_now(),
@@ -1184,6 +1224,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     };
     let submit = move || {
         problem.set(None);
+        gone.set(Vec::new());
         let mut form = form_now();
         let e = d.with_value(|d| domain::tidy_checkout(&mut form, d));
         if e.is_empty() {
@@ -1304,10 +1345,14 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                                         <TextField id="address" label="Dirección" value=f.address errors autocomplete="street-address" placeholder="Calle, número, piso y depto." max=domain::ADDRESS_MAX/>
                                         <TextField id="city" label="Localidad" value=f.city errors autocomplete="address-level2" placeholder="CABA" max=domain::CITY_MAX/>
                                     </div>
-                                    // Con Andreani el código postal ya se pidió arriba.
-                                    {(!has_andreani).then(|| view! {
-                                        <div class="sm:max-w-xs">
-                                            <TextField id="postal_code" label="Código postal (opcional)" value=f.postal errors autocomplete="postal-code" inputmode="numeric" placeholder="1425" max=10/>
+                                    // Con envío propio: la provincia y, si no se pidió
+                                    // arriba para Andreani, el código postal.
+                                    {(f.delivery.get() == Delivery::Shipping).then(|| view! {
+                                        <div class="grid gap-x-4 sm:grid-cols-[2fr_1fr]">
+                                            <ProvinceField f errors/>
+                                            {(!has_andreani).then(|| view! {
+                                                <TextField id="postal_code" label="Código postal" value=f.postal errors autocomplete="postal-code" inputmode="numeric" placeholder="1425" max=10/>
+                                            })}
                                         </div>
                                     })}
                                 })}
@@ -1322,7 +1367,26 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                             </Step>
                             <Step n=3 title="Pago" step done_line=Signal::derive(String::new)>
                                 <PayChoice f methods=methods.get_value() errors/>
-                                {move || problem.get().map(|m| view! { <p role="alert" class="mt-3 text-sm text-error">{m}</p> })}
+                                // En el celular el resumen va plegado arriba: el
+                                // cupón se pide acá, a la vista.
+                                <div class="mt-1 lg:hidden"><CouponBox cart f id="f-coupon-m"/></div>
+                                {move || problem.get().map(|m| view! {
+                                    <p role="alert" class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-error">
+                                        <span>{m}</span>
+                                        {(!gone.with(Vec::is_empty)).then(|| view! {
+                                            <button type="button" class="btn btn-sm btn-outline btn-error"
+                                                on:click=move |_| {
+                                                    for line in gone.get_untracked() {
+                                                        cart.remove(&line);
+                                                    }
+                                                    gone.set(Vec::new());
+                                                    problem.set(None);
+                                                }>
+                                                {move || if gone.with(Vec::len) == 1 { "Quitarlo y seguir" } else { "Quitarlos y seguir" }}
+                                            </button>
+                                        })}
+                                    </p>
+                                })}
                                 <PayButton f busy=Signal::derive(busy)/>
                             </Step>
                         </div>
@@ -1448,6 +1512,47 @@ pub(crate) fn error_for(errors: RwSignal<Vec<FieldError>>, field: &'static str) 
             .find(|e| e.field == field)
             .map(|e| e.message.clone())
     })
+}
+
+/// La localidad y la provincia de «Rosario, Santa Fe», cada una por su lado
+/// (la provincia vacía si no termina en una).
+fn split_province(city: &str) -> (String, String) {
+    if let Some((c, p)) = city.rsplit_once(", ") {
+        let p = if p == "CABA" {
+            "Ciudad Autónoma de Buenos Aires"
+        } else {
+            p
+        };
+        if domain::PROVINCES.contains(&p) {
+            return (c.to_string(), p.to_string());
+        }
+    }
+    (city.to_string(), String::new())
+}
+
+/// La provincia del envío, de una lista.
+#[component]
+fn ProvinceField(f: Fields, errors: RwSignal<Vec<FieldError>>) -> impl IntoView {
+    let error = move || error_for(errors, "province");
+    view! {
+        <fieldset class="fieldset">
+            <label class="fieldset-legend" for="f-province">"Provincia"</label>
+            <select id="f-province" class="select w-full" class:select-error=move || error().is_some()
+                autocomplete="address-level1" required
+                aria-invalid=move || error().is_some().to_string()
+                aria-describedby=move || error().is_some().then_some("f-province-error")
+                on:change=move |ev| {
+                    f.province.set(event_target_value(&ev));
+                    errors.update(|e| e.retain(|e| e.field != "province"));
+                }>
+                <option value="" disabled selected=move || f.province.get().is_empty()>"Elegí"</option>
+                {domain::PROVINCES.iter().map(|p| view! {
+                    <option value=*p selected=move || f.province.get() == *p>{*p}</option>
+                }).collect_view()}
+            </select>
+            {move || error().map(|m| view! { <p id="f-province-error" class="label text-error">{m}</p> })}
+        </fieldset>
+    }
 }
 
 /// Un campo de texto con su etiqueta y su error debajo.
@@ -1849,13 +1954,20 @@ fn CouponBox(cart: Cart, f: Fields, id: &'static str) -> impl IntoView {
 
 /// Subtotal, envío y total.
 #[component]
-fn Totals(cart: Cart, f: Fields, d: DeliverySettings, coupon_id: &'static str) -> impl IntoView {
+fn Totals(
+    cart: Cart,
+    f: Fields,
+    d: DeliverySettings,
+    /// El campo del cupón arriba de los totales (en el celular va en el pago).
+    #[prop(optional)]
+    coupon_id: Option<&'static str>,
+) -> impl IntoView {
     let d = StoredValue::new(d);
     let subtotal = move || cart.total_cents();
     let shipping = move || d.with_value(|d| ship_cents(f, d));
     let shipping_text = move || d.with_value(|d| ship_text(f, d));
     view! {
-        <CouponBox cart f id=coupon_id/>
+        {coupon_id.map(|id| view! { <CouponBox cart f id/> })}
         <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span class="tabular-nums">{move || format_price(subtotal())}</span></div>
         {move || (coupon_cents(f, subtotal()) > 0).then(|| view! {
             <div class="mt-1 flex justify-between text-sm text-success"><span>{move || format!("Cupón {}", f.coupon.with(|c| c.as_ref().map(|c| c.code.clone()).unwrap_or_default()))}</span><span class="tabular-nums">{move || format!("−{}", format_price(coupon_cents(f, subtotal())))}</span></div>
@@ -1886,7 +1998,7 @@ fn MobileSummary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
             <div class="px-5 pb-4">
                 <OrderLines cart/>
                 <a href="/" class="link link-hover mt-2 inline-block text-sm text-base-content/70">"Cambiar productos"</a>
-                <Totals cart f d coupon_id="f-coupon-m"/>
+                <Totals cart f d/>
             </div>
         </details>
     }

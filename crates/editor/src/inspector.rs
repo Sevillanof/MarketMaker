@@ -158,6 +158,8 @@ fn ModalSettings() -> impl IntoView {
                 pick=Callback::new(move |v: String| state.apply(|d| d.product_modal.open = v.clone()))/>
             {select("mk-modal-buybar", "Barra de compra al bajar", "Aparece cuando el botón de compra queda fuera de la vista. En el celular no hace falta: el botón ya queda abajo.",
                 domain::MODAL_BUYBAR_OPTIONS, |m| &m.buybar, |m, v| m.buybar = v)}
+            {select("mk-modal-share", "Botón Compartir", "Para que tus clientes manden el producto por WhatsApp o copien su enlace.",
+                domain::MODAL_SHARE_OPTIONS, |m| &m.share, |m, v| m.share = v)}
         </section>
     }
 }

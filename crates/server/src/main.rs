@@ -383,11 +383,15 @@ async fn purge_events(pool: db::Pool) {
 async fn expire_unpaid_orders(pool: db::Pool) {
     const EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
     loop {
-        match db::orders::expire_unpaid(&pool, 48).await {
+        // A las 48 horas se cancela y se le avisa; a las 24, un recordatorio.
+        // Primero lo vencido: un pedido que ya se cancela no recibe además
+        // el recordatorio.
+        match web::email::expire_unpaid(&pool, 48).await {
             Ok(0) => {}
             Ok(n) => log!("Pedidos: se cancelaron {n} que esperaban el pago hace más de 48 horas"),
             Err(e) => log!("Pedidos: no pudimos revisar los pedidos sin pagar: {e}"),
         }
+        web::email::remind_unpaid(&pool, 24).await;
         tokio::time::sleep(EVERY).await;
     }
 }

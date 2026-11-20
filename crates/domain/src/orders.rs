@@ -353,6 +353,11 @@ pub struct CheckoutForm {
     pub address: String,
     pub postal_code: String,
     pub city: String,
+    /// Con envío propio: la provincia (una de [`crate::PROVINCES`]). Al
+    /// validar queda sumada a `city` («Rosario, Santa Fe»), que es lo que se
+    /// guarda en el pedido.
+    #[serde(default)]
+    pub province: String,
     pub notes: String,
     /// Producto y cantidad, como están en el carrito.
     pub lines: Vec<(String, u32)>,
@@ -373,7 +378,7 @@ pub struct CheckoutForm {
 /// Un campo del formulario con problema, para mostrarlo al lado del campo.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FieldError {
-    /// `name`, `email`, `phone`, `delivery`, `address`, `postal_code`, `city`, `coupon` o `cart`.
+    /// `name`, `email`, `phone`, `delivery`, `address`, `postal_code`, `city`, `province`, `coupon` o `cart`.
     pub field: String,
     pub message: String,
 }
@@ -513,14 +518,26 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
             }
         }
         Delivery::Shipping => {
-            // El código postal ya no se pide; si llega, tiene que tener forma de uno.
+            // Con envío a todo el país hacen falta la provincia y el código
+            // postal: hay localidades con el mismo nombre en varias provincias.
             let pc_ok = (4..=8).contains(&f.postal_code.len())
                 && f.postal_code.chars().all(|c| c.is_ascii_alphanumeric());
-            if !f.postal_code.is_empty() && !pc_ok {
+            if f.postal_code.is_empty() {
+                e.push(err(
+                    "postal_code",
+                    "Escribí tu código postal, por ejemplo 1425.",
+                ));
+            } else if !pc_ok {
                 e.push(err(
                     "postal_code",
                     "Revisá el código postal, por ejemplo 1123.",
                 ));
+            }
+            f.province = f.province.trim().to_string();
+            if !crate::PROVINCES.contains(&f.province.as_str()) {
+                e.push(err("province", "Elegí tu provincia."));
+            } else if !f.city.is_empty() {
+                f.city = city_with_province(&f.city, &f.province);
             }
             f.dni.clear();
             f.branch.clear();
@@ -549,6 +566,31 @@ pub fn shipping_for(delivery: Delivery, d: &DeliverySettings) -> i64 {
     match delivery {
         Delivery::Pickup | Delivery::Andreani(_) => 0,
         Delivery::Shipping => d.shipping_cents.unwrap_or(0),
+    }
+}
+
+/// La localidad con su provincia, como se guarda en el pedido: «Rosario,
+/// Santa Fe». Si ya la trae (o son lo mismo, como «Córdoba»), queda igual.
+pub fn city_with_province(city: &str, province: &str) -> String {
+    let city = city.trim();
+    // La Ciudad de Buenos Aires se escribe corto, como la escribe la gente.
+    let short = if province.trim() == "Ciudad Autónoma de Buenos Aires" {
+        "CABA"
+    } else {
+        province.trim()
+    };
+    let (c, p) = (city.to_lowercase(), short.to_lowercase());
+    let same = c == p
+        || c.ends_with(&format!(", {p}"))
+        || (short == "CABA"
+            && matches!(
+                c.as_str(),
+                "capital federal" | "ciudad de buenos aires" | "buenos aires"
+            ));
+    if p.is_empty() || same {
+        city.to_string()
+    } else {
+        format!("{city}, {short}")
     }
 }
 
@@ -752,8 +794,14 @@ pub enum PlaceOrder {
     Pay { id: String, url: String },
     /// Hay campos para corregir.
     Invalid { errors: Vec<FieldError> },
-    /// Algo del carrito cambió (un producto se agotó o ya no está).
-    CartChanged { message: String },
+    /// Algo del carrito cambió (un producto se agotó o ya no está). `remove`
+    /// son los renglones del carrito que hay que quitar para poder seguir:
+    /// con eso la compra ofrece «Quitarlo y seguir».
+    CartChanged {
+        message: String,
+        #[serde(default)]
+        remove: Vec<String>,
+    },
 }
 
 /// La pantalla Cobros de una tienda, en el panel.
@@ -896,6 +944,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn shipping_asks_for_province_and_postal_code() {
+        let d = DeliverySettings {
+            shipping_enabled: true,
+            ..DeliverySettings::default()
+        };
+        let mut f = CheckoutForm {
+            name: "Ana Pérez".into(),
+            email: "ana@correo.com".into(),
+            phone: "11 5555-1234".into(),
+            delivery: Delivery::Shipping,
+            address: "San Martín 450".into(),
+            city: "Rosario".into(),
+            lines: vec![("a".into(), 1)],
+            ..CheckoutForm::default()
+        };
+        let fields: Vec<_> = tidy_checkout(&mut f, &d)
+            .into_iter()
+            .map(|e| e.field)
+            .collect();
+        assert_eq!(fields, ["postal_code", "province"]);
+        f.postal_code = "2000".into();
+        f.province = "Santa Fe".into();
+        assert!(tidy_checkout(&mut f, &d).is_empty());
+        // La provincia queda en la localidad del pedido, una sola vez.
+        assert_eq!(f.city, "Rosario, Santa Fe");
+        assert!(tidy_checkout(&mut f, &d).is_empty());
+        assert_eq!(f.city, "Rosario, Santa Fe");
+        assert_eq!(
+            city_with_province("CABA", "Ciudad Autónoma de Buenos Aires"),
+            "CABA"
+        );
+        assert_eq!(
+            city_with_province("Palermo", "Ciudad Autónoma de Buenos Aires"),
+            "Palermo, CABA"
+        );
+        assert_eq!(city_with_province("Córdoba", "Córdoba"), "Córdoba");
+    }
+
+    #[test]
     fn checks_alias_cbu_and_cvu() {
         assert!(transfer_account_problem("macetas.marta").is_none());
         assert!(transfer_account_problem("0000003100012345678901").is_none());
@@ -919,6 +1006,7 @@ mod tests {
             address: "Av. Santa Fe 2050".into(),
             postal_code: "c1123aaa".into(),
             city: "CABA".into(),
+            province: "Ciudad Autónoma de Buenos Aires".into(),
             notes: String::new(),
             lines: vec![("a".into(), 2), ("b".into(), 0)],
             pay: PayMethod::default(),
@@ -998,7 +1086,16 @@ mod tests {
             .collect();
         assert_eq!(
             fields,
-            ["name", "email", "phone", "address", "city", "cart"]
+            [
+                "name",
+                "email",
+                "phone",
+                "address",
+                "city",
+                "postal_code",
+                "province",
+                "cart"
+            ]
         );
     }
 
