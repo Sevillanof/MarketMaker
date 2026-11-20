@@ -230,12 +230,24 @@ pub fn to_buyer(
         )
     };
     let place = where_(o, pickup_address);
+    // Su nota para la tienda, para que vea que llegó.
+    let (note_html, note_text) = if o.notes.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (
+            format!(
+                r#"<p style="margin:8px 0 0;color:#52525b">Tu nota para la tienda: {}</p>"#,
+                esc(&o.notes)
+            ),
+            format!("Tu nota para la tienda: {}\n", o.notes),
+        )
+    };
     let html = frame(
         store_name,
         &format!(
             r#"<h1 style="font-size:20px;margin:0 0 8px">¡Gracias por tu compra, {}!</h1>
 <p style="margin:0;color:#52525b">Pedido #{} · {}</p>{lines_html}
-<p style="margin:16px 0 0;color:#52525b">{}</p>{}"#,
+<p style="margin:16px 0 0;color:#52525b">{}</p>{note_html}{}"#,
             esc(first),
             o.number,
             esc(&next),
@@ -244,7 +256,7 @@ pub fn to_buyer(
         ),
     );
     let text = format!(
-        "¡Gracias por tu compra, {first}!\nPedido #{} · {next}\n\n{lines_text}\n{place}\n\nTu pedido: {url}\n",
+        "¡Gracias por tu compra, {first}!\nPedido #{} · {next}\n\n{lines_text}\n{place}\n{note_text}\nTu pedido: {url}\n",
         o.number
     );
     Email {
@@ -424,19 +436,35 @@ pub fn editor_link(to: &str, store: &str, url: &str) -> Email {
     }
 }
 
-/// El enlace para entrar a la cuenta de comprador de una tienda.
-pub fn buyer_link(to: &str, store: &str, url: &str) -> Email {
-    let title = format!("Entrá a tu cuenta de {store}");
+/// El enlace para entrar a la cuenta de comprador de una tienda. Si lo pidió
+/// al guardar un favorito (`favorite`, el nombre del producto), el email
+/// habla de eso y no de pedidos.
+pub fn buyer_link(to: &str, store: &str, url: &str, favorite: Option<&str>) -> Email {
+    let (title, what, label, plain) = match favorite {
+        Some(name) => (
+            format!("Guardá «{name}» en tus favoritos"),
+            format!("Tocá el botón para entrar a tu cuenta de {store}: el producto queda guardado en tus favoritos."),
+            "Guardar en mis favoritos",
+            "Abrí este enlace para guardarlo en tus favoritos",
+        ),
+        None => (
+            format!("Entrá a tu cuenta de {store}"),
+            "Tocá el botón para ver tus pedidos y el seguimiento de tus compras.".to_string(),
+            "Entrar a mi cuenta",
+            "Abrí este enlace para ver tus pedidos",
+        ),
+    };
     let html = frame(
         store,
         &format!(
             r#"<h1 style="font-size:20px;margin:0 0 8px">{}</h1>
-<p style="margin:0 0 16px;color:#52525b">Tocá el botón para ver tus pedidos y el seguimiento de tus compras. El enlace vence en {} minutos y sirve una sola vez.</p>
+<p style="margin:0 0 16px;color:#52525b">{} El enlace vence en {} minutos y sirve una sola vez.</p>
 {}
 <p style="margin:16px 0 0;color:#52525b">Si no lo pediste, ignorá este email: nadie puede entrar a tu cuenta sin este enlace.</p>"#,
             esc(&title),
+            esc(&what),
             db::buyers::LINK_MINUTES,
-            button(url, "Entrar a mi cuenta")
+            button(url, label)
         ),
     );
     Email {
@@ -444,7 +472,7 @@ pub fn buyer_link(to: &str, store: &str, url: &str) -> Email {
         subject: title.clone(),
         html,
         text: format!(
-            "{title}\n\nAbrí este enlace para ver tus pedidos (vence en {} minutos y sirve una sola vez):\n{url}\n\nSi no lo pediste, ignorá este email.\n",
+            "{title}\n\n{plain} (vence en {} minutos y sirve una sola vez):\n{url}\n\nSi no lo pediste, ignorá este email.\n",
             db::buyers::LINK_MINUTES
         ),
     }

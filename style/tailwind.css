@@ -2295,6 +2295,9 @@ dialog.mk-open-sheet .mk-dialog-box::before {
 
 /* Tarjeta de producto «Completa» (ver `widgets::product_page::FullCard`):
    sin borde, foto redondeada y renglones de precio, transferencia y cuotas. */
+/* Una tarjeta sin colores ni talles guarda ese renglón cuando otra del mismo
+   bloque sí los muestra: las fotos de la fila quedan del mismo alto. */
+.mk-look:has(.mk-cdots) .mk-cdots-none { display: block; }
 .mk-cfull .mk-cfull-tr { color: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content)); }
 .mk-d2 .mk-cfull { border: 2px solid var(--mk-c); padding: 0.4rem; }
 .mk-d3 .mk-cfull { background: var(--mk-soft); padding: 0.4rem; }

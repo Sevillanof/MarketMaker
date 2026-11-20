@@ -721,8 +721,11 @@ pub fn CartBar() -> impl IntoView {
 
 /// Cajón del carrito, desde la derecha. Un `<dialog>` modal: fondo inerte,
 /// Esc lo cierra, tocar afuera también.
+///
+/// `in_checkout`: se abre desde «Finalizar compra» (para cambiar productos
+/// sin salir): el botón de abajo vuelve a la compra en vez de navegar.
 #[component]
-pub fn CartDrawer() -> impl IntoView {
+pub fn CartDrawer(#[prop(optional)] in_checkout: bool) -> impl IntoView {
     let Some(cart) = use_context::<Cart>() else {
         return ().into_any();
     };
@@ -786,8 +789,17 @@ pub fn CartDrawer() -> impl IntoView {
                         <div class="flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{move || format_price(cart.total_cents())}</span></div>
                         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>"Se calcula después"</span></div>
                         <div class="mt-3 mb-4 flex justify-between text-lg font-bold"><span>"Total"</span><span>{move || format_price(cart.total_cents())}</span></div>
-                        <a class="btn btn-primary btn-block btn-lg" href="/comprar">"Finalizar compra"</a>
-                        <button type="button" class="btn btn-link btn-block mt-1" on:click=move |_| close()>"Seguir comprando"</button>
+                        {if in_checkout {
+                            view! {
+                                <button type="button" class="btn btn-primary btn-block btn-lg" on:click=move |_| close()>"Seguir con la compra"</button>
+                                <a class="btn btn-link btn-block mt-1" href="/">"Volver a la tienda"</a>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <a class="btn btn-primary btn-block btn-lg" href="/comprar">"Finalizar compra"</a>
+                                <button type="button" class="btn btn-link btn-block mt-1" on:click=move |_| close()>"Seguir comprando"</button>
+                            }.into_any()
+                        }}
                     </footer>
                 </Show>
             </div>

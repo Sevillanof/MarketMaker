@@ -130,14 +130,25 @@ pub async fn buyer_request_link(
     {
         Err(db::buyers::TooMany) => Ok(CodeRequest::TooMany),
         Ok(key) => {
+            // Si venía de tocar un corazón, el email habla de ese producto y
+            // el enlace abre Favoritos.
+            let saved = match favorite {
+                Some(id) => db::products::get(&pool, tenant.id, id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|p| p.name),
+                None => None,
+            };
             let url = format!(
-                "{}/mi-cuenta/entrar?k={key}",
-                crate::email::store_url(&tenant.slug)
+                "{}/mi-cuenta/entrar?k={key}{}",
+                crate::email::store_url(&tenant.slug),
+                if saved.is_some() { "&f=1" } else { "" }
             );
             if !crate::auth::emails_go_out() {
                 leptos::logging::log!("\n  Enlace de {email} para {}: {url}\n", tenant.name);
             }
-            let mail = crate::email::buyer_link(&email, &tenant.name, &url);
+            let mail = crate::email::buyer_link(&email, &tenant.name, &url, saved.as_deref());
             if let Err(e) = crate::email::deliver(&mail).await {
                 leptos::logging::log!("No pudimos mandar el enlace a {email}: {e}");
             }
@@ -221,6 +232,9 @@ pub async fn buyer_save_profile(profile: BuyerProfile) -> Result<(), ServerFnErr
     let Some((_, buyer)) = current_buyer().await? else {
         return Err(ServerFnError::new("Tu sesión venció. Volvé a entrar."));
     };
+    if let Some(problem) = domain::saved_phone_problem(&profile.phone) {
+        return Err(ServerFnError::new(problem));
+    }
     let clean = |s: &str, max: usize| -> String {
         s.chars()
             .filter(|c| !c.is_control())

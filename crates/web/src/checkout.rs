@@ -1252,6 +1252,14 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             .join(" · ")
     };
     let branches = RwSignal::new(Vec::<AndreaniBranch>::new());
+    // Si dejó una nota, el resumen del paso lo dice: así sabe que se guardó.
+    let with_note = move |line: String| {
+        if f.notes.with(|n| n.trim().is_empty()) {
+            line
+        } else {
+            format!("{line} · Con nota para la tienda")
+        }
+    };
     let delivery_line = move || match f.delivery.get() {
         Delivery::Andreani(s) if s.needs_branch() => {
             let b = f.branch.get();
@@ -1284,6 +1292,8 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     view! {
         <StoreFrame view>
             <StoreHeader name=info.store_name/>
+            // «Cambiar productos» abre el carrito acá mismo, sin salir.
+            <widgets::CartDrawer in_checkout=true/>
             {move || if !cart.ready.get() {
                 view! { <ui::Skeleton class="h-96 w-full"/> }.into_any()
             } else if methods.with_value(|m| m.is_empty()) {
@@ -1318,7 +1328,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                                 </div>
                                 <button type="button" class="btn btn-primary mt-3 self-start" on:click=move |_| next(1)>"Seguir"</button>
                             </Step>
-                            <Step n=2 title="Entrega" step done_line=Signal::derive(delivery_line)>
+                            <Step n=2 title="Entrega" step done_line=Signal::derive(move || with_note(delivery_line()))>
                                 {has_andreani.then(|| view! {
                                     <div class="mb-2 sm:max-w-xs">
                                         <TextField id="postal_code" label="Código postal" value=f.postal errors autocomplete="postal-code" inputmode="numeric" placeholder="1425" max=10/>
@@ -1997,7 +2007,7 @@ fn MobileSummary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
             </summary>
             <div class="px-5 pb-4">
                 <OrderLines cart/>
-                <a href="/" class="link link-hover mt-2 inline-block text-sm text-base-content/70">"Cambiar productos"</a>
+                <button type="button" class="link link-hover mt-2 inline-block text-sm text-base-content/70" on:click=move |_| cart.open.set(true)>"Cambiar productos"</button>
                 <Totals cart f d/>
             </div>
         </details>
@@ -2011,7 +2021,7 @@ fn Summary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
         <aside class="card hidden bg-base-100 shadow-sm lg:sticky lg:top-4 lg:block lg:mt-11"><div class="card-body gap-0 p-6">
             <h2 class="mk-h mb-1 text-lg font-bold">"Tu pedido"</h2>
             <OrderLines cart/>
-            <a href="/" class="link link-hover mt-2 self-start text-sm text-base-content/70">"Cambiar productos"</a>
+            <button type="button" class="link link-hover mt-2 self-start text-sm text-base-content/70" on:click=move |_| cart.open.set(true)>"Cambiar productos"</button>
             <Totals cart f d coupon_id="f-coupon"/>
         </div></aside>
     }
@@ -2141,6 +2151,10 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
                     })}
                     <h3 class="mt-4 font-semibold">"Tus datos"</h3>
                     <p class="text-sm text-base-content/75">{format!("{} · {} · {}", order.customer_name, order.email, order.phone)}</p>
+                    {(!order.notes.is_empty()).then(|| view! {
+                        <h3 class="mt-4 font-semibold">"Tu nota para la tienda"</h3>
+                        <p class="text-sm text-base-content/75 whitespace-pre-line">{order.notes.clone()}</p>
+                    })}
                     <p class="mt-4 text-xs text-base-content/60">"Guardá esta página: es la de tu pedido."</p>
                 </div></div>
             </div>
@@ -2186,6 +2200,15 @@ fn ReceiptHead(
             <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
         </div>
     };
+    // Para escribirle a la tienda sin esperar a que escriba ella (pedido a
+    // acordar o cancelado), con el número de pedido ya puesto.
+    let write_to_store = (!whatsapp.is_empty()).then(|| {
+        let text = format!("Hola, te escribo por el pedido #{number}.");
+        let href = format!("{whatsapp}?text={}", url_encode(&text));
+        view! {
+            <a class="btn btn-success mt-2" href=href target="_blank" rel="noopener">"Escribirle a la tienda por WhatsApp"</a>
+        }
+    });
     let body = match status {
         S::Paid | S::Shipped | S::Delivered => view! {
             {check}
@@ -2203,6 +2226,7 @@ fn ReceiptHead(
         S::Cancelled => view! {
             <h1 class="mk-h text-2xl font-bold">{format!("Pedido #{number} cancelado")}</h1>
             <p class="text-base-content/75">"Si tenés dudas, escribile a la tienda."</p>
+            {write_to_store.clone()}
             <a class="btn btn-primary mt-3" href="/">"Ir a la tienda"</a>
         }.into_any(),
         _ if can_pay => {
@@ -2253,6 +2277,7 @@ fn ReceiptHead(
             {check}
             <h1 class="mk-h text-2xl font-bold">{format!("¡Gracias, {first_name}! Recibimos tu pedido")}</h1>
             <p class="text-base-content/75">{format!("Pedido #{number} · la tienda te va a escribir al {phone} para coordinar el pago. Cuando lo reciba, empieza a prepararlo.")}</p>
+            {write_to_store.clone()}
             <a class="btn btn-primary mt-3" href="/">"Seguir comprando"</a>
         }.into_any(),
     };
