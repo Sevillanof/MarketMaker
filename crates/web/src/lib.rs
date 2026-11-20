@@ -187,6 +187,7 @@ fn HomePage() -> impl IntoView {
                         view! {
                         <account::OwnerBar me/>
                         <StoreMeta view=view.clone()/>
+                        {view.test_store.then(|| view! { <TestStoreTag/> })}
                         <buyer_ui::BuyerScope store_name=view.store_name.clone()>
                             {move || {
                                 let path = location.pathname.get();
@@ -222,6 +223,17 @@ fn StoreSoon(name: String, owner: bool) -> impl IntoView {
                 })}
             </div>
         </div>
+    }
+}
+
+/// Etiqueta flotante de las tiendas de pruebas. Va abajo a la izquierda para
+/// no chocar con el botón de ayuda ni con el carrito (a la derecha).
+#[component]
+fn TestStoreTag() -> impl IntoView {
+    view! {
+        <p class="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-40 rounded-full bg-neutral px-3 py-1.5 text-xs font-semibold text-neutral-content shadow-lg">
+            "Tienda de prueba: no se cobra ni se envía nada"
+        </p>
     }
 }
 
