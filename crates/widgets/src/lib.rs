@@ -1384,6 +1384,15 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
     .into_any()
 }
 
+/// La cifra de ejemplo («Tu número») se ve tenue, para que se note que falta.
+fn ph(class: &str, value: &str) -> String {
+    if value.trim() == domain::STAT_PLACEHOLDER {
+        format!("{class} opacity-40")
+    } else {
+        class.to_string()
+    }
+}
+
 #[component]
 pub fn StatsWidget(props: StatsProps) -> impl IntoView {
     let n = props.items.len();
@@ -1392,7 +1401,7 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
             <div class=format!("mk-box mk-pad mk-stats @container grid h-full grid-cols-1 content-center gap-6 overflow-hidden rounded-box bg-base-100 px-6 py-4 text-center {}", cols_xl(n))>
                 {props.items.into_iter().map(|s| view! {
                     <div class="min-w-0">
-                        <p class="mk-title mk-h text-4xl font-extrabold tracking-tight @xl:text-5xl">{s.value}</p>
+                        <p class=ph("mk-title mk-h text-4xl font-extrabold tracking-tight @xl:text-5xl", &s.value)>{s.value.clone()}</p>
                         <p class="mx-auto mt-2 h-0.5 w-8 bg-current opacity-60"></p>
                         <p class="mt-2 text-sm opacity-70">{s.label}</p>
                     </div>
@@ -1408,7 +1417,7 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
                             <Icon name=s.icon class="h-6 w-6"/>
                         </span>
                         <div class="min-w-0">
-                            <p class="mk-h text-2xl font-bold leading-none">{s.value}</p>
+                            <p class=ph("mk-h text-2xl font-bold leading-none", &s.value)>{s.value.clone()}</p>
                             <p class="mt-1 text-sm opacity-70 line-clamp-2">{s.label}</p>
                         </div>
                     </div>
@@ -1421,7 +1430,7 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
                 <div class="mk-box stats stats-vertical @xl:stats-horizontal h-full w-full overflow-hidden rounded-box bg-base-100 shadow-sm">
                     {props.items.into_iter().map(|s| view! {
                         <div class="stat place-items-center">
-                            <div class="stat-value mk-h text-primary">{s.value}</div>
+                            <div class=ph("stat-value mk-h text-primary", &s.value)>{s.value.clone()}</div>
                             <div class="stat-title whitespace-normal text-center">{s.label}</div>
                         </div>
                     }).collect_view()}

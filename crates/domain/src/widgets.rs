@@ -1580,18 +1580,18 @@ impl Widget {
                 variant: s("a"),
                 items: vec![
                     StatItem {
-                        value: s("+500"),
-                        label: s("Contá acá qué logro mostrar"),
+                        value: s(crate::STAT_PLACEHOLDER),
+                        label: s("Ej.: clientes felices"),
                         icon: s("truck"),
                     },
                     StatItem {
-                        value: s("98%"),
-                        label: s("Contá acá qué logro mostrar"),
+                        value: s(crate::STAT_PLACEHOLDER),
+                        label: s("Ej.: puntaje en reseñas"),
                         icon: s("star"),
                     },
                     StatItem {
-                        value: s("24 hs"),
-                        label: s("Contá acá qué logro mostrar"),
+                        value: s(crate::STAT_PLACEHOLDER),
+                        label: s("Ej.: tiempo de entrega"),
                         icon: s("clock"),
                     },
                 ],

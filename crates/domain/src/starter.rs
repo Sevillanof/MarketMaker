@@ -104,6 +104,17 @@ pub fn starter_doc(name: &str) -> PageDoc {
     }
 }
 
+/// Lo que muestra cada cifra del bloque «Cifras destacadas» hasta que la
+/// dueña pone la suya: así no parecen datos reales (ver `STAT_EXAMPLES`).
+pub const STAT_PLACEHOLDER: &str = "Tu número";
+
+/// Leyendas de ejemplo de las cifras: dicen qué poner en cada una.
+pub const STAT_EXAMPLES: [&str; 3] = [
+    "Ej.: clientes felices",
+    "Ej.: puntaje en reseñas",
+    "Ej.: tiempo de entrega",
+];
+
 /// ¿Es un texto de ejemplo de los bloques nuevos o del diseño inicial?
 pub fn is_placeholder(text: &str) -> bool {
     let t = text.trim();
@@ -111,6 +122,8 @@ pub fn is_placeholder(text: &str) -> bool {
         .iter()
         .any(|p| t.starts_with(p))
         || STARTER_PLACEHOLDERS.contains(&t)
+        || t == STAT_PLACEHOLDER
+        || STAT_EXAMPLES.contains(&t)
         || t.ends_with("Nombre de tu tienda")
 }
 
@@ -209,6 +222,16 @@ pub fn placeholder_nodes(doc: &PageDoc) -> Vec<PlaceholderNode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_stats_count_as_unchanged_text() {
+        let Widget::Stats(st) = Widget::defaults("Stats").unwrap() else {
+            panic!("Stats");
+        };
+        assert!(st.items.iter().all(|i| i.value == STAT_PLACEHOLDER));
+        assert!(st.items.iter().all(|i| is_placeholder(&i.value) && is_placeholder(&i.label)));
+        assert!(!is_placeholder("+500"));
+    }
 
     #[test]
     fn the_starter_is_valid_and_carries_the_name() {
