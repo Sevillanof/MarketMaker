@@ -155,7 +155,7 @@ impl Default for CardOptions {
 
 pub const CARD_STYLE_OPTIONS: &[(&str, &str)] = &[
     ("", "Clásica"),
-    ("full", "Completa: precio, transferencia y cuotas"),
+    ("full", "Completa: precios, cuotas y «Agregar al carrito»"),
     ("clean", "Limpia con «Añadir»"),
 ];
 
@@ -537,14 +537,14 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Navbar", "Menú superior"),
     ("Banner", "Banner"),
     ("Carousel", "Carrusel"),
-    ("Categories", "Categorías"),
+    ("Categories", "Accesos con foto"),
     ("ProductGrid", "Cuadrícula de productos"),
     ("TagFilter", "Etiquetas en fila"),
     ("TagList", "Etiquetas en columna"),
     ("TagCircles", "Etiquetas con foto"),
     ("TagSearch", "Buscador con filtros"),
     ("TagTabs", "Productos con pestañas"),
-    ("CategoryTabs", "Categorías en pestañas"),
+    ("CategoryTabs", "Categorías en pastillas"),
     ("CategorySide", "Categorías al costado"),
     ("CategoryCards", "Categorías con foto"),
     ("CategoryDrop", "Menú de categorías"),

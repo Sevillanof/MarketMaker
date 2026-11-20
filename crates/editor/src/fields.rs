@@ -508,22 +508,8 @@ fn FieldInput(
         }
         .into_any(),
         FieldKind::ProductRef => view! {
-            <select
-                id=uid.clone()
-                class="select select-sm w-full"
-                aria-describedby=described.clone()
-                prop:value=text
-                on:change=move |ev| set_once(serde_json::Value::String(event_target_value(&ev)))
-            >
-                <option value="">"Elegí un producto"</option>
-                {products
-                    .get_value()
-                    .into_iter()
-                    .map(|p| view! {
-                        <option value=p.id.clone()>{format!("{} · {}", p.name, ui::format_price(p.price_cents))}</option>
-                    })
-                    .collect_view()}
-            </select>
+            <ProductPicker uid=uid.clone() products value=Signal::derive(text)
+                pick=Callback::new(move |v: String| set_once(serde_json::Value::String(v)))/>
         }
         .into_any(),
         FieldKind::List { .. } => unreachable!("las listas se devuelven antes"),
@@ -1262,6 +1248,94 @@ fn CouponPicker(
                     "+ Crear un cupón nuevo"
                 </a>
             })}
+        </div>
+    }
+}
+
+/// Elegir un producto: buscador que achica la lista al escribir, cada fila con
+/// foto y precio, y los agotados al final con su marca. Son radios nativos:
+/// las flechas pasan de uno a otro.
+#[component]
+fn ProductPicker(
+    uid: String,
+    products: StoredValue<Vec<Product>>,
+    value: Signal<String>,
+    pick: Callback<String>,
+) -> impl IntoView {
+    let query = RwSignal::new(String::new());
+    let total = products.with_value(Vec::len);
+    let fold = |s: &str| {
+        s.to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'á' | 'à' | 'ä' => 'a',
+                'é' | 'è' | 'ë' => 'e',
+                'í' | 'ì' | 'ï' => 'i',
+                'ó' | 'ò' | 'ö' => 'o',
+                'ú' | 'ù' | 'ü' => 'u',
+                c => c,
+            })
+            .collect::<String>()
+    };
+    let shown = Memo::new(move |_| {
+        let q = fold(query.get().trim());
+        let mut list: Vec<Product> = products.with_value(|ps| {
+            ps.iter()
+                .filter(|p| q.is_empty() || fold(&p.name).contains(&q))
+                .cloned()
+                .collect()
+        });
+        // Los agotados al final; el resto queda en el orden del catálogo.
+        list.sort_by_key(|p| !p.in_stock);
+        list
+    });
+    let list_id = format!("{uid}-list");
+    let count_id = format!("{uid}-count");
+    view! {
+        <div class="flex flex-col gap-2">
+            <label class="input input-sm w-full">
+                <span class="sr-only">"Buscar producto"</span>
+                <crate::icons::Icon name="search" class="h-4 w-4 opacity-70"/>
+                <input id=uid.clone() type="search" placeholder="Buscar por nombre…"
+                    aria-controls=list_id.clone() aria-describedby=count_id.clone()
+                    prop:value=move || query.get()
+                    on:input=move |ev| query.set(event_target_value(&ev))/>
+            </label>
+            <div id=list_id role="radiogroup" aria-label="Productos" class="mk-ppick flex max-h-72 flex-col gap-1 overflow-y-auto">
+                <For each=move || shown.get() key=|p| p.id.clone() let:p>
+                    {
+                        let id = p.id.clone();
+                        let pid = StoredValue::new(p.id.clone());
+                        let checked = move || pid.with_value(|id| value.get() == *id);
+                        view! {
+                            <label class="mk-ppick-row" class:is-on=checked class:is-out=!p.in_stock>
+                                <input type="radio" class="sr-only" name=format!("{uid}-radio") value=id
+                                    prop:checked=checked
+                                    on:change=move |_| pick.run(pid.get_value())/>
+                                <img src=p.image_url.clone() alt="" loading="lazy" class="h-10 w-10 shrink-0 rounded-md bg-base-200 object-cover"/>
+                                <span class="flex min-w-0 flex-1 flex-col">
+                                    <span class="truncate text-sm font-medium">{p.name.clone()}</span>
+                                    <span class="text-xs text-base-content/70">{ui::format_price(p.price_cents)}</span>
+                                </span>
+                                {(!p.in_stock).then(|| view! { <span class="badge badge-ghost badge-sm">"Agotado"</span> })}
+                                <span class="mk-ppick-check" aria-hidden="true">"✓"</span>
+                            </label>
+                        }
+                    }
+                </For>
+            </div>
+            <p id=count_id class="text-xs text-base-content/70" aria-live="polite">
+                {move || {
+                    let n = shown.with(Vec::len);
+                    if n == 0 {
+                        "No hay productos con ese nombre.".to_string()
+                    } else if n == total {
+                        format!("{total} productos. Los agotados van al final.")
+                    } else {
+                        format!("{n} de {total} productos. Los agotados van al final.")
+                    }
+                }}
+            </p>
         </div>
     }
 }
