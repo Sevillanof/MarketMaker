@@ -14,8 +14,11 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         doc,
         products,
         store,
+        coupons,
         ..
     } = view;
+    // El bloque Cupón se ve solo con un cupón que sirve hoy.
+    provide_context(widgets::ActiveCoupons(coupons.into_iter().map(|c| c.code).collect()));
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(store);
     let Some(page) = doc.page_index(&path) else {

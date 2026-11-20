@@ -10,7 +10,7 @@ use domain::{
     AnnouncementProps, BannerProps, BenefitsProps, CardProps, CarouselProps, CategoriesProps,
     ContactProps, CountdownProps, FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps,
     ImageProps, LinkItem, LogosProps, NavbarProps, Node, Product, ProductButtonProps,
-    ProductCarouselProps, ProductGridProps, ProductModal, SocialProps, StatsProps, StepsProps,
+    CouponProps, ProductCarouselProps, ProductGridProps, ProductModal, SocialProps, StatsProps, StepsProps,
     TabsProps, TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
@@ -122,6 +122,7 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::Announcement(p) => {
             view! { <AnnouncementWidget props=p.clone() editing/> }.into_any()
         }
+        Widget::Coupon(p) => view! { <CouponWidget props=p.clone() editing/> }.into_any(),
         Widget::Stats(p) => view! { <StatsWidget props=p.clone()/> }.into_any(),
         Widget::Steps(p) => view! { <StepsWidget props=p.clone()/> }.into_any(),
         Widget::ProductCarousel(p) => view! {
@@ -637,7 +638,7 @@ pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> imp
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
-            <FilteredProducts products limit filter/>
+            <FilteredProducts products limit filter paged=true/>
         </div>
     }
 }
@@ -1292,12 +1293,17 @@ pub fn copy_text(text: &str, done: impl Fn(bool) + 'static) {
 /// copia. El aviso de «Copiado» es el mismo texto visible y una región
 /// `role="status"`, así lo leen también los lectores de pantalla.
 #[component]
-fn CouponWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
-    let text = props
-        .items
-        .first()
-        .map(|m| m.text.clone())
-        .unwrap_or_default();
+fn CouponWidget(props: CouponProps, editing: bool) -> impl IntoView {
+    // En la tienda, solo si el cupón sirve hoy (no está pausado ni vencido).
+    if !editing {
+        if let Some(ActiveCoupons(list)) = use_context::<ActiveCoupons>() {
+            let code = props.code.trim();
+            if !code.is_empty() && !list.iter().any(|c| c.eq_ignore_ascii_case(code)) {
+                return ().into_any();
+            }
+        }
+    }
+    let text = props.text.clone();
     let look = match props.coupon.as_str() {
         "solid" | "soft" | "line" => props.coupon.clone(),
         _ => "notch".to_string(),
@@ -1370,11 +1376,24 @@ fn CouponWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
             })}
         </div>
     }
+    .into_any()
 }
+
+/// Los códigos de los cupones que sirven hoy. La tienda lo provee: un bloque
+/// Cupón con otro código no se muestra. Sin este contexto se muestra siempre.
+#[derive(Clone, Debug)]
+pub struct ActiveCoupons(pub Vec<String>);
 
 #[component]
 pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
     if props.variant == "d" {
+        // El estilo "Cupón" de antes del bloque Cupón.
+        let props = CouponProps {
+            text: props.items.first().map(|m| m.text.clone()).unwrap_or_default(),
+            code: props.code,
+            note: props.note,
+            coupon: props.coupon,
+        };
         return view! { <CouponWidget props editing/> }.into_any();
     }
     let variant = props.variant.clone();

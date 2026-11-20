@@ -862,8 +862,8 @@ pub(crate) fn Canvas(
             }
         };
         let label = move || node.get().map_or("Bloque", |n| n.widget.label());
-        // Menú del bloque: una pestaña con su nombre arriba del bloque, afuera
-        // (así no tapa su título), que despliega las acciones. El menú es un `popover` (capa superior), así
+        // Menú del bloque: una pestaña con su nombre abajo del bloque, afuera
+        // (así no tapa su contenido ni el bloque de arriba), que despliega las acciones. El menú es un `popover` (capa superior), así
         // no lo recorta el bloque ni lo achica la escala del lienzo.
         let toolbar = {
             let id = id.clone();
@@ -891,8 +891,10 @@ pub(crate) fn Canvas(
                             type="button"
                             data-theme="light"
                             class="mk-menu-trigger"
-                            // El primer bloque no tiene lugar arriba: la pestaña va adentro.
-                            class:mk-menu-trigger-in=move || node.get().is_some_and(|n| n.pos.y == 0)
+                            // Va abajo del bloque, así no tapa el que está arriba (en el
+                            // menú superior tapaba los enlaces). El último no tiene lugar
+                            // abajo: ahí va adentro.
+                            class:mk-menu-trigger-in=move || node.get().is_some_and(|n| u32::from(n.pos.y) + u32::from(n.size.h) >= rows.get())
                             popovertarget=menu_id.clone()
                             // Mismo tamaño en pantalla con cualquier escala del lienzo.
                             style=move || format!("--mk-unscale:{:.4}", 1.0 / scale.get().max(0.01))
@@ -1283,6 +1285,16 @@ pub(crate) fn Canvas(
                 <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm">
                     <Icon name="eye" class="h-4 w-4"/>
                     <span class="flex-1">"Vista previa: así se va a ver tu tienda cuando publiques. Tocá un producto para ver su ficha."</span>
+                    <div class="join" role="group" aria-label="Ver en">
+                        <button type="button" class=move || device_class(!ui.phone.get()) aria-pressed=move || (!ui.phone.get()).to_string()
+                            on:click=move |_| ui.phone.set(false)>
+                            <Icon name="desktop" class="h-4 w-4"/>"Computadora"
+                        </button>
+                        <button type="button" class=move || device_class(ui.phone.get()) aria-pressed=move || ui.phone.get().to_string()
+                            on:click=move |_| ui.phone.set(true)>
+                            <Icon name="phone" class="h-4 w-4"/>"Celular"
+                        </button>
+                    </div>
                     <button type="button" class="btn btn-sm btn-primary" on:click=move |_| ui.preview.set(false)>"Volver a editar"</button>
                 </div>
             })}
@@ -1366,6 +1378,31 @@ pub(crate) fn Canvas(
                         </div>
                     })}
                     {move || {
+                        if ui.preview.get() && ui.phone.get() {
+                            // En el celular la tienda cambia por el ancho de la pantalla:
+                            // va en un marco del ancho de un teléfono, con lo último
+                            // guardado. Se recarga sola cuando se guarda otra versión.
+                            let src = move || {
+                                let (path, version) = (
+                                    state.doc.with_untracked(|d| d.page_path(state.page.get()).to_string()),
+                                    state.base_version.get(),
+                                );
+                                format!("/vista-previa?ruta={}&v={version}", path.replace('&', "%26"))
+                            };
+                            return view! {
+                                <div class="flex flex-col items-center gap-3 py-6">
+                                    <div class="mk-phone rounded-[2.75rem] bg-neutral p-3 shadow-2xl">
+                                        <iframe
+                                            class="block h-[min(760px,calc(100vh-14rem))] w-[390px] rounded-[2rem] bg-base-100"
+                                            title="Tu tienda en un celular"
+                                            src=src
+                                        ></iframe>
+                                    </div>
+                                    <p class="text-xs text-base-content/75">"Muestra lo último guardado. Tus cambios se guardan solos en unos segundos."</p>
+                                </div>
+                            }
+                            .into_any();
+                        }
                         if ui.preview.get() {
                             // La vista previa usa la misma grilla que la tienda, al ancho real,
                             // y abre la ficha al tocar un producto, como la tienda.
@@ -1513,5 +1550,14 @@ mod tests {
         // Con el lienzo a la mitad, cada px de pantalla vale dos de diseño.
         assert_eq!(dragged_width(1120.0, 1.0, 40.0, 0.5), 1280);
         assert_eq!(dragged_width(1120.0, 1.0, -5000.0, 1.0), domain::MIN_WIDTH);
+    }
+}
+
+/// Clase de un botón del interruptor Computadora / Celular.
+fn device_class(on: bool) -> &'static str {
+    if on {
+        "btn btn-sm join-item btn-active gap-1.5"
+    } else {
+        "btn btn-sm join-item btn-ghost gap-1.5"
     }
 }

@@ -37,7 +37,20 @@ fn page_view(
         store_name: store.name.clone(),
         store,
         test_store: false,
+        coupons: Vec::new(),
     })
+}
+
+/// Los cupones de la tienda que sirven hoy (para el bloque Cupón).
+#[cfg(feature = "ssr")]
+async fn active_coupons(pool: &db::Pool, tenant: uuid::Uuid) -> Result<Vec<domain::CouponBrief>, ServerFnError> {
+    let today = db::coupons::today(pool).await.map_err(internal)?;
+    let list = db::coupons::list(pool, tenant).await.map_err(internal)?;
+    Ok(list
+        .iter()
+        .filter(|c| c.status(&today) == domain::CouponStatus::Active)
+        .map(domain::Coupon::brief)
+        .collect())
 }
 
 /// Lo que ven los visitantes: la versión publicada de la página `slug`, con
@@ -59,6 +72,7 @@ pub async fn load_page(slug: String) -> Result<PageView, ServerFnError> {
         .map_err(internal)?;
     let mut view = page_view(page, products, store)?;
     view.test_store = crate::mp::is_test_store(&tenant.slug);
+    view.coupons = active_coupons(&pool, tenant.id).await?;
     Ok(view)
 }
 
@@ -79,7 +93,31 @@ pub async fn load_draft(slug: String) -> Result<PageView, ServerFnError> {
     let store = db::auth::store_info(&pool, tenant.id)
         .await
         .map_err(internal)?;
-    page_view(page, products, store)
+    let mut view = page_view(page, products, store)?;
+    view.coupons = active_coupons(&pool, tenant.id).await?;
+    Ok(view)
+}
+
+/// Vista de celular del editor: lo último guardado (el borrador) con los
+/// productos que ven los compradores. Solo para quien puede editar.
+#[server]
+pub async fn load_preview(slug: String) -> Result<PageView, ServerFnError> {
+    let pool = pool()?;
+    let tenant = crate::auth::current_tenant().await?;
+    crate::auth::require_editor(&tenant).await?;
+    let page = db::get_current_page(&pool, tenant.id, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ServerFnError::new(format!("no existe la página {slug}")))?;
+    let products = db::products::list_for_buyers(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
+    let store = db::auth::store_info(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
+    let mut view = page_view(page, products, store)?;
+    view.coupons = active_coupons(&pool, tenant.id).await?;
+    Ok(view)
 }
 
 /// Publica la versión `version` de la página: desde ahora la ven los

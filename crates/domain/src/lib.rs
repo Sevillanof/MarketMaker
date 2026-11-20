@@ -727,6 +727,9 @@ pub struct PageView {
     /// muestra una etiqueta aclarando que no es una tienda real.
     #[serde(default)]
     pub test_store: bool,
+    /// Los cupones que sirven hoy (para el bloque Cupón).
+    #[serde(default)]
+    pub coupons: Vec<CouponBrief>,
 }
 
 /// Resultado de intentar guardar un documento.
@@ -884,6 +887,53 @@ pub fn tidy_link(s: &str) -> String {
         return format!("/{s}");
     }
     s.to_string()
+}
+
+/// Enlace que abre la ficha del producto `id` en el Inicio de la tienda.
+pub fn product_href(id: &str) -> String {
+    format!("/?ver={id}")
+}
+
+/// Enlace al Inicio de la tienda con la categoría `cat` ya elegida en los
+/// productos (`/?categoria=Ropa%20de%20cama`).
+pub fn category_href(cat: &str) -> String {
+    let mut out = String::from("/?categoria=");
+    for b in cat.trim().bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(char::from(b));
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// A qué lleva un enlace, para el selector del editor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkKind {
+    /// Una página de la tienda (`/`, `/ofertas`).
+    Page,
+    /// La ficha de un producto ([`product_href`]).
+    Product,
+    /// Una categoría ([`category_href`]).
+    Category,
+    /// Otro sitio, un email, una parte de la página…
+    Other,
+}
+
+impl LinkKind {
+    pub fn of(href: &str) -> Self {
+        let h = href.trim();
+        if h.starts_with("/?ver=") {
+            LinkKind::Product
+        } else if h.starts_with("/?categoria=") {
+            LinkKind::Category
+        } else if h.is_empty() || (h.starts_with('/') && !h.starts_with("//") && !h.contains(['?', '#'])) {
+            LinkKind::Page
+        } else {
+            LinkKind::Other
+        }
+    }
 }
 
 /// `AAAA-MM-DDTHH:MM` (o con segundos), o vacío.
@@ -1633,12 +1683,25 @@ mod tests {
     }
 
     #[test]
+    fn link_kinds_and_hrefs() {
+        assert_eq!(category_href("Ropa de cama"), "/?categoria=Ropa%20de%20cama");
+        assert_eq!(LinkKind::of(&category_href("Mesa y cocina")), LinkKind::Category);
+        assert_eq!(LinkKind::of(&product_href("ab-12")), LinkKind::Product);
+        assert_eq!(LinkKind::of("/ofertas"), LinkKind::Page);
+        assert_eq!(LinkKind::of(""), LinkKind::Page);
+        assert_eq!(LinkKind::of("#contacto"), LinkKind::Other);
+        assert_eq!(LinkKind::of("https://x.com"), LinkKind::Other);
+        assert!(url_ok(&category_href("Mesa y cocina")));
+        assert!(url_ok(&product_href("0b1c-22")));
+    }
+
+    #[test]
     fn rejects_number_out_of_range() {
         let mut doc = example();
         if let Widget::ProductGrid(g) = &mut doc.nodes[1].widget {
-            g.limit = 13;
+            g.limit = 25;
         }
-        assert_invalid(&doc, "entre 1 y 12");
+        assert_invalid(&doc, "entre 1 y 24");
     }
 
     #[test]

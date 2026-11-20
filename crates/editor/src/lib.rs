@@ -240,6 +240,8 @@ pub(crate) struct Ui {
     /// Texto para lectores de pantalla (región `role=status` invisible).
     announce: RwSignal<String>,
     pub preview: RwSignal<bool>,
+    /// En la vista previa: cómo se ve en un celular en lugar de en la computadora.
+    pub phone: RwSignal<bool>,
     /// El cajón "Mi tienda" está abierto en lugar de la lista de bloques.
     pub store_open: RwSignal<bool>,
     /// Lo último que se cambió en "Mi tienda" (`"box"`, `"field"`, `"selector"`,
@@ -594,45 +596,61 @@ impl Actions {
         });
     }
 
-    /// Crea la página modelo `i` de [`domain::PAGE_TEMPLATES`] (o la abre si
-    /// ya existe), con el menú y el pie de la página actual.
-    pub fn add_template_page(&self, i: usize) {
-        let Some(&(path, name)) = domain::PAGE_TEMPLATES.get(i) else {
-            return;
-        };
-        if let Some(p) = self.state.doc.with_untracked(|d| d.page_index(path)) {
-            self.open_page(p, true);
-            self.ui
-                .toast(format!("Tu tienda ya tiene la página {name}."), false);
-            return;
+    /// "Nueva página": problema con el nombre `name` (en palabras simples),
+    /// o `None` si se puede crear. Sirve para avisar debajo del campo.
+    pub fn new_page_problem(&self, name: &str) -> Option<String> {
+        let slug = domain::slug_from_name(name);
+        if name.trim().is_empty() {
+            return Some("Escribí un nombre para la página.".into());
+        }
+        if slug.is_empty() {
+            return Some("Usá al menos una letra o un número en el nombre.".into());
+        }
+        let path = format!("/{slug}");
+        if domain::is_reserved_path(&path) {
+            return Some(format!("La dirección {path} la usa la aplicación: probá con otro nombre."));
+        }
+        if self.state.doc.with_untracked(|d| d.page_index(&path)).is_some() {
+            return Some("Ya tenés una página con esa dirección: probá con otro nombre.".into());
         }
         if self.state.doc.with_untracked(|d| d.pages.len()) >= domain::MAX_PAGES {
-            self.ui.toast(
-                format!(
-                    "Tu tienda ya tiene {} páginas, el máximo. Borrá una para crear otra.",
-                    domain::MAX_PAGES + 1
-                ),
-                false,
-            );
-            return;
+            return Some(format!(
+                "Tu tienda ya tiene {} páginas, el máximo. Borrá una para crear otra.",
+                domain::MAX_PAGES + 1
+            ));
         }
+        None
+    }
+
+    /// Crea la página `name` (en `/<nombre-sin-tildes>`), con el menú y el
+    /// pie de la página actual. Con `template`, suma los bloques de ejemplo
+    /// de esa página modelo de [`domain::PAGE_TEMPLATES`]; sin él, queda en
+    /// blanco. Devuelve `false` (y no hace nada) si el nombre no sirve.
+    pub fn add_named_page(&self, name: &str, template: Option<usize>) -> bool {
+        if self.new_page_problem(name).is_some() {
+            return false;
+        }
+        let name = name.trim().to_string();
+        let path = format!("/{}", domain::slug_from_name(&name));
+        let body = template
+            .and_then(|i| domain::PAGE_TEMPLATES.get(i))
+            .map(|(p, _)| domain::template_blocks(p))
+            .unwrap_or_default();
         let from = self.state.page.get_untracked();
         let mut created = 0;
-        self.state.apply(|d| {
-            created = d.add_page_with(
-                path.to_string(),
-                name.to_string(),
-                from,
-                domain::template_blocks(path),
-            )
-        });
+        self.state
+            .apply(|d| created = d.add_page_with(path, name.clone(), from, body));
         self.open_page(created, false);
+        let what = if template.is_some() {
+            "Cambiá los textos de ejemplo y sumá"
+        } else {
+            "Agregale bloques desde la izquierda y sumá"
+        };
         self.ui.toast(
-            format!(
-                "Creaste la página {name}. Cambiá los textos de ejemplo y sumá un enlace en el menú o el pie para que la encuentren."
-            ),
+            format!("Creaste la página {name}. {what} un enlace en el menú o el pie para que la encuentren."),
             true,
         );
+        true
     }
 
     /// Lo que pasa al tocar un enlace en el lienzo: va a la página a la que
@@ -964,6 +982,7 @@ fn typing_in_field(ev: &web_sys::KeyboardEvent) -> bool {
 #[component]
 pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> impl IntoView {
     let state = EditorState::new(&initial);
+    COUPONS.with(|c| *c.borrow_mut() = initial.coupons.clone());
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(initial.store.clone());
     let view_label = if initial.store_name.trim().is_empty() {
@@ -980,6 +999,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         toast_focus: StoredValue::new(false),
         announce: RwSignal::new(String::new()),
         preview: RwSignal::new(false),
+        phone: RwSignal::new(false),
         store_open: RwSignal::new(false),
         flash: RwSignal::new(("", 0)),
         new_drag: RwSignal::new(None),
@@ -1811,7 +1831,23 @@ pub fn fresh_widget(type_name: &str) -> Option<domain::Widget> {
             c.ends_at = end;
         }
     }
+    // El bloque Cupón arranca con el cupón más nuevo que sirve hoy.
+    if let domain::Widget::Coupon(c) = &mut widget {
+        if let Some(first) = coupons().into_iter().next() {
+            c.code = first.code;
+        }
+    }
     Some(widget)
+}
+
+thread_local! {
+    static COUPONS: std::cell::RefCell<Vec<domain::CouponBrief>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Los cupones de la tienda que sirven hoy (los trae el borrador al abrir el
+/// editor), para el bloque Cupón.
+pub(crate) fn coupons() -> Vec<domain::CouponBrief> {
+    COUPONS.with(|c| c.borrow().clone())
 }
 
 /// Dentro de 7 días a las 23:59.
