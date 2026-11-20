@@ -92,12 +92,21 @@ pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
     let rgba = DynamicImage::ImageRgba8(img.to_rgba8());
     let (width, height) = (rgba.width(), rgba.height());
 
+    // Cada ancho se achica a partir del anterior (más chico), no de la foto
+    // entera: achicar una foto de 12 MP tres veces tardaba más de 1 s cada vez.
+    let mut scaled: Vec<(u32, DynamicImage)> = Vec::new();
+    for &target in WIDTHS.iter().rev() {
+        let next = match scaled.last() {
+            Some((_, prev)) => resized(prev, target),
+            None => resized(&rgba, target),
+        };
+        scaled.push((target, next));
+    }
     // Los tres anchos se codifican a la vez, cada uno en su hilo.
     let per_width: Vec<Result<[Variant; 2], MediaError>> = std::thread::scope(|s| {
-        let rgba = &rgba;
-        let jobs: Vec<_> = WIDTHS
+        let jobs: Vec<_> = scaled
             .iter()
-            .map(|&target| s.spawn(move || encode_width(rgba, target)))
+            .map(|(target, img)| s.spawn(move || encode_width(img, *target)))
             .collect();
         jobs.into_iter()
             .map(|j| {
@@ -107,7 +116,7 @@ pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
             .collect()
     });
     let mut variants = Vec::new();
-    for pair in per_width {
+    for pair in per_width.into_iter().rev() {
         variants.extend(pair?);
     }
     Ok(Processed {
@@ -197,21 +206,28 @@ fn svg_to_image(bytes: &[u8]) -> Result<DynamicImage, MediaError> {
         .ok_or(MediaError::Broken)
 }
 
-/// AVIF y WebP de la foto achicada a `target` de ancho (sin agrandarla).
-fn encode_width(rgba: &DynamicImage, target: u32) -> Result<[Variant; 2], MediaError> {
-    let (width, height) = (rgba.width(), rgba.height());
-    let scaled = if width > target {
+/// La foto achicada a `target` de ancho (sin agrandarla).
+fn resized(img: &DynamicImage, target: u32) -> DynamicImage {
+    let (width, height) = (img.width(), img.height());
+    if width > target {
         let th = (u64::from(height) * u64::from(target) / u64::from(width)).max(1) as u32;
-        rgba.resize_exact(target, th, image::imageops::FilterType::Lanczos3)
+        img.resize_exact(target, th, image::imageops::FilterType::Lanczos3)
     } else {
-        rgba.clone()
-    };
+        img.clone()
+    }
+}
+
+/// AVIF y WebP de una foto ya achicada a `target` de ancho.
+fn encode_width(scaled: &DynamicImage, target: u32) -> Result<[Variant; 2], MediaError> {
     let buf = scaled.to_rgba8();
+    // El tamaño más grande es el que más tarda: velocidad 8 pesa lo mismo
+    // y se codifica un 25 % más rápido.
+    let speed = if target >= 1600 { 8 } else { AVIF_SPEED };
     Ok([
         Variant {
             name: format!("{target}.avif"),
             content_type: "image/avif",
-            bytes: encode_avif(&buf)?,
+            bytes: encode_avif_with(&buf, AVIF_QUALITY, speed)?,
         },
         Variant {
             name: format!("{target}.webp"),
@@ -219,10 +235,6 @@ fn encode_width(rgba: &DynamicImage, target: u32) -> Result<[Variant; 2], MediaE
             bytes: encode_webp(&buf),
         },
     ])
-}
-
-fn encode_avif(img: &image::RgbaImage) -> Result<Vec<u8>, MediaError> {
-    encode_avif_with(img, AVIF_QUALITY, AVIF_SPEED)
 }
 
 /// Para medir calidades (ver `examples/calibrar.rs`).
@@ -479,22 +491,31 @@ impl Store {
                 Ok(())
             }
             Store::S3(s) => {
+                // Los 6 archivos viajan a la vez; si uno falla se corta el resto.
+                let mut jobs = tokio::task::JoinSet::new();
                 for v in variants {
                     let key = format!("{folder}/{}", v.name);
                     let url =
                         rusty_s3::actions::PutObject::new(&s.bucket, Some(&s.credentials), &key)
                             .sign(SIGN_FOR);
-                    let res = s
-                        .client
-                        .put(url)
-                        .header("content-type", v.content_type)
-                        .body(v.bytes.clone())
-                        .send()
-                        .await
-                        .map_err(s3_err)?;
-                    if !res.status().is_success() {
-                        return Err(s3_status(res.status()));
-                    }
+                    let (client, ct, body) = (s.client.clone(), v.content_type, v.bytes.clone());
+                    jobs.spawn(async move {
+                        let res = client
+                            .put(url)
+                            .header("content-type", ct)
+                            .body(body)
+                            .send()
+                            .await
+                            .map_err(s3_err)?;
+                        if res.status().is_success() {
+                            Ok(())
+                        } else {
+                            Err(s3_status(res.status()))
+                        }
+                    });
+                }
+                while let Some(done) = jobs.join_next().await {
+                    done.map_err(|e| MediaError::Storage(std::io::Error::other(e.to_string())))??;
                 }
                 Ok(())
             }
