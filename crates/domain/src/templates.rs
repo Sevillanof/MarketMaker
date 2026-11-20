@@ -264,16 +264,17 @@ fn categories(title: &str) -> Widget {
     Widget::Categories(CategoriesProps {
         title: s(title),
         items: [
-            ("Moda", "moda"),
-            ("Hogar", "hogar"),
-            ("Tecnología", "tecnologia"),
-            ("Deportes", "deportes"),
+            ("Moda", "moda", "accesorios"),
+            ("Hogar", "hogar", "hogar"),
+            ("Tecnología", "tecnologia", "tecnología"),
+            ("Deportes", "deportes", "deporte"),
         ]
         .iter()
-        .map(|(label, slug)| CategoryItem {
+        // Cada cuadro muestra los productos de ejemplo con esa etiqueta.
+        .map(|(label, slug, tag)| CategoryItem {
             label: s(label),
             image_url: format!("/img/category-{slug}.webp"),
-            href: format!("/categorias/{slug}"),
+            href: crate::tag_href(tag),
         })
         .collect(),
     })

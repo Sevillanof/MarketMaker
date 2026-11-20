@@ -73,11 +73,45 @@ impl ProductFilter {
             }
             // Los enlaces "Categoría" del editor (`domain::category_href`).
             if let Some(c) = params.get("categoria").filter(|c| !c.trim().is_empty()) {
-                f.pick_category(c.trim(), "");
+                let sub = params.get("subcategoria").unwrap_or_default();
+                f.pick_category(c.trim(), sub.trim());
+            }
+            let tags: Vec<String> = params
+                .get_all("etiqueta")
+                .iter()
+                .filter_map(|t| t.as_string())
+                .collect();
+            let tags = domain::clean_tags(tags.iter().map(String::as_str));
+            if !tags.is_empty() {
+                f.tags.set(tags);
+                f.reveal();
             }
             if let Some(n) = params.get("pagina").and_then(|n| n.parse::<usize>().ok()) {
                 f.page.set(n.saturating_sub(1));
             }
+        });
+        // Lo elegido queda en la dirección: se puede copiar y mandar el
+        // enlace de una búsqueda, y al recargar no se pierde. No suma pasos
+        // al botón Atrás.
+        Effect::new(move |_| {
+            let (query, tags) = (f.query.get(), f.tags.get());
+            let (cat, sub) = (f.category.get(), f.sub.get());
+            crate::edit_url(false, |params| {
+                let put = |key: &str, value: &str| {
+                    if value.trim().is_empty() {
+                        params.delete(key);
+                    } else {
+                        params.set(key, value.trim());
+                    }
+                };
+                put("buscar", &query);
+                put("categoria", &cat);
+                put("subcategoria", if cat.is_empty() { "" } else { &sub });
+                params.delete("etiqueta");
+                for t in &tags {
+                    params.append("etiqueta", t);
+                }
+            });
         });
     }
 
@@ -192,6 +226,11 @@ pub fn FilteredProducts(
     /// Paginar en lugar de cortar en `limit`.
     #[prop(default = false)]
     paged: bool,
+    /// El filtro de la página, cuando `filter` es uno propio (las pestañas):
+    /// la búsqueda y la categoría del menú valen también acá. Si no, al
+    /// buscar la pantalla baja a una cuadrícula que no cambió.
+    #[prop(optional_no_strip)]
+    outer: Option<ProductFilter>,
 ) -> impl IntoView {
     let empty = products.is_empty();
     let limit = limit.max(1);
@@ -206,13 +245,21 @@ pub fn FilteredProducts(
     let chosen = move || filter.map_or_else(Default::default, |f| (f.tags.get(), f.query.get()));
     let category =
         move || filter.map_or_else(Default::default, |f| (f.category.get(), f.sub.get()));
+    let outer_chosen =
+        move || outer.map_or_else(Default::default, |f| (f.tags.get(), f.query.get()));
+    let outer_category =
+        move || outer.map_or_else(Default::default, |f| (f.category.get(), f.sub.get()));
     let matching = Memo::new(move |_| {
         let (tags, query) = chosen();
         let (cat, sub) = category();
+        let (otags, oquery) = outer_chosen();
+        let (ocat, osub) = outer_category();
         products.with_value(|ps| {
             ps.iter()
                 .filter(|p| domain::passes_filter(p, &tags, &query))
                 .filter(|p| domain::passes_category(p, &cat, &sub))
+                .filter(|p| domain::passes_filter(p, &otags, &oquery))
+                .filter(|p| domain::passes_category(p, &ocat, &osub))
                 .cloned()
                 .collect::<Vec<_>>()
         })
@@ -239,6 +286,8 @@ pub fn FilteredProducts(
     Effect::new(move |seen: Option<()>| {
         chosen();
         category();
+        outer_chosen();
+        outer_category();
         if seen.is_some() {
             page.set(0);
         }
@@ -253,22 +302,27 @@ pub fn FilteredProducts(
                 .collect::<Vec<_>>()
         })
     };
-    let notice = move || {
-        let (tags, query) = chosen();
-        let n = products.with_value(|ps| {
-            ps.iter()
-                .filter(|p| domain::passes_filter(p, &tags, &query))
-                .count()
-        });
-        let text = domain::filter_summary(n, &tags, &query)?;
-        summary.then(|| view! {
+    let notice =
+        move || {
+            // Con el filtro de la página encima, el aviso habla de ese (el propio
+            // ya se ve en las pestañas). Cuenta lo mismo que se muestra.
+            let (tags, query) = if outer.is_some() {
+                outer_chosen()
+            } else {
+                chosen()
+            };
+            let text = domain::filter_summary(matching.with(Vec::len), &tags, &query)?;
+            (summary || outer.is_some()).then(|| view! {
             <p class="mk-filtered -mt-1 flex flex-wrap items-center gap-x-3 text-sm opacity-80">
                 <span>{text}</span>
                 <button type="button" class="link link-hover font-medium"
-                    on:click=move |_| { if let Some(f) = filter { f.clear(); } }>"Ver todos"</button>
+                    on:click=move |_| {
+                        if let Some(f) = filter { f.clear(); }
+                        if let Some(f) = outer { f.clear(); }
+                    }>"Ver todos"</button>
             </p>
         })
-    };
+        };
     let grid = NodeRef::<leptos::html::Div>::new();
     let go = move |n: usize| {
         page.set(n);
@@ -336,30 +390,13 @@ fn Pager(
 /// Deja `?pagina=` en la dirección sin agregar un paso al «atrás»: si se
 /// recarga o se comparte, abre en la misma página. La primera no lo lleva.
 fn set_page_in_url(n: usize) {
-    let Some(w) = web_sys::window() else {
-        return;
-    };
-    let loc = w.location();
-    let (Ok(path), Ok(search), Ok(hash)) = (loc.pathname(), loc.search(), loc.hash()) else {
-        return;
-    };
-    let Ok(params) = web_sys::UrlSearchParams::new_with_str(&search) else {
-        return;
-    };
-    if n == 0 {
-        params.delete("pagina");
-    } else {
-        params.set("pagina", &(n + 1).to_string());
-    }
-    let query: String = params.to_string().into();
-    let url = if query.is_empty() {
-        format!("{path}{hash}")
-    } else {
-        format!("{path}?{query}{hash}")
-    };
-    if let Ok(history) = w.history() {
-        let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&url));
-    }
+    crate::edit_url(false, |params| {
+        if n == 0 {
+            params.delete("pagina");
+        } else {
+            params.set("pagina", &(n + 1).to_string());
+        }
+    });
 }
 
 /// Sin etiquetas: en la tienda no se muestra nada; en el editor, cómo llenarlo.
@@ -582,11 +619,23 @@ fn TagSearch(
             return;
         };
         let r = b.get_bounding_client_rect();
-        _ = m.set_attribute(
-            "style",
-            &format!("top: {}px; left: {}px", r.bottom() + 6.0, r.left()),
-        );
+        let place = |left: f64| {
+            _ = m.set_attribute(
+                "style",
+                &format!("top: {}px; left: {left}px", r.bottom() + 6.0),
+            );
+        };
+        place(r.left());
         _ = m.toggle_popover();
+        // Ya abierto se sabe cuánto mide: si se sale por la derecha (en el
+        // celular el botón queda al borde), se corre para que entre entero.
+        let vw = document()
+            .document_element()
+            .map_or(0.0, |d| f64::from(d.client_width()));
+        let w = m.get_bounding_client_rect().width();
+        if w > 0.0 && vw > 0.0 && r.left() + w > vw - 8.0 {
+            place((vw - w - 8.0).max(8.0));
+        }
     };
     let has_tags = !tags.is_empty();
     let menu_id = format!("mk-tagmenu-{}", products.len());
@@ -603,7 +652,6 @@ fn TagSearch(
             {has_tags.then(|| view! {
                 <button type="button" node_ref=button class="mk-filterbtn shrink-0"
                     tabindex=editing.then_some("-1")
-                    aria-haspopup="true"
                     aria-controls=menu_id.clone()
                     on:click=open_menu>
                     {move || match chosen().len() {
@@ -656,6 +704,8 @@ fn TagSearch(
 fn TagTabs(props: domain::TagTabsProps, products: Vec<Product>, editing: bool) -> impl IntoView {
     let tags = domain::count_tags(&products);
     let local = ProductFilter::new();
+    // En el lienzo del editor los filtros no filtran.
+    let outer = (!editing).then(use_context::<ProductFilter>).flatten();
     let limit = usize::try_from(props.limit).unwrap_or(0);
     let tab = move |text: String, tag: Option<String>| {
         let pressed = {
@@ -687,7 +737,7 @@ fn TagTabs(props: domain::TagTabsProps, products: Vec<Product>, editing: bool) -
                     {tabs}
                 </div>
             </div>
-            <FilteredProducts products limit filter=Some(local) summary=false/>
+            <FilteredProducts products limit filter=Some(local) summary=false outer/>
         </div>
     }
 }

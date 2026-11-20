@@ -18,7 +18,9 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         ..
     } = view;
     // El bloque Cupón se ve solo con un cupón que sirve hoy.
-    provide_context(widgets::ActiveCoupons(coupons.into_iter().map(|c| c.code).collect()));
+    provide_context(widgets::ActiveCoupons(
+        coupons.into_iter().map(|c| c.code).collect(),
+    ));
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(store);
     let Some(page) = doc.page_index(&path) else {
@@ -33,6 +35,17 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         }
         .into_any();
     };
+    let mut categories: Vec<String> = products
+        .iter()
+        .map(|p| p.category.clone())
+        .filter(|c| !c.is_empty())
+        .collect();
+    categories.sort();
+    categories.dedup();
+    provide_context(widgets::StoreLinks {
+        pages: doc.pages.iter().map(|p| p.path.clone()).collect(),
+        categories,
+    });
     // Tocar un producto abre su ficha (ver `widgets::ProductDialog`).
     let open = RwSignal::new(None::<String>);
     provide_context(OpenProduct(open));

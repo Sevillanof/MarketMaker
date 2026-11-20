@@ -897,8 +897,39 @@ pub fn product_href(id: &str) -> String {
 /// Enlace al Inicio de la tienda con la categoría `cat` ya elegida en los
 /// productos (`/?categoria=Ropa%20de%20cama`).
 pub fn category_href(cat: &str) -> String {
-    let mut out = String::from("/?categoria=");
-    for b in cat.trim().bytes() {
+    format!("/?categoria={}", encode_query(cat.trim()))
+}
+
+/// Enlace al Inicio de la tienda con la etiqueta `tag` ya elegida en los
+/// productos (`/?etiqueta=hogar`).
+pub fn tag_href(tag: &str) -> String {
+    format!("/?etiqueta={}", encode_query(tag.trim()))
+}
+
+/// Adónde lleva un cuadro de «Categorías». Las plantillas viejas venían con
+/// enlaces a `/categorias/<nombre>`, páginas que nadie creó: si esa página no
+/// existe (`has_page`), el cuadro muestra los productos de la categoría con
+/// ese nombre o, si la tienda no tiene esa categoría, los de la etiqueta.
+pub fn category_tile_href(
+    href: &str,
+    label: &str,
+    has_page: bool,
+    categories: &[String],
+) -> String {
+    if has_page || !href.trim().starts_with("/categorias/") {
+        return href.to_string();
+    }
+    let label = label.trim();
+    let wanted = label.to_lowercase();
+    match categories.iter().find(|c| c.to_lowercase() == wanted) {
+        Some(c) => category_href(c),
+        None => tag_href(&label.to_lowercase()),
+    }
+}
+
+fn encode_query(text: &str) -> String {
+    let mut out = String::new();
+    for b in text.bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
             out.push(char::from(b));
         } else {
@@ -1476,6 +1507,30 @@ mod tests {
         doc.product_modal.nodes[5].id = "x1".into();
         doc.product_modal.nodes[5].pos.y = 40;
         assert_invalid(&doc, "superponen");
+    }
+
+    #[test]
+    fn old_category_tiles_get_a_link_that_works() {
+        let cats = ["Hogar".to_string()];
+        // La página existe: el enlace queda como está.
+        assert_eq!(
+            category_tile_href("/categorias/hogar", "Hogar", true, &cats),
+            "/categorias/hogar"
+        );
+        // No existe: la categoría con ese nombre o, si no hay, la etiqueta.
+        assert_eq!(
+            category_tile_href("/categorias/hogar", "hogar", false, &cats),
+            "/?categoria=Hogar"
+        );
+        assert_eq!(
+            category_tile_href("/categorias/tecnologia", "Tecnología", false, &cats),
+            "/?etiqueta=tecnolog%C3%ADa"
+        );
+        // Otros enlaces no se tocan.
+        assert_eq!(
+            category_tile_href("/ofertas", "Ofertas", false, &cats),
+            "/ofertas"
+        );
     }
 
     #[test]
