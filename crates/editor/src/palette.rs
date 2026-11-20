@@ -48,6 +48,12 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "announce",
         "Una franja con un mensaje corto",
     ),
+    (
+        "Encabezado",
+        "Coupon",
+        "ticket",
+        "Un código de descuento para copiar",
+    ),
     ("Encabezado", "Navbar", "navbar", "Logo, nombre y enlaces"),
     ("Encabezado", "Banner", "banner", "Imagen grande con título"),
     (

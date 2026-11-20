@@ -149,6 +149,15 @@ pub(crate) fn BlockLook(
                 <p id="mk-color-custom-help" class="mt-1.5 text-xs text-base-content/75">
                     "Los colores de la lista combinan con el tema. Con otro color, el texto encima se pone negro o blanco para que se lea bien."
                 </p>
+                // En Clásico y Minimal el color casi no se nota si el bloque
+                // no tiene botón: se avisa para que no parezca que no anda.
+                {move || match look.with(|l| l.design) {
+                    1 => Some("En el diseño Clásico el color se usa en el botón. Si el bloque no tiene botón, probá «Suave» o «Intenso»."),
+                    5 => Some("En el diseño Minimal el color se usa en el botón y en la línea de los títulos. Para que se note más, probá «Suave» o «Intenso»."),
+                    _ => None,
+                }.map(|t| view! {
+                    <p class="mt-1.5 rounded-field bg-base-200 px-2 py-1.5 text-xs text-base-content/80" role="note">{t}</p>
+                })}
             </fieldset>
             {move || (!look.with(Look::is_default)).then(|| view! {
                 <button

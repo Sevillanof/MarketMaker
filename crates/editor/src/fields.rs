@@ -78,7 +78,7 @@ pub(crate) fn new_list_item(items: &[serde_json::Value], item: &[Field]) -> serd
 /// Explicación breve de los campos que no se entienden solos.
 fn help(key: &str) -> Option<&'static str> {
     Some(match key {
-        "button_href" | "href" => "Adónde lleva al hacer clic: una página de tu tienda (/ofertas), una dirección (www.…) o un email.",
+        "button_href" | "href" | "link_href" => "Elegí adónde lleva al tocarlo. Para un sitio de afuera, tocá «Otra» y pegá la dirección (www.… se completa sola).",
         "button_label" => "Si lo dejás vacío, no se muestra el botón.",
         "alt" => "Describí la imagen para quien no la puede ver. Ayuda también a los buscadores.",
         "autoplay" => "Con 0 las diapositivas solo cambian cuando el cliente las pasa.",
@@ -97,6 +97,20 @@ fn help(key: &str) -> Option<&'static str> {
 fn is_image(field: &Field) -> bool {
     matches!(field.kind, FieldKind::Url) && field.key.ends_with("image_url")
         || field.key == "logo_url"
+}
+
+/// Ajusta el alto de una cuadrícula de productos a su cantidad por página.
+pub(crate) fn fit_product_grid(nodes: &mut Vec<domain::Node>, id: &str, total: usize) {
+    let Some(node) = nodes.iter().find(|n| n.id == id) else {
+        return;
+    };
+    let Widget::ProductGrid(g) = &node.widget else {
+        return;
+    };
+    let per_page = usize::try_from(g.limit).unwrap_or(1);
+    let h = domain::product_grid_rows(per_page, node.size.w, total, !g.title.is_empty());
+    let w = i32::from(node.size.w);
+    grid::resize_node(nodes, id, w, i32::from(h));
 }
 
 /// Campo de primer nivel de las props de un nodo.
@@ -118,7 +132,16 @@ pub(crate) fn PropField(
     });
     let set = Callback::new(move |v: serde_json::Value| {
         id.with_value(|rid| {
-            state.apply_grouped(Some(&group), |d| set_field(d, rid, key, v));
+            let layer = state.layer.get_untracked();
+            state.apply_grouped(Some(&group), |d| {
+                set_field(d, rid, key, v);
+                // Más o menos productos por página: el bloque toma el alto que
+                // necesitan, así las fotos no quedan aplastadas ni gigantes.
+                if key == "limit" {
+                    let total = products.with_value(|ps| ps.iter().filter(|p| p.visible).count());
+                    fit_product_grid(d.layer_mut(layer), rid, total);
+                }
+            });
         });
     });
     // Al elegir una foto de Mis fotos, su descripción pasa al bloque si el
@@ -228,6 +251,9 @@ fn FieldInput(
         return view! { <ListInput products field item min=*min max=*max uid value set/> }
             .into_any();
     }
+    if field.key == "code" && field.label == "Cupón" {
+        return view! { <CouponPicker uid=uid.clone() value set=Callback::new(set_once)/> }.into_any();
+    }
     if is_image(field) {
         return view! {
             <div class="flex flex-col gap-1">
@@ -273,30 +299,110 @@ fn FieldInput(
             ></textarea>
         }
         .into_any(),
-        FieldKind::Url => view! {
-            <input
-                type="text"
-                inputmode="url"
-                id=uid.clone()
-                class="input input-sm w-full"
-                class:input-error=move || error.with(Option::is_some)
-                placeholder="/ofertas o https://…"
-                aria-invalid=invalid
-                aria-describedby=described.clone()
-                prop:value=text
-                on:input=move |ev| set_str(event_target_value(&ev))
-                on:blur=move |_| {
-                    // `www.algo.com` → `https://www.algo.com`, `ofertas` → `/ofertas`…
-                    let typed = text();
-                    let tidy = domain::tidy_link(&typed);
-                    if tidy != typed {
-                        set_str(tidy);
-                    }
-                    end();
+        FieldKind::Url => {
+            use domain::LinkKind;
+            let tab = RwSignal::new(value.with_untracked(|v| LinkKind::of(v.as_str().unwrap_or_default())));
+            let visible: Vec<(String, String)> = products.with_value(|ps| {
+                ps.iter().filter(|p| p.visible).map(|p| (p.id.clone(), p.name.clone())).collect()
+            });
+            let mut cats: Vec<String> = products.with_value(|ps| {
+                ps.iter().filter(|p| p.visible && !p.category.trim().is_empty()).map(|p| p.category.trim().to_string()).collect()
+            });
+            cats.sort();
+            cats.dedup();
+            let products_opts = StoredValue::new(
+                visible.into_iter().map(|(id, name)| (domain::product_href(&id), name)).collect::<Vec<_>>(),
+            );
+            let cat_opts = StoredValue::new(
+                cats.into_iter().map(|c| (domain::category_href(&c), c)).collect::<Vec<_>>(),
+            );
+            let pages = move || {
+                state.doc.with(|d| {
+                    (0..d.page_count())
+                        .map(|i| (d.page_path(i).to_string(), format!("{} ({})", d.page_name(i), d.page_path(i))))
+                        .collect::<Vec<_>>()
+                })
+            };
+            let uid = StoredValue::new(uid.clone());
+            let described = StoredValue::new(described.clone());
+            // Un desplegable con las opciones; `empty` si no hay ninguna.
+            let picker = move |opts: Vec<(String, String)>, prompt: &'static str, empty: &'static str| {
+                if opts.is_empty() {
+                    return view! { <p class="rounded-lg bg-base-200 px-3 py-2 text-xs text-base-content/75">{empty}</p> }.into_any();
                 }
-            />
+                let current = text();
+                let known = opts.iter().any(|(h, _)| *h == current);
+                view! {
+                    <select
+                        id=uid.get_value()
+                        class="select select-sm w-full"
+                        aria-describedby=move || described.with_value(|d| d())
+                        on:change=move |ev| set_once(serde_json::Value::String(event_target_value(&ev)))
+                    >
+                        <option value="" disabled selected=!known>{prompt}</option>
+                        {opts.into_iter().map(|(href, label)| {
+                            let sel = href == current;
+                            view! { <option value=href selected=sel>{label}</option> }
+                        }).collect_view()}
+                    </select>
+                }.into_any()
+            };
+            view! {
+                <div class="flex flex-col gap-1.5">
+                    <div class="join w-full" role="group" aria-label="Adónde lleva">
+                        {[(LinkKind::Page, "Página"), (LinkKind::Product, "Producto"), (LinkKind::Category, "Categoría"), (LinkKind::Other, "Otra")]
+                            .into_iter()
+                            .map(|(k, label)| view! {
+                                <button
+                                    type="button"
+                                    class="btn btn-xs join-item flex-1"
+                                    class:btn-primary=move || tab.get() == k
+                                    aria-pressed=move || if tab.get() == k { "true" } else { "false" }
+                                    on:click=move |_| tab.set(k)
+                                >{label}</button>
+                            })
+                            .collect_view()}
+                    </div>
+                    {move || match tab.get() {
+                        LinkKind::Page => picker(pages(), "Elegí una página…", ""),
+                        LinkKind::Product => picker(
+                            products_opts.get_value(),
+                            "Elegí un producto…",
+                            "Todavía no tenés productos a la vista. Cargalos en Productos.",
+                        ),
+                        LinkKind::Category => picker(
+                            cat_opts.get_value(),
+                            "Elegí una categoría…",
+                            "Tus productos todavía no tienen categorías. Las asignás en Productos.",
+                        ),
+                        LinkKind::Other => view! {
+                            <input
+                                type="text"
+                                inputmode="url"
+                                id=uid.get_value()
+                                class="input input-sm w-full"
+                                class:input-error=move || error.with(Option::is_some)
+                                placeholder="www.… , hola@… o #contacto"
+                                aria-invalid=invalid
+                                aria-describedby=move || described.with_value(|d| d())
+                                prop:value=text
+                                on:input=move |ev| set_str(event_target_value(&ev))
+                                on:blur=move |_| {
+                                    // `www.algo.com` → `https://www.algo.com`, `ofertas` → `/ofertas`…
+                                    let typed = text();
+                                    let tidy = domain::tidy_link(&typed);
+                                    if tidy != typed {
+                                        set_str(tidy);
+                                    }
+                                    end();
+                                }
+                            />
+                        }.into_any(),
+                    }}
+                </div>
+            }
+            .into_any()
         }
-        .into_any(),
         FieldKind::DateTime => view! {
             <input
                 type="datetime-local"
@@ -968,5 +1074,76 @@ mod tests {
             .unwrap();
         assert!(is_image(image));
         assert!(!is_image(link));
+    }
+}
+
+/// El código del bloque Cupón: se elige entre los cupones de la tienda que
+/// sirven hoy, con un enlace para crear uno nuevo en el panel.
+#[component]
+fn CouponPicker(uid: String, value: Signal<serde_json::Value>, set: Callback<serde_json::Value>) -> impl IntoView {
+    let list = crate::coupons();
+    let current = move || value.get().as_str().unwrap_or_default().to_string();
+    let inactive = {
+        let list = list.clone();
+        move || {
+            let c = current();
+            !c.is_empty() && !list.iter().any(|b| b.code.eq_ignore_ascii_case(&c))
+        }
+    };
+    let new_href = use_context::<crate::PanelLink>()
+        .map(|crate::PanelLink(h)| format!("{}/cupones", h.trim_end_matches('/')));
+    let help_id = format!("{uid}-help");
+    let opts = StoredValue::new(list.clone());
+    view! {
+        <div class="flex flex-col gap-1">
+            <label for=uid.clone() class="text-sm font-medium">"Cupón"</label>
+            {if list.is_empty() {
+                view! {
+                    <p id=uid.clone() class="rounded-lg bg-base-200 px-3 py-2 text-xs text-base-content/75">
+                        "Todavía no tenés cupones activos. Creá uno y volvé a abrir el editor para elegirlo."
+                    </p>
+                }.into_any()
+            } else {
+                view! {
+                    <select
+                        id=uid.clone()
+                        class="select select-sm w-full font-mono"
+                        class:select-error=inactive.clone()
+                        aria-describedby=help_id.clone()
+                        on:change=move |ev| set.run(serde_json::Value::String(event_target_value(&ev)))
+                    >
+                        {move || {
+                            let c = current();
+                            let known = opts.with_value(|l| l.iter().any(|b| b.code.eq_ignore_ascii_case(&c)));
+                            view! {
+                                {(!known).then(|| {
+                                    let label = if c.is_empty() {
+                                        "Elegí un cupón…".to_string()
+                                    } else {
+                                        format!("{c} (pausado o vencido)")
+                                    };
+                                    view! { <option value=c.clone() disabled selected>{label}</option> }
+                                })}
+                                {opts.get_value().into_iter().map(|b| {
+                                    let sel = b.code.eq_ignore_ascii_case(&c);
+                                    view! { <option value=b.code.clone() selected=sel>{format!("{} · {}", b.code, b.detail)}</option> }
+                                }).collect_view()}
+                            }
+                        }}
+                    </select>
+                }.into_any()
+            }}
+            {move || inactive().then(|| view! {
+                <p class="text-xs text-error">"Este cupón está pausado o venció: el bloque no se ve en tu tienda."</p>
+            })}
+            <p id=help_id class="text-xs text-base-content/75">
+                "Solo aparecen tus cupones activos. Si lo pausás o vence, el bloque deja de verse en la tienda."
+            </p>
+            {new_href.map(|href| view! {
+                <a class="link link-primary self-start text-sm" href=href target="_blank" rel="noopener">
+                    "+ Crear un cupón nuevo"
+                </a>
+            })}
+        </div>
     }
 }

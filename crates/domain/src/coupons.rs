@@ -191,6 +191,29 @@ impl Coupon {
     }
 }
 
+/// Un cupón que sirve hoy, para el bloque Cupón: el editor los ofrece para
+/// elegir y la tienda muestra el bloque solo si su código está entre ellos.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct CouponBrief {
+    pub code: String,
+    /// «10 % · vence 30/11», «Envío gratis»…
+    pub detail: String,
+}
+
+impl Coupon {
+    /// El resumen para el bloque Cupón.
+    pub fn brief(&self) -> CouponBrief {
+        let mut detail = self.value_text();
+        if !self.expires.is_empty() {
+            let d: Vec<&str> = self.expires.split('-').collect();
+            if let [_, m, day] = d[..] {
+                detail.push_str(&format!(" · vence {}/{}", day.trim_start_matches('0'), m.trim_start_matches('0')));
+            }
+        }
+        CouponBrief { code: self.code.clone(), detail }
+    }
+}
+
 /// La pantalla Cupones de una tienda, en el panel.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct CouponsInfo {

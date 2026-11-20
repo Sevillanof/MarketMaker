@@ -67,7 +67,7 @@ pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
     });
 
     view! {
-        <aside class="w-[23rem] shrink-0 overflow-y-auto border-l border-base-300 bg-base-100 p-4" aria-label="Propiedades del bloque">
+        <aside class="w-[23rem] shrink-0 overflow-y-auto border-l border-base-300 bg-base-100 p-4 pb-24" aria-label="Propiedades del bloque">
             {move || match current.get() {
                 None => view! { <EmptyInspector/> }.into_any(),
                 Some(id) => match state.node(&id) {
@@ -288,7 +288,23 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
             >
                 {basic
                     .into_iter()
-                    .map(|f| view! { <PropField products id=basic_id.clone() field=f/> })
+                    .map(|f| {
+                        // Barra de anuncio: los campos del cupón, solo con el estilo Cupón.
+                        let coupon_only = matches!(widget, Widget::Announcement(_))
+                            && matches!(f.key, "code" | "note" | "coupon");
+                        let fid = basic_id.clone();
+                        let vid = basic_id.clone();
+                        // Un Memo: el campo se redibuja solo si cambia el estilo,
+                        // no con cada tecla (perdería el foco).
+                        let doc = expect_context::<EditorState>().doc;
+                        let shown = Memo::new(move |_| {
+                            !coupon_only
+                                || doc.with(|d| {
+                                    matches!(d.node(&vid).map(|n| &n.widget), Some(Widget::Announcement(a)) if a.variant == "d")
+                                })
+                        });
+                        move || shown.get().then(|| view! { <PropField products id=fid.clone() field=f/> })
+                    })
                     .collect_view()}
                 {button.map(|(label_field, href_field)| view! {
                     <ButtonGroup products id=button_id.clone() label_field href_field/>
@@ -315,28 +331,6 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                         </section>
                     })
                 }}
-                {matches!(widget, Widget::ProductGrid(_)).then(|| {
-                    let state = expect_context::<EditorState>();
-                    let id = id.clone();
-                    // Solo los propios: los de ejemplo no los ven los clientes.
-                    let total = products.with_value(|p| p.iter().filter(|p| p.visible && !p.example).count());
-                    move || {
-                        let limit = state.doc.with(|d| match d.node(&id).map(|n| &n.widget) {
-                            Some(Widget::ProductGrid(g)) => usize::try_from(g.limit).unwrap_or(0),
-                            _ => 0,
-                        });
-                        (total > limit).then(|| view! {
-                            <p role="status" class="rounded-box bg-warning/15 px-3 py-2 text-sm">
-                                {if limit < 12 {
-                                    format!("Mostrás {limit} de tus {total} productos. Podés subir la cantidad hasta 12.")
-                                } else {
-                                    format!("Se ven 12 de tus {total} productos, el máximo por cuadrícula. Para que encuentren los demás, sumá un buscador o un filtro por etiquetas.")
-                                }}
-                            </p>
-                        })
-                    }
-                })}
-
                 {has_advanced.then(|| view! {
                     <details class="collapse collapse-arrow border border-base-300">
                         <summary class="collapse-title text-sm font-medium">"Más opciones"</summary>

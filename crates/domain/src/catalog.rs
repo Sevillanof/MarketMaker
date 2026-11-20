@@ -556,8 +556,65 @@ pub fn fold(s: &str) -> String {
         .collect()
 }
 
+/// Botones de la paginación de una cuadrícula: los números de página (desde 0)
+/// y `None` donde va «…». Con pocas páginas van todas; con muchas, la
+/// primera, la última y las dos vecinas de la actual.
+pub fn page_items(current: usize, pages: usize) -> Vec<Option<usize>> {
+    if pages <= 7 {
+        return (0..pages).map(Some).collect();
+    }
+    let current = current.min(pages - 1);
+    let (from, to) = (current.saturating_sub(1).max(1), (current + 1).min(pages - 2));
+    // Cerca de un extremo se muestran más vecinas, para que la fila no cambie de largo.
+    let (from, to) = if current < 4 {
+        (1, 4)
+    } else if current + 4 >= pages {
+        (pages - 5, pages - 2)
+    } else {
+        (from, to)
+    };
+    let mut out = vec![Some(0)];
+    if from > 1 {
+        out.push(None);
+    }
+    out.extend((from..=to).map(Some));
+    if to < pages - 2 {
+        out.push(None);
+    }
+    out.push(Some(pages - 1));
+    out
+}
+
+/// Cuántas páginas hacen falta para `total` productos de a `per_page`.
+pub fn page_count(total: usize, per_page: usize) -> usize {
+    if per_page == 0 {
+        return 1;
+    }
+    total.div_ceil(per_page).max(1)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn page_items_show_all_or_jump() {
+        assert_eq!(super::page_items(0, 3), vec![Some(0), Some(1), Some(2)]);
+        assert_eq!(
+            super::page_items(0, 9),
+            vec![Some(0), Some(1), Some(2), Some(3), Some(4), None, Some(8)]
+        );
+        assert_eq!(
+            super::page_items(4, 9),
+            vec![Some(0), None, Some(3), Some(4), Some(5), None, Some(8)]
+        );
+        assert_eq!(
+            super::page_items(8, 9),
+            vec![Some(0), None, Some(4), Some(5), Some(6), Some(7), Some(8)]
+        );
+        assert_eq!(super::page_count(14, 8), 2);
+        assert_eq!(super::page_count(0, 8), 1);
+        assert_eq!(super::page_count(16, 8), 2);
+    }
+
     use super::*;
 
     #[test]

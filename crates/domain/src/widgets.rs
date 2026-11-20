@@ -37,6 +37,7 @@ pub enum Widget {
     Contact(ContactProps),
     Footer(FooterProps),
     Announcement(AnnouncementProps),
+    Coupon(CouponProps),
     Stats(StatsProps),
     Steps(StepsProps),
     ProductCarousel(ProductCarouselProps),
@@ -449,6 +450,21 @@ pub struct AnnouncementProps {
     pub coupon: String,
 }
 
+/// Franja con un código de descuento para copiar. El código es uno de los
+/// cupones de la tienda: si se pausa o vence, el bloque no se ve.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct CouponProps {
+    /// El código del cupón (de la pantalla Cupones), por ejemplo `HOTSALE`.
+    pub code: String,
+    /// El mensaje, por ejemplo "10 % en toda la tienda".
+    pub text: String,
+    /// Aclaración corta al costado, por ejemplo "Hasta el domingo".
+    pub note: String,
+    /// Forma: vacío recortable, `solid`, `soft` o `line`.
+    pub coupon: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct StatItem {
     pub value: String,
@@ -547,6 +563,7 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Contact", "Contacto"),
     ("Footer", "Pie de página"),
     ("Announcement", "Barra de anuncio"),
+    ("Coupon", "Cupón"),
     ("Stats", "Cifras destacadas"),
     ("Steps", "Pasos"),
     ("ProductCarousel", "Carrusel de productos"),
@@ -643,8 +660,8 @@ const PRODUCT_GRID_FIELDS: &[Field] = &[
     field("title", "Título", text(80)),
     field(
         "limit",
-        "Cantidad de productos",
-        FieldKind::Number { min: 1, max: 12 },
+        "Productos por página",
+        FieldKind::Number { min: 1, max: 24 },
     ),
     field(
         "card",
@@ -1132,6 +1149,18 @@ const ANNOUNCEMENT_ITEM: &[Field] = &[
     field("link_label", "Texto del enlace", text(30)),
     field("link_href", "Enlace", FieldKind::Url),
 ];
+const COUPON_FIELDS: &[Field] = &[
+    field("code", "Cupón", text(24)),
+    field("text", "Mensaje", text(80)),
+    field("note", "Aclaración (opcional)", text(40)),
+    field(
+        "coupon",
+        "Forma",
+        FieldKind::Select {
+            options: COUPON_LOOK_OPTIONS,
+        },
+    ),
+];
 const ANNOUNCEMENT_FIELDS: &[Field] = &[
     field(
         "variant",
@@ -1346,6 +1375,36 @@ mod countdown_tests {
     }
 }
 
+/// Alto (en filas de la grilla) para que una cuadrícula de `per_page`
+/// productos, `w` columnas de ancho y con `total` productos en la tienda
+/// muestre las fotos en proporción 4:3, con lugar para el título y los
+/// números de página si hacen falta. Es una cuenta aproximada para el ancho
+/// por defecto de la tienda; el dueño lo puede ajustar a mano después.
+pub fn product_grid_rows(per_page: usize, w: u8, total: usize, has_title: bool) -> u8 {
+    let width = f64::from(crate::layout::DEFAULT_WIDTH) * f64::from(w) / f64::from(crate::GRID_COLS);
+    let n = per_page.min(total.max(1)).max(1);
+    // Igual que `widgets::fill_cols`: 4 desde 768 px, 3 desde 512 px.
+    let cols = if width >= 768.0 {
+        4
+    } else if width >= 512.0 && n != 8 && n != 16 {
+        3
+    } else {
+        2
+    }
+    .min(n) as f64;
+    let (pad, gap, body) = (32.0, 12.0, 96.0);
+    let card_w = (width - pad - (cols - 1.0) * gap) / cols;
+    let rows = (n as f64 / cols).ceil();
+    let mut h = pad + rows * (card_w * 0.75 + body) + (rows - 1.0) * gap;
+    if has_title {
+        h += 40.0;
+    }
+    if total > per_page {
+        h += 52.0;
+    }
+    (h / f64::from(crate::ROW_PX)).ceil().clamp(1.0, 255.0) as u8
+}
+
 // ---------------------------------------------------------------------------
 // Límites de tamaño
 
@@ -1392,6 +1451,7 @@ impl Widget {
             Widget::Contact(_) => "Contact",
             Widget::Footer(_) => "Footer",
             Widget::Announcement(_) => "Announcement",
+            Widget::Coupon(_) => "Coupon",
             Widget::Stats(_) => "Stats",
             Widget::Steps(_) => "Steps",
             Widget::ProductCarousel(_) => "ProductCarousel",
@@ -1420,7 +1480,7 @@ impl Widget {
         match self {
             Widget::Banner(_) => limits(16, 48, 24, 96, 48, 48),
             Widget::Text(_) => limits(8, 48, 12, 96, 24, 24),
-            Widget::ProductGrid(_) => limits(12, 48, 36, 144, 48, 96),
+            Widget::ProductGrid(_) => limits(12, 48, 36, 255, 48, 96),
             Widget::TagFilter(_) => limits(12, 48, 7, 24, 48, 9),
             Widget::TagList(_) => limits(8, 24, 20, 144, 12, 44),
             Widget::TagCircles(_) => limits(12, 48, 15, 36, 48, 19),
@@ -1447,6 +1507,7 @@ impl Widget {
             Widget::Contact(_) => limits(24, 48, 36, 96, 48, 52),
             Widget::Footer(_) => limits(24, 48, 14, 60, 48, 18),
             Widget::Announcement(_) => limits(24, 48, 4, 12, 48, 5),
+            Widget::Coupon(_) => limits(24, 48, 5, 12, 48, 7),
             Widget::Stats(_) => limits(16, 48, 10, 40, 48, 16),
             Widget::Steps(_) => limits(16, 48, 16, 60, 48, 28),
             Widget::ProductCarousel(_) => limits(16, 48, 36, 120, 48, 58),
@@ -1488,6 +1549,7 @@ impl Widget {
             Widget::Contact(_) => CONTACT_FIELDS,
             Widget::Footer(_) => FOOTER_FIELDS,
             Widget::Announcement(_) => ANNOUNCEMENT_FIELDS,
+            Widget::Coupon(_) => COUPON_FIELDS,
             Widget::Stats(_) => STATS_FIELDS,
             Widget::Steps(_) => STEPS_FIELDS,
             Widget::ProductCarousel(_) => PRODUCT_CAROUSEL_FIELDS,
@@ -1524,7 +1586,7 @@ impl Widget {
             "ProductGrid" => Widget::ProductGrid(ProductGridProps {
                 cards: CardOptions::default(),
                 title: s("Productos"),
-                limit: 4,
+                limit: 8,
             }),
             "TagFilter" => Widget::TagFilter(TagFilterProps {
                 title: String::new(),
@@ -1774,6 +1836,13 @@ impl Widget {
                     },
                 ],
                 code: s("BIENVENIDA"),
+                note: String::new(),
+                coupon: String::new(),
+            }),
+            // El código se elige de los cupones de la tienda (lo completa el editor).
+            "Coupon" => Widget::Coupon(CouponProps {
+                code: String::new(),
+                text: s("Usá este código y ahorrá en tu compra"),
                 note: String::new(),
                 coupon: String::new(),
             }),

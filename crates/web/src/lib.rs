@@ -131,6 +131,8 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
                     <Route path=path!("/dev/ficha") view=dev::DevProductStylesPage/>
                     <Route path=path!("/dev/menus") view=dev::DevMenusPage/>
+                    // Lo guardado sin publicar, para la vista de celular del editor.
+                    <Route path=path!("/vista-previa") view=DraftPreviewPage ssr=SsrMode::Async/>
                     // Las demás páginas de la tienda (/ofertas, /categorias…).
                     <Route path=WildcardSegment("any") view=Home ssr=SsrMode::Async/>
                 </Routes>
@@ -202,6 +204,48 @@ fn HomePage() -> impl IntoView {
                     Err(_) => view! { <platform::StoreNotFound/> }.into_any(),
                 }
             })}
+        </Suspense>
+    }
+}
+
+/// El borrador de la tienda tal como lo vería un comprador, en la página
+/// `?ruta=` (Inicio si falta). La usa la vista de celular del editor, dentro
+/// de un marco del ancho de un teléfono. Solo para quien puede editar.
+#[component]
+fn DraftPreviewPage() -> impl IntoView {
+    // El editor la muestra en un marco: se permite solo desde el mismo sitio
+    // (las demás páginas no se pueden enmarcar, ver `server::main`).
+    #[cfg(feature = "ssr")]
+    if let Some(r) = use_context::<leptos_axum::ResponseOptions>() {
+        r.insert_header(http::header::X_FRAME_OPTIONS, http::HeaderValue::from_static("SAMEORIGIN"));
+        r.insert_header(
+            http::header::CONTENT_SECURITY_POLICY,
+            http::HeaderValue::from_static("frame-ancestors 'self'; base-uri 'self'; object-src 'none'"),
+        );
+    }
+    let query = leptos_router::hooks::use_query_map();
+    let path = query.with_untracked(|q| q.get("ruta")).filter(|r| r.starts_with('/')).unwrap_or_else(|| "/".to_string());
+    let page = Resource::new(|| (), |_| server::load_preview("home".to_string()));
+    view! {
+        <leptos_meta::Meta name="robots" content="noindex"/>
+        <Suspense fallback=|| view! { <ui::PageSkeleton/> }>
+            {move || {
+                let path = path.clone();
+                Suspend::new(async move {
+                    match page.await {
+                        Ok(view) => view! {
+                            <buyer_ui::BuyerScope store_name=view.store_name.clone()>
+                                <StorefrontPage view=view.clone() path=path.clone()/>
+                            </buyer_ui::BuyerScope>
+                        }
+                        .into_any(),
+                        Err(_) => view! {
+                            <p class="p-8 text-center text-base-content/75">"Entrá con tu cuenta para ver la vista previa."</p>
+                        }
+                        .into_any(),
+                    }
+                })
+            }}
         </Suspense>
     }
 }

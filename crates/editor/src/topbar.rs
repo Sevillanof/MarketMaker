@@ -112,11 +112,24 @@ pub(crate) fn PageSwitcher() -> impl IntoView {
     }
 }
 
-/// "+ Nueva página": crea una de las páginas modelo (Quiénes somos,
-/// Contacto, Preguntas frecuentes) con el menú y el pie de la actual.
+/// "+ Nueva página": nombre, dirección y con qué empieza (en blanco o una
+/// de las páginas modelo), con el menú y el pie de la actual.
 #[component]
 fn NewPageMenu() -> impl IntoView {
     let actions = expect_context::<Actions>();
+    let name = RwSignal::new(String::new());
+    // `None`: en blanco; `Some(i)`: la página modelo `i`.
+    let choice = RwSignal::new(None::<usize>);
+    // Los avisos aparecen recién al tocar "Crear página".
+    let tried = RwSignal::new(false);
+    let problem = move || {
+        name.track();
+        actions.new_page_problem(&name.get())
+    };
+    let slug = move || {
+        let s = domain::slug_from_name(&name.get());
+        if s.is_empty() { "nombre-de-la-pagina".to_string() } else { s }
+    };
     let menu = NodeRef::<leptos::html::Details>::new();
     // Se cierra al tocar afuera, como cualquier menú.
     let outside = window_event_listener(leptos::ev::pointerdown, move |ev| {
@@ -156,25 +169,79 @@ fn NewPageMenu() -> impl IntoView {
             <summary class="btn btn-ghost btn-sm gap-1" title="Crear una página nueva">
                 <Icon name="plus" class="h-4 w-4"/><span class="max-[1099px]:sr-only">"Nueva página"</span>
             </summary>
-            <ul class="dropdown-content menu z-50 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
-                {domain::PAGE_TEMPLATES
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (_, name))| view! {
-                        <li>
-                            <button type="button" on:click=move |_| {
-                                if let Some(d) = menu.get_untracked() {
-                                    d.set_open(false);
-                                }
-                                actions.add_template_page(i);
-                            }>{*name}</button>
-                        </li>
-                    })
-                    .collect_view()}
-                <li class="menu-title pt-2 text-xs font-normal whitespace-normal">
-                    "¿Otra página, como «Nosotros»? Agregá ese enlace en el Menú superior y tocalo en el lienzo: la página se crea sola."
-                </li>
-            </ul>
+            <form
+                class="dropdown-content z-50 mt-1 w-80 space-y-3 rounded-box border border-base-300 bg-base-100 p-4 shadow-lg"
+                on:submit=move |ev| {
+                    ev.prevent_default();
+                    tried.set(true);
+                    if actions.add_named_page(&name.get_untracked(), choice.get_untracked()) {
+                        if let Some(d) = menu.get_untracked() {
+                            d.set_open(false);
+                        }
+                        name.set(String::new());
+                        choice.set(None);
+                        tried.set(false);
+                    }
+                }
+            >
+                <div>
+                    <label class="mb-1 block text-sm font-medium" for="mk-new-page-name">"Nombre de la página"</label>
+                    <input
+                        id="mk-new-page-name"
+                        type="text"
+                        class="input input-sm w-full"
+                        maxlength="40"
+                        placeholder="Por ejemplo: Ofertas de verano"
+                        aria-describedby="mk-new-page-hint"
+                        prop:value=move || name.get()
+                        on:input=move |ev| name.set(event_target_value(&ev))
+                    />
+                    {move || match problem() {
+                        Some(p) if tried.get() => view! {
+                            <p id="mk-new-page-hint" class="mt-1 text-xs text-error" role="alert">{p}</p>
+                        }.into_any(),
+                        _ => view! {
+                            <p id="mk-new-page-hint" class="mt-1 text-xs text-base-content/70 break-all">
+                                "Va a quedar en …/"<span class="font-semibold">{slug}</span>
+                            </p>
+                        }.into_any(),
+                    }}
+                </div>
+                <fieldset class="space-y-1.5">
+                    <legend class="mb-1 text-sm font-medium">"Empezar con"</legend>
+                    {std::iter::once((None, "En blanco", "Solo el menú y el pie de tu tienda"))
+                        .chain(domain::PAGE_TEMPLATES.iter().enumerate().map(|(i, (_, n))| {
+                            (Some(i), *n, "Con bloques de ejemplo para completar")
+                        }))
+                        .map(|(value, title, hint)| view! {
+                            <label class="flex cursor-pointer items-start gap-2.5 rounded-lg border border-base-300 px-3 py-2 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                                <input
+                                    type="radio"
+                                    name="mk-new-page-start"
+                                    class="radio radio-primary radio-sm mt-0.5"
+                                    prop:checked=move || choice.get() == value
+                                    on:change=move |_| {
+                                        // El nombre sigue a la página modelo mientras el
+                                        // dueño no haya escrito uno propio.
+                                        let current = name.get_untracked();
+                                        let untouched = current.trim().is_empty()
+                                            || domain::PAGE_TEMPLATES.iter().any(|(_, n)| *n == current);
+                                        if untouched {
+                                            name.set(if value.is_some() { title.to_string() } else { String::new() });
+                                        }
+                                        choice.set(value);
+                                    }
+                                />
+                                <span>
+                                    <span class="block text-sm font-medium">{title}</span>
+                                    <span class="block text-xs text-base-content/70">{hint}</span>
+                                </span>
+                            </label>
+                        })
+                        .collect_view()}
+                </fieldset>
+                <button type="submit" class="btn btn-primary btn-sm w-full">"Crear página"</button>
+            </form>
         </details>
     }
 }

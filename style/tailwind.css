@@ -125,36 +125,39 @@
 .mk-anode.mk-selected {
   z-index: 20;
 }
-/* La pestaña "Nombre | Opciones": pegada arriba a la derecha del contorno,
-   afuera del bloque para no tapar su título. */
+/* La pestaña "Nombre | Opciones": pegada abajo a la derecha del contorno,
+   afuera del bloque para no tapar su contenido ni el bloque de arriba (en el
+   menú superior tapaba los enlaces y el carrito). */
 .mk-menu-trigger {
   position: absolute;
   right: 6px;
-  bottom: calc(100% - 6px);
+  top: calc(100% - 6px);
+  z-index: 5;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   height: 1.75rem;
   padding-inline: 0.65rem;
-  border-radius: 0.5rem 0.5rem 0 0;
+  border-radius: 0 0 0.5rem 0.5rem;
   background: var(--color-primary);
   color: var(--color-primary-content);
   font-size: 0.8125rem;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transform-origin: bottom right;
+  transform-origin: top right;
   transform: scale(var(--mk-unscale, 1));
 }
 .mk-menu-trigger:focus-visible {
   outline: 3px solid var(--color-base-content);
   outline-offset: 2px;
 }
+/* El último bloque no tiene lugar abajo: la pestaña va adentro. */
 .mk-menu-trigger-in {
-  bottom: auto;
-  top: 10px;
-  transform-origin: top right;
-  border-radius: 0 0 0 0.5rem;
+  top: auto;
+  bottom: 10px;
+  transform-origin: bottom right;
+  border-radius: 0.5rem 0 0 0;
 }
 /* Mientras se arrastra un bloque, se ven todos para ubicarse. */
 .mk-grid-guides .mk-anode-box {
@@ -756,6 +759,37 @@ dialog.mk-cart::backdrop {
   --mk-ink: color-mix(in oklab, var(--mk-c) 40%, var(--color-base-content));
   --mk-soft: color-mix(in oklab, var(--mk-c) 14%, var(--color-base-100));
   --mk-line: color-mix(in oklab, var(--mk-c) 45%, transparent);
+}
+/* El color como texto (títulos, precios) tiene que leerse sobre el fondo de
+   la tienda: con colores muy claros (Amarillo en un tema claro) o muy oscuros
+   (en un tema oscuro) no alcanzaba con mezclarlo. Se calcula la luminancia
+   relativa (y en XYZ D65, la de WCAG): si no llega a 4,5:1 contra el fondo,
+   el texto pasa a negro (tema claro) o blanco (tema oscuro). El color sigue
+   en el borde, la línea y el botón. Sin colores relativos queda la mezcla de
+   arriba. */
+@supports (color: light-dark(color(from red xyz-d65 calc(x * max(0, sign(0.5 - y))) y z), red)) {
+  .mk-look {
+    --mk-ct: light-dark(
+      color(from color-mix(in oklab, var(--mk-c) 70%, var(--color-base-content)) xyz-d65
+        calc(x * max(0, sign(0.17913 - y)))
+        calc(y * max(0, sign(0.17913 - y)))
+        calc(z * max(0, sign(0.17913 - y)))),
+      color(from color-mix(in oklab, var(--mk-c) 70%, var(--color-base-content)) xyz-d65
+        calc(x * max(0, sign(y - 0.17913)) + 0.9505 * max(0, sign(0.17913 - y)))
+        calc(y * max(0, sign(y - 0.17913)) + max(0, sign(0.17913 - y)))
+        calc(z * max(0, sign(y - 0.17913)) + 1.089 * max(0, sign(0.17913 - y))))
+    );
+    --mk-ink: light-dark(
+      color(from color-mix(in oklab, var(--mk-c) 40%, var(--color-base-content)) xyz-d65
+        calc(x * max(0, sign(0.17913 - y)))
+        calc(y * max(0, sign(0.17913 - y)))
+        calc(z * max(0, sign(0.17913 - y)))),
+      color(from color-mix(in oklab, var(--mk-c) 40%, var(--color-base-content)) xyz-d65
+        calc(x * max(0, sign(y - 0.17913)) + 0.9505 * max(0, sign(0.17913 - y)))
+        calc(y * max(0, sign(y - 0.17913)) + max(0, sign(0.17913 - y)))
+        calc(z * max(0, sign(y - 0.17913)) + 1.089 * max(0, sign(0.17913 - y))))
+    );
+  }
 }
 
 /* Botones suaves del color (como "Elegir opciones"): el texto, en el tono
