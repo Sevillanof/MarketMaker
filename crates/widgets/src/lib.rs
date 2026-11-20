@@ -1210,7 +1210,7 @@ pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView 
 pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
     view! {
         <div class="mk-box mk-benefits h-full overflow-hidden rounded-box bg-base-100 px-4 py-2">
-            <div class="grid h-full auto-cols-[minmax(13rem,1fr)] grid-flow-col items-center gap-4 overflow-x-auto">
+            <div class="grid h-full auto-cols-[minmax(13rem,1fr)] grid-flow-col items-center gap-4 relative overflow-x-auto">
                 {props
                     .items
                     .into_iter()
@@ -1409,13 +1409,17 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
                     <Icon name="chevron-left" class="h-4 w-4"/>
                 </button>
             })}
-            {(!rotating && !closable).then(|| view! { <span class="w-0 flex-1"></span> })}
-            <p class="min-w-0 flex-1 text-center text-balance">
+            // Un solo renglón: si el mensaje no entra se corta con «…» y el enlace
+            // queda siempre a la vista. En el celular baja de renglón y la barra
+            // crece (ver `.mk-ann-msg` en el CSS).
+            <p class="mk-ann-msg flex min-w-0 flex-1 items-baseline justify-center whitespace-nowrap">
                 {move || message().map(|m| view! {
-                    <span>{m.text}</span>
+                    <span class="mk-ann-text min-w-0 truncate">{m.text}</span>
                     {(!m.link_label.is_empty()).then(|| view! {
-                        " · "
-                        <MaybeLink href=m.link_href.clone() editing class="mk-link inline font-semibold underline underline-offset-2">{m.link_label.clone()}</MaybeLink>
+                        <span class="shrink-0">
+                            "\u{a0}· "
+                            <MaybeLink href=m.link_href.clone() editing class="mk-link inline font-semibold underline underline-offset-2">{m.link_label.clone()}</MaybeLink>
+                        </span>
                     })}
                 })}
             </p>
@@ -1429,7 +1433,6 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
                     <Icon name="close" class="h-4 w-4"/>
                 </button>
             })}
-            {(!rotating && !closable).then(|| view! { <span class="w-0 flex-1"></span> })}
         </div>
     }
     .into_any()
@@ -1449,7 +1452,8 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
     let n = props.items.len();
     match props.variant.as_str() {
         "b" => view! {
-            <div class=format!("mk-box mk-pad mk-stats @container grid h-full grid-cols-1 content-center gap-6 overflow-hidden rounded-box bg-base-100 px-6 py-4 text-center {}", cols_xl(n))>
+            // El `@container` va afuera: una grilla no puede consultar su propio ancho.
+            <div class="mk-stats @container h-full"><div class=format!("mk-box mk-pad grid h-full grid-cols-1 content-center gap-6 overflow-hidden rounded-box bg-base-100 px-6 py-4 text-center {}", cols_xl(n))>
                 {props.items.into_iter().map(|s| view! {
                     <div class="min-w-0">
                         <p class=ph("mk-title mk-h text-4xl font-extrabold tracking-tight @xl:text-5xl", &s.value)>{s.value.clone()}</p>
@@ -1457,11 +1461,11 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
                         <p class="mt-2 text-sm opacity-70">{s.label}</p>
                     </div>
                 }).collect_view()}
-            </div>
+            </div></div>
         }
         .into_any(),
         "c" => view! {
-            <div class=format!("mk-stats @container grid h-full grid-cols-1 content-center gap-4 overflow-hidden {}", cols_xl(n))>
+            <div class="mk-stats @container h-full"><div class=format!("grid h-full grid-cols-1 content-center gap-4 overflow-hidden {}", cols_xl(n))>
                 {props.items.into_iter().map(|s| view! {
                     <div class="mk-item mk-box flex min-w-0 items-center gap-4 rounded-box border border-base-300 bg-base-100 p-5">
                         <span class="mk-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-full">
@@ -1473,7 +1477,7 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
                         </div>
                     </div>
                 }).collect_view()}
-            </div>
+            </div></div>
         }
         .into_any(),
         _ => view! {
@@ -1731,7 +1735,8 @@ pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
         }
         .into_any(),
         "c" => view! {
-            <div class="mk-social @container grid h-full grid-cols-1 content-center gap-3 overflow-hidden @xl:grid-cols-3">
+            // El `@container` va afuera: una grilla no puede consultar su propio ancho.
+            <div class="mk-social @container h-full overflow-hidden"><div class="grid h-full grid-cols-1 content-center gap-3 @xl:grid-cols-3">
                 {channels.into_iter().chain(whatsapp).map(|c| view! {
                     <ChannelLink href=c.href external=c.external editing class="mk-item mk-box flex min-h-14 min-w-0 items-center gap-3 rounded-box border border-base-300 bg-base-100 p-3">
                         <span class="mk-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
@@ -1743,7 +1748,7 @@ pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
                         </span>
                     </ChannelLink>
                 }).collect_view()}
-            </div>
+            </div></div>
         }
         .into_any(),
         _ => view! {
@@ -1999,7 +2004,7 @@ pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
             })}
-            <div class="grid min-h-0 flex-1 auto-cols-[minmax(16rem,1fr)] grid-flow-col gap-3 overflow-x-auto">
+            <div class="grid min-h-0 flex-1 auto-cols-[minmax(16rem,1fr)] grid-flow-col gap-3 relative overflow-x-auto">
                 {props
                     .items
                     .into_iter()
@@ -2035,7 +2040,7 @@ pub fn LogosWidget(props: LogosProps, editing: bool) -> impl IntoView {
             {(!props.title.is_empty()).then(|| view! {
                 <h2 class="mk-sub text-center text-xs font-semibold uppercase tracking-wide opacity-75 truncate">{props.title.clone()}</h2>
             })}
-            <div class="flex items-center justify-center-safe gap-8 overflow-x-auto">
+            <div class="flex items-center justify-center-safe gap-8 relative overflow-x-auto">
                 {props
                     .items
                     .into_iter()

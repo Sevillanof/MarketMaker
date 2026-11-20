@@ -185,7 +185,7 @@ fn classic(
                 {move || photo(shown.get())}
                 {photo_tags(badge, few)}
             </div>
-            <div class="flex shrink-0 gap-2 overflow-x-auto" role="group" aria-label="Fotos del producto">
+            <div class="flex shrink-0 gap-2 relative overflow-x-auto" role="group" aria-label="Fotos del producto">
                 {(0..total).map(|i| view! {
                     <button type="button"
                         class="h-14 w-14 shrink-0 overflow-hidden rounded-field -outline-offset-2 outline-primary"
