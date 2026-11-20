@@ -331,7 +331,7 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
         // arriba (cajón de daisyUI: funciona aunque la página no cargó el JS).
         <div data-theme="light" class="drawer min-h-screen bg-base-200 text-base-content lg:drawer-open">
             <input id="mk-panel-nav" type="checkbox" class="drawer-toggle" aria-hidden="true" tabindex="-1"/>
-            <div class="drawer-content min-w-0">
+            <div class="drawer-content min-w-0 max-sm:pb-20">
                 <header class="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-base-300 bg-base-100 px-2 lg:hidden">
                     <label for="mk-panel-nav" role="button" tabindex="0" class="btn btn-ghost btn-square max-sm:size-12" aria-label="Abrir el menú"
                         on:keydown=|ev| {
@@ -825,7 +825,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
             <div class="grow">
                 <h1 class="text-3xl font-bold max-sm:text-2xl">{o.name.clone()}</h1>
                 <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-base-content/70">
-                    <span class="font-mono">{address}</span>
+                    <span class="font-medium">{address}</span>
                     <span class=format!("badge badge-sm border-0 font-semibold {publish_class}")>{o.publish.label()}</span>
                 </p>
             </div>

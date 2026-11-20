@@ -964,7 +964,8 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
         // fuera de la pantalla.
         <MaybeLink href="/" editing class="mk-nav-brand flex min-w-0 items-center gap-2 @2xl:shrink-0">
             {(!logo_url.is_empty()).then(|| view! {
-                <img class="h-8 w-8 shrink-0 object-contain" src=logo_url.clone() alt="" draggable="false"/>
+                // Un logo ancho (con el nombre adentro) se ve a su ancho, hasta 8 rem.
+                <img class="h-8 w-auto max-w-32 min-w-8 shrink-0 object-contain object-left" src=logo_url.clone() alt="" draggable="false"/>
             })}
             <span class="mk-brand mk-h truncate text-lg font-bold">{brand}</span>
         </MaybeLink>
@@ -2184,7 +2185,7 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
             <div class="mk-foot-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-8 gap-y-3 @3xl:grid-cols-[auto_minmax(0,1fr)_auto]">
                 <div class="flex min-w-0 items-center gap-3">
                     {(!logo.is_empty()).then(|| view! {
-                        <img src=logo.clone() alt="" class="h-9 w-9 shrink-0 rounded-full object-cover"/>
+                        <img src=logo.clone() alt="" class="h-9 w-auto max-w-36 min-w-9 shrink-0 object-contain object-left"/>
                     })}
                     <p class="mk-brand mk-h truncate text-lg font-bold">{brand}</p>
                 </div>

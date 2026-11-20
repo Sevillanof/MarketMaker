@@ -418,7 +418,7 @@ fn CartQty(
     let qty = move || id.with_value(|id| cart.qty_of(id));
     let (wrap, btn) = if card {
         (
-            "mk-qty mk-cart-add relative z-10 mt-2 flex w-full items-center rounded-field bg-primary text-primary-content",
+            "mk-qty mk-cart-add @container relative z-10 mt-2 flex w-full items-center rounded-field bg-primary text-primary-content",
             "btn btn-sm btn-square btn-ghost text-primary-content hover:bg-black/15",
         )
     } else {
@@ -459,7 +459,9 @@ fn CartQty(
                 {move || if qty() <= 1 { trash_icon().into_any() } else { view! { "−" }.into_any() }}
             </button>
             <output class=out aria-live="polite">
-                {move || if card { format!("{} en carrito", qty()) } else { qty().to_string() }}
+                {move || qty().to_string()}
+                // En una tarjeta angosta queda solo el número (sin «…»).
+                {card.then(|| view! { <span class="@max-[12rem]:hidden">" en carrito"</span> })}
             </output>
             <button type="button" class=btn aria-label="Uno más"
                 disabled=move || { let max = id.with_value(|id| cart.limit(id)); qty() >= max }
@@ -703,7 +705,7 @@ pub fn CartBar() -> impl IntoView {
                         }).collect_view()}
                     </div>
                     <p class="min-w-0 truncate text-sm">
-                        <b>{move || products_label(cart.count())}</b>" en tu carrito"
+                        <b>{move || products_label(cart.count())}</b><span class="max-sm:hidden">" en tu carrito"</span>
                     </p>
                     <span class="ml-auto whitespace-nowrap text-lg font-bold">{move || format_price(cart.total_cents())}</span>
                     <button type="button" class="btn btn-primary" aria-haspopup="dialog" on:click=move |_| cart.open.set(true)>"Ver carrito"</button>

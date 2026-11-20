@@ -414,8 +414,9 @@ pub fn HelpButton(
                                 seen.into_iter().map(|c| view! { <li>{c}</li> }).collect_view()
                             }}
                         </ol>
-                        <button type="button" class="btn btn-ghost btn-xs self-center" aria-pressed=move || paused.get().to_string()
+                        <button type="button" class="btn btn-outline btn-sm gap-1.5 self-center" aria-pressed=move || paused.get().to_string()
                             on:click=move |_| paused.update(|p| *p = !*p)>
+                            <span aria-hidden="true" class="text-xs">{move || if paused.get() { "▶" } else { "❚❚" }}</span>
                             {move || if paused.get() { "Reanudar animación" } else { "Pausar animación" }}
                         </button>
                         <div class="flex items-center justify-center gap-4">
