@@ -2082,7 +2082,12 @@ pub fn ContactWidget(props: ContactProps, editing: bool) -> impl IntoView {
     let whatsapp = (channels.first().is_some_and(|c| c.icon == "whatsapp")).then(|| channels.remove(0));
     let has_channels = whatsapp.is_some() || !channels.is_empty();
     let others_title = if whatsapp.is_some() { "También podés" } else { "Escribinos" };
-    let hours = props.hours.trim().to_string();
+    // Los horarios del bloque; si sigue el texto de ejemplo, los de Datos de
+    // la tienda.
+    let hours = match props.hours.trim() {
+        h if (h.is_empty() || domain::is_placeholder(h)) && !store.hours.is_empty() => store.hours.clone(),
+        h => h.to_string(),
+    };
     let address = props.address.trim().to_string();
     let root = if has_channels || editing {
         "mk-box mk-contact @container h-full overflow-hidden rounded-box bg-base-100"
@@ -2171,8 +2176,15 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     } else {
         props.legal.clone()
     };
-    // Abajo, el texto legal y la frase de la tienda en una sola línea.
-    let bottom: Vec<String> = [legal, props.description.trim().to_string()]
+    // Abajo, en una sola línea: el texto legal, la frase (la del bloque o, si
+    // sigue la de ejemplo, la de Datos de la tienda) y los horarios.
+    let own = props.description.trim();
+    let phrase = if own.is_empty() || domain::is_placeholder(own) && !store.tagline.is_empty() {
+        store.tagline.clone()
+    } else {
+        own.to_string()
+    };
+    let bottom: Vec<String> = [legal, phrase, store.hours.clone()]
         .into_iter()
         .filter(|t| !t.is_empty())
         .collect();

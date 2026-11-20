@@ -119,6 +119,7 @@ pub fn FilteredProducts(
     // Las columnas se reparten según cuántos productos hay: si no, con 4
     // productos en una fila de 6 columnas queda un tercio vacío.
     let shown_count = products.len().min(limit);
+    let few = (1..=3).contains(&shown_count) && limit >= 4;
     // Los agotados van al final (el orden entre los demás se mantiene).
     let mut products = products;
     products.sort_by_key(|p| !p.in_stock);
@@ -153,7 +154,10 @@ pub fn FilteredProducts(
     view! {
         <div class="contents" aria-live="polite">{notice}</div>
         {empty.then(|| view! { <div class="alert">"Todavía no hay productos."</div> })}
-        <div class=format!("mk-pgrid grid min-h-0 flex-1 auto-rows-fr gap-3 {}", fill_cols(shown_count))>
+        // Con pocos productos (y lugar para más), cada tarjeta guarda el tamaño
+        // de una fila de 4 y quedan centradas: si no, cada una ocupa media pantalla.
+        <div class=format!("mk-pgrid grid min-h-0 flex-1 auto-rows-fr gap-3 {}{}", fill_cols(shown_count), if few { " mk-pgrid-few" } else { "" })
+            style=few.then(|| format!("--mk-few: {shown_count}"))>
             {move || shown().into_iter().map(|p| view! { <ProductCard product=p show_price=true/> }).collect_view()}
         </div>
     }

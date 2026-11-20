@@ -655,9 +655,11 @@ pub async fn set_avatar(
 /// Nombre, logo y contacto de la tienda.
 pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::StoreInfo> {
     #[allow(clippy::type_complexity)]
-    let (name, logo, whatsapp, instagram, email, mp, transfer, installments, discount, coordinate): (
+    let (name, logo, whatsapp, instagram, email, tagline, hours, mp, transfer, installments, discount, coordinate): (
         String,
         Option<Uuid>,
+        String,
+        String,
         String,
         String,
         String,
@@ -667,7 +669,7 @@ pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::Sto
         i16,
         bool,
     ) = sqlx::query_as(
-        "SELECT name, logo_id, whatsapp, instagram, contact_email, mp_user_id IS NOT NULL,
+        "SELECT name, logo_id, whatsapp, instagram, contact_email, tagline, hours, mp_user_id IS NOT NULL,
                 pay_transfer AND transfer_alias <> '', installments, transfer_discount,
                 pay_coordinate
          FROM tenants WHERE id = $1",
@@ -681,6 +683,8 @@ pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::Sto
         whatsapp,
         instagram,
         email,
+        tagline,
+        hours,
         offers: domain::PriceOffers {
             installments: if mp {
                 installments.clamp(0, 255) as u8
@@ -708,7 +712,7 @@ pub async fn save_store_info(
 ) -> sqlx::Result<bool> {
     let done = sqlx::query(
         "UPDATE tenants SET name = $3, logo_id = $4, whatsapp = $5, instagram = $6,
-                contact_email = $7
+                contact_email = $7, tagline = $8, hours = $9
          WHERE id = $1
            AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM media WHERE id = $4 AND owner_id = $2))",
     )
@@ -719,6 +723,8 @@ pub async fn save_store_info(
     .bind(&info.whatsapp)
     .bind(&info.instagram)
     .bind(&info.email)
+    .bind(&info.tagline)
+    .bind(&info.hours)
     .execute(pool)
     .await?;
     Ok(done.rows_affected() == 1)
