@@ -308,6 +308,10 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
             true
         }
     };
+    // Si el último enlace pedido es para crear la cuenta. `ask.input()` ya está
+    // vacío cuando llega la respuesta, y la pantalla mostraba el texto de
+    // "contraseña nueva" a quien se estaba registrando.
+    let asked_new = StoredValue::new(false);
     let send_link = move |new_account: bool| {
         info.set(None);
         if email.get_untracked().trim().is_empty() {
@@ -321,6 +325,7 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
             return;
         }
         problem.set(None);
+        asked_new.set_value(new_account);
         ask.dispatch((email.get_untracked(), new_account));
     };
 
@@ -354,7 +359,7 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
         let Some(result) = ask.value().get() else {
             return;
         };
-        let new_account = ask.input().get_untracked().map(|(_, n)| n).unwrap_or(false);
+        let new_account = asked_new.get_value();
         match result {
             Ok(CodeRequest::Sent) => goto(Step::LinkSent { new_account }),
             Ok(CodeRequest::BadEmail) => fail(Spot::Email, "El email no es válido. Revisalo."),

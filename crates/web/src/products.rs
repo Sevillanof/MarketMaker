@@ -1508,7 +1508,7 @@ fn PhotosField(
             {move || {
                 let e = library.upload_errors.get();
                 (!e.is_empty()).then(|| view! {
-                    <ul role="alert" class="alert alert-error flex flex-col items-start text-sm">
+                    <ul role="alert" class="mt-1 flex flex-col gap-0.5 text-sm text-error">
                         {e.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
                     </ul>
                 })

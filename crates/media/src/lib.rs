@@ -33,6 +33,8 @@ pub enum MediaError {
     TooBig(usize),
     #[error("Las fotos HEIC del iPhone todavía no se pueden subir. Abrila en Fotos, exportala como JPG y subila de nuevo.")]
     Heic,
+    #[error("Las fotos AVIF todavía no se pueden subir. Guardala como JPG o PNG y subila de nuevo.")]
+    Avif,
     #[error("Ese archivo no es una foto. Podés subir JPG, PNG, WebP, GIF o un logo en SVG.")]
     NotAnImage,
     #[error("No pudimos leer esta foto. Puede estar dañada: probá abrirla y guardarla de nuevo.")]
@@ -78,6 +80,9 @@ pub fn process(bytes: &[u8]) -> Result<Processed, MediaError> {
     }
     if is_heic(bytes) {
         return Err(MediaError::Heic);
+    }
+    if is_avif(bytes) {
+        return Err(MediaError::Avif);
     }
     let img = if looks_like_svg(bytes) {
         svg_to_image(bytes)?
@@ -278,6 +283,12 @@ fn is_heic(bytes: &[u8]) -> bool {
             &bytes[8..12],
             b"heic" | b"heix" | b"hevc" | b"heim" | b"heis" | b"mif1" | b"msf1"
         )
+}
+
+/// Fotos AVIF (caja `ftyp` con marca `avif` o `avis`): sin decodificador
+/// todavía. Antes caían en "no es una foto", que confundía.
+fn is_avif(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && &bytes[4..8] == b"ftyp" && matches!(&bytes[8..12], b"avif" | b"avis")
 }
 
 /// Dónde se guardan los archivos: una carpeta del servidor o un bucket S3

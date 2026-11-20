@@ -312,8 +312,17 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                 }
             }
         };
+        // Con el retiro prendido y sin dirección, el guardado automático guarda
+        // todo lo demás y deja el retiro apagado hasta que se escriba la dirección
+        // (antes no se guardaba nada y se perdían los otros cambios).
+        let waiting_address = pickup.get_untracked() && address.with_untracked(|a| a.trim().is_empty());
+        if waiting_address && auto.get_untracked() {
+            if !shipping.get_untracked() {
+                return;
+            }
+        }
         save.dispatch(DeliverySettings {
-            pickup_enabled: pickup.get_untracked(),
+            pickup_enabled: pickup.get_untracked() && !(waiting_address && auto.get_untracked()),
             pickup_address: address.get_untracked(),
             pickup_hours: hours.get_untracked(),
             shipping_enabled: shipping.get_untracked(),
@@ -382,7 +391,12 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                                     aria-describedby=move || problem("address").is_some().then_some("d-address-error")
                                     maxlength=domain::PICKUP_ADDRESS_MAX placeholder="Av. Corrientes 1234, CABA"
                                     prop:value=move || address.get() on:input=move |ev| { address.set(event_target_value(&ev)); problems.update(|e| e.retain(|e| e.field != "address")); dirty(); }/>
-                                {move || problem("address").map(|m| view! { <p id="d-address-error" class="label whitespace-normal text-error">{m}</p> })}
+                                {move || match problem("address") {
+                                    Some(m) => view! { <p id="d-address-error" class="label whitespace-normal text-error">{m}</p> }.into_any(),
+                                    None => address.with(|a| a.trim().is_empty()).then(|| view! {
+                                        <p class="label whitespace-normal">"Escribí la dirección para que el retiro aparezca en tu tienda."</p>
+                                    }).into_any(),
+                                }}
                             </fieldset>
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-hours">"Horarios " <span class="font-normal text-base-content/60">"(opcional)"</span></label>

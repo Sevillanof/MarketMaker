@@ -172,6 +172,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
     let discount = RwSignal::new(o.transfer_discount);
     let saving = RwSignal::new(Saving::Idle);
     let alias_problem = RwSignal::new(None::<String>);
+    let discount_note = RwSignal::new(None::<String>);
     let save_problem = RwSignal::new(None::<String>);
     let save =
         Action::new(move |o: &PaymentOptions| save_payment_options(slug.get_value(), o.clone()));
@@ -197,17 +198,25 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
             installments: installments.get_untracked(),
             transfer_discount: discount.get_untracked(),
         };
-        // Transferencia sin alias: espera a que lo escriba (no se guarda a medias).
-        if options.transfer && options.transfer_alias.trim().is_empty() {
-            saving.set(Saving::Idle);
-            return false;
+        // Transferencia sin alias (o con uno que no sirve): espera a que lo
+        // corrija (no se guarda a medias).
+        if options.transfer {
+            if let Some(p) = domain::transfer_account_problem(&options.transfer_alias) {
+                saving.set(Saving::Idle);
+                if !options.transfer_alias.trim().is_empty() {
+                    alias_problem.set(Some(p));
+                }
+                return false;
+            }
         }
         alias_problem.set(None);
         saving.set(Saving::Busy);
         save.dispatch(options);
         true
     };
-    let none_active = move || link.with(|l| l.is_none()) && !transfer.get() && !coordinate.get();
+    // La transferencia cuenta recién con un alias que sirve.
+    let transfer_ready = move || transfer.get() && alias.with(|a| domain::transfer_account_problem(a).is_none());
+    let none_active = move || link.with(|l| l.is_none()) && !transfer_ready() && !coordinate.get();
 
     view! {
         <div class="flex flex-wrap items-end gap-3">
@@ -309,7 +318,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                                     prop:value=move || alias.get()
                                     on:input=move |ev| { alias.set(event_target_value(&ev)); alias_problem.set(None); }
                                     on:change=move |_| {
-                                        if !save_now() {
+                                        if !save_now() && alias_problem.get_untracked().is_none() {
                                             alias_problem.set(Some("Escribí tu alias, CBU o CVU para activar la transferencia.".into()));
                                         }
                                     }/>
@@ -330,13 +339,20 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                                 <input id="pay-discount" type="number" inputmode="numeric" min="0" max=domain::TRANSFER_DISCOUNT_MAX
                                     prop:value=move || discount.get().to_string()
                                     on:change=move |ev| {
-                                        let v = event_target_value(&ev).trim().parse::<i64>().unwrap_or(0)
-                                            .clamp(0, domain::TRANSFER_DISCOUNT_MAX as i64) as u8;
+                                        let typed = event_target_value(&ev).trim().parse::<i64>().unwrap_or(0);
+                                        let v = typed.clamp(0, domain::TRANSFER_DISCOUNT_MAX as i64) as u8;
+                                        // Si se corrigió, se dice por qué (antes cambiaba sin aviso).
+                                        discount_note.set((i64::from(v) != typed).then(|| if typed < 0 {
+                                            "El descuento no puede ser negativo: quedó en 0 %.".to_string()
+                                        } else {
+                                            format!("El máximo es {} %: quedó en {} %.", domain::TRANSFER_DISCOUNT_MAX, domain::TRANSFER_DISCOUNT_MAX)
+                                        }));
                                         discount.set(v);
                                         save_now();
                                     }/>
                                 <span class="text-base-content/60">"%"</span>
                             </label>
+                            {move || discount_note.get().map(|m| view! { <p class="label whitespace-normal text-error">{m}</p> })}
                             <p class="label whitespace-normal">"Se descuenta del total al pagar con transferencia y se muestra en los precios."</p>
                         </fieldset>
                         <p class="mt-1 text-xs text-base-content/60">
