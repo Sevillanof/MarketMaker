@@ -1894,12 +1894,19 @@ fn TransferRow(
                                 set_timeout(move || done.set(None), std::time::Duration::from_millis(1800));
                             }));
                         }>
-                        <span role="status">{move || match done.get() {
+                        {move || match done.get() {
                             Some(true) => "¡Copiado!",
                             Some(false) => "No se pudo copiar",
                             None => "Copiar",
-                        }}</span>
+                        }}
                     </button>
+                    // El aviso para lectores de pantalla va afuera del botón:
+                    // adentro de un botón no siempre se anuncia.
+                    <span class="sr-only" role="status">{move || match done.get() {
+                        Some(true) => format!("{label} copiado"),
+                        Some(false) => "No se pudo copiar".to_string(),
+                        None => String::new(),
+                    }}</span>
                 }
             })}
         </div>
