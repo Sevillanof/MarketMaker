@@ -285,16 +285,19 @@ async fn save(
             )
         }
     }
-    let processed = match tokio::task::spawn_blocking(move || media::process(&bytes)).await {
-        Ok(Ok(p)) => p,
-        Ok(Err(e)) => return fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
-        Err(_) => {
-            return fail(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "No pudimos convertir la foto. Probá con otra.",
-            )
-        }
-    };
+    // Primero el tamaño chico (menos de 1 s): con eso la foto ya se puede
+    // usar. Los grandes se terminan por detrás (ver más abajo).
+    let (processed, pending) =
+        match tokio::task::spawn_blocking(move || media::process_fast(&bytes)).await {
+            Ok(Ok(p)) => p,
+            Ok(Err(e)) => return fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
+            Err(_) => {
+                return fail(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "No pudimos convertir la foto. Probá con otra.",
+                )
+            }
+        };
     let stored_bytes: usize = processed.variants.iter().map(|v| v.bytes.len()).sum();
     if let Err(msg) = quota.room_for(stored_bytes as u64) {
         return fail(StatusCode::CONFLICT, msg);
@@ -311,12 +314,16 @@ async fn save(
         width: processed.width,
         height: processed.height,
         bytes: size,
-        web_bytes: processed.web_bytes(),
+        // Se completa cuando terminan los tamaños grandes.
+        web_bytes: 0,
         stored_bytes,
         sha256: &sha256,
     };
     match db::media::insert(&state.pool, &new).await {
-        Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
+        Ok(item) => {
+            finish_in_background(state.clone(), owner_id, id, folder, pending);
+            (StatusCode::CREATED, Json(item)).into_response()
+        }
         Err(_) => {
             _ = state.store.delete_all(&folder).await;
             fail(
@@ -325,6 +332,41 @@ async fn save(
             )
         }
     }
+}
+
+/// Termina de generar los tamaños grandes de una foto ya guardada. Mientras
+/// tanto `/media` entrega el tamaño más grande que ya esté (ver `serve`). Si el
+/// servidor se reinicia justo en estos segundos, la foto queda solo en el
+/// tamaño chico.
+fn finish_in_background(
+    state: MediaState,
+    owner_id: Uuid,
+    id: Uuid,
+    folder: String,
+    pending: media::Pending,
+) {
+    tokio::spawn(async move {
+        let Ok(Ok(variants)) = tokio::task::spawn_blocking(move || pending.finish()).await else {
+            return;
+        };
+        let extra: usize = variants.iter().map(|v| v.bytes.len()).sum();
+        // Si ya no entra en lo que le queda (o borró la foto), se queda chica.
+        let room = match db::media::quota(&state.pool, owner_id).await {
+            Ok(q) => q.room_for(extra as u64).is_ok(),
+            Err(_) => false,
+        };
+        if !room {
+            return;
+        }
+        let main = format!("{}.avif", media::MAIN_WIDTH);
+        let web_bytes = variants
+            .iter()
+            .find(|v| v.name == main)
+            .map_or(0, |v| v.bytes.len());
+        if state.store.put_all(&folder, &variants).await.is_ok() {
+            _ = db::media::add_sizes(&state.pool, id, extra, web_bytes).await;
+        }
+    });
 }
 
 async fn remove(
@@ -378,7 +420,40 @@ async fn serve(
             bytes,
         )
             .into_response(),
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        // El tamaño pedido todavía se está generando: se entrega el más grande
+        // que ya esté, por poco tiempo para que el navegador vuelva a pedirlo.
+        Ok(None) => match smaller_file(&state, &folder, &other, &file).await {
+            Some((name, bytes)) => (
+                [
+                    (header::CONTENT_TYPE, media::content_type(&name).unwrap_or(content_type)),
+                    (header::CACHE_CONTROL, "public, max-age=15"),
+                ],
+                bytes,
+            )
+                .into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        },
         Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
+}
+
+/// Mientras se terminan los tamaños grandes: `960.avif` sin generar se
+/// reemplaza por `480.avif` (y `1600` por `960`, o `480`).
+async fn smaller_file(
+    state: &MediaState,
+    folder: &str,
+    other: &str,
+    file: &str,
+) -> Option<(String, Vec<u8>)> {
+    let (w, ext) = file.split_once('.')?;
+    let w: u32 = w.parse().ok()?;
+    for smaller in media::WIDTHS.iter().rev().filter(|s| **s < w) {
+        let name = format!("{smaller}.{ext}");
+        for dir in [folder, other] {
+            if let Ok(Some(bytes)) = state.store.get(dir, &name).await {
+                return Some((name, bytes));
+            }
+        }
+    }
+    None
 }
