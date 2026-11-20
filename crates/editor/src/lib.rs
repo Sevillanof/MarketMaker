@@ -123,6 +123,20 @@ impl EditorState {
     }
 
     /// Cierra el paso de deshacer en curso: la próxima edición abre uno nuevo.
+    /// Ajuste automático del editor (un bloque que crece para que entre su
+    /// contenido): no crea un paso de deshacer propio, se suma al cambio que
+    /// lo provocó. Así deshacer vuelve a como estaba antes de escribir, con
+    /// su alto de antes, y no a un bloque cortado que volvería a crecer.
+    pub fn apply_fit(&self, f: impl FnOnce(&mut PageDoc)) {
+        let before = self.doc.get_untracked();
+        let mut next = before.clone();
+        f(&mut next);
+        domain::sync_shared(&before, &mut next);
+        if next != before {
+            self.doc.set(next);
+        }
+    }
+
     pub fn end_group(&self) {
         if self.group.with_untracked(Option::is_some) {
             self.group.set(None);

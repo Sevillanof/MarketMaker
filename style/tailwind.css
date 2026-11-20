@@ -24,6 +24,18 @@
   margin: 8px;
   overflow: hidden;
 }
+/* El alto de cada bloque es un mínimo: si su contenido no entra (otro ancho
+   de pantalla, otra letra), las filas que ocupa crecen y lo de abajo baja.
+   Solo los bloques de texto y listas (la misma lista que el editor, ver
+   `editor::canvas::FIT_SELECTOR`); los demás no cuentan para el alto de
+   las filas (`contain: size`) y llenan su lugar como siempre. */
+@media (min-width: 768px) {
+  .mk-grid { grid-auto-rows: minmax(8px, auto); }
+  .mk-grid > .mk-node { contain: size; }
+  .mk-grid > .mk-node:has(:is(.mk-text, .mk-benefits, .mk-ann, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-tagrow, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social, .mk-contact, .mk-footer, .mk-testi, .mk-pprice, .mk-banner)) {
+    contain: none;
+  }
+}
 /* Contenedor de la tienda publicada: margen de cada lado y ancho máximo del
    contenido (ver `domain::StoreLayout`). En el celular ningún margen pasa
    de 16 px. */
@@ -2543,3 +2555,17 @@ dialog.mk-open-sheet .mk-dialog-box::before {
 .mk-ppick-row:has(input:focus-visible) { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 .mk-ppick-check { visibility: hidden; color: var(--color-primary); font-weight: 700; }
 .mk-ppick-row.is-on .mk-ppick-check { visibility: visible; }
+
+/* «Redes y WhatsApp» con botón flotante con texto (ver
+   `widgets::page_nodes`): en la tienda el bloque no ocupa lugar; solo se ve
+   el botón fijo en la esquina. */
+.mk-grid > .mk-node.mk-node-fixed {
+  grid-area: 1 / 1 / 2 / 2;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  contain: none;
+}
+.mk-node-fixed > * > .mk-social { background: none; border: 0; box-shadow: none; padding: 0; }
