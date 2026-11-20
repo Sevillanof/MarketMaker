@@ -412,6 +412,14 @@ pub fn ProductPriceWidget(
             })}
         }
         .into_any(),
+        // Sin importes: lo justo para saber que conviene, sin cargar la ficha.
+        "e" => view! {
+            <ul class="mk-ptags flex flex-col items-start gap-1">
+                {transfer.map(|_| view! { <li class="mk-ptag mk-ptag-save">{format!("{pct} % menos con transferencia")}</li> })}
+                {per.map(|_| view! { <li class="mk-ptag">{format!("{n} cuotas sin interés")}</li> })}
+            </ul>
+        }
+        .into_any(),
         "d" if per.is_some() || transfer.is_some() || coordinate => view! {
             <div class="mk-item mk-paybox">
                 {per.map(|c| view! {
@@ -720,7 +728,11 @@ pub fn VariantBuy(
                         } else {
                             view! { <Image src=photo alt=""/> }.into_any()
                         };
+                        let shown_name = name.clone();
                         view! {
+                            // El nombre a la vista debajo de cada color: dos
+                            // colores con la misma foto se distinguen.
+                            <div class="mk-pswatch-wrap">
                             <label class="mk-pswatch" class:mk-out=out title=name.clone()>
                                 <input type="radio" class="sr-only" name=name_attr.clone() value=name.clone() disabled=out
                                     prop:checked=move || pick.color.get() == n2
@@ -734,6 +746,8 @@ pub fn VariantBuy(
                                 {face}
                                 <span class="sr-only">{if out { format!("{name}, agotado") } else { name.clone() }}</span>
                             </label>
+                            <span class="mk-pswatch-name" aria-hidden="true">{shown_name}</span>
+                            </div>
                         }
                     }).collect_view()}
                 </div>
@@ -744,7 +758,7 @@ pub fn VariantBuy(
         let name_attr = format!("{group}-size");
         view! {
             <fieldset class="mk-pvar-set">
-                <legend class="mk-pvar-lbl">"Talle"</legend>
+                <legend class="mk-pvar-lbl">"Talle: " <span>{move || { let s = pick.size.get(); if s.is_empty() { "elegí uno".to_string() } else { s } }}</span></legend>
                 <div class="mk-psizes">
                     {sizes.into_iter().map(|s| {
                         let s2 = s.clone();
