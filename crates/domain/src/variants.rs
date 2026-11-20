@@ -206,6 +206,16 @@ pub fn variant_label(color: &str, size: &str) -> String {
     }
 }
 
+/// El nombre del producto sin la combinación que le agrega
+/// [`Product::for_variant`]: "Zapatillas · Azul · 40" → "Zapatillas".
+pub fn base_name<'a>(name: &'a str, color: &str, size: &str) -> &'a str {
+    let label = variant_label(color, size);
+    if label.is_empty() {
+        return name;
+    }
+    name.strip_suffix(&format!(" · {label}")).unwrap_or(name)
+}
+
 /// Id del renglón del carrito para una combinación (el del producto si no
 /// tiene variantes).
 pub fn line_id(product_id: &str, color: &str, size: &str) -> String {
@@ -267,6 +277,15 @@ impl Product {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_name_drops_the_combination() {
+        assert_eq!(base_name("Zapatillas · Azul · 40", "Azul", "40"), "Zapatillas");
+        assert_eq!(base_name("Zapatillas · Azul", "Azul", ""), "Zapatillas");
+        assert_eq!(base_name("Taza", "", ""), "Taza");
+        // Si el nombre no termina en la combinación, queda como está.
+        assert_eq!(base_name("Taza · roja", "Azul", ""), "Taza · roja");
+    }
 
     fn shoes() -> Product {
         let mut p = Product {

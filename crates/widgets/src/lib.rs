@@ -26,7 +26,7 @@ pub use account::{
     Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar, FavRequest,
     FavoriteHeart, HeartIcon,
 };
-pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton};
+pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton, ItemName};
 pub use tags::{FilteredProducts, ProductFilter};
 
 /// Contexto que recibe todo widget al dibujarse.
@@ -877,7 +877,8 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
         .enumerate()
         .map(|(i, l)| mobile_link(l, editing, &format!("{uid}-mm{i}")))
         .collect_view();
-    let mut nav_class = String::from("mk-box mk-nav navbar @container h-full min-h-0 gap-4 rounded-box bg-base-100 px-4 shadow-sm");
+    // En el teléfono los espacios se achican para que entren el carrito y el menú.
+    let mut nav_class = String::from("mk-box mk-nav navbar @container h-full min-h-0 gap-4 max-sm:gap-1 rounded-box bg-base-100 px-4 shadow-sm");
     if matches!(props.tone.as_str(), "glass" | "dark" | "color" | "soft") {
         nav_class.push_str(" mk-tone-");
         nav_class.push_str(&props.tone);
@@ -892,11 +893,13 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
         nav_class.push_str(" mk-nav-upper");
     }
     let brand_view = view! {
-        <MaybeLink href="/" editing class="mk-nav-brand flex shrink-0 items-center gap-2">
+        // Angosto, el nombre se acorta con "…" antes que empujar el carrito
+        // fuera de la pantalla.
+        <MaybeLink href="/" editing class="mk-nav-brand flex min-w-0 items-center gap-2 @2xl:shrink-0">
             {(!logo_url.is_empty()).then(|| view! {
-                <img class="h-8 w-8 object-contain" src=logo_url.clone() alt="" draggable="false"/>
+                <img class="h-8 w-8 shrink-0 object-contain" src=logo_url.clone() alt="" draggable="false"/>
             })}
-            <span class="mk-brand mk-h text-lg font-bold whitespace-nowrap">{brand}</span>
+            <span class="mk-brand mk-h truncate text-lg font-bold">{brand}</span>
         </MaybeLink>
     };
     let burger = view! {
@@ -908,14 +911,22 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
     };
     let tools = view! {
         {search.then(|| view! { <NavSearch editing class="hidden @2xl:block"/> })}
+        // Angosto, el botón pasa a ser el primer renglón del menú.
         {has_button.then(|| view! {
-            <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
+            <span class="hidden @2xl:contents">
+                <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
+            </span>
         })}
         <AccountNavButton/>
         <CartNavButton/>
     };
     let mobile_pop = view! {
         <div id=mobile_id popover="auto" class="mk-navpop mk-navpop-wide">
+            {has_button.then(|| view! {
+                <div class="p-2 pb-0 [&_.mk-btn]:w-full">
+                    <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
+                </div>
+            })}
             {search.then(|| view! { <NavSearch editing class="p-2 pb-0"/> })}
             <ul class="menu w-full p-2">{mobile}</ul>
         </div>

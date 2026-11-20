@@ -1527,7 +1527,10 @@ fn OrderLines(cart: Cart) -> impl IntoView {
                     <li class="flex items-center gap-3 border-b border-base-200 py-3">
                         <div class="h-12 w-12 shrink-0 overflow-hidden rounded-field"><Image src=i.product.image_url.clone() alt=""/></div>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-semibold">{i.product.name.clone()}</p>
+                            {
+                                let (_, c, z) = domain::parse_line_id(&i.product.id);
+                                view! { <widgets::ItemName name=i.product.name.clone() color=c.to_string() size=z.to_string()/> }
+                            }
                             <p class="text-xs text-base-content/70">{format!("{} × {}", i.qty, format_price(i.product.price_cents))}</p>
                         </div>
                         <span class="text-sm font-semibold tabular-nums">{format_price(line)}</span>
@@ -1693,7 +1696,7 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
                             <li class="flex items-center gap-3 border-b border-base-200 py-3">
                                 <div class="h-12 w-12 shrink-0 overflow-hidden rounded-field"><Image src=i.image_url.clone() alt=""/></div>
                                 <div class="min-w-0 flex-1">
-                                    <p class="truncate text-sm font-semibold">{i.name.clone()}</p>
+                                    <widgets::ItemName name=i.name.clone() color=i.color.clone() size=i.size.clone()/>
                                     <p class="text-xs text-base-content/70">{format!("{} × {}", i.qty, format_price(i.unit_cents))}</p>
                                 </div>
                                 <span class="text-sm font-semibold tabular-nums">{format_price(i.total_cents())}</span>

@@ -1107,6 +1107,24 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         }
     };
     let has_error = move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
+    // Al salir de un precio: si se entiende, se reescribe como se va a leer
+    // (1500.50 → 1.500,50) para que no haya sorpresas; si no, el error va
+    // debajo del campo sin esperar a "Guardar".
+    let check_price = move |value: RwSignal<String>, campo: &'static str, field: &'static str| {
+        let text = value.get_untracked();
+        let problem = if text.trim().is_empty() {
+            None
+        } else if let Some(cents) = domain::parse_price(&text) {
+            value.set(domain::price_input(cents));
+            None
+        } else {
+            domain::price_problem(&text, campo)
+        };
+        errors.update(|es| {
+            es.retain(|e| error_field(e) != field);
+            es.extend(problem);
+        });
+    };
     let save_button = move || view! {
         <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
             on:click=move |_| on_save()>
@@ -1196,7 +1214,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                             <input id="p-price" inputmode="decimal" placeholder="45.999,90" aria-label="Precio en pesos"
                                 aria-invalid=move || has_error("price").to_string()
                                 prop:value=move || form.price.get()
-                                on:input=move |ev| form.price.set(event_target_value(&ev))/>
+                                on:input=move |ev| form.price.set(event_target_value(&ev))
+                                on:blur=move |_| check_price(form.price, "El precio", "price")/>
                         </label>
                         {field_error("price")}
                     </fieldset>
@@ -1206,7 +1225,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                             <input id="p-was" inputmode="decimal" placeholder="Vacío si no está en oferta" aria-label="Precio anterior en pesos"
                                 aria-invalid=move || has_error("was").to_string()
                                 prop:value=move || form.was.get()
-                                on:input=move |ev| form.was.set(event_target_value(&ev))/>
+                                on:input=move |ev| form.was.set(event_target_value(&ev))
+                                on:blur=move |_| check_price(form.was, "El precio anterior", "was")/>
                         </label>
                         {field_error("was")}
                     </fieldset>

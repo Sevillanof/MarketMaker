@@ -742,6 +742,33 @@ pub fn CartDrawer() -> impl IntoView {
     .into_any()
 }
 
+/// Nombre de un producto en una lista (carrito, pedido): hasta dos renglones
+/// y, debajo, el color y el talle como etiquetas, para que la combinación
+/// nunca quede cortada.
+#[component]
+pub fn ItemName(
+    #[prop(into)] name: String,
+    #[prop(into)] color: String,
+    #[prop(into)] size: String,
+    #[prop(optional, into)] class: String,
+) -> impl IntoView {
+    let base = domain::base_name(&name, &color, &size).to_string();
+    let chips: Vec<(&'static str, String)> = [("Color: ", color), ("Talle: ", size)]
+        .into_iter()
+        .filter(|(_, v)| !v.is_empty())
+        .collect();
+    view! {
+        <p class=format!("line-clamp-2 break-words text-sm font-semibold {class}") title=base.clone()>{base.clone()}</p>
+        {(!chips.is_empty()).then(|| view! {
+            <p class="mt-1 flex flex-wrap gap-1">
+                {chips.into_iter().map(|(label, v)| view! {
+                    <span class="badge badge-sm badge-outline h-auto py-0.5 font-semibold"><span class="sr-only">{label}</span>{v}</span>
+                }).collect_view()}
+            </p>
+        })}
+    }
+}
+
 /// Un producto del cajón: foto, nombre, precio, cantidad, Quitar y el total
 /// del renglón.
 #[component]
@@ -759,14 +786,16 @@ fn CartRow(item: CartItem, cart: Cart) -> impl IntoView {
     };
     let line_total = move || format_price(price * i64::from(qty()));
     let name = product.name.clone();
+    let (_, line_color, line_size) = domain::parse_line_id(&product.id);
+    let (line_color, line_size) = (line_color.to_string(), line_size.to_string());
     view! {
         <li class="flex items-start gap-4 border-b border-base-200 py-4">
             <div class="h-18 w-18 shrink-0 overflow-hidden rounded-box">
                 <Image src=product.image_url.clone() alt="" fit=product.fit(&product.image_url)/>
             </div>
             <div class="min-w-0 flex-1">
-                <div class="flex items-baseline gap-3">
-                    <p class="min-w-0 flex-1 truncate text-sm font-semibold">{product.name.clone()}</p>
+                <div class="flex items-start gap-3">
+                    <div class="min-w-0 flex-1"><ItemName name=product.name.clone() color=line_color size=line_size/></div>
                     {product.in_stock.then(|| view! {
                         <p class="mk-line-total shrink-0 font-bold tabular-nums">{line_total}</p>
                     })}

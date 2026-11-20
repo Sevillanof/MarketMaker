@@ -492,7 +492,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                         <li class="flex items-center gap-3 border-b border-base-200 py-3">
                             <div class="h-11 w-11 shrink-0 overflow-hidden rounded-field"><Image src=i.image_url.clone() alt=""/></div>
                             <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-semibold">{i.name.clone()}</p>
+                                <widgets::ItemName name=i.name.clone() color=i.color.clone() size=i.size.clone()/>
                                 <p class="text-xs text-base-content/70">{format!("{} × {}", i.qty, format_price(i.unit_cents))}</p>
                             </div>
                             <span class="text-sm font-semibold tabular-nums">{format_price(i.total_cents())}</span>
