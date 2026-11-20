@@ -721,6 +721,10 @@ pub struct PageView {
     /// quedan vacíos.
     #[serde(default)]
     pub store: StoreInfo,
+    /// Tienda de pruebas (usa la aplicación de pruebas de Mercado Pago): se
+    /// muestra una etiqueta aclarando que no es una tienda real.
+    #[serde(default)]
+    pub test_store: bool,
 }
 
 /// Resultado de intentar guardar un documento.

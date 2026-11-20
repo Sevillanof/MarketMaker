@@ -36,6 +36,7 @@ fn page_view(
         products,
         store_name: store.name.clone(),
         store,
+        test_store: false,
     })
 }
 
@@ -56,7 +57,9 @@ pub async fn load_page(slug: String) -> Result<PageView, ServerFnError> {
     let store = db::auth::store_info(&pool, tenant.id)
         .await
         .map_err(internal)?;
-    page_view(page, products, store)
+    let mut view = page_view(page, products, store)?;
+    view.test_store = crate::mp::is_test_store(&tenant.slug);
+    Ok(view)
 }
 
 /// Para el editor: lo último guardado (el borrador), aunque no esté

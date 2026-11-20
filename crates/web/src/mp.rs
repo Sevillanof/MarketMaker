@@ -87,13 +87,17 @@ pub fn config() -> Option<Config> {
 /// aplicación de prueba configurada no cobra (nunca usa la real).
 pub fn config_for(slug: &str) -> Option<Config> {
     let mut c = config()?;
-    let sandbox = env("MP_SANDBOX_STORES").is_some_and(|v| v.split(',').any(|s| s.trim() == slug));
-    if sandbox {
+    if is_test_store(slug) {
         c.client_id = env("MP_SANDBOX_CLIENT_ID")?;
         c.client_secret = env("MP_SANDBOX_CLIENT_SECRET")?;
         c.webhook_secret = env("MP_SANDBOX_WEBHOOK_SECRET");
     }
     Some(c)
+}
+
+/// ¿Es una tienda de pruebas (está en `MP_SANDBOX_STORES`)?
+pub fn is_test_store(slug: &str) -> bool {
+    env("MP_SANDBOX_STORES").is_some_and(|v| v.split(',').any(|s| s.trim() == slug))
 }
 
 /// Como [`config_for`], buscando la dirección de la tienda.
