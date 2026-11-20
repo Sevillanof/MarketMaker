@@ -244,10 +244,13 @@ pub enum PanelSkeletonKind {
     List,
     /// Pedidos: cuatro columnas con tarjetas.
     Board,
-    /// Cobros, Entregas, Datos y Mi cuenta: formulario en una tarjeta.
+    /// Cobros, Entregas y Mi cuenta: formulario en una tarjeta.
     Form,
     /// Mis fotos: grilla de fotos.
     Photos,
+    /// Datos de la tienda: nombre, logo, contacto en dos columnas,
+    /// descripción y horarios, y la vista previa del pie.
+    StoreInfo,
 }
 
 #[component]
@@ -352,6 +355,32 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                 {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
                 {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
                 <Skeleton class="h-10 w-32"/>
+            }.into_any()))}
+        }
+        .into_any(),
+        PanelSkeletonKind::StoreInfo => view! {
+            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-52"/>{sk_line("w-[36rem] max-w-full")}</div>
+            {sk_card("gap-4 p-6", Box::new(|| view! {
+                {sk_line("w-48")}<Skeleton class="h-10 w-full"/>
+                {sk_line("w-32")}
+                <div class="flex items-center gap-4">
+                    <Skeleton class="size-20"/>
+                    <div class="flex flex-col gap-2"><Skeleton class="h-8 w-28"/>{sk_line("w-64")}</div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-52")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
+                </div>
+                {sk_line("w-56")}<Skeleton class="h-10 w-full"/>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="flex flex-col gap-2">{sk_line("w-56")}<Skeleton class="h-16 w-full"/></div>
+                    <div class="flex flex-col gap-2">{sk_line("w-60")}<Skeleton class="h-10 w-full"/></div>
+                </div>
+                {sk_line("w-36")}
+                <div class="flex flex-col gap-3 rounded-box border border-base-300 px-6 py-5">
+                    <div class="flex justify-between"><Skeleton class="h-5 w-44"/><Skeleton class="h-4 w-48"/></div>
+                    {sk_line("w-2/3")}
+                </div>
+                <Skeleton class="h-10 w-28"/>
             }.into_any()))}
         }
         .into_any(),

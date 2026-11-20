@@ -70,7 +70,7 @@ pub fn StoreInfoPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Datos de la tienda · MarketMaker"/>
             <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 max-sm:py-5 max-sm:pb-28">
-                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::StoreInfo/> }>
                     {move || Suspend::new(async move {
                         match data.await {
                             Ok(Some(form)) => view! { <StoreInfoEditor slug=slug.get_untracked() form/> }.into_any(),
@@ -90,7 +90,14 @@ const FIELD_IDS: &[(&str, &str)] = &[
     ("whatsapp", "s-whatsapp"),
     ("instagram", "s-instagram"),
     ("email", "s-email"),
+    ("tagline", "s-tagline"),
+    ("hours", "s-hours"),
 ];
+
+/// Dónde aparece un dato en la tienda, al lado de su nombre.
+fn seen_in(text: &'static str) -> impl IntoView {
+    view! { <span class="mk-seen-in">"Se ve en: " {text}</span> }
+}
 
 #[component]
 fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
@@ -99,6 +106,8 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
     let whatsapp = RwSignal::new(info.whatsapp);
     let instagram = RwSignal::new(info.instagram);
     let email = RwSignal::new(info.email);
+    let tagline = RwSignal::new(info.tagline);
+    let hours = RwSignal::new(info.hours);
     // (id, dirección) del logo elegido.
     let logo = RwSignal::new(logo_id.map(|id| (id, info.logo_url)));
     let errors = RwSignal::new(Vec::<(String, String)>::new());
@@ -143,6 +152,8 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
             whatsapp: whatsapp.get_untracked(),
             instagram: instagram.get_untracked(),
             email: email.get_untracked(),
+            tagline: tagline.get_untracked(),
+            hours: hours.get_untracked(),
             ..StoreInfo::default()
         };
         // Se ve como queda guardado (por ejemplo, Instagram sin la dirección).
@@ -151,6 +162,8 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
         whatsapp.set(info.whatsapp.clone());
         instagram.set(info.instagram.clone());
         email.set(info.email.clone());
+        tagline.set(info.tagline.clone());
+        hours.set(info.hours.clone());
         save.dispatch(StoreInfoForm {
             info,
             logo_id: logo.get_untracked().map(|(id, _)| id),
@@ -166,7 +179,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
         <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(); }>
             <div class="card-body gap-5">
                 <fieldset class="fieldset">
-                    <label class="fieldset-legend" for="s-name">"Nombre de la tienda"</label>
+                    <label class="fieldset-legend" for="s-name">"Nombre de la tienda" {seen_in("menú, pie y pestaña")}</label>
                     <input id="s-name" class="input w-full" autocomplete="organization"
                         maxlength=domain::STORE_NAME_MAX.to_string()
                         aria-invalid=move || invalid("name")().to_string()
@@ -176,7 +189,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                 </fieldset>
 
                 <div class="flex flex-col gap-2">
-                    <span class="text-sm font-semibold">"Logo"</span>
+                    <span class="flex items-center text-sm font-semibold">"Logo" {seen_in("menú y pie")}</span>
                     <div class="flex flex-wrap items-center gap-4">
                         <label for="s-logo" class="group relative grid size-20 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-box border border-base-300 bg-base-200 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary">
                             {move || match logo.get() {
@@ -223,7 +236,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
 
                 <div class="grid gap-x-4 sm:grid-cols-2">
                     <fieldset class="fieldset">
-                        <label class="fieldset-legend" for="s-whatsapp">"WhatsApp " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
+                        <label class="fieldset-legend" for="s-whatsapp">"WhatsApp " <span class="font-normal text-base-content/60">"(opcional)"</span> {seen_in("pie y Contacto")}</label>
                         <input id="s-whatsapp" class="input w-full" type="tel" inputmode="tel" autocomplete="tel-national"
                             placeholder="11 5555-1234"
                             aria-invalid=move || invalid("whatsapp")().to_string()
@@ -232,7 +245,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                         {error_for("whatsapp")}
                     </fieldset>
                     <fieldset class="fieldset">
-                        <label class="fieldset-legend" for="s-instagram">"Instagram " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
+                        <label class="fieldset-legend" for="s-instagram">"Instagram " <span class="font-normal text-base-content/60">"(opcional)"</span> {seen_in("pie y Contacto")}</label>
                         <label class="input w-full"><span class="text-base-content/60">"@"</span>
                             <input id="s-instagram" autocapitalize="none" spellcheck="false" placeholder="lahuerta"
                                 aria-invalid=move || invalid("instagram")().to_string()
@@ -242,7 +255,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                         {error_for("instagram")}
                     </fieldset>
                     <fieldset class="fieldset sm:col-span-2">
-                        <label class="fieldset-legend" for="s-email">"Email de contacto " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
+                        <label class="fieldset-legend" for="s-email">"Email de contacto " <span class="font-normal text-base-content/60">"(opcional)"</span> {seen_in("pie y Contacto")}</label>
                         <input id="s-email" class="input w-full" type="email" autocomplete="email" placeholder="hola@lahuerta.com"
                             aria-invalid=move || invalid("email")().to_string()
                             prop:value=move || email.get()
@@ -250,7 +263,57 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                         {error_for("email")}
                     </fieldset>
                 </div>
-                <p class="-mt-2 text-sm text-base-content/60">"Lo que completes aparece como enlace en el pie de tu tienda."</p>
+                <div class="-mt-2 grid gap-x-4 sm:grid-cols-2">
+                    <fieldset class="fieldset">
+                        <label class="fieldset-legend" for="s-tagline">"Descripción corta " <span class="font-normal text-base-content/60">"(opcional)"</span> {seen_in("pie")}</label>
+                        <textarea id="s-tagline" class="textarea w-full" rows="2"
+                            maxlength=domain::STORE_TAGLINE_MAX.to_string()
+                            placeholder="Ej.: Macetas de barro pintadas a mano en Rosario."
+                            aria-invalid=move || invalid("tagline")().to_string()
+                            prop:value=move || tagline.get()
+                            on:input=move |ev| { tagline.set(event_target_value(&ev)); dirty(); }></textarea>
+                        {error_for("tagline")}
+                    </fieldset>
+                    <fieldset class="fieldset content-start">
+                        <label class="fieldset-legend" for="s-hours">"Horarios de atención " <span class="font-normal text-base-content/60">"(opcional)"</span> {seen_in("pie y Contacto")}</label>
+                        <input id="s-hours" class="input w-full"
+                            maxlength=domain::STORE_HOURS_MAX.to_string()
+                            placeholder="Ej.: Lun a Vie de 10 a 18 h"
+                            aria-invalid=move || invalid("hours")().to_string()
+                            prop:value=move || hours.get()
+                            on:input=move |ev| { hours.set(event_target_value(&ev)); dirty(); }/>
+                        {error_for("hours")}
+                    </fieldset>
+                </div>
+
+                // Vista previa del pie con lo que se está escribiendo.
+                <section aria-labelledby="s-preview" class="flex flex-col gap-2">
+                    <h2 id="s-preview" class="text-xs font-semibold tracking-wide text-base-content/60 uppercase">"Vista previa del pie"</h2>
+                    <div class="mk-foot-preview grid items-center gap-x-6 gap-y-3 rounded-box border border-base-300 px-6 py-5 sm:grid-cols-[minmax(0,1fr)_auto]">
+                        <div class="flex min-w-0 items-center gap-3">
+                            {move || logo.get().map(|(_, url)| view! {
+                                <img src=url alt="" class="h-8 w-auto max-w-32 min-w-8 shrink-0 object-contain object-left"/>
+                            })}
+                            <p class="truncate text-lg font-bold">{move || {
+                                let n = name.get();
+                                if n.trim().is_empty() { "Nombre de tu tienda".to_string() } else { n }
+                            }}</p>
+                        </div>
+                        <p class="flex flex-wrap gap-x-4 text-sm text-base-content/80">
+                            {move || (!whatsapp.get().trim().is_empty()).then_some(view! { <span>"WhatsApp"</span> })}
+                            {move || (!instagram.get().trim().is_empty()).then_some(view! { <span>"Instagram"</span> })}
+                            {move || (!email.get().trim().is_empty()).then_some(view! { <span>"Email"</span> })}
+                        </p>
+                        <p class="text-sm text-base-content/70 sm:col-span-2">{move || {
+                            let n = name.get();
+                            [format!("© {}", n.trim()), tagline.get().trim().to_string(), hours.get().trim().to_string()]
+                                .into_iter()
+                                .filter(|t| !t.is_empty() && t != "© ")
+                                .collect::<Vec<_>>()
+                                .join(" · ")
+                        }}</p>
+                    </div>
+                </section>
 
                 <div class="mk-savebar flex flex-wrap items-center gap-3">
                     <button type="submit" class="btn btn-primary" disabled=move || save.pending().get() || busy()>

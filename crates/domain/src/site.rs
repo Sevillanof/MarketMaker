@@ -376,6 +376,12 @@ pub struct StoreInfo {
     /// Usuario sin @, por ejemplo "lahuerta".
     pub instagram: String,
     pub email: String,
+    /// Una frase sobre la tienda, para el pie ("" si no hay).
+    #[serde(default)]
+    pub tagline: String,
+    /// Días y horarios de atención, para el pie y Contacto ("" si no hay).
+    #[serde(default)]
+    pub hours: String,
     /// Cuotas y descuento por transferencia que muestran los precios (de Cobros).
     #[serde(default)]
     pub offers: crate::PriceOffers,
@@ -409,9 +415,11 @@ pub struct StoreInfoForm {
 }
 
 pub const STORE_NAME_MAX: usize = 60;
+pub const STORE_TAGLINE_MAX: usize = 140;
+pub const STORE_HOURS_MAX: usize = 80;
 
 /// Limpia los datos de la tienda (sin el logo) y devuelve los problemas, por
-/// campo: `name`, `whatsapp`, `instagram` o `email`.
+/// campo: `name`, `whatsapp`, `instagram`, `email`, `tagline` u `hours`.
 pub fn tidy_store_info(i: &mut StoreInfo) -> Vec<(&'static str, String)> {
     i.name = i.name.trim().to_string();
     i.whatsapp = i.whatsapp.trim().chars().take(30).collect();
@@ -427,6 +435,8 @@ pub fn tidy_store_info(i: &mut StoreInfo) -> Vec<(&'static str, String)> {
         .take(30)
         .collect();
     i.email = i.email.trim().to_lowercase().chars().take(120).collect();
+    i.tagline = i.tagline.split_whitespace().collect::<Vec<_>>().join(" ");
+    i.hours = i.hours.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut e = Vec::new();
     if i.name.is_empty() {
         e.push(("name", "Escribí el nombre de tu tienda.".to_string()));
@@ -450,6 +460,18 @@ pub fn tidy_store_info(i: &mut StoreInfo) -> Vec<(&'static str, String)> {
         e.push((
             "instagram",
             "Escribí solo tu usuario, por ejemplo lahuerta.".to_string(),
+        ));
+    }
+    if i.tagline.chars().count() > STORE_TAGLINE_MAX {
+        e.push((
+            "tagline",
+            format!("La descripción puede tener hasta {STORE_TAGLINE_MAX} letras."),
+        ));
+    }
+    if i.hours.chars().count() > STORE_HOURS_MAX {
+        e.push((
+            "hours",
+            format!("Los horarios pueden tener hasta {STORE_HOURS_MAX} letras."),
         ));
     }
     if !i.email.is_empty() && !crate::looks_like_email(&i.email) {
@@ -508,6 +530,21 @@ mod tests {
         assert_eq!(ago_es(3 * 86_400), "hace 3 días");
         assert_eq!(ago_es(15 * 86_400), "hace 2 semanas");
         assert_eq!(ago_es(90 * 86_400), "hace 3 meses");
+    }
+
+    #[test]
+    fn tagline_and_hours_are_tidied_and_capped() {
+        let mut i = StoreInfo {
+            name: "La Huerta".into(),
+            tagline: "  Plantas   que duran \n".into(),
+            hours: "Lun a Vie  de 10 a 18 h".into(),
+            ..StoreInfo::default()
+        };
+        assert!(tidy_store_info(&mut i).is_empty());
+        assert_eq!(i.tagline, "Plantas que duran");
+        assert_eq!(i.hours, "Lun a Vie de 10 a 18 h");
+        i.hours = "x".repeat(STORE_HOURS_MAX + 1);
+        assert_eq!(tidy_store_info(&mut i)[0].0, "hours");
     }
 
     #[test]

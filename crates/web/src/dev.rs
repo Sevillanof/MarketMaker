@@ -16,6 +16,8 @@ fn provide_sample_store() {
         whatsapp: "11 5555-1234".to_string(),
         instagram: "lahuerta".to_string(),
         email: "hola@lahuerta.com.ar".to_string(),
+        tagline: "Plantas y macetas para tu casa.".to_string(),
+        hours: "Lun a Vie de 10 a 18 h".to_string(),
         offers: domain::PriceOffers {
             installments: 3,
             transfer_discount: 10,

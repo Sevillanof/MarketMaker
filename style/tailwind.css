@@ -2326,3 +2326,35 @@ dialog.mk-open-sheet .mk-dialog-box::before {
     animation: none !important;
   }
 }
+
+/* Cuadrícula con pocos productos (ver `widgets::tags::FilteredProducts`): en
+   un bloque ancho, cada tarjeta mide como en una fila de 4 y quedan centradas,
+   con la foto en su proporción en vez de estirarse a todo el alto. */
+@container (min-width: 48rem) {
+  .mk-pgrid-few {
+    grid-template-columns: repeat(var(--mk-few), minmax(0, calc((100% - 2.25rem) / 4)));
+    justify-content: center;
+    align-content: start;
+    grid-auto-rows: auto;
+  }
+  .mk-pgrid-few .mk-card-img {
+    flex: none;
+    aspect-ratio: 4 / 3;
+  }
+  .mk-pgrid-few .mk-cphoto {
+    flex: none;
+    aspect-ratio: 4 / 5;
+  }
+}
+
+/* "Se ve en: …" al lado de cada dato de Datos de la tienda. */
+.mk-seen-in {
+  margin-left: 0.5rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
