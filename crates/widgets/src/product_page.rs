@@ -652,6 +652,17 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
                 return view! { <p class="mk-pvar-err">{t}</p> }.into_any();
             }
         }
+        // Las que quedan ya están en el carrito: no se puede sumar más.
+        if let (Some(cart), Some((id, left))) = (cart, line()) {
+            if left > 0 && cart.qty_of(&id) >= left.min(crate::cart::MAX_QTY) {
+                let t = if left == 1 {
+                    "La única que queda ya está en tu carrito.".to_string()
+                } else {
+                    format!("Las {left} que quedan ya están en tu carrito.")
+                };
+                return view! { <p class="mk-pvar-low">{t}</p> }.into_any();
+            }
+        }
         match line() {
             Some((_, left)) if (1..=3).contains(&left) => {
                 let which = domain::variant_label(&pick.color.get(), &pick.size.get());
@@ -661,7 +672,14 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
             _ => ().into_any(),
         }
     };
-    let max = Signal::derive(move || line().map_or(1, |(_, q)| q.clamp(1, crate::cart::MAX_QTY)));
+    // Lo que todavía se puede sumar: lo que queda menos lo que ya está en el carrito.
+    let room = move || {
+        line().map(|(id, q)| {
+            let in_cart = cart.map_or(0, |c| c.qty_of(&id));
+            q.min(crate::cart::MAX_QTY).saturating_sub(in_cart)
+        })
+    };
+    let max = Signal::derive(move || room().map_or(1, |r| r.max(1)));
     view! {
         <div class="mk-pbtn mk-pvar flex h-full flex-col gap-3">
             {color_set}
@@ -670,10 +688,12 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
             <div class="flex flex-nowrap items-start gap-2">
                 {move || view! { <crate::cart::QtyStepper value=qty label="Cantidad" max=max.get() disabled=cart.is_none()/> }}
                 <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
+                    disabled=move || room() == Some(0) && !added.get()
                     on:click=move |_| {
                         let Some(cart) = cart else { return };
                         match line() {
                             None => missing.set(true),
+                            Some((_, _)) if room() == Some(0) => {}
                             Some((id, _)) => {
                                 cart.add(&id, qty.get());
                                 qty.set(1);

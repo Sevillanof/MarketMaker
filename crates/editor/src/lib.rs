@@ -401,8 +401,25 @@ impl Actions {
         }
         let label = widget.label();
         let id = new_node_id(&self.state.doc.get_untracked());
+        let is_footer = matches!(widget, domain::Widget::Footer(_));
         let node = Node::new(id.clone(), widget);
-        self.state.apply_nodes(|nodes| grid::add_node(nodes, node));
+        // "Al final" es antes del pie de página: si no, el bloque nuevo quedaba
+        // debajo del pie y se publicaba así.
+        self.state.apply_nodes(|nodes| {
+            let footer_y = (!is_footer)
+                .then(|| {
+                    nodes
+                        .iter()
+                        .filter(|n| matches!(n.widget, domain::Widget::Footer(_)))
+                        .map(|n| n.pos.y)
+                        .max()
+                })
+                .flatten();
+            match footer_y {
+                Some(y) => grid::insert_at(nodes, node, 0, i32::from(y)),
+                None => grid::add_node(nodes, node),
+            }
+        });
         self.state.selected.set(Some(id.clone()));
         let place = if self.state.layer.get_untracked() == Layer::ProductModal {
             "de la ficha"

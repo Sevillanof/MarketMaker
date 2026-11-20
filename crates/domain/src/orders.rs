@@ -218,6 +218,31 @@ impl PaymentOptions {
 pub const TRANSFER_ALIAS_MAX: usize = 300;
 pub const TRANSFER_HOLDER_MAX: usize = 80;
 
+/// Por qué no sirve lo escrito como alias, CBU o CVU, o `None` si está bien.
+/// Un CBU o CVU son 22 números; un alias, de 6 a 20 letras, números, puntos o
+/// guiones, sin espacios.
+pub fn transfer_account_problem(text: &str) -> Option<String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return Some("Escribí tu alias, CBU o CVU para activar la transferencia.".to_string());
+    }
+    let digits: String = t.chars().filter(|c| !matches!(c, ' ' | '-')).collect();
+    if digits.chars().all(|c| c.is_ascii_digit()) {
+        return (digits.len() != 22).then(|| {
+            format!(
+                "El CBU o CVU tiene 22 números y acá hay {}. Revisá que esté completo.",
+                digits.len()
+            )
+        });
+    }
+    let alias_ok = (6..=20).contains(&t.chars().count())
+        && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    (!alias_ok).then(|| {
+        "El alias tiene de 6 a 20 letras, números o puntos, sin espacios, como mi.tienda.mp."
+            .to_string()
+    })
+}
+
 /// Limpia las formas de cobro y devuelve el problema para mostrar, si hay.
 pub fn tidy_payment_options(p: &mut PaymentOptions) -> Option<String> {
     p.transfer_alias = clip(p.transfer_alias.trim(), TRANSFER_ALIAS_MAX);
@@ -232,8 +257,11 @@ pub fn tidy_payment_options(p: &mut PaymentOptions) -> Option<String> {
         p.installments = 0;
     }
     p.transfer_discount = p.transfer_discount.min(TRANSFER_DISCOUNT_MAX);
-    (p.transfer && p.transfer_alias.is_empty())
-        .then(|| "Escribí tu alias, CBU o CVU para activar la transferencia.".to_string())
+    if p.transfer {
+        transfer_account_problem(&p.transfer_alias)
+    } else {
+        None
+    }
 }
 
 /// Las formas de pago que puede elegir el comprador, en orden. Vacío: la
@@ -857,6 +885,17 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checks_alias_cbu_and_cvu() {
+        assert!(transfer_account_problem("macetas.marta").is_none());
+        assert!(transfer_account_problem("0000003100012345678901").is_none());
+        assert!(transfer_account_problem("0000-0031 0001-2345678901").is_none());
+        assert!(transfer_account_problem("a").unwrap().contains("6 a 20"));
+        assert!(transfer_account_problem("hola mundo").unwrap().contains("sin espacios"));
+        assert!(transfer_account_problem("123").unwrap().contains("22 números"));
+        assert!(transfer_account_problem("").unwrap().contains("Escribí"));
+    }
 
     fn good() -> CheckoutForm {
         CheckoutForm {

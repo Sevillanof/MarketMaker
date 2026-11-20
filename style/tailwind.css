@@ -707,6 +707,15 @@ dialog.mk-cart::backdrop {
 .mk-look .mk-price { color: var(--mk-ct); }
 .mk-d4 .mk-box:not(.mk-pad) .mk-price { color: inherit; }
 
+/* Sin relleno, la caja recorta el trazo de la primera letra (la "N" de Nunito
+   sobresale un poco a la izquierda): un margen mínimo lo deja entero. Los
+   diseños con relleno lo reemplazan abajo. */
+.mk-box.mk-pad { padding-inline: 4px; }
+/* Los títulos que se acortan con "…" recortan su propio trazo: un poco de
+   relleno adentro y el mismo margen negativo afuera lo dejan entero sin
+   correr el texto. */
+.mk-box :is(.mk-title, .mk-sub) { padding-inline-start: 0.15em; margin-inline-start: -0.15em; }
+
 /* 1 · Clásico: la caja de siempre; el color va en botones, íconos y detalles. */
 .mk-d1 .mk-icon { background: color-mix(in oklab, var(--mk-c) 14%, transparent); color: var(--mk-ct); }
 .mk-d1 .mk-avatar { background: var(--mk-c); color: var(--mk-cc); }
@@ -953,8 +962,8 @@ dialog.mk-cart::backdrop {
 
 /* Ficha del producto */
 .mk-d2 .mk-pname { box-shadow: none; border: 0; }
-.mk-d1 .mk-pname, .mk-d1 .mk-pdesc, .mk-d2 .mk-pname { padding: 0; }
-.mk-d1 .mk-pdesc, .mk-d5 .mk-pdesc { padding: 0; }
+.mk-d1 .mk-pname, .mk-d1 .mk-pdesc, .mk-d2 .mk-pname { padding: 0 4px; }
+.mk-d1 .mk-pdesc, .mk-d5 .mk-pdesc { padding: 0 4px; }
 .mk-d2 .mk-pdesc { border: 0; border-left: 4px solid var(--mk-c); border-radius: 0; padding: 0 0 0 1rem; }
 .mk-d5 .mk-pdesc p::first-letter { float: left; font-size: 2.6em; line-height: 0.9; padding-right: 0.12em; font-weight: 700; color: var(--mk-ct); }
 .mk-pprice .mk-pricetag { color: var(--mk-ct); }

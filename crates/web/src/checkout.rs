@@ -1687,7 +1687,7 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
         <StoreFrame view>
             <StoreHeader name=store_name/>
             <div class="mx-auto flex w-full max-w-2xl flex-col gap-5">
-                <ReceiptHead first_name number=order.number phone=order.phone.clone() status=order.status can_pay id=order.id.clone()
+                <ReceiptHead first_name number=order.number phone=order.phone.clone() status=order.status can_pay id=order.id.clone() pickup=matches!(order.delivery, Delivery::Pickup)
                     method=order.pay transfer_info total=order.total_cents/>
                 <div class="card bg-base-100 shadow-sm"><div class="card-body gap-0 p-6">
                     <h2 class="mk-h mb-1 text-lg font-bold">{title}</h2>
@@ -1735,6 +1735,9 @@ fn ReceiptHead(
     method: domain::PayMethod,
     transfer_info: String,
     total: i64,
+    /// Lo retira en el local: "Enviado" quiere decir que está listo para retirar.
+    #[prop(optional)]
+    pickup: bool,
 ) -> impl IntoView {
     use domain::OrderStatus as S;
     let query = leptos_router::hooks::use_query_map();
@@ -1758,7 +1761,14 @@ fn ReceiptHead(
         S::Paid | S::Shipped | S::Delivered => view! {
             {check}
             <h1 class="mk-h text-2xl font-bold">{format!("¡Gracias, {first_name}! Tu pago está aprobado")}</h1>
-            <p class="text-base-content/75">{format!("Pedido #{number} · la tienda ya lo está preparando. Si hace falta algo, te escribe al {phone}.")}</p>
+            // Lo que dice tiene que seguir al pedido: antes repetía "lo está
+            // preparando" aunque ya estuviera enviado.
+            <p class="text-base-content/75">{match status {
+                S::Shipped if pickup => format!("Pedido #{number} · ya está listo para que lo retires. Si hace falta algo, la tienda te escribe al {phone}."),
+                S::Shipped => format!("Pedido #{number} · la tienda ya lo envió. Si hace falta algo, te escribe al {phone}."),
+                S::Delivered => format!("Pedido #{number} · tu pedido ya fue entregado. ¡Que lo disfrutes!"),
+                _ => format!("Pedido #{number} · la tienda ya lo está preparando. Si hace falta algo, te escribe al {phone}."),
+            }}</p>
             <a class="btn btn-primary mt-3" href="/">"Seguir comprando"</a>
         }.into_any(),
         S::Cancelled => view! {

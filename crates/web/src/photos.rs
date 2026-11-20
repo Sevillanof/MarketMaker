@@ -134,7 +134,7 @@ pub fn MyPhotosPage() -> impl IntoView {
                 {move || {
                     let errors = uploads.upload_errors.get();
                     (!errors.is_empty()).then(|| view! {
-                        <ul role="alert" class="alert alert-error flex flex-col items-start text-sm">
+                        <ul role="alert" class="flex flex-col gap-0.5 text-sm text-error">
                             {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
                         </ul>
                     })

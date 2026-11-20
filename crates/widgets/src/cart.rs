@@ -558,13 +558,20 @@ pub fn AddToCart(
     let added = RwSignal::new(false);
     let in_cart = move || id.with_value(|id| cart.qty_of(id));
     let has = Memo::new(move |_| in_cart() > 0);
+    // Lo que todavía se puede sumar: lo que queda menos lo que ya está en el carrito.
+    let room = Memo::new(move |_| id.with_value(|id| cart.limit(id)).saturating_sub(in_cart()));
     let open_product = use_context::<crate::OpenProduct>();
+    let qty_label = format!("Cantidad de {}", product.name);
     // Todo en una línea: el bloque recorta lo que no entra.
     view! {
         <div class="mk-pbtn flex h-full flex-nowrap items-start gap-2">
-            <QtyStepper value=qty label=format!("Cantidad de {}", product.name) max=id.with_value(|id| cart.limit(id)).max(1)/>
+            {move || view! { <QtyStepper value=qty label=qty_label.clone() max=room.get().max(1)/> }}
             <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
+                disabled=move || room.get() == 0 && !added.get()
                 on:click=move |_| {
+                    if room.get_untracked() == 0 {
+                        return;
+                    }
                     id.with_value(|id| cart.add(id, qty.get()));
                     qty.set(1);
                     added.set(true);
@@ -572,6 +579,8 @@ pub fn AddToCart(
                 }>
                 {move || if added.get() {
                     view! { {check_icon()}<span class="truncate">"Agregado"</span> }.into_any()
+                } else if room.get() == 0 {
+                    view! { <span class="truncate">"Ya están todas en tu carrito"</span> }.into_any()
                 } else {
                     view! { <span class="truncate">{label.clone()}</span> }.into_any()
                 }}

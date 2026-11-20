@@ -268,7 +268,11 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
     };
     let place = match o.delivery {
         Delivery::Pickup => "Retira en el local".to_string(),
-        Delivery::Shipping => format!("Envío a domicilio · {}", o.city),
+        // Con la calle: es lo que la dueña necesita para despachar.
+        Delivery::Shipping => format!(
+            "Envío a domicilio · {}",
+            o.destination().unwrap_or_else(|| o.city.clone())
+        ),
         Delivery::Andreani(s) => format!("{} · {}", s.label(), o.destination().unwrap_or_default()),
     };
     let notes = if o.notes.is_empty() {
@@ -279,9 +283,10 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
     let html = frame(
         "MarketMaker",
         &format!(
-            r#"<h1 style="font-size:20px;margin:0 0 8px">Nueva venta en {}: {}</h1>
+            r#"<h1 style="font-size:20px;margin:0 0 8px">{} en {}: {}</h1>
 <p style="margin:0;color:#52525b">{}</p>{lines_html}
 <p style="margin:16px 0 0;color:#52525b">{}<br>{} · {}</p>{}{}"#,
+            if paid { "Nueva venta" } else { "Nuevo pedido" },
             esc(store_name),
             ui::format_price(o.total_cents),
             esc(&what),
@@ -300,7 +305,8 @@ pub fn to_owner(owners: Vec<String>, store_name: &str, slug: &str, o: &Order, pa
         ),
     );
     let text = format!(
-        "Nueva venta en {store_name}: {}\n{what}\n\n{lines_text}\n{place}\n{} · {}\n{notes}\n\nPedidos: {url}\n",
+        "{} en {store_name}: {}\n{what}\n\n{lines_text}\n{place}\n{} · {}\n{notes}\n\nPedidos: {url}\n",
+        if paid { "Nueva venta" } else { "Nuevo pedido" },
         ui::format_price(o.total_cents),
         o.email,
         o.phone
