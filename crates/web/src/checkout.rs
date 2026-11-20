@@ -459,10 +459,12 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         let p = if variant {
             match base.for_variant(color, size) {
                 Some(p) => p,
-                None => return changed(format!(
+                None => {
+                    return changed(format!(
                     "\"{}\" cambió sus colores o talles. Sacalo del carrito y elegilo de nuevo.",
                     base.name
-                )),
+                ))
+                }
             }
         } else {
             base.clone()
@@ -871,7 +873,7 @@ fn buyer_storage() -> Option<leptos::web_sys::Storage> {
 
 /// Guarda en este navegador los datos de contacto y de envío que escribe el
 /// comprador, así no los vuelve a escribir si el pago falla o si vuelve a la
-/// tienda. No guarda la forma de pago ni la nota.
+/// tienda. No guarda la forma de pago (la nota va en [`remember_progress`]).
 fn remember_buyer(f: &Fields) {
     let (name, email, phone, address, city, postal, dni) =
         (f.name, f.email, f.phone, f.address, f.city, f.postal, f.dni);
@@ -916,6 +918,99 @@ fn remember_buyer(f: &Fields) {
 fn forget_buyer() {
     if let Some(s) = buyer_storage() {
         _ = s.remove_item(BUYER_KEY);
+    }
+    forget_progress();
+}
+
+const PROGRESS_KEY: &str = "mk-compra";
+
+fn progress_storage() -> Option<leptos::web_sys::Storage> {
+    window().session_storage().ok().flatten()
+}
+
+/// Lo que se pierde fácil a mitad de una compra: el cupón aplicado, la nota
+/// y en qué paso iba. Vale solo para esta pestaña y hasta terminar la compra.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Progress {
+    #[serde(default)]
+    coupon: Option<domain::CouponOffer>,
+    #[serde(default)]
+    notes: String,
+    #[serde(default)]
+    step: u8,
+}
+
+/// El paso que guarda la entrada actual del historial (ver [`remember_progress`]).
+fn step_in_history() -> Option<u8> {
+    let n = window().history().ok()?.state().ok()?.as_f64()?;
+    (1.0..=3.0).contains(&n).then_some(n as u8)
+}
+
+/// Recuerda el cupón, la nota y el paso mientras dura la compra: al recargar,
+/// o al ir a cambiar productos y volver, todo sigue como estaba. Además cada
+/// paso suma una entrada al historial, así el botón Atrás vuelve al paso
+/// anterior en lugar de salir de la compra.
+fn remember_progress(f: &Fields, step: RwSignal<u8>) {
+    let (coupon, coupon_text, notes) = (f.coupon, f.coupon_text, f.notes);
+    // El paso cambió por Atrás o Adelante (o al recuperarlo): no suma entrada.
+    let quiet = StoredValue::new(false);
+    Effect::new(move |_| {
+        let saved = progress_storage()
+            .and_then(|s| s.get_item(PROGRESS_KEY).ok().flatten())
+            .and_then(|raw| serde_json::from_str::<Progress>(&raw).ok());
+        if let Some(p) = saved {
+            if let Some(c) = p.coupon {
+                coupon_text.set(c.code.clone());
+                coupon.set(Some(c));
+            }
+            if notes.get_untracked().is_empty() {
+                notes.set(p.notes);
+            }
+            if (2..=3).contains(&p.step) {
+                quiet.set_value(true);
+                step.set(p.step);
+            }
+        }
+        let handle = window_event_listener(leptos::ev::popstate, move |_| {
+            let n = step_in_history().unwrap_or(1);
+            if n != step.get_untracked() {
+                quiet.set_value(true);
+                step.set(n);
+            }
+        });
+        on_cleanup(move || handle.remove());
+    });
+    Effect::new(move |prev: Option<u8>| {
+        let now = step.get();
+        let was_quiet = quiet.get_value();
+        quiet.set_value(false);
+        if let Some(prev) = prev {
+            if now > prev && !was_quiet {
+                if let Ok(h) = window().history() {
+                    _ = h.push_state(&wasm_bindgen::JsValue::from_f64(f64::from(now)), "");
+                }
+            }
+        }
+        now
+    });
+    Effect::new(move |prev: Option<()>| {
+        let p = Progress {
+            coupon: coupon.get(),
+            notes: notes.get(),
+            step: step.get(),
+        };
+        // La primera vez corre antes de recuperar: no pisa lo guardado.
+        if prev.is_some() {
+            if let (Some(s), Ok(raw)) = (progress_storage(), serde_json::to_string(&p)) {
+                _ = s.set_item(PROGRESS_KEY, &raw);
+            }
+        }
+    });
+}
+
+pub(crate) fn forget_progress() {
+    if let Some(s) = progress_storage() {
+        _ = s.remove_item(PROGRESS_KEY);
     }
 }
 
@@ -1006,6 +1101,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     });
     let methods = StoredValue::new(info.pay_methods.clone());
     let step = RwSignal::new(1u8);
+    remember_progress(&f, step);
     let errors = RwSignal::new(Vec::<FieldError>::new());
     // Uso y abandono: hasta qué paso llegó (solo hacia adelante).
     Effect::new(move |reached: Option<u8>| {
@@ -1865,6 +1961,7 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
             if cart.ready.get() && cart.count() > 0 {
                 cart.clear();
             }
+            forget_progress();
         });
     }
     let title = if order.number > 0 {

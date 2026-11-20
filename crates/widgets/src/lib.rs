@@ -58,6 +58,14 @@ pub fn sample_product() -> Product {
 #[derive(Clone, Copy)]
 pub struct UsageHook(pub Callback<&'static str>);
 
+/// Las páginas y las categorías de productos que tiene la tienda, por
+/// contexto en la tienda publicada (ver `domain::category_tile_href`).
+#[derive(Clone)]
+pub struct StoreLinks {
+    pub pages: Vec<String>,
+    pub categories: Vec<String>,
+}
+
 /// Producto abierto en la ficha de la tienda, por contexto. Si está, las
 /// tarjetas de producto se pueden tocar para abrir su ficha.
 #[derive(Clone, Copy)]
@@ -1250,6 +1258,18 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
 #[component]
 pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView {
     let cols = tags::fill_cols(props.items.len());
+    // En la tienda, los enlaces viejos a páginas que no existen se arreglan.
+    let links = use_context::<StoreLinks>();
+    let mut props = props;
+    if let Some(l) = &links {
+        for c in &mut props.items {
+            let has_page = l
+                .pages
+                .iter()
+                .any(|p| Some(p) == domain::normalize_path(&c.href).as_ref());
+            c.href = domain::category_tile_href(&c.href, &c.label, has_page, &l.categories);
+        }
+    }
     view! {
         <div class="mk-box mk-pad mk-cats @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
@@ -2488,20 +2508,102 @@ mod tests {
     }
 }
 
-/// Si la dirección trae `?ver=<producto>` (por ejemplo desde «Mis favoritos»),
-/// abre la ficha de ese producto. Solo en el navegador.
+/// Cambia los datos de la dirección (lo que va después de `?`) sin recargar
+/// ni mover la pantalla. Con `push`, queda un paso nuevo para el botón Atrás;
+/// si no, reemplaza la dirección actual. Si no cambia nada, no hace nada.
+pub(crate) fn edit_url(push: bool, change: impl FnOnce(&web_sys::UrlSearchParams)) {
+    let Some(w) = web_sys::window() else {
+        return;
+    };
+    let loc = w.location();
+    let (Ok(path), Ok(search), Ok(hash)) = (loc.pathname(), loc.search(), loc.hash()) else {
+        return;
+    };
+    let Ok(params) = web_sys::UrlSearchParams::new_with_str(&search) else {
+        return;
+    };
+    change(&params);
+    let query: String = params.to_string().into();
+    if query == search.trim_start_matches('?') {
+        return;
+    }
+    let url = if query.is_empty() {
+        format!("{path}{hash}")
+    } else {
+        format!("{path}?{query}{hash}")
+    };
+    let Ok(history) = w.history() else {
+        return;
+    };
+    // Se conserva lo que ya guardaba esta entrada (por ejemplo, el router).
+    let state = history.state().unwrap_or(wasm_bindgen::JsValue::NULL);
+    _ = if push {
+        history.push_state_with_url(&state, "", Some(&url))
+    } else {
+        history.replace_state_with_url(&state, "", Some(&url))
+    };
+}
+
+/// El producto de `?ver=<producto>` en la dirección, si hay.
+fn product_in_url() -> Option<String> {
+    let search = web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .unwrap_or_default();
+    search
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("ver="))
+        .filter(|v| {
+            !v.is_empty() && v.len() <= 36 && v.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+        })
+        .map(str::to_string)
+}
+
+/// La ficha y la dirección van juntas. Si la dirección trae `?ver=<producto>`
+/// (un enlace compartido, «Mis favoritos»), abre esa ficha. Al abrir una
+/// ficha la dirección pasa a `?ver=<producto>`, así se puede copiar y mandar,
+/// y queda un paso en el historial: el botón Atrás cierra la ficha en lugar
+/// de sacar al comprador de la página. Solo en el navegador.
 pub fn open_from_query(open: RwSignal<Option<String>>) {
+    // ¿La entrada actual del historial la sumó una ficha abierta acá?
+    let pushed = StoredValue::new(false);
     Effect::new(move |_| {
-        let search = web_sys::window()
-            .and_then(|w| w.location().search().ok())
-            .unwrap_or_default();
-        let id = search
-            .trim_start_matches('?')
-            .split('&')
-            .find_map(|kv| kv.strip_prefix("ver="))
-            .filter(|v| v.len() <= 36 && v.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'));
-        if let Some(id) = id {
-            open.set(Some(id.to_string()));
+        if let Some(id) = product_in_url() {
+            open.set(Some(id));
+        }
+        // Atrás o Adelante: la ficha sigue a la dirección.
+        let handle = window_event_listener(leptos::ev::popstate, move |_| {
+            let now = product_in_url();
+            if now.is_none() {
+                pushed.set_value(false);
+            }
+            if open.get_untracked() != now {
+                open.set(now);
+            }
+        });
+        on_cleanup(move || handle.remove());
+    });
+    Effect::new(move |_| {
+        let (want, now) = (open.get(), product_in_url());
+        if want == now {
+            return;
+        }
+        match (want, now) {
+            // De una ficha a otra: es el mismo paso del historial.
+            (Some(id), Some(_)) => edit_url(false, |p| p.set("ver", &id)),
+            (Some(id), None) => {
+                edit_url(true, |p| p.set("ver", &id));
+                pushed.set_value(true);
+            }
+            // Se cerró con la ✕, Esc o tocando afuera: se deshace el paso.
+            (None, _) if pushed.get_value() => {
+                pushed.set_value(false);
+                if let Some(h) = web_sys::window().and_then(|w| w.history().ok()) {
+                    _ = h.back();
+                }
+            }
+            // Entró directo con el enlace: no hay paso que deshacer.
+            (None, _) => edit_url(false, |p| p.delete("ver")),
         }
     });
 }
