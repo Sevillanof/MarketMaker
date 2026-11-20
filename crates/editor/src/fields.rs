@@ -80,7 +80,7 @@ fn help(key: &str) -> Option<&'static str> {
     Some(match key {
         "button_href" | "href" | "link_href" => "Elegí adónde lleva al tocarlo. Para un sitio de afuera, tocá «Otra» y pegá la dirección (www.… se completa sola).",
         "button_label" => "Si lo dejás vacío, no se muestra el botón.",
-        "alt" => "Describí la imagen para quien no la puede ver. Ayuda también a los buscadores.",
+        "alt" => "No se ve en la tienda: la leen los buscadores y los lectores de pantalla. Describí la imagen en pocas palabras.",
         "autoplay" => "Con 0 las diapositivas solo cambian cuando el cliente las pasa.",
         "ends_at" => "Cuando llega esta fecha, la cuenta regresiva muestra el texto de fin.",
         "ended_text" => "Se muestra cuando termina la oferta.",
@@ -420,6 +420,14 @@ fn FieldInput(
         }
         FieldKind::Number { min, max } => {
             let (min, max) = (*min, *max);
+            // Lo que se escribió fuera de rango (o con decimales) se corrige,
+            // y se avisa con un texto chico en vez de cambiarlo callado.
+            let fixed = RwSignal::new(None::<String>);
+            let range_id = format!("{uid}-range");
+            let described = {
+                let range_id = range_id.clone();
+                move || Some(described().map_or(range_id.clone(), |d| format!("{d} {range_id}")))
+            };
             view! {
                 <input
                     type="number"
@@ -427,15 +435,35 @@ fn FieldInput(
                     class="input input-sm w-full"
                     min=min
                     max=max
-                    aria-describedby=described.clone()
+                    step="1"
+                    inputmode="numeric"
+                    aria-describedby=described
                     prop:value=move || value.get().as_i64().map(|n| n.to_string()).unwrap_or_default()
                     on:input=move |ev| {
-                        if let Ok(n) = event_target_value(&ev).parse::<i64>() {
-                            set.run(serde_json::Value::from(n.clamp(min, max)));
-                        }
+                        let typed = event_target_value(&ev);
+                        let Ok(x) = typed.trim().replace(',', ".").parse::<f64>() else {
+                            return;
+                        };
+                        let n = (x.round() as i64).clamp(min, max);
+                        fixed.set((n as f64 != x).then(|| format!("Quedó en {n}.")));
+                        set.run(serde_json::Value::from(n));
                     }
-                    on:blur=move |_| end()
+                    on:blur=move |ev| {
+                        // Vacío o con letras: vuelve al número que tenía.
+                        let input = event_target::<web_sys::HtmlInputElement>(&ev);
+                        if input.value().trim().is_empty() {
+                            if let Some(n) = value.get_untracked().as_i64() {
+                                input.set_value(&n.to_string());
+                                fixed.set(Some(format!("Quedó en {n}.")));
+                            }
+                        }
+                        end();
+                    }
                 />
+                <p id=range_id class="text-xs text-base-content/75">
+                    {format!("Entre {min} y {max}.")}
+                    {move || fixed.get().map(|t| view! { " " <span class="font-medium text-amber-800">{t}</span> })}
+                </p>
             }
             .into_any()
         }
@@ -523,7 +551,7 @@ const DEFAULT_BUTTON_LABEL: &str = "Ver más";
 fn button_hint(label: &str, href: &str) -> Option<&'static str> {
     match (label.trim().is_empty(), href.trim().is_empty()) {
         (true, _) => Some("Escribí qué dice el botón. Si queda vacío, no se muestra."),
-        (false, true) => Some("Falta adónde lleva. Sin eso, el botón no hace nada al tocarlo."),
+        (false, true) => Some("Falta adónde lleva. Sin eso, el botón no se muestra en tu tienda."),
         _ => None,
     }
 }
@@ -552,13 +580,17 @@ pub(crate) fn ButtonGroup(
     let (label, href) = (read(label_field.key), read(href_field.key));
     // Arranca prendido si el bloque ya tiene botón (o un enlace a medias).
     let on = RwSignal::new(!label().is_empty() || !href().is_empty());
+    // Al apagarlo se guarda el texto, para devolverlo si se vuelve a prender.
+    let saved = StoredValue::new(String::new());
     let toggle = move |show: bool| {
         on.set(show);
         let text = if show && label().trim().is_empty() {
-            DEFAULT_BUTTON_LABEL.to_string()
+            let s = saved.get_value();
+            if s.trim().is_empty() { DEFAULT_BUTTON_LABEL.to_string() } else { s }
         } else if show {
             label()
         } else {
+            saved.set_value(label());
             String::new()
         };
         state.end_group();
@@ -924,7 +956,7 @@ fn ListInput(
                                 .filter(|s| !s.trim().is_empty());
                             match t {
                                 Some(t) => format!("{}. {t}", i + 1),
-                                None => format!("{} {}", field.label, i + 1),
+                                None => format!("{} {}", item_noun(field.label), i + 1),
                             }
                         };
                         view! {
@@ -976,7 +1008,7 @@ fn ListInput(
                 }
             >
                 <Icon name="plus"/>
-                {move || format!("Agregar ({} de {max})", len.get())}
+                {move || format!("Agregar {} ({} de {max})", item_noun(field.label).to_lowercase(), len.get())}
             </button>
         </fieldset>
     }
@@ -1074,6 +1106,33 @@ mod tests {
             .unwrap();
         assert!(is_image(image));
         assert!(!is_image(link));
+    }
+}
+
+/// Cómo se llama un elemento de la lista `label` ("Enlaces" → "Enlace"),
+/// para "Enlace 3" y "Agregar enlace": los nombres largos de las listas no
+/// sirven para eso.
+fn item_noun(label: &str) -> &'static str {
+    if label.starts_with("Enlaces de la columna") {
+        return "Enlace de la columna";
+    }
+    let first = label.split_whitespace().next().unwrap_or_default();
+    match first {
+        "Enlaces" => "Enlace",
+        "Opciones" => "Opción",
+        "Diapositivas" => "Diapositiva",
+        "Categorías" => "Categoría",
+        "Beneficios" => "Beneficio",
+        "Pestañas" => "Pestaña",
+        "Preguntas" => "Pregunta",
+        "Imágenes" | "Fotos" => "Imagen",
+        "Testimonios" => "Testimonio",
+        "Marcas" => "Marca",
+        "Mensajes" => "Mensaje",
+        "Pasos" => "Paso",
+        "Cifras" | "Números" => "Cifra",
+        "Redes" => "Red",
+        _ => "Elemento",
     }
 }
 

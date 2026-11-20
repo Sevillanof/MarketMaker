@@ -278,7 +278,7 @@ fn CategoryDrop(
         }
     };
     view! {
-        <div class="mk-box mk-pad mk-catdrop flex h-full items-center overflow-hidden rounded-box">
+        <div class="mk-box mk-pad mk-catdrop flex h-full min-h-14 items-center rounded-box py-2">
             <button type="button" node_ref=button class="mk-filterbtn shrink-0"
                 tabindex=editing.then_some("-1")
                 aria-haspopup="true"
@@ -351,8 +351,10 @@ fn CategoryPage(
         let last = |text: String| {
             view! { <span class="font-semibold" aria-current="page">{text}</span> }.into_any()
         };
+        // Al principio (todas las categorías) no hay camino que mostrar: el
+        // título ya dice «Todas».
         if c.is_empty() {
-            parts.push(last(root));
+            let _ = (last, root);
         } else {
             parts.push(link(root, String::new(), String::new()));
             if s.is_empty() {

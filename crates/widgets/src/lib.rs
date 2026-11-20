@@ -138,7 +138,7 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::Tabs(p) => {
             view! { <TabsWidget props=p.clone() group=format!("tabs-{}", node.id)/> }.into_any()
         }
-        Widget::Faq(p) => view! { <FaqWidget props=p.clone()/> }.into_any(),
+        Widget::Faq(p) => view! { <FaqWidget props=p.clone() editing/> }.into_any(),
         Widget::HoverGallery(p) => {
             view! { <HoverGalleryWidget props=p.clone() editing/> }.into_any()
         }
@@ -583,7 +583,9 @@ fn MaybeLink(
 #[component]
 pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
     let has_image = !props.image_url.is_empty();
-    let has_button = !props.button_label.is_empty();
+    // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
+    // con un aviso en el panel).
+    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     let root_class = if has_image {
         "mk-box mk-banner mk-has-img @container hero relative h-full overflow-hidden rounded-box bg-base-200"
     } else {
@@ -791,12 +793,23 @@ fn place_popover(ev: leptos::ev::MouseEvent, pop_id: &str, wide: bool) {
 /// opciones es una columna con título; las opciones sueltas van juntas en la
 /// primera columna. La foto, si hay, va a la derecha.
 fn mega_panel(l: &LinkItem, editing: bool) -> AnyView {
-    let (titled, loose): (Vec<LinkItem>, Vec<LinkItem>) = l
-        .children
-        .iter()
-        .cloned()
-        .partition(|c| !c.children.is_empty());
-    let cols = titled.len() + usize::from(!loose.is_empty());
+    // Las columnas siguen el orden de los enlaces: las opciones sueltas
+    // seguidas forman una columna en su lugar.
+    enum Col {
+        Loose(Vec<LinkItem>),
+        Titled(LinkItem),
+    }
+    let mut groups: Vec<Col> = Vec::new();
+    for c in l.children.iter().cloned() {
+        if !c.children.is_empty() {
+            groups.push(Col::Titled(c));
+        } else if let Some(Col::Loose(v)) = groups.last_mut() {
+            v.push(c);
+        } else {
+            groups.push(Col::Loose(vec![c]));
+        }
+    }
+    let cols = groups.len();
     let has_image = !l.image_url.is_empty();
     let class = if has_image {
         "mk-mega mk-mega-img"
@@ -806,30 +819,40 @@ fn mega_panel(l: &LinkItem, editing: bool) -> AnyView {
     let all_href = l.href.clone();
     let label = l.label.clone();
     let image = l.image_url.clone();
+    let see_all = (!has_image && !all_href.is_empty()).then(|| all_href.clone());
     view! {
         <div class=class style=format!("--cols:{}", cols.max(1))>
-            {(!loose.is_empty()).then(|| view! {
-                <ul class="mk-mega-col">
-                    {loose.into_iter().map(|c| view! {
-                        <li><MaybeLink href=c.href editing class="mk-link mk-mega-lead">{c.label}</MaybeLink></li>
-                    }).collect_view()}
-                </ul>
-            })}
-            {titled.into_iter().map(|c| view! {
-                <div class="mk-mega-col">
-                    <MaybeLink href=c.href editing class="mk-link mk-mega-h">{c.label}</MaybeLink>
-                    <ul>
-                        {c.children.into_iter().map(|g| view! {
-                            <li><MaybeLink href=g.href editing class="mk-link">{g.label}</MaybeLink></li>
+            {groups.into_iter().map(|g| match g {
+                Col::Loose(items) => view! {
+                    <ul class="mk-mega-col">
+                        {items.into_iter().map(|c| view! {
+                            <li><MaybeLink href=c.href editing class="mk-link mk-mega-lead">{c.label}</MaybeLink></li>
                         }).collect_view()}
                     </ul>
-                </div>
+                }.into_any(),
+                Col::Titled(c) => view! {
+                    <div class="mk-mega-col">
+                        <MaybeLink href=c.href editing class="mk-link mk-mega-h">{c.label}</MaybeLink>
+                        <ul>
+                            {c.children.into_iter().map(|g| view! {
+                                <li><MaybeLink href=g.href editing class="mk-link">{g.label}</MaybeLink></li>
+                            }).collect_view()}
+                        </ul>
+                    </div>
+                }.into_any(),
             }).collect_view()}
             {has_image.then(|| view! {
                 <MaybeLink href=all_href editing class="mk-mega-pic relative block overflow-hidden">
                     <div class="aspect-[16/10] w-full"><Image src=image alt=""/></div>
                     <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-sm font-semibold text-white">{format!("{label} →")}</span>
                 </MaybeLink>
+            })}
+            // Como en la lista simple: "Ver todo" si el enlace lleva a algún lado
+            // (con foto, la foto ya lleva ahí).
+            {see_all.map(|href| view! {
+                <div class="col-span-full border-t border-base-300 pt-3">
+                    <MaybeLink href=href editing class="mk-link text-sm font-semibold">"Ver todo"</MaybeLink>
+                </div>
             })}
         </div>
     }
@@ -902,7 +925,9 @@ fn mobile_link(l: LinkItem, editing: bool, uid: &str) -> AnyView {
 
 #[component]
 pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl IntoView {
-    let has_button = !props.button_label.is_empty();
+    // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
+    // con un aviso en el panel).
+    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     // Vacíos, usan el nombre y el logo de la tienda (ver "Datos de la tienda").
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
     let brand = or_store(&props.brand, &store.name);
@@ -928,6 +953,9 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
             }
             let pid = format!("{uid}-m{i}");
             let pid_click = pid.clone();
+            // "Panel ancho con foto" sin foto: un panel del tamaño de sus
+            // enlaces, no uno enorme y vacío.
+            let pop_wide = columns || (wide && !l.image_url.is_empty());
             let panel = if columns {
                 mega_panel(&l, editing)
             } else if wide {
@@ -935,8 +963,15 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                 let image = l.image_url.clone();
                 let all_href = l.href.clone();
                 let label = l.label.clone();
+                let has_image = !image.is_empty();
+                let see_all = (!has_image && !all_href.is_empty()).then(|| all_href.clone());
+                let grid = if has_image {
+                    "grid gap-6 p-5 @3xl:grid-cols-[1fr_1fr_1.2fr]"
+                } else {
+                    "grid grid-flow-col auto-cols-max gap-x-8 gap-y-3 p-5"
+                };
                 view! {
-                    <div class="grid gap-6 p-5 @3xl:grid-cols-[1fr_1fr_1.2fr]">
+                    <div class=grid>
                         {children
                             .chunks(3)
                             .map(|col| col.to_vec())
@@ -950,13 +985,18 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                                 </ul>
                             })
                             .collect_view()}
-                        {(!image.is_empty()).then(|| view! {
+                        {has_image.then(|| view! {
                             <MaybeLink href=all_href.clone() editing class="relative block overflow-hidden rounded-box">
                                 <div class="aspect-[16/9] w-full"><Image src=image.clone() alt=""/></div>
                                 <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-sm font-semibold text-white">{format!("{label} →")}</span>
                             </MaybeLink>
                         })}
                     </div>
+                    {see_all.map(|href| view! {
+                        <div class="border-t border-base-300 px-5 py-3">
+                            <MaybeLink href=href editing class="mk-link text-sm font-semibold">"Ver todo"</MaybeLink>
+                        </div>
+                    })}
                 }
                 .into_any()
             } else {
@@ -973,7 +1013,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                 }
                 .into_any()
             };
-            let pop_class = match (wide, columns && props.menu_color) {
+            let pop_class = match (pop_wide, columns && props.menu_color) {
                 (true, true) => "mk-navpop mk-navpop-wide mk-navpop-color @container",
                 (true, false) => "mk-navpop mk-navpop-wide @container",
                 _ => "mk-navpop",
@@ -982,7 +1022,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                 <li>
                     <button type="button" class="mk-link btn btn-ghost btn-sm font-normal whitespace-nowrap"
                         popovertarget=pid.clone()
-                        on:click=move |ev| place_popover(ev, &pid_click, wide)>
+                        on:click=move |ev| place_popover(ev, &pid_click, pop_wide)>
                         {l.label}
                         <Icon name="chevron-down" class="h-4 w-4"/>
                     </button>
@@ -1133,10 +1173,12 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
                     .slides
                     .into_iter()
                     .map(|s| {
-                        let has_button = !s.button_label.is_empty();
+                        let has_button = !s.button_label.is_empty() && (editing || !s.button_href.trim().is_empty());
+                        // Sin foto, un fondo oscuro: el texto blanco se lee igual.
+                        let has_img = !s.image_url.trim().is_empty();
                         view! {
-                            <div class="carousel-item relative h-full w-full">
-                                <Image src=s.image_url.clone() alt=s.title.clone()/>
+                            <div class="carousel-item relative h-full w-full" class:bg-neutral=!has_img>
+                                {has_img.then(|| view! { <Image src=s.image_url.clone() alt=s.title.clone()/> })}
                                 <div class="mk-car-ov absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent"></div>
                                 <div class="mk-car-body absolute inset-y-0 left-0 flex max-w-lg flex-col justify-center gap-2 px-14 py-6 text-white @2xl:gap-3">
                                     <h2 class="mk-title text-xl font-bold line-clamp-2 @2xl:text-3xl">{s.title.clone()}</h2>
@@ -1841,7 +1883,9 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
             }
         });
     });
-    let has_button = !props.button_label.is_empty();
+    // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
+    // con un aviso en el panel).
+    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     let ended_text = props.ended_text.clone();
     let units = ["días", "horas", "min", "seg"];
 
@@ -1918,7 +1962,9 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
         ),
     };
     let has_image = !props.image_url.is_empty();
-    let has_button = !props.button_label.is_empty();
+    // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
+    // con un aviso en el panel).
+    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     let body_class = if props.layout == "vertical" {
         "card-body grow-0 shrink-0"
     } else {
@@ -1956,11 +2002,15 @@ pub fn TabsWidget(props: TabsProps, group: String) -> impl IntoView {
                 .tabs
                 .into_iter()
                 .enumerate()
-                .map(|(i, t)| view! {
-                    <input type="radio" name=group.clone() class="tab" aria-label=t.label checked=i == 0/>
+                .map(|(i, t)| {
+                    // Sin nombre, la pestaña sería un cuadradito vacío.
+                    let label = if t.label.trim().is_empty() { format!("Pestaña {}", i + 1) } else { t.label };
+                    view! {
+                    <input type="radio" name=group.clone() class="tab" aria-label=label checked={i == 0}/>
                     <div class="mk-item tab-content h-[calc(100%-3rem)] overflow-auto rounded-box border-base-300 bg-base-100 p-4">
                         <p class="whitespace-pre-line">{t.body}</p>
                     </div>
+                    }
                 })
                 .collect_view()}
         </div>
@@ -1968,7 +2018,7 @@ pub fn TabsWidget(props: TabsProps, group: String) -> impl IntoView {
 }
 
 #[component]
-pub fn FaqWidget(props: FaqProps) -> impl IntoView {
+pub fn FaqWidget(props: FaqProps, #[prop(default = false)] editing: bool) -> impl IntoView {
     view! {
         <div class="mk-box mk-pad mk-faq flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
@@ -1978,8 +2028,11 @@ pub fn FaqWidget(props: FaqProps) -> impl IntoView {
                 {props
                     .items
                     .into_iter()
-                    .map(|q| view! {
-                        <details class="mk-item collapse collapse-arrow join-item border border-base-300 bg-base-100">
+                    .enumerate()
+                    // En el editor, la primera respuesta abierta: se ve cómo queda
+                    // sin ir a la vista previa.
+                    .map(|(i, q)| view! {
+                        <details class="mk-item collapse collapse-arrow join-item border border-base-300 bg-base-100" open={editing && i == 0}>
                             <summary class="collapse-title font-semibold">{q.question}</summary>
                             <div class="collapse-content text-sm">
                                 <p class="whitespace-pre-line">{q.answer}</p>
@@ -2085,7 +2138,12 @@ pub fn LogosWidget(props: LogosProps, editing: bool) -> impl IntoView {
                     .into_iter()
                     .map(|l| view! {
                         <MaybeLink href=l.href editing class="mk-logo block shrink-0">
+                            // Sin imagen, el nombre de la marca escrito (no una imagen rota).
+                            {l.image_url.trim().is_empty().then(|| view! {
+                                <span class="block whitespace-nowrap text-lg font-bold leading-8 tracking-tight opacity-80">{l.alt.clone()}</span>
+                            })}
                             <img
+                                hidden=l.image_url.trim().is_empty()
                                 class="h-8 w-auto max-w-40 shrink-0 object-contain opacity-70 grayscale transition hover:opacity-100 hover:grayscale-0"
                                 src=l.image_url
                                 alt=l.alt

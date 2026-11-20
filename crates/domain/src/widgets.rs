@@ -1768,8 +1768,8 @@ impl Widget {
                         image_url: format!("/img/gallery-{i}.webp"),
                     })
                     .collect(),
-                title: s("Zapatillas running"),
-                subtitle: s("Pasá el mouse para ver más fotos"),
+                title: s("Nuestra colección"),
+                subtitle: s("Tocá o pasá el mouse para ver más fotos"),
                 href: String::new(),
             }),
             "Testimonials" => Widget::Testimonials(TestimonialsProps {
@@ -1802,8 +1802,9 @@ impl Widget {
                 })
                 .collect(),
             }),
+            // Otra foto que la de la Tarjeta: agregadas juntas no se repiten.
             "Image" => Widget::Image(ImageProps {
-                image_url: s("/img/card.webp"),
+                image_url: s("/img/category-hogar.webp"),
                 alt: s("Imagen de ejemplo"),
                 href: String::new(),
                 fit: s("cover"),
