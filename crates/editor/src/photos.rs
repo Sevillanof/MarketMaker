@@ -126,14 +126,14 @@ impl MyPhotos {
                 };
                 match result {
                     Ok(item) => {
-                        let text = if item.duplicate {
-                            Some(format!(
+                        // Solo se avisa lo que cambia algo para la dueña: que la
+                        // foto ya estaba. Cuánto se achicó es un dato técnico.
+                        let text = item.duplicate.then(|| {
+                            format!(
                                 "{name}: ya estaba en Mis fotos como «{}», usamos esa.",
                                 item.name
-                            ))
-                        } else {
-                            domain::savings_text(&item)
-                        };
+                            )
+                        });
                         if let Some(text) = text {
                             self.saved.update(|s| s.push(text));
                         }

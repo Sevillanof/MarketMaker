@@ -136,7 +136,7 @@ pub fn SignInPage() -> impl IntoView {
                 </div>
                 <p class="mt-6 max-w-[480px] text-center text-sm text-white/60">
                     <b class="font-semibold text-white/85">"¿Venís a comprar?"</b>
-                    " No necesitás cuenta: entrá directo a la tienda."
+                    " No necesitás cuenta: comprá desde el enlace de la tienda que te pasaron."
                 </p>
             </main>
         </div>
@@ -222,10 +222,12 @@ fn PasswordField(
                         }></i>
                     }).collect_view()}
                 </div>
-                <p class="text-xs text-base-content/70" aria-live="polite">
+                // Con un error debajo del campo, el error ya dice lo que falta:
+                // este texto se calla para no repetirlo (ni contradecirlo).
+                <p class="text-xs text-base-content/70" aria-live="polite" class:hidden=move || bad.get()>
                     {move || match score() {
                         0 => format!("{} caracteres o más.", domain::PASSWORD_MIN),
-                        1 if domain::is_common_password(&value.get()) => "Muy común: se adivina fácil. Elegí otra.".to_string(),
+                        1 if value.with(|v| v.chars().count() >= domain::PASSWORD_MIN) && domain::is_common_password(&value.get()) => "Muy común: se adivina fácil. Elegí otra.".to_string(),
                         1 => format!("Muy corta: {} caracteres o más.", domain::PASSWORD_MIN),
                         2 => "Aceptable. Con mayúsculas, números o símbolos es más segura.".to_string(),
                         3 => "Buena.".to_string(),

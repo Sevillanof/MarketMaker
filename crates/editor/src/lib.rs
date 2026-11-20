@@ -756,10 +756,10 @@ pub(crate) fn size_text(size: domain::Size) -> String {
 /// Anchos con nombre, en columnas de 48.
 pub(crate) const WIDTHS: &[(u8, &str)] = &[
     (48, "Completo"),
-    (32, "2/3"),
+    (32, "2 tercios"),
     (24, "Mitad"),
-    (16, "1/3"),
-    (12, "1/4"),
+    (16, "Tercio"),
+    (12, "Cuarto"),
 ];
 
 /// Nombre del ancho si es uno de [`WIDTHS`]; si no, "36/48".
@@ -1638,7 +1638,7 @@ fn PublishCheck(
                     <button type="button"
                         class="flex w-full items-center gap-3 rounded-box border border-base-300 border-l-4 border-l-warning bg-base-100 px-3 py-2.5 text-left hover:bg-base-200"
                         on:click=move |_| { check.set(None); actions.go_to(&id); }>
-                        <span class="shrink-0 text-sm font-semibold">{i.widget}</span>
+                        <span class="shrink-0 text-sm"><b class="font-semibold">{i.widget}</b><span class="text-base-content/60">{format!(" · {}", i.place)}</span></span>
                         <span class="min-w-0 grow truncate text-sm text-base-content/60">{i.text.clone()}</span>
                         <Icon name="arrow-left" class="h-4 w-4 shrink-0 rotate-180 text-base-content/60"/>
                     </button>
@@ -1670,11 +1670,11 @@ fn PublishCheck(
                 {(photos > 0 && (n > 0 || examples > 0)).then(|| view! {
                     <p class="mt-3 text-sm text-base-content/75">
                         {if photos == 1 { "También queda 1 foto de muestra.".to_string() } else { format!("También quedan {photos} fotos de muestra.") }}
-                        " Cambialas por las tuyas en Mis fotos."
+                        " Para cambiarlas, tocá cada bloque con foto y elegí una tuya."
                     </p>
                 })}
                 {(n == 0 && examples == 0).then(|| view! {
-                    <p class="text-sm text-base-content/75">"Son fotos de ejemplo que vienen con la plantilla. Cambialas por las tuyas en Mis fotos."</p>
+                    <p class="text-sm text-base-content/75">"Son fotos de ejemplo que vienen con la plantilla. Para cambiarlas, tocá cada bloque con foto y elegí una tuya."</p>
                 })}
                 <div class="modal-action">
                     <button type="button" id="mk-publish-anyway" class="btn btn-ghost"

@@ -433,7 +433,9 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-note">"Aviso para el comprador"</label>
                                 <input id="d-note" class="input w-full" maxlength=domain::SHIPPING_NOTE_MAX placeholder="Lo coordinamos por WhatsApp"
+                                    aria-describedby="d-note-hint"
                                     prop:value=move || note.get() on:input=move |ev| { note.set(event_target_value(&ev)); dirty(); }/>
+                                <p id="d-note-hint" class="label whitespace-normal">"Se ve al finalizar la compra, debajo de \"Envío a domicilio\". Por ejemplo: cuándo despachás o por dónde avisás."</p>
                             </fieldset>
                         </div>
                     })}

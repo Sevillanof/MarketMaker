@@ -222,7 +222,7 @@ pub(crate) fn NewStore(
                     {move || name_error.get().map(|e| view! { <p id="nueva-tienda-nombre-error" class="text-sm text-error">{e}</p> })}
                 </div>
                 <div class="flex flex-col gap-1">
-                    <label class="font-medium" for="nueva-tienda-direccion">"Dirección"</label>
+                    <label class="font-medium" for="nueva-tienda-direccion">"Dirección web"</label>
                     <span id="nueva-tienda-direccion-ayuda" class="text-sm text-base-content/70">"Así la van a encontrar tus clientes. Letras sin tilde, números y guiones."</span>
                     <div class="join w-full">
                         <input id="nueva-tienda-direccion" class="input join-item w-full font-mono" class:input-error=move || slug_error.get().is_some()
@@ -239,6 +239,15 @@ pub(crate) fn NewStore(
                                 slug_touched.set(true);
                                 slug.set(event_target_value(&ev).to_lowercase().replace(' ', "-"));
                                 slug_error.set(None);
+                            }
+                            // Al salir del campo la deja lista: sin tildes,
+                            // signos ni guiones de más ("Mi Tienda!!" → "mi-tienda").
+                            on:blur=move |_| {
+                                let now = slug.get_untracked();
+                                let clean = domain::slug_from_name(&now);
+                                if !now.is_empty() && clean != now {
+                                    slug.set(clean);
+                                }
                             }/>
                         <span class="join-item flex items-center border border-base-300 bg-base-200 px-3 font-mono text-sm">{suffix}</span>
                     </div>

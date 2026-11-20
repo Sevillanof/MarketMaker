@@ -118,8 +118,39 @@ pub(crate) fn PageSwitcher() -> impl IntoView {
 fn NewPageMenu() -> impl IntoView {
     let actions = expect_context::<Actions>();
     let menu = NodeRef::<leptos::html::Details>::new();
+    // Se cierra al tocar afuera, como cualquier menú.
+    let outside = window_event_listener(leptos::ev::pointerdown, move |ev| {
+        use wasm_bindgen::JsCast;
+        let Some(d) = menu.get_untracked() else { return };
+        let inside = ev
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::Node>().ok())
+            .is_some_and(|t| d.contains(Some(&t)));
+        if d.open() && !inside {
+            d.set_open(false);
+        }
+    });
+    on_cleanup(move || outside.remove());
     view! {
-        <details node_ref=menu class="dropdown">
+        <details node_ref=menu class="dropdown"
+            // Y con Escape, devolviendo el foco al botón.
+            on:keydown=move |ev| {
+                if ev.key() == "Escape" {
+                    if let Some(d) = menu.get_untracked() {
+                        if d.open() {
+                            ev.prevent_default();
+                            ev.stop_propagation();
+                            d.set_open(false);
+                            if let Ok(Some(s)) = d.query_selector("summary") {
+                                use wasm_bindgen::JsCast;
+                                if let Ok(s) = s.dyn_into::<web_sys::HtmlElement>() {
+                                    _ = s.focus();
+                                }
+                            }
+                        }
+                    }
+                }
+            }>
             <summary class="btn btn-ghost btn-sm gap-1" title="Crear una página nueva">
                 <Icon name="plus" class="h-4 w-4"/><span class="max-[1099px]:sr-only">"Nueva página"</span>
             </summary>

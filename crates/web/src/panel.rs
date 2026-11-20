@@ -684,7 +684,8 @@ fn Overview(o: StoreOverview) -> impl IntoView {
     };
 
     // Lo que falta para vender: cada paso con su enlace.
-    let steps: Vec<(bool, &'static str, String, Option<(String, &'static str)>, usize)> = vec![
+    // El último dato es la guía de "Ver cómo" (ninguna si no hay una que sirva).
+    let steps: Vec<(bool, &'static str, String, Option<(String, &'static str)>, Option<usize>)> = vec![
         (
             o.products > 0,
             "Cargá tus productos",
@@ -694,7 +695,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 n => format!("{n} productos"),
             },
             Some((format!("{base}/productos"), "Cargar")),
-            crate::help::FILM_PRODUCT,
+            Some(crate::help::FILM_PRODUCT),
         ),
         (
             o.publish != PublishState::Never,
@@ -707,14 +708,16 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 }
             },
             None,
-            crate::help::FILM_EDITOR,
+            Some(crate::help::FILM_EDITOR),
         ),
         (
             o.delivery_ready,
             "Elegí cómo entregás",
             "Retiro en el local, envío o los dos.".to_string(),
             Some((format!("{base}/ventas"), "Elegir")),
-            crate::help::FILM_ANDREANI,
+            // La guía de Andreani es la opción más difícil: para empezar
+            // alcanza con el botón.
+            None,
         ),
         (
             o.pay_ready,
@@ -725,7 +728,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                 "Sin una forma de cobro, tu tienda no puede vender.".to_string()
             },
             Some((format!("{base}/cobros"), "Elegir")),
-            crate::help::FILM_PAYMENTS,
+            Some(crate::help::FILM_PAYMENTS),
         ),
     ];
     let done = steps.iter().filter(|s| s.0).count();
@@ -829,15 +832,17 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                                 </span>
                                 {(!ok).then(|| view! {
                                     <span class="flex shrink-0 items-center gap-1">
-                                        <button type="button" class="btn btn-ghost btn-sm text-primary"
-                                            aria-label=format!("Ver cómo: {title}")
-                                            on:click=move |_| {
-                                                if let Some(req) = use_context::<crate::help::HelpRequest>() {
-                                                    req.0.set(Some(film));
-                                                }
-                                            }>
-                                            <ui::Icon class="size-4" name="play"/>"Ver cómo"
-                                        </button>
+                                        {film.map(|film| view! {
+                                            <button type="button" class="btn btn-ghost btn-sm text-primary"
+                                                aria-label=format!("Ver cómo: {title}")
+                                                on:click=move |_| {
+                                                    if let Some(req) = use_context::<crate::help::HelpRequest>() {
+                                                        req.0.set(Some(film));
+                                                    }
+                                                }>
+                                                <ui::Icon class="size-4" name="play"/>"Ver cómo"
+                                            </button>
+                                        })}
                                         {action.map(|(href, text)| view! {
                                             <a class="btn btn-outline btn-sm" href=href>{text}</a>
                                         })}

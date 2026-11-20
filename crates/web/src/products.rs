@@ -163,6 +163,10 @@ pub async fn product_to_edit(
         store_tags: db::products::tag_counts(&pool, tenant.id)
             .await
             .map_err(internal)?,
+        andreani: db::andreani::account(&pool, tenant.id)
+            .await
+            .map_err(internal)?
+            .is_some(),
     }))
 }
 
@@ -1023,6 +1027,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     let list_href = format!("/tienda/{slug}/productos");
     let slug = StoredValue::new(slug);
     let store_tags = StoredValue::new(edit.store_tags);
+    // Peso y medidas solo sirven con Andreani (o si ya estaban cargados).
+    let show_parcel = edit.andreani || edit.product.parcel.is_some();
     let errors = RwSignal::new(Vec::<String>::new());
     let saved = RwSignal::new(false);
     let dirty = RwSignal::new(false);
@@ -1291,7 +1297,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                         <p class="label">"Apagalo para prepararlo sin que lo vean."</p>
                     </fieldset>
                 </div>
-                <fieldset class="fieldset" aria-describedby="p-parcel-hint">
+                <fieldset class="fieldset" aria-describedby="p-parcel-hint" class:hidden=!show_parcel>
                     <legend class="fieldset-legend">"Envío " <span class="font-normal text-base-content/60">"(opcional)"</span></legend>
                     <p id="p-parcel-hint" class="label whitespace-normal">
                         "Peso y medidas del producto ya empaquetado, para cotizar con Andreani. Vacío: se usa el paquete de tu tienda (en Entregas)."
@@ -1585,6 +1591,9 @@ fn TagsField(form: Form, store_tags: Vec<domain::TagCount>) -> impl IntoView {
         form.add_tags(&tag);
         text.set(String::new());
         active.set(0);
+        // Elegida la etiqueta, la lista se cierra para no tapar lo que sigue.
+        // Vuelve a abrirse al escribir o al tocar el campo.
+        open.set(false);
     };
     let commit = move || {
         let t = text.get_untracked();
@@ -1619,6 +1628,7 @@ fn TagsField(form: Form, store_tags: Vec<domain::TagCount>) -> impl IntoView {
                         maxlength=domain::TAG_MAX
                         prop:value=move || text.get()
                         on:focus=move |_| open.set(true)
+                        on:click=move |_| open.set(true)
                         on:input=move |ev| {
                             let v = event_target_value(&ev);
                             open.set(true);
@@ -1649,6 +1659,7 @@ fn TagsField(form: Form, store_tags: Vec<domain::TagCount>) -> impl IntoView {
                                         Some(opt) => pick(&opt),
                                         None => commit(),
                                     }
+                                    open.set(false);
                                 }
                                 "Escape" => open.set(false),
                                 "Backspace" if text.with_untracked(String::is_empty) => {
