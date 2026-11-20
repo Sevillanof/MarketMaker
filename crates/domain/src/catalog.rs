@@ -140,13 +140,24 @@ pub struct SaveResult {
 }
 
 /// Lee un precio escrito a la argentina: `45.999,90`, `$ 45999`, `45999,9`.
-/// Los puntos son de miles y la coma separa los centavos. `None` si no es
+/// Los puntos son de miles y la coma separa los centavos. Si no hay coma y
+/// el último punto lleva una o dos cifras detrás (`1500.50`, como en la
+/// calculadora del teléfono), ese punto separa los centavos. `None` si no es
 /// un número válido.
 pub fn parse_price(text: &str) -> Option<i64> {
-    let t: String = text
+    let mut t: String = text
         .chars()
-        .filter(|c| !c.is_whitespace() && *c != '$' && *c != '.')
+        .filter(|c| !c.is_whitespace() && *c != '$')
         .collect();
+    if !t.contains(',') {
+        if let Some(i) = t.rfind('.') {
+            let tail = &t[i + 1..];
+            if (1..=2).contains(&tail.len()) && tail.chars().all(|c| c.is_ascii_digit()) {
+                t.replace_range(i..=i, ",");
+            }
+        }
+    }
+    let t: String = t.chars().filter(|c| *c != '.').collect();
     if t.is_empty() {
         return None;
     }
@@ -517,6 +528,12 @@ mod tests {
         assert!(price_problem("9999999999999999999", "El precio").unwrap().contains("grande"));
         assert!(price_problem("45.999,90", "El precio").is_none());
         assert_eq!(parse_price("doce"), None);
+        // Punto con una o dos cifras detrás: centavos, como en la calculadora.
+        assert_eq!(parse_price("1500.50"), Some(150_050));
+        assert_eq!(parse_price("1500.5"), Some(150_050));
+        assert_eq!(parse_price("1.500.50"), Some(150_050));
+        assert_eq!(parse_price("1.500"), Some(150_000));
+        assert_eq!(parse_price("1.500,50"), Some(150_050));
         assert_eq!(price_input(4_599_990), "45.999,90");
         assert_eq!(price_input(4_599_900), "45.999");
     }

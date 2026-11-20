@@ -6,6 +6,7 @@ use domain::{Layer, Node, Product, Side, StoreLayout, Widget, GRID_COLS, ROW_PX}
 use leptos::ev::{KeyboardEvent, PointerEvent};
 use leptos::html::{Div, Section};
 use leptos::prelude::*;
+use leptos::tachys::reactive_graph::OwnedView;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use widgets::{render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx};
@@ -1363,15 +1364,22 @@ pub(crate) fn Canvas(
                         if ui.preview.get() {
                             // La vista previa usa la misma grilla que la tienda, al ancho real,
                             // y abre la ficha al tocar un producto, como la tienda.
-                            let open = RwSignal::new(None::<String>);
-                            provide_context(OpenProduct(open));
-                            widgets::ProductFilter::provide();
-                            let modal = state.doc.with_untracked(|d| d.product_modal.clone());
-                            return view! {
-                                <div class="mk-grid min-h-96" on:click=on_preview_click>{static_page()}</div>
-                                <ProductDialog modal products=products.get_value() open editing=true/>
-                            }
-                            .into_any();
+                            //
+                            // Los contextos van en un dueño propio: los que se dan en este
+                            // efecto sobreviven a que se vuelva a correr, y al volver a
+                            // Editar el lienzo encontraba señales ya liberadas y se rompía.
+                            let owner = Owner::current().expect("dueño del lienzo").child();
+                            let view = owner.with(|| {
+                                let open = RwSignal::new(None::<String>);
+                                provide_context(OpenProduct(open));
+                                widgets::ProductFilter::provide();
+                                let modal = state.doc.with_untracked(|d| d.product_modal.clone());
+                                view! {
+                                    <div class="mk-grid min-h-96" on:click=on_preview_click>{static_page()}</div>
+                                    <ProductDialog modal products=products.get_value() open editing=true/>
+                                }
+                            });
+                            return OwnedView::new_with_owner(view, owner).into_any();
                         }
                         if state.layer.get() == Layer::ProductModal {
                             return view! {

@@ -771,7 +771,7 @@ fn OrderDetail(view: domain::PageView, order: Order) -> impl IntoView {
                         <li class="flex items-center gap-3 border-t border-base-200 py-3">
                             <div class="size-12 shrink-0 overflow-hidden rounded-field"><Image src=i.image_url.clone() alt=""/></div>
                             <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-semibold">{i.name.clone()}</p>
+                                <widgets::ItemName name=i.name.clone() color=i.color.clone() size=i.size.clone()/>
                                 <p class="text-xs text-base-content/70">{format!("{} × {}", i.qty, format_price(i.unit_cents))}</p>
                             </div>
                             <span class="text-sm font-semibold tabular-nums">{format_price(i.total_cents())}</span>
