@@ -192,9 +192,9 @@ impl MyPhotos {
         self.saved.set(Vec::new());
         let total = files.len();
         self.progress.set(Some(if total == 1 {
-            "Subiendo y optimizando la foto…".into()
+            "Subiendo la foto…".into()
         } else {
-            format!("Subiendo y optimizando {total} fotos…")
+            format!("Subiendo {total} fotos…")
         }));
         // Una fila por foto, ya con su miniatura.
         let mut jobs = std::collections::VecDeque::new();
@@ -815,7 +815,7 @@ pub fn LinkImport(
                     on:click=move |_| go()>"Traer"</button>
             </div>
             <p id=help_id class="text-xs text-base-content/60">
-                "La copiamos a Mis fotos y la optimizamos. Podés pegar varios enlaces juntos. Google Fotos, Instagram y Facebook no dejan: bajá la foto y subila."
+                "La copiamos a Mis fotos. Podés pegar varios enlaces juntos. Google Fotos, Instagram y Facebook no dejan: bajá la foto y subila."
             </p>
         </div>
     }
@@ -941,14 +941,12 @@ fn UploadRow(queue: RwSignal<Vec<Upload>>, key: u32) -> impl IntoView {
         }
         .into_any(),
         Some(UploadState::Optimizing) => view! {
-            <progress class="progress progress-primary w-full" aria-label=move || format!("Optimizando {}", name())></progress>
+            <progress class="progress progress-primary w-full" aria-label=move || format!("Procesando {}", name())></progress>
         }
         .into_any(),
         Some(UploadState::Done(item)) => {
-            let text = match (item.original_bytes, item.web_bytes) {
-                (o, w) if o > 0 && w > 0 && w < o => format!("Lista · {} % menos", (o - w) * 100 / o),
-                _ => "Lista".to_string(),
-            };
+            let _ = item;
+            let text = "Lista";
             view! { <span class="text-xs text-success">{text}</span> }.into_any()
         }
         Some(UploadState::Duplicate(_)) => view! {
