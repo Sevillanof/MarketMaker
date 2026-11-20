@@ -1683,12 +1683,13 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
         Delivery::Shipping if order.shipping_cents == 0 => "Gratis".to_string(),
         Delivery::Shipping | Delivery::Andreani(_) => format_price(order.shipping_cents),
     };
+    let whatsapp = view.store.whatsapp_url().unwrap_or_default();
     view! {
         <StoreFrame view>
             <StoreHeader name=store_name/>
             <div class="mx-auto flex w-full max-w-2xl flex-col gap-5">
                 <ReceiptHead first_name number=order.number phone=order.phone.clone() status=order.status can_pay id=order.id.clone() pickup=matches!(order.delivery, Delivery::Pickup)
-                    method=order.pay transfer_info total=order.total_cents/>
+                    method=order.pay transfer_info total=order.total_cents whatsapp=whatsapp/>
                 <div class="card bg-base-100 shadow-sm"><div class="card-body gap-0 p-6">
                     <h2 class="mk-h mb-1 text-lg font-bold">{title}</h2>
                     <ul>
@@ -1738,6 +1739,10 @@ fn ReceiptHead(
     /// Lo retira en el local: "Enviado" quiere decir que está listo para retirar.
     #[prop(optional)]
     pickup: bool,
+    /// Enlace de WhatsApp de la tienda (vacío si no tiene), para mandar el
+    /// comprobante de la transferencia.
+    #[prop(optional)]
+    whatsapp: String,
 ) -> impl IntoView {
     use domain::OrderStatus as S;
     let query = leptos_router::hooks::use_query_map();
@@ -1810,8 +1815,15 @@ fn ReceiptHead(
         S::New if method == domain::PayMethod::Transfer => view! {
             <h1 class="mk-h text-2xl font-bold">{format!("{first_name}, ya casi está: falta la transferencia")}</h1>
             <p class="text-base-content/75">{format!("Pedido #{number} · Transferí {} a:", format_price(total))}</p>
-            <p class="w-full max-w-md whitespace-pre-line rounded-box bg-base-200 px-4 py-3 text-left font-mono text-sm select-all">{transfer_info}</p>
+            <TransferBox info=transfer_info total/>
             <p class="text-sm text-base-content/75">{format!("Cuando la tienda reciba la transferencia, empieza a preparar tu pedido. Si no la recibe en 48 horas, el pedido se cancela. Si hace falta algo, te escribe al {phone}.")}</p>
+            {(!whatsapp.is_empty()).then(|| {
+                let text = format!("Hola, te mando el comprobante de la transferencia del pedido #{number}.");
+                let href = format!("{whatsapp}?text={}", url_encode(&text));
+                view! {
+                    <a class="btn btn-success mt-2" href=href target="_blank" rel="noopener">"Mandar el comprobante por WhatsApp"</a>
+                }
+            })}
         }.into_any(),
         _ => view! {
             {check}
@@ -1824,5 +1836,72 @@ fn ReceiptHead(
         <div class="card bg-base-100 shadow-sm"><div class="card-body items-center gap-2 py-10 text-center">
             {body}
         </div></div>
+    }
+}
+
+/// Codifica un texto para la dirección de WhatsApp (`?text=`).
+fn url_encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// Los datos para transferir, en filas: el alias y el monto con su botón
+/// "Copiar", y el titular si está cargado.
+#[component]
+fn TransferBox(info: String, total: i64) -> impl IntoView {
+    let mut lines = info.lines();
+    let alias = lines.next().unwrap_or("").trim().to_string();
+    let holder = lines
+        .find_map(|l| l.trim().strip_prefix("Titular:").map(|h| h.trim().to_string()))
+        .unwrap_or_default();
+    // El monto sin el signo, como se escribe en la app del banco.
+    let amount = format_price(total);
+    let plain = amount.trim_start_matches('$').trim().to_string();
+    view! {
+        <div class="w-full max-w-md divide-y divide-base-300 rounded-box border border-base-300 text-left">
+            <TransferRow label="Alias o CBU para transferir" value=alias.clone() copy=Some(alias) mono=true/>
+            {(!holder.is_empty()).then(|| view! { <TransferRow label="Titular" value=holder copy=None/> })}
+            <TransferRow label="Monto" value=amount copy=Some(plain)/>
+        </div>
+    }
+}
+
+#[component]
+fn TransferRow(
+    label: &'static str,
+    value: String,
+    copy: Option<String>,
+    #[prop(optional)] mono: bool,
+) -> impl IntoView {
+    let done = RwSignal::new(None::<bool>);
+    view! {
+        <div class="flex items-center gap-3 px-4 py-3">
+            <div class="min-w-0 flex-1">
+                <p class="text-xs text-base-content/60">{label}</p>
+                <p class="break-all font-semibold" class:font-mono=mono>{value}</p>
+            </div>
+            {copy.map(|text| {
+                let text = StoredValue::new(text);
+                view! {
+                    <button type="button" class="btn btn-sm btn-outline shrink-0"
+                        on:click=move |_| {
+                            text.with_value(|t| widgets::copy_text(t, move |ok| {
+                                done.set(Some(ok));
+                                set_timeout(move || done.set(None), std::time::Duration::from_millis(1800));
+                            }));
+                        }>
+                        <span role="status">{move || match done.get() {
+                            Some(true) => "¡Copiado!",
+                            Some(false) => "No se pudo copiar",
+                            None => "Copiar",
+                        }}</span>
+                    </button>
+                }
+            })}
+        </div>
     }
 }

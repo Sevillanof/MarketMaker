@@ -32,16 +32,63 @@ pub async fn move_order(
     let tenant = crate::products::server::require_store(&slug).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
     let pool = pool()?;
+    let before = db::orders::get(&pool, tenant.id, id).await.map_err(internal)?;
     if !db::orders::set_status(&pool, tenant.id, id, status)
         .await
         .map_err(internal)?
     {
         return Err(ServerFnError::new("Ese pedido no existe."));
     }
+    if let Some(o) = before {
+        tell_buyer(&pool, tenant.id, &tenant.name, &slug, o, status).await;
+    }
     if status == OrderStatus::Paid {
         return Ok(crate::shipments::ship_order(&pool, tenant.id, id).await);
     }
     Ok(None)
+}
+
+/// Le avisa al comprador cuando su pedido avanza: pago confirmado, enviado o
+/// listo para retirar. Solo hacia adelante, y nunca dos veces por lo mismo
+/// (si el dueño lo vuelve atrás y lo adelanta, no se repite). Los envíos de
+/// Andreani mandan su propio email con el seguimiento.
+#[cfg(feature = "ssr")]
+async fn tell_buyer(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+    store_name: &str,
+    slug: &str,
+    o: Order,
+    to: OrderStatus,
+) {
+    use crate::email::BuyerUpdate;
+    let from = o.status;
+    let unpaid = matches!(from, OrderStatus::New | OrderStatus::PendingPayment);
+    let what = match to {
+        OrderStatus::Paid if unpaid => BuyerUpdate::Paid,
+        OrderStatus::Shipped if from != OrderStatus::Delivered && from != OrderStatus::Shipped => {
+            match o.delivery {
+                Delivery::Pickup => BuyerUpdate::ReadyForPickup,
+                Delivery::Shipping => BuyerUpdate::Shipped,
+                Delivery::Andreani(_) => return,
+            }
+        }
+        _ => return,
+    };
+    if !db::orders::note_buyer_update(pool, tenant, &o.id, what.key())
+        .await
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let d = db::orders::delivery(pool, tenant).await.unwrap_or_default();
+    let whatsapp = db::auth::store_info(pool, tenant)
+        .await
+        .map(|i| i.whatsapp)
+        .unwrap_or_default();
+    crate::email::send(crate::email::update_to_buyer(
+        what, store_name, slug, &o, &d, &whatsapp,
+    ));
 }
 
 /// "Reintentar": vuelve a crear en Andreani el envío que falló.

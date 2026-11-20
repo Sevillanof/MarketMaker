@@ -496,6 +496,29 @@ pub async fn get_for_email(
 /// Cambia el estado de un pedido de la tienda. `false` si no existe. Al
 /// cancelar, las unidades vuelven al stock; al recuperar un cancelado, se
 /// descuentan otra vez (sin bajar de 0).
+/// Anota que al comprador ya se le avisó `what` ("pagado", "enviado"…).
+/// `false` si ya se le había avisado (o no está el pedido): no se repite.
+pub async fn note_buyer_update(
+    pool: &PgPool,
+    tenant: Uuid,
+    id: &str,
+    what: &str,
+) -> sqlx::Result<bool> {
+    let Ok(id) = Uuid::parse_str(id) else {
+        return Ok(false);
+    };
+    let r = sqlx::query(
+        "UPDATE orders SET buyer_updates = array_append(buyer_updates, $3)
+         WHERE tenant_id = $1 AND id = $2 AND NOT ($3 = ANY(buyer_updates))",
+    )
+    .bind(tenant)
+    .bind(id)
+    .bind(what)
+    .execute(pool)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
 pub async fn set_status(
     pool: &PgPool,
     tenant: Uuid,

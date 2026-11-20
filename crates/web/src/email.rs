@@ -663,6 +663,189 @@ pub fn shipped_to_buyer(store_name: &str, slug: &str, o: &Order, tracking: &str)
     }
 }
 
+/// Qué cambió en un pedido que el dueño movió a mano en Pedidos.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuyerUpdate {
+    /// Marcó "Ya me pagó" (transferencia o pago coordinado).
+    Paid,
+    /// Lo despachó (envío propio, no Andreani: ese manda su propio email).
+    Shipped,
+    /// Retiro en el local: ya está listo para que lo busquen.
+    ReadyForPickup,
+}
+
+impl BuyerUpdate {
+    /// Cómo queda anotado en el pedido, para no mandarlo dos veces.
+    pub fn key(self) -> &'static str {
+        match self {
+            BuyerUpdate::Paid => "pagado",
+            BuyerUpdate::Shipped => "enviado",
+            BuyerUpdate::ReadyForPickup => "para_retirar",
+        }
+    }
+}
+
+/// Rótulo chico en mayúsculas que separa las partes del email.
+fn label(text: &str) -> String {
+    format!(
+        r#"<p style="margin:28px 0 8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#71717a">{}</p>"#,
+        esc(text)
+    )
+}
+
+/// Los productos con la variante en una segunda línea, y el total.
+fn order_summary(o: &Order) -> (String, String) {
+    let cell = "padding:12px 0;border-bottom:1px solid #e4e4e7";
+    let mut html = format!(
+        r#"<table style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;border-top:1px solid #e4e4e7">"#
+    );
+    let mut text = String::new();
+    for i in &o.items {
+        let variant = domain::variant_label(&i.color, &i.size);
+        let name = domain::base_name(&i.name, &i.color, &i.size);
+        let second = if variant.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<br><span style="color:#71717a">{}</span>"#, esc(&variant))
+        };
+        html.push_str(&format!(
+            r#"<tr><td style="{cell}">{} × {}{second}</td><td style="{cell};text-align:right;vertical-align:top;white-space:nowrap">{}</td></tr>"#,
+            i.qty,
+            esc(name),
+            ui::format_price(i.total_cents())
+        ));
+        text.push_str(&format!("{} × {}  {}\n", i.qty, i.name, ui::format_price(i.total_cents())));
+    }
+    // Descuento y envío, para que la suma cierre con el total.
+    let mut extra = vec![];
+    if o.discount_cents > 0 {
+        extra.push((
+            "Descuento por transferencia".to_string(),
+            format!("−{}", ui::format_price(o.discount_cents)),
+        ));
+    }
+    if !matches!(o.delivery, Delivery::Pickup) {
+        extra.push(("Envío".to_string(), o.shipping_text(ui::format_price)));
+    }
+    for (what, amount) in &extra {
+        html.push_str(&format!(
+            r#"<tr><td style="padding:10px 0 0;color:#52525b">{}</td><td style="padding:10px 0 0;text-align:right;color:#52525b">{}</td></tr>"#,
+            esc(what),
+            esc(amount)
+        ));
+        text.push_str(&format!("{what}  {amount}\n"));
+    }
+    html.push_str(&format!(
+        r#"<tr><td style="padding:12px 0 0;font-weight:700">Total</td><td style="padding:12px 0 0;text-align:right;font-weight:700">{}</td></tr></table>"#,
+        ui::format_price(o.total_cents)
+    ));
+    text.push_str(&format!("Total  {}\n", ui::format_price(o.total_cents)));
+    (html, text)
+}
+
+/// Al comprador, cuando el dueño mueve su pedido: pago confirmado, enviado o
+/// listo para retirar. Con más aire que los demás emails: un rótulo por parte.
+pub fn update_to_buyer(
+    what: BuyerUpdate,
+    store_name: &str,
+    slug: &str,
+    o: &Order,
+    d: &domain::DeliverySettings,
+    whatsapp: &str,
+) -> Email {
+    let first = o.customer_name.split_whitespace().next().unwrap_or("");
+    let url = format!("{}/pedido/{}", store_url(slug), o.id);
+    let store = store_name;
+    let ask = if whatsapp.trim().is_empty() {
+        String::new()
+    } else {
+        " Si tenés alguna duda, escribile por WhatsApp.".to_string()
+    };
+    let pickup = matches!(o.delivery, Delivery::Pickup);
+    let (subject, title, intro) = match what {
+        BuyerUpdate::Paid => (
+            format!("Recibimos tu pago · pedido #{}", o.number),
+            if first.is_empty() {
+                "¡Listo! Recibimos tu pago".to_string()
+            } else {
+                format!("¡Listo, {first}! Recibimos tu pago")
+            },
+            if pickup {
+                format!("{store} confirmó tu pago y ya empieza a preparar tu pedido. Te avisamos por email cuando esté listo para retirar.")
+            } else {
+                format!("{store} confirmó tu pago y ya empieza a preparar tu pedido. Te avisamos por email cuando salga.")
+            },
+        ),
+        BuyerUpdate::Shipped => (
+            format!("Tu pedido #{} está en camino", o.number),
+            "Tu pedido está en camino".to_string(),
+            format!("{store} ya envió tu pedido.{ask}"),
+        ),
+        BuyerUpdate::ReadyForPickup => (
+            format!("Tu pedido #{} está listo para retirar", o.number),
+            "Tu pedido está listo para retirar".to_string(),
+            "Ya podés pasar a buscarlo. Llevá el número de pedido.".to_string(),
+        ),
+    };
+    // Dónde: la dirección del envío o la del local, con su horario.
+    let (place_label, mut place) = if pickup {
+        let mut lines = vec![];
+        if !d.pickup_address.trim().is_empty() {
+            lines.push(d.pickup_address.trim().to_string());
+        }
+        if !d.pickup_hours.trim().is_empty() {
+            lines.push(d.pickup_hours.trim().to_string());
+        }
+        ("Dónde retirarlo", lines)
+    } else {
+        let to = o.destination().unwrap_or_else(|| o.city.clone());
+        let l = if what == BuyerUpdate::Shipped { "Lo enviamos a" } else { "Envío a domicilio" };
+        (l, if to.trim().is_empty() { vec![] } else { vec![to] })
+    };
+    if what == BuyerUpdate::Shipped && !whatsapp.trim().is_empty() {
+        place.push(format!("WhatsApp de la tienda: {}", whatsapp.trim()));
+    }
+    let (lines_html, lines_text) = order_summary(o);
+    let place_html = if place.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"{}<p style="margin:0;color:#3f3f46;line-height:1.6;font-size:14px">{}</p>"#,
+            label(place_label),
+            place.iter().map(|l| esc(l)).collect::<Vec<_>>().join("<br>")
+        )
+    };
+    let html = format!(
+        r#"<!doctype html><html lang="es"><body style="margin:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+<div style="max-width:560px;margin:0 auto;padding:32px 16px">
+<p style="font-weight:700;font-size:18px;margin:0 0 16px">{}</p>
+<div style="background:#fff;border-radius:12px;padding:32px 28px">
+<h1 style="font-size:22px;line-height:1.3;margin:0 0 12px">{}</h1>
+<p style="margin:0;color:#52525b;line-height:1.6;font-size:15px">{}</p>
+{}{lines_html}{place_html}
+<p style="margin:32px 0 0"><a href="{}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:8px">Ver mi pedido</a></p></div>
+<p style="color:#71717a;font-size:12px;margin:20px 0 0;text-align:center">Hecho con MarketMaker</p>
+</div></body></html>"#,
+        esc(store),
+        esc(&title),
+        esc(&intro),
+        label(&format!("Tu pedido #{}", o.number)),
+        esc(&url)
+    );
+    let text = format!(
+        "{title}\n{intro}\n\nTu pedido #{}\n{lines_text}\n{}{}\n\nTu pedido: {url}\n",
+        o.number,
+        if place.is_empty() { String::new() } else { format!("{place_label}:\n") },
+        place.join("\n")
+    );
+    Email {
+        to: vec![o.email.clone()],
+        subject,
+        html,
+        text,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -587,7 +587,9 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     let look = use_context::<domain::CardOptions>().unwrap_or_default();
     match look.card.as_str() {
         "full" => return product_page::FullCard(product, show_price, &look).into_any(),
-        "clean" => return product_page::CleanCard(product, show_price).into_any(),
+        "clean" => {
+            return product_page::CleanCard(product, show_price, look.card_favorite).into_any()
+        }
         _ => {}
     }
     let open = use_context::<OpenProduct>();
@@ -598,6 +600,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     let off = show_price.then(|| product.discount_pct()).flatten();
     let cart_product = product.clone();
     let fit = product.fit(&product.image_url);
+    let heart = look.card_favorite.then(|| (product.id.clone(), product.name.clone()));
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
         <Card>
@@ -605,6 +608,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
                 <div class="absolute inset-0">
                     <Image src=product.image_url.clone() alt=product.name.clone() fit/>
                 </div>
+                {heart.map(|(product_id, name)| view! { <FavoriteHeart product_id name/> })}
                 <div class="absolute left-2 top-2 flex flex-col items-start gap-1">
                     {sold_out.then(|| view! { <span class="badge badge-neutral">"Agotado"</span> })}
                     {few_left.map(|t| view! { <span class="badge badge-warning">{t}</span> })}
@@ -1145,7 +1149,7 @@ fn cols_2xl(n: usize) -> &'static str {
 }
 
 /// Copia `text` al portapapeles y avisa con `done(true)` o `done(false)`.
-fn copy_text(text: &str, done: impl Fn(bool) + 'static) {
+pub fn copy_text(text: &str, done: impl Fn(bool) + 'static) {
     #[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::{closure::Closure, JsValue};

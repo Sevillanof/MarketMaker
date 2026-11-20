@@ -168,10 +168,13 @@ fn HomePage() -> impl IntoView {
             {move || Suspend::new(async move {
                 let me = me.await.ok().flatten();
                 match page.await {
-                    Ok(view) if view.published == 0 => view! {
-                        <account::OwnerBar me/>
-                        <StoreMeta view=view.clone()/>
-                        <StoreSoon name=view.store_name.clone()/>
+                    Ok(view) if view.published == 0 => {
+                        let owner = me.as_ref().is_some_and(|m| m.can_edit);
+                        view! {
+                            <account::OwnerBar me/>
+                            <StoreMeta view=view.clone()/>
+                            <StoreSoon name=view.store_name.clone() owner/>
+                        }
                     }
                     .into_any(),
                     Ok(view) => {
@@ -198,14 +201,22 @@ fn HomePage() -> impl IntoView {
 }
 
 /// La tienda todavía no se publicó: un aviso amable en lugar de una página
-/// vacía.
+/// vacía. A quien puede editarla, además, le explica por qué ve esto y lo
+/// lleva al editor a publicarla.
 #[component]
-fn StoreSoon(name: String) -> impl IntoView {
+fn StoreSoon(name: String, owner: bool) -> impl IntoView {
     view! {
-        <div class="grid min-h-screen place-items-center bg-base-200 px-4">
-            <div class="flex max-w-md flex-col items-center gap-3 text-center">
+        <div class="grid min-h-screen place-items-center bg-base-200 px-4 py-10">
+            <div class="flex max-w-xl flex-col items-center gap-3 text-center">
                 <h1 class="text-3xl font-bold">{name}</h1>
                 <p class="text-lg text-base-content/75">"Estamos preparando la tienda. Volvé pronto."</p>
+                {owner.then(|| view! {
+                    <div class="mt-5 flex flex-col items-start gap-2 rounded-box border border-base-300 bg-base-100 p-5 text-left">
+                        <p class="font-semibold">"Esto es lo que ven tus clientes: tu tienda todavía no está publicada."</p>
+                        <p class="text-sm text-base-content/75">"Cuando la publiques desde el editor, acá van a ver tu diseño y tus productos."</p>
+                        <a class="btn btn-primary btn-sm mt-2" href="/editor">"Ir al editor para publicar"</a>
+                    </div>
+                })}
             </div>
         </div>
     }
