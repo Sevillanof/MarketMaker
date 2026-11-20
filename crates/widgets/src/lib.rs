@@ -112,7 +112,7 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         | Widget::CategoryDrop(_)
         | Widget::CategoryPage(_) => categories::render(&node.widget, ctx),
         Widget::FeaturedProduct(p) => {
-            view! { <FeaturedProductWidget props=p.clone() products=ctx.products.clone()/> }
+            view! { <FeaturedProductWidget props=p.clone() products=ctx.products.clone() editing/> }
                 .into_any()
         }
         Widget::Navbar(p) => {
@@ -643,8 +643,20 @@ pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> imp
 }
 
 #[component]
-pub fn FeaturedProductWidget(props: FeaturedProductProps, products: Vec<Product>) -> impl IntoView {
-    let product = products.into_iter().find(|p| p.id == props.product_id);
+pub fn FeaturedProductWidget(
+    props: FeaturedProductProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
+    let chosen = products.iter().position(|p| p.id == props.product_id);
+    // En la tienda nunca se ve el «Elegí un producto» para el dueño: si no
+    // eligió ninguno (o lo borró) se muestra el primero que hay en stock.
+    let index = chosen.or_else(|| {
+        (!editing)
+            .then(|| products.iter().position(|p| p.in_stock).or((!products.is_empty()).then_some(0)))
+            .flatten()
+    });
+    let product = index.map(|i| products[i].clone());
     match product {
         Some(p) => view! {
             <div class="mk-box mk-pad h-full rounded-box">
@@ -1792,13 +1804,14 @@ pub fn split_seconds(total: i64) -> [i64; 4] {
 pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
     // `None` hasta que corre en el navegador: el servidor y la hidratación
     // dibujan el skeleton, y después el reloj.
-    let left = RwSignal::new(None::<i64>);
+    // `Some(None)`: la fecha está vacía o no se entiende.
+    let left = RwSignal::new(None::<Option<i64>>);
     let ends_at = props.ends_at.clone();
     Effect::new(move |_| {
-        left.set(seconds_left(&ends_at));
+        left.set(Some(seconds_left(&ends_at)));
         let ends_at = ends_at.clone();
         let handle = set_interval_with_handle(
-            move || left.set(seconds_left(&ends_at)),
+            move || left.set(Some(seconds_left(&ends_at))),
             std::time::Duration::from_secs(1),
         );
         on_cleanup(move || {
@@ -1824,8 +1837,13 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
                     </div>
                 }
                 .into_any(),
-                Some(0) => view! { <p class="text-xl font-semibold">{ended_text.clone()}</p> }.into_any(),
-                Some(s) => {
+                // Sin fecha: al dueño se le pide que la elija; en la tienda no
+                // se dibujan cajas vacías.
+                Some(None) => editing
+                    .then(|| view! { <p class="text-sm font-semibold opacity-80">"Elegí cuándo termina la oferta"</p> })
+                    .into_any(),
+                Some(Some(0)) => view! { <p class="text-xl font-semibold">{ended_text.clone()}</p> }.into_any(),
+                Some(Some(s)) => {
                     let parts = split_seconds(s);
                     view! {
                         <div class="grid auto-cols-max grid-flow-col gap-3">
@@ -2245,7 +2263,9 @@ pub fn ContactWidget(props: ContactProps, editing: bool) -> impl IntoView {
 pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
     let brand = or_store(&props.brand, &store.name);
-    let legal = if props.legal.is_empty() && !store.name.is_empty() {
+    let legal = if (props.legal.trim().is_empty() || props.legal.ends_with("Nombre de tu tienda"))
+        && !store.name.is_empty()
+    {
         format!("© {}", store.name)
     } else {
         props.legal.clone()
@@ -2308,7 +2328,9 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
 
 /// El valor del bloque, o el de la tienda si el bloque lo dejó vacío.
 fn or_store(own: &str, store: &str) -> String {
-    if own.trim().is_empty() { store } else { own }.to_string()
+    // El texto de ejemplo de bloques viejos también cede al dato de la tienda.
+    let placeholder = own.trim().is_empty() || own.trim() == "Nombre de tu tienda";
+    if placeholder && !store.is_empty() { store } else { own }.to_string()
 }
 
 #[cfg(test)]

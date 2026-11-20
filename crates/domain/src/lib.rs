@@ -856,7 +856,34 @@ impl Product {
 }
 
 fn url_ok(s: &str) -> bool {
-    s.is_empty() || s.starts_with("https://") || s.starts_with("http://") || s.starts_with('/')
+    s.is_empty()
+        || s.starts_with("https://")
+        || s.starts_with("http://")
+        || s.starts_with('/')
+        || s.starts_with('#')
+        || s.starts_with("mailto:")
+        || s.starts_with("tel:")
+}
+
+/// Completa un enlace escrito a mano: `www.x.com` o `x.com/a` → `https://…`,
+/// `hola@x.com` → `mailto:…`, `ofertas` → `/ofertas`. Lo que ya es válido
+/// o no se entiende queda igual (y lo marca [`field_error`]).
+pub fn tidy_link(s: &str) -> String {
+    let s = s.trim();
+    if s.is_empty() || url_ok(s) || s.contains(char::is_whitespace) {
+        return s.to_string();
+    }
+    let host = s.split(['/', '?', '#']).next().unwrap_or_default();
+    if s.contains('@') && !s.contains('/') && !s.contains(':') {
+        return format!("mailto:{s}");
+    }
+    if host.contains('.') && !host.contains(':') {
+        return format!("https://{s}");
+    }
+    if !s.contains(':') {
+        return format!("/{s}");
+    }
+    s.to_string()
 }
 
 /// `AAAA-MM-DDTHH:MM` (o con segundos), o vacío.
@@ -895,7 +922,7 @@ pub fn field_error(kind: &FieldKind, v: Option<&serde_json::Value>) -> Option<St
         FieldKind::Url => match v.and_then(|v| v.as_str()) {
             Some(s) if url_ok(s) => None,
             Some(_) => {
-                Some("Escribí una dirección que empiece con https://, http:// o /.".to_string())
+                Some("Escribí una página de tu tienda (/ofertas), una dirección (https://…) o un email.".to_string())
             }
             None => Some("Tiene que ser un texto.".to_string()),
         },
@@ -1682,7 +1709,7 @@ mod tests {
         if let Widget::Banner(b) = &mut doc.nodes[0].widget {
             b.button_href = "javascript:alert(1)".into();
         }
-        assert_invalid(&doc, "Banner › Enlace del botón: Escribí una dirección");
+        assert_invalid(&doc, "Banner › Enlace del botón: Escribí una página de tu tienda");
     }
 
     #[test]
@@ -1713,6 +1740,14 @@ mod tests {
 
     #[test]
     fn validates_datetime() {
+        assert_eq!(tidy_link(" www.google.com "), "https://www.google.com");
+        assert_eq!(tidy_link("instagram.com/macetas"), "https://instagram.com/macetas");
+        assert_eq!(tidy_link("hola@macetas.com.ar"), "mailto:hola@macetas.com.ar");
+        assert_eq!(tidy_link("ofertas"), "/ofertas");
+        assert_eq!(tidy_link("#contacto"), "#contacto");
+        assert_eq!(tidy_link("javascript:alert(1)"), "javascript:alert(1)");
+        assert!(!url_ok("javascript:alert(1)"));
+        assert!(url_ok("mailto:hola@x.com") && url_ok("tel:+541155551234") && url_ok("#a"));
         assert!(datetime_ok("2026-12-31T23:59"));
         assert!(datetime_ok("2026-12-31T23:59:00"));
         assert!(datetime_ok(""));

@@ -45,22 +45,40 @@ fn empty_value(kind: &FieldKind) -> serde_json::Value {
     }
 }
 
-/// Elemento nuevo para una lista: copia del último (así hereda imagen y
-/// estilo) o, si está vacía, uno con los valores iniciales de cada campo.
+/// Elemento nuevo para una lista: hereda del último la imagen y las opciones
+/// (estilo, estrellas, íconos), pero no sus textos, enlaces ni sublistas.
+/// Antes era una copia exacta: en el menú quedaban ocho «Inicio» iguales,
+/// cada uno con el desplegable del anterior. Si la lista está vacía, uno con
+/// los valores iniciales de cada campo.
 pub(crate) fn new_list_item(items: &[serde_json::Value], item: &[Field]) -> serde_json::Value {
-    items.last().cloned().unwrap_or_else(|| {
-        serde_json::Value::Object(
+    let Some(mut next) = items.last().cloned() else {
+        return serde_json::Value::Object(
             item.iter()
                 .map(|f| (f.key.to_string(), empty_value(&f.kind)))
                 .collect(),
-        )
-    })
+        );
+    };
+    if let Some(obj) = next.as_object_mut() {
+        for f in item {
+            let keep_image = matches!(f.kind, FieldKind::Url) && f.key.ends_with("image_url");
+            let clear = match f.kind {
+                FieldKind::Text { .. } | FieldKind::LongText { .. } => true,
+                FieldKind::Url => !keep_image,
+                FieldKind::List { min, .. } => min == 0,
+                _ => false,
+            };
+            if clear {
+                obj.insert(f.key.to_string(), empty_value(&f.kind));
+            }
+        }
+    }
+    next
 }
 
 /// Explicación breve de los campos que no se entienden solos.
 fn help(key: &str) -> Option<&'static str> {
     Some(match key {
-        "button_href" | "href" => "Adónde lleva al hacer clic. Una página de tu tienda (/ofertas) o una dirección completa (https://…).",
+        "button_href" | "href" => "Adónde lleva al hacer clic: una página de tu tienda (/ofertas), una dirección (www.…) o un email.",
         "button_label" => "Si lo dejás vacío, no se muestra el botón.",
         "alt" => "Describí la imagen para quien no la puede ver. Ayuda también a los buscadores.",
         "autoplay" => "Con 0 las diapositivas solo cambian cuando el cliente las pasa.",
@@ -267,7 +285,15 @@ fn FieldInput(
                 aria-describedby=described.clone()
                 prop:value=text
                 on:input=move |ev| set_str(event_target_value(&ev))
-                on:blur=move |_| end()
+                on:blur=move |_| {
+                    // `www.algo.com` → `https://www.algo.com`, `ofertas` → `/ofertas`…
+                    let typed = text();
+                    let tidy = domain::tidy_link(&typed);
+                    if tidy != typed {
+                        set_str(tidy);
+                    }
+                    end();
+                }
             />
         }
         .into_any(),
@@ -879,6 +905,22 @@ mod tests {
             matches!(&doc.nodes[0].widget, Widget::Faq(f) if f.items.len() == 4 && f.items[3].question == "¿Nueva?")
         );
         assert_eq!(domain::validate(&doc), Ok(()));
+    }
+
+    #[test]
+    fn new_list_item_keeps_the_photo_but_not_the_texts() {
+        let fields = Widget::defaults("Carousel").unwrap().fields();
+        let FieldKind::List { item, .. } = &fields[0].kind else {
+            panic!("se esperaba una lista");
+        };
+        let last = serde_json::json!({
+            "image_url": "/media/a.avif", "title": "Ofertas", "subtitle": "Hasta el domingo",
+            "button_label": "Ver", "button_href": "/ofertas"
+        });
+        let v = new_list_item(std::slice::from_ref(&last), item);
+        assert_eq!(v["image_url"], "/media/a.avif");
+        assert_eq!(v["title"], "");
+        assert_eq!(v["button_href"], "");
     }
 
     #[test]
