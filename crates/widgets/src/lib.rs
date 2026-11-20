@@ -2180,7 +2180,7 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
 
     view! {
         <div class="mk-box mk-countdown @container flex h-full flex-col items-center justify-center gap-3 overflow-hidden rounded-box p-4 text-center">
-            <h2 class="mk-title text-2xl font-bold line-clamp-1 @xl:text-3xl">{props.title.clone()}</h2>
+            <h2 class="mk-title text-xl leading-tight font-bold text-balance line-clamp-2 @md:text-2xl @xl:line-clamp-1 @xl:text-3xl">{props.title.clone()}</h2>
             {(!props.subtitle.is_empty()).then(|| view! {
                 <p class="hidden line-clamp-2 opacity-90 @xl:block">{props.subtitle.clone()}</p>
             })}

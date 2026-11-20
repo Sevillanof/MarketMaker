@@ -448,7 +448,7 @@ fn open_cover(id: String, name: &str) -> impl IntoView {
 
 /// Debajo del precio de una tarjeta: los puntos de color del producto (hasta
 /// 5 y «+N»), «3 colores» si algún color no tiene punto, o los talles si solo
-/// tiene talles. Sin variantes no muestra nada.
+/// tiene talles. Sin variantes deja el lugar si hace falta para alinear.
 #[component]
 pub fn ColorDots(product: Product) -> impl IntoView {
     const MAX: usize = 5;
@@ -463,7 +463,7 @@ pub fn ColorDots(product: Product) -> impl IntoView {
         if v.colors.iter().any(|c| c.hex.is_empty()) {
             let n = v.colors.len();
             return view! {
-                <p class="mk-cdots mt-1.5 truncate text-xs opacity-70" title=names>
+                <p class="mk-cdots mt-1.5 min-h-4 truncate text-xs opacity-70" title=names>
                     {if n == 1 { "1 color".to_string() } else { format!("{n} colores") }}
                 </p>
             }
@@ -483,7 +483,7 @@ pub fn ColorDots(product: Product) -> impl IntoView {
             })
             .collect_view();
         return view! {
-            <p class="mk-cdots mt-1.5 flex items-center gap-1.5">
+            <p class="mk-cdots mt-1.5 flex min-h-4 items-center gap-1.5">
                 <span class="sr-only">{format!("Colores: {names}")}</span>
                 {dots}
                 {(more > 0).then(|| view! { <span aria-hidden="true" class="text-xs opacity-70">{format!("+{more}")}</span> })}
@@ -493,11 +493,15 @@ pub fn ColorDots(product: Product) -> impl IntoView {
     }
     match (v.sizes.first(), v.sizes.last()) {
         (Some(a), Some(z)) if a != z => view! {
-            <p class="mk-cdots mt-1.5 truncate text-xs opacity-70">{format!("Talles {a} al {z}")}</p>
+            <p class="mk-cdots mt-1.5 min-h-4 truncate text-xs opacity-70">{format!("Talles {a} al {z}")}</p>
         }
         .into_any(),
-        (Some(a), _) => view! { <p class="mk-cdots mt-1.5 truncate text-xs opacity-70">{format!("Talle {a}")}</p> }.into_any(),
-        _ => ().into_any(),
+        (Some(a), _) => view! { <p class="mk-cdots mt-1.5 min-h-4 truncate text-xs opacity-70">{format!("Talle {a}")}</p> }.into_any(),
+        // Sin variantes: un renglón vacío que solo ocupa lugar si otra
+        // tarjeta del mismo bloque muestra colores o talles (ver
+        // `.mk-cdots-none` en el CSS). Así todas las fotos de la fila quedan
+        // del mismo alto.
+        _ => view! { <p class="mk-cdots-none mt-1.5 hidden h-4" aria-hidden="true"></p> }.into_any(),
     }
 }
 

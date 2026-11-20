@@ -541,7 +541,7 @@ fn AccountTabs(active: &'static str) -> impl IntoView {
         let on = key == active;
         view! {
             <a href=href aria-current=on.then_some("page")
-                class=if on { "whitespace-nowrap border-b-2 border-primary px-4 py-2.5 text-sm font-semibold text-primary" } else { "whitespace-nowrap border-b-2 border-transparent px-4 py-2.5 text-sm font-semibold text-base-content/70 hover:text-base-content" }>
+                class=if on { "flex-1 whitespace-nowrap border-b-2 border-primary px-2 py-2.5 text-center text-sm sm:flex-none sm:px-4 font-semibold text-primary" } else { "flex-1 whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-center text-sm sm:flex-none sm:px-4 font-semibold text-base-content/70 hover:text-base-content" }>
                 {label}
             </a>
         }
@@ -840,6 +840,10 @@ fn ProfileForm(view: domain::PageView, me: BuyerMe, section: &'static str) -> im
         ev.prevent_default();
         saved.set(false);
         problem.set(None);
+        if let Some(p) = domain::saved_phone_problem(&phone.get_untracked()) {
+            problem.set(Some(p.to_string()));
+            return;
+        }
         busy.set(true);
         let profile = BuyerProfile {
             name: name.get_untracked(),
@@ -976,11 +980,29 @@ pub fn BuyerEnterPage() -> impl IntoView {
     let page = Resource::new(|| (), |_| crate::load_page("home".to_string()));
     let query = leptos_router::hooks::use_query_map();
     let failed = RwSignal::new(false);
+    // Sin enlace (entró desde el historial o un favorito del navegador): no
+    // hay nada vencido que avisar, solo el formulario para ingresar.
+    let no_link = RwSignal::new(false);
     Effect::new(move |_| {
         let key = query.with_untracked(|q| q.get("k").unwrap_or_default());
+        // El enlace que se pidió al guardar un favorito abre Favoritos.
+        let to = if query.with_untracked(|q| q.get("f").is_some()) {
+            "/mi-cuenta/favoritos"
+        } else {
+            "/mi-cuenta/pedidos"
+        };
+        if key.trim().is_empty() {
+            spawn_local(async move {
+                match buyer_account().await {
+                    Ok(Some(_)) => _ = window().location().set_href(to),
+                    _ => no_link.set(true),
+                }
+            });
+            return;
+        }
         spawn_local(async move {
             match buyer_redeem(key).await {
-                Ok(true) => _ = window().location().set_href("/mi-cuenta/pedidos"),
+                Ok(true) => _ = window().location().set_href(to),
                 _ => failed.set(true),
             }
         });
@@ -995,7 +1017,9 @@ pub fn BuyerEnterPage() -> impl IntoView {
                         view! {
                             <AccountFrame view>
                                 <div class="card mx-auto w-full max-w-md bg-base-100 shadow-sm"><div class="card-body p-6">
-                                    {move || if failed.get() {
+                                    {move || if no_link.get() {
+                                        view! { <SignInForm store_name=name.clone() title_id="mk-enter-title"/> }.into_any()
+                                    } else if failed.get() {
                                         view! {
                                             <div class="flex flex-col gap-1">
                                                 <h1 class="mk-h text-xl font-bold">"Este enlace ya no sirve"</h1>

@@ -420,6 +420,23 @@ pub fn phone_digits(s: &str) -> String {
     s.chars().filter(char::is_ascii_digit).collect()
 }
 
+/// Qué está mal en un teléfono que la persona guarda en su cuenta (vacío
+/// vale: es opcional). `None` si está bien.
+pub fn saved_phone_problem(phone: &str) -> Option<&'static str> {
+    let phone = phone.trim();
+    if phone.is_empty() {
+        return None;
+    }
+    let digits = phone_digits(phone).len();
+    if digits == 0 {
+        Some("Escribí solo números, por ejemplo 11 5555-1234.")
+    } else if !(8..=15).contains(&digits) {
+        Some("Revisá el teléfono, con característica: por ejemplo 11 5555-1234.")
+    } else {
+        None
+    }
+}
+
 /// Limpia el formulario y devuelve los problemas de cada campo (vacío si
 /// está todo bien). Se usa igual en el navegador y en el servidor.
 pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldError> {

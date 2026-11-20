@@ -533,12 +533,31 @@ pub fn product_matches(p: &Product, query: &str) -> bool {
         return true;
     }
     let hay = fold(&format!(
-        "{} {} {}",
+        "{} {} {} {} {}",
         p.name,
         p.description,
-        p.tags.join(" ")
+        p.tags.join(" "),
+        p.category,
+        p.subcategory
     ));
-    q.split_whitespace().all(|w| hay.contains(w))
+    // Cada palabra, tal cual o en singular: «tazas» encuentra «Taza».
+    q.split_whitespace()
+        .all(|w| hay.contains(w) || singular(w).is_some_and(|s| hay.contains(s)))
+}
+
+/// El singular de una palabra en plural («tazas», «remeras»; «relojes»),
+/// para buscar. `None` si no termina en s o queda demasiado corta.
+fn singular(w: &str) -> Option<&str> {
+    let s = w.strip_suffix('s')?;
+    // «relojes» también prueba «reloj»; como se busca por "contiene",
+    // alcanza con la raíz más corta.
+    let s = match s.strip_suffix('e') {
+        Some(root) if root.chars().count() >= 3 && !root.ends_with(['a', 'e', 'i', 'o', 'u']) => {
+            root
+        }
+        _ => s,
+    };
+    (s.chars().count() >= 3).then_some(s)
 }
 
 /// Minúsculas y sin tildes, para buscar.
@@ -619,6 +638,24 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn search_finds_plurals_and_categories() {
+        let p = Product {
+            name: "Taza de cerámica".into(),
+            category: "Hogar".into(),
+            ..Product::default()
+        };
+        assert!(product_matches(&p, "tazas"));
+        assert!(product_matches(&p, "hogar"));
+        assert!(product_matches(&p, "TAZA ceramica"));
+        assert!(!product_matches(&p, "relojes"));
+        let r = Product {
+            name: "Reloj analógico".into(),
+            ..Product::default()
+        };
+        assert!(product_matches(&r, "relojes"));
+    }
 
     #[test]
     fn counts_tags_most_used_first() {
