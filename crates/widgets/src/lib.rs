@@ -414,10 +414,10 @@ fn long_name(name: &str) -> bool {
     name.chars().count() > 44
 }
 
-/// Un nombre largo necesita tres renglones: su bloque crece y lo que está
-/// debajo baja lo mismo.
+/// El bloque del nombre crece según los renglones que necesita (uno, dos
+/// o tres) y lo que está debajo baja lo mismo: así un nombre corto no deja
+/// un hueco antes del precio y uno largo no se corta.
 fn fit_name(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
-    const ROWS: u8 = 11;
     let Some(n) = nodes
         .iter()
         .find(|n| matches!(n.widget, Widget::ProductName(_)))
@@ -425,15 +425,22 @@ fn fit_name(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
     else {
         return nodes;
     };
-    if !long_name(&p.name) || n.size.h >= ROWS {
+    let rows: u8 = if long_name(&p.name) {
+        12
+    } else if p.name.chars().count() > 22 {
+        9
+    } else {
+        0
+    };
+    if n.size.h >= rows {
         return nodes;
     }
-    let extra = u16::from(ROWS - n.size.h);
+    let extra = u16::from(rows - n.size.h);
     let bottom = n.pos.y + u16::from(n.size.h);
     let (nx, nw) = (n.pos.x, n.size.w);
     for m in &mut nodes {
         if m.id == n.id {
-            m.size.h = ROWS;
+            m.size.h = rows;
         } else if m.pos.y >= bottom && m.pos.x < nx + nw && nx < m.pos.x + m.size.w {
             m.pos.y += extra;
         }

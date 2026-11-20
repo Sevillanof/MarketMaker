@@ -479,9 +479,9 @@ impl Default for ProductModal {
         Self {
             nodes: vec![
                 at("m1", "ProductImage", 0, 0, 27, 48),
-                at("m2", "ProductName", 27, 0, 21, 9),
-                at("m3", "ProductPrice", 27, 9, 21, 6),
-                at("m4", "ProductDescription", 27, 15, 21, 26),
+                at("m2", "ProductName", 27, 0, 21, 6),
+                at("m3", "ProductPrice", 27, 6, 21, 6),
+                at("m4", "ProductDescription", 27, 12, 21, 29),
                 at("m5", "ProductButton", 27, 41, 21, 7),
             ],
             open: String::new(),

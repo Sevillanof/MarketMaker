@@ -117,7 +117,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         }
         return view! {
             <div data-theme=theme class="mk-store flex min-h-screen flex-col bg-base-200 text-base-content" style=style>
-                {(!navs.is_empty()).then(|| grid(navs))}
+                {(!navs.is_empty()).then(|| view! { <div class="w-full">{grid(navs)}</div> })}
                 <main class="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
                     <h1 class="mk-h text-2xl font-bold">"No encontramos esta página"</h1>
                     <p class="text-base-content/75">"Puede que la dirección esté mal escrita o que la página ya no exista."</p>
@@ -125,7 +125,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
                         <a class="btn btn-primary" href="/">"Ir al inicio"</a>
                     </div>
                 </main>
-                {has_footer.then(|| grid(foots))}
+                {has_footer.then(|| view! { <div class="w-full">{grid(foots)}</div> })}
                 {legal(has_footer)}
                 <CartBar/>
                 <CartDrawer/>
