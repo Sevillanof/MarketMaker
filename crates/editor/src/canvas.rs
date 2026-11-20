@@ -397,6 +397,21 @@ pub(crate) fn Canvas(
         })
     });
 
+    // El alto elegido es un mínimo: si el contenido de un bloque no entra
+    // (un texto largo, más preguntas, cifras que bajan de renglón), el bloque
+    // crece lo justo y los de abajo bajan. Se mide después de dibujar cada
+    // cambio; mientras se arrastra no se toca nada.
+    Effect::new(move |_| {
+        state.doc.track();
+        state.layer.track();
+        if drag.with(Option::is_some) {
+            return;
+        }
+        set_timeout(
+            move || fit_contents(state, drag),
+            std::time::Duration::from_millis(120),
+        );
+    });
     // Mide el lienzo (para la página) y el cuadro de la ficha (para la ficha).
     let observer_slot = std::rc::Rc::new(std::cell::RefCell::new(None::<web_sys::ResizeObserver>));
     Effect::new(move |_| {
@@ -1562,4 +1577,63 @@ fn device_class(on: bool) -> &'static str {
     } else {
         "btn btn-sm join-item btn-ghost gap-1.5"
     }
+}
+
+/// Bloques que crecen cuando su contenido no entra: los de texto y listas.
+/// Los de fotos (banner con imagen de fondo, galerías, productos) mantienen
+/// su alto, porque su foto se acomoda sola. Es la misma lista que en la
+/// tienda (ver `.mk-grid` en el CSS).
+pub(crate) const FIT_SELECTOR: &str = ".mk-text, .mk-benefits, .mk-ann, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-tagrow, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social, .mk-contact, .mk-footer, .mk-testi, .mk-pprice, .mk-banner";
+
+/// Agranda los bloques de la capa que se edita cuyo contenido no entra.
+fn fit_contents(state: EditorState, drag: RwSignal<Option<Drag>>) {
+    if drag.with_untracked(Option::is_some) {
+        return;
+    }
+    let Ok(list) = document().query_selector_all("#mk-canvas .mk-anode[data-node-id]") else {
+        return;
+    };
+    let mut grow: Vec<(String, i32)> = Vec::new();
+    for i in 0..list.length() {
+        let Some(el) = list
+            .item(i)
+            .and_then(|n| n.dyn_into::<web_sys::Element>().ok())
+        else {
+            continue;
+        };
+        let Some(id) = el.get_attribute("data-node-id") else {
+            continue;
+        };
+        let Some(root) = el.query_selector(".mk-content > *").ok().flatten() else {
+            continue;
+        };
+        // La raíz del bloque (la que corta lo que sobra), si es de los que crecen.
+        let fit = if root.matches(FIT_SELECTOR).unwrap_or(false) {
+            Some(root)
+        } else {
+            root.query_selector(FIT_SELECTOR).ok().flatten()
+        };
+        let Some(fit) = fit else {
+            continue;
+        };
+        // En píxeles de diseño: la escala del lienzo no cambia scrollHeight.
+        let extra = fit.scroll_height() - fit.client_height();
+        if extra > 2 {
+            let rows = (extra + i32::from(ROW_PX) - 1) / i32::from(ROW_PX);
+            grow.push((id, rows));
+        }
+    }
+    if grow.is_empty() {
+        return;
+    }
+    state.apply_fit(|d| {
+        let layer = state.layer.get_untracked();
+        let nodes = d.layer_mut(layer);
+        for (id, rows) in &grow {
+            if let Some(n) = nodes.iter().find(|n| n.id == *id) {
+                let (w, h) = (i32::from(n.size.w), i32::from(n.size.h) + rows);
+                grid::resize_node(nodes, id, w, h);
+            }
+        }
+    });
 }

@@ -503,6 +503,51 @@ fn BuyBar(product: Product, style: String, editing: bool, on_close: Callback<()>
     }
 }
 
+/// «Redes y WhatsApp» con el botón flotante con texto: en la tienda solo se
+/// ve el botón fijo en la esquina, así que el bloque no ocupa lugar.
+fn floats_alone(node: &Node) -> bool {
+    matches!(&node.widget, Widget::Social(p) if p.variant == "b")
+}
+
+/// Las filas que ocupan solo bloques flotantes ([`floats_alone`]) se quitan
+/// y lo de abajo sube: si no, quedaba una franja vacía en la tienda.
+fn collapse_floating(nodes: &[Node]) -> Vec<Node> {
+    if !nodes.iter().any(floats_alone) {
+        return nodes.to_vec();
+    }
+    let span = |n: &Node| {
+        (
+            u32::from(n.pos.y),
+            u32::from(n.pos.y) + u32::from(n.size.h.max(1)),
+        )
+    };
+    // Filas vacías de verdad: las de un flotante que no pisa ningún otro bloque.
+    let mut empty: Vec<u32> = Vec::new();
+    for f in nodes.iter().filter(|n| floats_alone(n)) {
+        let (a, b) = span(f);
+        for r in a..b {
+            let used = nodes.iter().any(|n| {
+                let (y0, y1) = span(n);
+                !floats_alone(n) && y0 <= r && r < y1
+            });
+            if !used && !empty.contains(&r) {
+                empty.push(r);
+            }
+        }
+    }
+    nodes
+        .iter()
+        .map(|n| {
+            let mut n = n.clone();
+            if !floats_alone(&n) {
+                let above = empty.iter().filter(|&&r| r < u32::from(n.pos.y)).count();
+                n.pos.y -= u16::try_from(above).unwrap_or(0);
+            }
+            n
+        })
+        .collect()
+}
+
 /// Variables CSS de posición de un nodo para `.mk-node`: `--x:1; --y:49; --w:48; --h:60`.
 /// `--x` y `--y` suman 1 a `pos` porque las líneas de la grilla CSS empiezan en 1.
 pub fn node_style(node: &Node) -> String {
@@ -521,8 +566,17 @@ pub fn node_style(node: &Node) -> String {
 /// lo mismo, y el menú queda encima. En el celular, apilados, el bloque sube
 /// con un margen negativo (ver `.mk-node-under`).
 pub fn page_nodes(nodes: &[Node]) -> Vec<(&'static str, String)> {
-    let mut out: Vec<(&'static str, String)> =
-        nodes.iter().map(|n| ("mk-node", node_style(n))).collect();
+    let nodes = &collapse_floating(nodes);
+    let mut out: Vec<(&'static str, String)> = nodes
+        .iter()
+        .map(|n| {
+            if floats_alone(n) {
+                ("mk-node mk-node-fixed", node_style(n))
+            } else {
+                ("mk-node", node_style(n))
+            }
+        })
+        .collect();
     for (k, nav) in nodes.iter().enumerate() {
         let Widget::Navbar(p) = &nav.widget else {
             continue;
@@ -2435,6 +2489,35 @@ fn or_store(own: &str, store: &str) -> String {
         own
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod float_tests {
+    use super::*;
+    use domain::{Pos, Size};
+
+    fn at(id: &str, w: Widget, y: u16, h: u8) -> Node {
+        let mut n = Node::new(id, w);
+        n.pos = Pos { x: 0, y };
+        n.size = Size { w: 48, h };
+        n
+    }
+
+    #[test]
+    fn floating_social_leaves_no_gap() {
+        let mut social = Widget::defaults("Social").unwrap();
+        if let Widget::Social(p) = &mut social {
+            p.variant = "b".into();
+        }
+        let nodes = vec![
+            at("a", Widget::defaults("Text").unwrap(), 0, 10),
+            at("s", social, 10, 6),
+            at("b", Widget::defaults("Text").unwrap(), 16, 10),
+        ];
+        let out = page_nodes(&nodes);
+        assert_eq!(out[1].0, "mk-node mk-node-fixed");
+        assert!(out[2].1.contains("--y:11;"), "{}", out[2].1);
+    }
 }
 
 #[cfg(test)]
