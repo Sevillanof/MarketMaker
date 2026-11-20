@@ -386,7 +386,9 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
             return q.is_empty()
                 || fold(label_of(type_name)).contains(&q)
                 || fold(desc).contains(&q)
-                || keywords(type_name).split(' ').any(|k| k.starts_with(&q) || (q.len() > 3 && q.contains(k)));
+                || keywords(type_name)
+                    .split(' ')
+                    .any(|k| k.starts_with(&q) || (q.len() > 3 && q.contains(k)));
         }
         group == current
     };
@@ -565,8 +567,11 @@ fn keywords(type_name: &str) -> &'static str {
         "Carousel" => "slider slideshow diapositivas presentacion fotos rotan",
         "ProductGrid" => "productos catalogo tienda grilla lista articulos",
         "ProductCarousel" => "slider productos fila deslizar destacados",
-        "TagFilter" | "TagList" | "TagCircles" | "TagSearch" | "TagTabs" => "etiquetas filtro filtrar buscar",
-        "CategoryTabs" | "CategorySide" | "CategoryCards" | "CategoryDrop" | "CategoryPage" | "Categories" => "categorias secciones rubros filtro",
+        "TagFilter" | "TagList" | "TagCircles" | "TagSearch" | "TagTabs" => {
+            "etiquetas filtro filtrar buscar"
+        }
+        "CategoryTabs" | "CategorySide" | "CategoryCards" | "CategoryDrop" | "CategoryPage"
+        | "Categories" => "categorias secciones rubros filtro",
         "FeaturedProduct" => "destacado producto estrella oferta",
         "Countdown" => "cuenta regresiva reloj temporizador oferta black hot sale cyber",
         "Text" => "texto parrafo titulo escribir contenido",

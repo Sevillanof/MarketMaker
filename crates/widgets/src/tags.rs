@@ -56,7 +56,10 @@ impl ProductFilter {
     /// después de hidratar, así la página del servidor y la del navegador
     /// arrancan iguales.
     pub fn provide_from_url() {
-        let f = Self { url: true, ..Self::new() };
+        let f = Self {
+            url: true,
+            ..Self::new()
+        };
         provide_context(f);
         Effect::new(move |_| {
             let Ok(search) = window().location().search() else {
@@ -108,7 +111,11 @@ impl ProductFilter {
                 return;
             };
             let r = grid.get_bounding_client_rect();
-            let vh = window().inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0);
+            let vh = window()
+                .inner_height()
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(800.0);
             if r.top() < 0.0 || r.top() > vh * 0.6 {
                 let opts = web_sys::ScrollIntoViewOptions::new();
                 let calm = window()
@@ -116,7 +123,11 @@ impl ProductFilter {
                     .ok()
                     .flatten()
                     .is_some_and(|m| m.matches());
-                opts.set_behavior(if calm { web_sys::ScrollBehavior::Auto } else { web_sys::ScrollBehavior::Smooth });
+                opts.set_behavior(if calm {
+                    web_sys::ScrollBehavior::Auto
+                } else {
+                    web_sys::ScrollBehavior::Smooth
+                });
                 opts.set_block(web_sys::ScrollLogicalPosition::Start);
                 grid.scroll_into_view_with_scroll_into_view_options(&opts);
             }
@@ -234,7 +245,13 @@ pub fn FilteredProducts(
     });
     let shown = move || {
         let skip = current() * limit;
-        matching.with(|ps| ps.iter().skip(skip).take(limit).cloned().collect::<Vec<_>>())
+        matching.with(|ps| {
+            ps.iter()
+                .skip(skip)
+                .take(limit)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
     };
     let notice = move || {
         let (tags, query) = chosen();
@@ -285,7 +302,11 @@ pub fn FilteredProducts(
 /// Los números de página abajo de la cuadrícula: círculos, el actual lleno, y
 /// flechas que se apagan en la primera y la última. Con muchas páginas, «…».
 #[component]
-fn Pager(current: usize, pages: usize, go: impl Fn(usize) + Copy + Send + Sync + 'static) -> impl IntoView {
+fn Pager(
+    current: usize,
+    pages: usize,
+    go: impl Fn(usize) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
     let items = domain::page_items(current, pages);
     view! {
         <nav class="mk-pager flex shrink-0 flex-wrap items-center justify-center gap-1" aria-label="Páginas de productos">
@@ -331,7 +352,11 @@ fn set_page_in_url(n: usize) {
         params.set("pagina", &(n + 1).to_string());
     }
     let query: String = params.to_string().into();
-    let url = if query.is_empty() { format!("{path}{hash}") } else { format!("{path}?{query}{hash}") };
+    let url = if query.is_empty() {
+        format!("{path}{hash}")
+    } else {
+        format!("{path}?{query}{hash}")
+    };
     if let Ok(history) = w.history() {
         let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&url));
     }

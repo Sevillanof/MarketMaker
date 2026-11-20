@@ -54,6 +54,50 @@ pub fn add_node(nodes: &mut Vec<Node>, mut node: Node) {
     settle(nodes, &id);
 }
 
+/// Agrega el nodo a la derecha del último bloque (en orden de lectura) si
+/// entra en esa fila sin pisar a otro; si no, devuelve el nodo sin tocar nada.
+/// `skip` marca los bloques que no cuentan como "el anterior" ni como choque
+/// (el pie de página, que se empuja hacia abajo). Devuelve el id del bloque
+/// de al lado cuando lo ubicó.
+pub fn add_beside_last(
+    nodes: &mut Vec<Node>,
+    mut node: Node,
+    skip: impl Fn(&Node) -> bool,
+) -> Result<String, Node> {
+    let Some(last) = nodes
+        .iter()
+        .filter(|n| !skip(n))
+        .max_by_key(|n| (n.pos.y, n.pos.x))
+    else {
+        return Err(node);
+    };
+    let lr = rect_of(last);
+    let w = rect_of(&node).w;
+    if u16::from(lr.x) + u16::from(lr.w) + u16::from(w) > u16::from(GRID_COLS) {
+        return Err(node);
+    }
+    let r = Rect {
+        x: lr.x + lr.w,
+        y: lr.y,
+        w,
+        h: rect_of(&node).h,
+    };
+    if nodes
+        .iter()
+        .filter(|n| !skip(n))
+        .any(|n| collides(&r, &rect_of(n)))
+    {
+        return Err(node);
+    }
+    let beside = last.id.clone();
+    node.pos.x = r.x;
+    node.pos.y = r.y;
+    let id = node.id.clone();
+    nodes.push(node);
+    settle(nodes, &id);
+    Ok(beside)
+}
+
 /// Mueve el nodo a la celda `(x, y)`, limitada a la grilla, y empuja a los
 /// que pise.
 pub fn move_node(nodes: &mut Vec<Node>, id: &str, x: i32, y: i32) {
@@ -545,5 +589,49 @@ mod tests {
         let mut v = nodes.to_vec();
         sort_by_position(&mut v);
         v.into_iter().map(|n| n.id).collect()
+    }
+
+    #[test]
+    fn new_block_goes_beside_the_last_one_when_it_fits() {
+        // Tarjeta de media página: la Imagen va al lado; el Texto, abajo.
+        let mut nodes = vec![
+            node("b", "Banner", "full", 0, 0),
+            node("t", "Text", "medium", 0, 4),
+        ];
+        let img = node("i", "Text", "medium", 0, 0);
+        assert_eq!(
+            add_beside_last(&mut nodes, img, |_| false).ok().as_deref(),
+            Some("t")
+        );
+        assert_eq!(pos(&nodes, "i"), (6, 4));
+        let txt = node("x", "Text", "medium", 0, 0);
+        assert!(add_beside_last(&mut nodes, txt, |_| false).is_err());
+        assert_invariants(&nodes);
+    }
+
+    #[test]
+    fn full_width_last_block_leaves_no_room() {
+        let mut nodes = vec![node("b", "Banner", "full", 0, 0)];
+        assert!(add_beside_last(&mut nodes, node("t", "Text", "small", 0, 0), |_| false).is_err());
+        assert_eq!(nodes.len(), 1);
+    }
+
+    #[test]
+    fn beside_ignores_the_footer_and_pushes_it_down() {
+        // "f" hace de pie: no cuenta como anterior y baja si el nuevo es más alto.
+        let mut nodes = vec![
+            node("t", "Text", "small", 0, 0),
+            node("f", "Text", "full", 0, 2),
+        ];
+        let tall = node("p", "FeaturedProduct", "small", 0, 0);
+        assert_eq!(
+            add_beside_last(&mut nodes, tall, |n| n.id == "f")
+                .ok()
+                .as_deref(),
+            Some("t")
+        );
+        assert_eq!(pos(&nodes, "p"), (4, 0));
+        assert_eq!(pos(&nodes, "f"), (0, 4));
+        assert_invariants(&nodes);
     }
 }

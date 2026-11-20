@@ -252,7 +252,8 @@ fn FieldInput(
             .into_any();
     }
     if field.key == "code" && field.label == "Cupón" {
-        return view! { <CouponPicker uid=uid.clone() value set=Callback::new(set_once)/> }.into_any();
+        return view! { <CouponPicker uid=uid.clone() value set=Callback::new(set_once)/> }
+            .into_any();
     }
     if is_image(field) {
         return view! {
@@ -263,6 +264,17 @@ fn FieldInput(
             </div>
         }
         .into_any();
+    }
+
+    if let FieldKind::Select { options } = &field.kind {
+        if let Some(kind) = crate::pictures::Pictures::for_options(options) {
+            return view! {
+                <crate::pictures::PicturePicker kind uid=uid.clone() legend=field.label options
+                    value=Signal::derive(text) products
+                    pick=Callback::new(move |v: String| set_once(serde_json::Value::String(v)))/>
+            }
+            .into_any();
+        }
     }
 
     let counter = match &field.kind {
@@ -586,7 +598,11 @@ pub(crate) fn ButtonGroup(
         on.set(show);
         let text = if show && label().trim().is_empty() {
             let s = saved.get_value();
-            if s.trim().is_empty() { DEFAULT_BUTTON_LABEL.to_string() } else { s }
+            if s.trim().is_empty() {
+                DEFAULT_BUTTON_LABEL.to_string()
+            } else {
+                s
+            }
         } else if show {
             label()
         } else {
@@ -877,6 +893,19 @@ fn ImagePicker(
     }
 }
 
+/// Campos de un enlace del Menú superior que usa un solo estilo de
+/// desplegable: la foto, «Panel ancho con foto»; los enlaces de cada columna,
+/// «En columnas». Al cambiar de estilo no se borra nada.
+fn nav_sub_condition(sub: &Field) -> Option<&'static str> {
+    if sub.key == "image_url" && sub.label == "Foto del panel ancho" {
+        Some("panel")
+    } else if sub.key == "children" && sub.label.starts_with("Enlaces de la columna") {
+        Some("columns")
+    } else {
+        None
+    }
+}
+
 /// Lista editable en acordeón: cada elemento con su título, sus campos y
 /// botones para subir, bajar y quitar. Solo se redibuja entera cuando cambia
 /// la cantidad.
@@ -916,6 +945,22 @@ fn ListInput(
         update(f);
         state.end_group();
     };
+    // Estilo de desplegable del Menú superior elegido: cada enlace muestra
+    // solo los campos que ese estilo usa (ver `nav_sub_condition`).
+    let menu_style = Memo::new(move |_| {
+        state.selected.get().map_or_else(
+            || "list".to_string(),
+            |id| {
+                state.doc.with(|d| {
+                    field_value(d, &id, "menu")
+                        .as_str()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or("list")
+                        .to_string()
+                })
+            },
+        )
+    });
     // Primer campo de texto del elemento: se usa como su título.
     let title_key = item
         .iter()
@@ -947,7 +992,17 @@ fn ListInput(
                                         }
                                     });
                                 });
-                                view! { <FieldInput products field=sub uid=format!("{uid}-{key}") value=sub_value set=sub_set/> }
+                                let want = nav_sub_condition(sub);
+                                let shown = Memo::new(move |_| match want {
+                                    None => true,
+                                    Some(want) => menu_style.get() == want,
+                                });
+                                let sub_uid = format!("{uid}-{key}");
+                                move || {
+                                    shown.get().then(|| view! {
+                                        <FieldInput products field=sub uid=sub_uid.clone() value=sub_value set=sub_set/>
+                                    })
+                                }
                             })
                             .collect_view();
                         let title = move || {
@@ -1139,7 +1194,11 @@ fn item_noun(label: &str) -> &'static str {
 /// El código del bloque Cupón: se elige entre los cupones de la tienda que
 /// sirven hoy, con un enlace para crear uno nuevo en el panel.
 #[component]
-fn CouponPicker(uid: String, value: Signal<serde_json::Value>, set: Callback<serde_json::Value>) -> impl IntoView {
+fn CouponPicker(
+    uid: String,
+    value: Signal<serde_json::Value>,
+    set: Callback<serde_json::Value>,
+) -> impl IntoView {
     let list = crate::coupons();
     let current = move || value.get().as_str().unwrap_or_default().to_string();
     let inactive = {

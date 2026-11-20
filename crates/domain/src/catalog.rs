@@ -564,7 +564,10 @@ pub fn page_items(current: usize, pages: usize) -> Vec<Option<usize>> {
         return (0..pages).map(Some).collect();
     }
     let current = current.min(pages - 1);
-    let (from, to) = (current.saturating_sub(1).max(1), (current + 1).min(pages - 2));
+    let (from, to) = (
+        current.saturating_sub(1).max(1),
+        (current + 1).min(pages - 2),
+    );
     // Cerca de un extremo se muestran más vecinas, para que la fila no cambie de largo.
     let (from, to) = if current < 4 {
         (1, 4)

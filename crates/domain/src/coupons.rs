@@ -207,10 +207,17 @@ impl Coupon {
         if !self.expires.is_empty() {
             let d: Vec<&str> = self.expires.split('-').collect();
             if let [_, m, day] = d[..] {
-                detail.push_str(&format!(" · vence {}/{}", day.trim_start_matches('0'), m.trim_start_matches('0')));
+                detail.push_str(&format!(
+                    " · vence {}/{}",
+                    day.trim_start_matches('0'),
+                    m.trim_start_matches('0')
+                ));
             }
         }
-        CouponBrief { code: self.code.clone(), detail }
+        CouponBrief {
+            code: self.code.clone(),
+            detail,
+        }
     }
 }
 

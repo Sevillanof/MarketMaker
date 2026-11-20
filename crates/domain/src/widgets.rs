@@ -156,7 +156,7 @@ impl Default for CardOptions {
 pub const CARD_STYLE_OPTIONS: &[(&str, &str)] = &[
     ("", "Clásica"),
     ("full", "Completa: precio, transferencia y cuotas"),
-    ("clean", "Limpia con «Agregar»"),
+    ("clean", "Limpia con «Añadir»"),
 ];
 
 /// Las etiquetas de los productos, para que el comprador filtre las
@@ -846,19 +846,19 @@ const NAVBAR_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
     field("logo_url", "Logo", FieldKind::Url),
     field(
+        "menu",
+        "Desplegable",
+        FieldKind::Select {
+            options: NAV_MENU_OPTIONS,
+        },
+    ),
+    field(
         "links",
         "Enlaces",
         FieldKind::List {
             item: NAV_LINK_ITEM,
             min: 0,
             max: 8,
-        },
-    ),
-    adv(
-        "menu",
-        "Desplegable",
-        FieldKind::Select {
-            options: NAV_MENU_OPTIONS,
         },
     ),
     adv(
@@ -1381,7 +1381,8 @@ mod countdown_tests {
 /// números de página si hacen falta. Es una cuenta aproximada para el ancho
 /// por defecto de la tienda; el dueño lo puede ajustar a mano después.
 pub fn product_grid_rows(per_page: usize, w: u8, total: usize, has_title: bool) -> u8 {
-    let width = f64::from(crate::layout::DEFAULT_WIDTH) * f64::from(w) / f64::from(crate::GRID_COLS);
+    let width =
+        f64::from(crate::layout::DEFAULT_WIDTH) * f64::from(w) / f64::from(crate::GRID_COLS);
     let n = per_page.min(total.max(1)).max(1);
     // Igual que `widgets::fill_cols`: 4 desde 768 px, 3 desde 512 px.
     let cols = if width >= 768.0 {

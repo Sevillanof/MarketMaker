@@ -8,10 +8,10 @@
 
 use domain::{
     AnnouncementProps, BannerProps, BenefitsProps, CardProps, CarouselProps, CategoriesProps,
-    ContactProps, CountdownProps, FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps,
-    ImageProps, LinkItem, LogosProps, NavbarProps, Node, Product, ProductButtonProps,
-    CouponProps, ProductCarouselProps, ProductGridProps, ProductModal, SocialProps, StatsProps, StepsProps,
-    TabsProps, TestimonialsProps, TextProps, Widget,
+    ContactProps, CountdownProps, CouponProps, FaqProps, FeaturedProductProps, FooterProps,
+    HoverGalleryProps, ImageProps, LinkItem, LogosProps, NavbarProps, Node, Product,
+    ProductButtonProps, ProductCarouselProps, ProductGridProps, ProductModal, SocialProps,
+    StatsProps, StepsProps, TabsProps, TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
 use leptos::prelude::*;
@@ -585,7 +585,8 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
     let has_image = !props.image_url.is_empty();
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
+    let has_button =
+        !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     let root_class = if has_image {
         "mk-box mk-banner mk-has-img @container hero relative h-full overflow-hidden rounded-box bg-base-200"
     } else {
@@ -656,7 +657,12 @@ pub fn FeaturedProductWidget(
     // eligió ninguno (o lo borró) se muestra el primero que hay en stock.
     let index = chosen.or_else(|| {
         (!editing)
-            .then(|| products.iter().position(|p| p.in_stock).or((!products.is_empty()).then_some(0)))
+            .then(|| {
+                products
+                    .iter()
+                    .position(|p| p.in_stock)
+                    .or((!products.is_empty()).then_some(0))
+            })
             .flatten()
     });
     let product = index.map(|i| products[i].clone());
@@ -927,7 +933,8 @@ fn mobile_link(l: LinkItem, editing: bool, uid: &str) -> AnyView {
 pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl IntoView {
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
+    let has_button =
+        !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     // Vacíos, usan el nombre y el logo de la tienda (ver "Datos de la tienda").
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
     let brand = or_store(&props.brand, &store.name);
@@ -1431,7 +1438,11 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
     if props.variant == "d" {
         // El estilo "Cupón" de antes del bloque Cupón.
         let props = CouponProps {
-            text: props.items.first().map(|m| m.text.clone()).unwrap_or_default(),
+            text: props
+                .items
+                .first()
+                .map(|m| m.text.clone())
+                .unwrap_or_default(),
             code: props.code,
             note: props.note,
             coupon: props.coupon,
@@ -1885,7 +1896,8 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
     });
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
+    let has_button =
+        !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     let ended_text = props.ended_text.clone();
     let units = ["días", "horas", "min", "seg"];
 
@@ -1964,7 +1976,8 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
     let has_image = !props.image_url.is_empty();
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button = !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
+    let has_button =
+        !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
     let body_class = if props.layout == "vertical" {
         "card-body grow-0 shrink-0"
     } else {
@@ -2409,7 +2422,12 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
 fn or_store(own: &str, store: &str) -> String {
     // El texto de ejemplo de bloques viejos también cede al dato de la tienda.
     let placeholder = own.trim().is_empty() || own.trim() == "Nombre de tu tienda";
-    if placeholder && !store.is_empty() { store } else { own }.to_string()
+    if placeholder && !store.is_empty() {
+        store
+    } else {
+        own
+    }
+    .to_string()
 }
 
 #[cfg(test)]

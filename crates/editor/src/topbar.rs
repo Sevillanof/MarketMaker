@@ -128,7 +128,11 @@ fn NewPageMenu() -> impl IntoView {
     };
     let slug = move || {
         let s = domain::slug_from_name(&name.get());
-        if s.is_empty() { "nombre-de-la-pagina".to_string() } else { s }
+        if s.is_empty() {
+            "nombre-de-la-pagina".to_string()
+        } else {
+            s
+        }
     };
     let menu = NodeRef::<leptos::html::Details>::new();
     // Se cierra al tocar afuera, como cualquier menú.
