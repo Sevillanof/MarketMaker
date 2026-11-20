@@ -304,10 +304,12 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                 <Skeleton class="h-10 w-80 max-w-full"/>
                 {sk_card("divide-y divide-base-300 !gap-0 !py-1", Box::new(|| view! {
                     {(0..5).map(|_| view! {
-                        <div class="grid grid-cols-[3.5rem_1fr_6rem_5rem] items-center gap-4 py-3">
+                        // Foto, nombre, precio, stock, interruptor, Editar y Borrar.
+                        <div class="grid grid-cols-[3.5rem_1fr_6rem_5rem_3rem_9rem] items-center gap-4 py-3">
                             <Skeleton class="size-14"/>
                             <div class="flex flex-col gap-2">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-1/3"/></div>
-                            {sk_line("w-full")}{sk_line("w-full")}
+                            {sk_line("w-full")}{sk_line("w-full")}<Skeleton class="h-5 w-10 rounded-full"/>
+                            <div class="flex gap-2"><Skeleton class="h-7 w-14"/><Skeleton class="h-7 w-16"/></div>
                         </div>
                     }).collect_view()}
                 }.into_any()))}
@@ -354,9 +356,16 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         }
         .into_any(),
         PanelSkeletonKind::Photos => view! {
-            {sk_head(1)}
-            <div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4 lg:grid-cols-5">
-                {(0..10).map(|_| view! { <Skeleton class="aspect-square w-full"/> }).collect_view()}
+            // Arriba ya están el título y los botones: acá, cuánto usás.
+            {sk_card("", Box::new(|| view! { {sk_line("w-1/3")}<Skeleton class="h-2 w-full"/> }.into_any()))}
+            // Mis fotos: grilla compacta, cada foto cuadrada con nombre y si se usa.
+            <div class="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4">
+                {(0..8).map(|_| view! {
+                    <div class="overflow-hidden rounded-box border border-base-300 bg-base-100">
+                        <Skeleton class="aspect-square w-full rounded-none"/>
+                        <div class="flex flex-col gap-1.5 px-2.5 py-2">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-1/3"/></div>
+                    </div>
+                }).collect_view()}
             </div>
             <Skeleton class="fixed right-4 bottom-4 h-13 w-40 rounded-full sm:hidden"/>
         }
@@ -384,9 +393,10 @@ pub fn EditorSkeleton() -> impl IntoView {
     ];
 
     view! {
-        <div data-theme="light" class="relative grid h-screen grid-cols-[76px_1fr_368px] grid-rows-[64px_1fr] bg-base-100 text-base-content" aria-busy="true" role="status" aria-label="Abriendo el editor">
+        <div data-theme="light" class="relative grid h-screen grid-cols-[176px_1fr_368px] grid-rows-[64px_1fr] bg-base-100 text-base-content" aria-busy="true" role="status" aria-label="Abriendo el editor">
             <div class="col-span-3 flex items-center gap-3.5 border-b border-base-300 px-4">
-                <Skeleton class="size-7 rounded-full"/>
+                // "← Panel".
+                <Skeleton class="h-7 w-20"/>
                 <div class="flex w-56 items-center gap-2.5 rounded-box border border-base-300 p-2">
                     <Skeleton class="size-9"/>
                     <div class="flex grow flex-col gap-1.5">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-full"/></div>
@@ -396,9 +406,12 @@ pub fn EditorSkeleton() -> impl IntoView {
                 <div class="grow"></div>
                 <Skeleton class="h-5 w-14"/><Skeleton class="h-5 w-28"/><Skeleton class="h-9 w-24"/>
             </div>
-            <div class="flex flex-col items-center gap-5 border-r border-base-300 pt-4">
-                {(0..6).map(|_| view! {
-                    <div class="flex flex-col items-center gap-1.5"><Skeleton class="size-[22px]"/><Skeleton class="h-2 w-10"/></div>
+            // Bloques para agregar: la categoría y cada bloque con su dibujo,
+            // su nombre y para qué sirve.
+            <div class="flex flex-col gap-4 overflow-hidden border-r border-base-300 p-2.5">
+                <Skeleton class="h-8 w-full"/>
+                {(0..4).map(|_| view! {
+                    <div class="flex flex-col gap-1.5"><Skeleton class="h-24 w-full"/>{sk_line("w-2/3")}<Skeleton class="h-2.5 w-full"/></div>
                 }).collect_view()}
             </div>
             <div class="flex justify-center overflow-hidden bg-base-200 py-3">
