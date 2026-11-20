@@ -33,7 +33,9 @@ pub enum MediaError {
     TooBig(usize),
     #[error("Las fotos HEIC del iPhone todavía no se pueden subir. Abrila en Fotos, exportala como JPG y subila de nuevo.")]
     Heic,
-    #[error("Las fotos AVIF todavía no se pueden subir. Guardala como JPG o PNG y subila de nuevo.")]
+    #[error(
+        "Las fotos AVIF todavía no se pueden subir. Guardala como JPG o PNG y subila de nuevo."
+    )]
     Avif,
     #[error("Ese archivo no es una foto. Podés subir JPG, PNG, WebP, GIF o un logo en SVG.")]
     NotAnImage,

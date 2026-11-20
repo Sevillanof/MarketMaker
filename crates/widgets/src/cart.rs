@@ -634,7 +634,8 @@ pub fn AddedNotice(notice: RwSignal<Option<String>>, cart: Cart) -> impl IntoVie
             el.scroll_into_view_with_scroll_into_view_options(&opts);
         }
     });
-    move || notice.get().map(|text| view! {
+    move || {
+        notice.get().map(|text| view! {
         <div class="mk-added" node_ref=el>
             <p class="flex items-center gap-2 font-semibold">
                 <span class="mk-added-check" aria-hidden="true">{check_icon()}</span>{text}
@@ -647,6 +648,7 @@ pub fn AddedNotice(notice: RwSignal<Option<String>>, cart: Cart) -> impl IntoVie
             </div>
         </div>
     })
+    }
 }
 
 /// Barra fija abajo mientras haya algo en el carrito: fotos, cuántos

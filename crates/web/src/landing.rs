@@ -96,11 +96,23 @@ fn EditorPreview() -> impl IntoView {
     // Cada bloque con su dibujito de color, como en la paleta real.
     let blocks = [
         ("Banner", "bg-gradient-to-r from-[#203a2c] to-[#3e6b52]"),
-        ("Productos", "bg-[repeating-linear-gradient(90deg,#c9c3f5_0_8px,transparent_8px_11px)]"),
+        (
+            "Productos",
+            "bg-[repeating-linear-gradient(90deg,#c9c3f5_0_8px,transparent_8px_11px)]",
+        ),
         ("Carrusel", "bg-gradient-to-r from-[#ff5f6d] to-[#ffc371]"),
-        ("Texto", "bg-[repeating-linear-gradient(180deg,#bdb9cc_0_2px,transparent_2px_6px)]"),
-        ("Etiquetas", "bg-[radial-gradient(circle,#6a55f0_0_3px,transparent_3.5px)] bg-[length:10px_10px]"),
-        ("Preguntas", "bg-[repeating-linear-gradient(180deg,#d8d4e6_0_5px,transparent_5px_8px)]"),
+        (
+            "Texto",
+            "bg-[repeating-linear-gradient(180deg,#bdb9cc_0_2px,transparent_2px_6px)]",
+        ),
+        (
+            "Etiquetas",
+            "bg-[radial-gradient(circle,#6a55f0_0_3px,transparent_3.5px)] bg-[length:10px_10px]",
+        ),
+        (
+            "Preguntas",
+            "bg-[repeating-linear-gradient(180deg,#d8d4e6_0_5px,transparent_5px_8px)]",
+        ),
         ("Oferta", "bg-[#ffb547]"),
         ("Contacto", "bg-gradient-to-r from-[#4330d6] to-[#8f7dff]"),
     ];

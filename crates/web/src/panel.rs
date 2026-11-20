@@ -15,6 +15,7 @@ pub enum Section {
     Orders,
     Delivery,
     Payments,
+    Coupons,
     StoreInfo,
     Photos,
     /// Mi cuenta: no está en el menú, se abre desde tu nombre.
@@ -30,6 +31,7 @@ impl Section {
             Section::Orders => "Pedidos",
             Section::Delivery => "Entregas",
             Section::Payments => "Cobros",
+            Section::Coupons => "Cupones",
             Section::StoreInfo => "Datos de la tienda",
             Section::Photos => "Mis fotos",
             Section::Account => "Mi cuenta",
@@ -246,6 +248,7 @@ fn section_of(path: &str) -> Section {
         "pedidos" => Section::Orders,
         "ventas" => Section::Delivery,
         "cobros" => Section::Payments,
+        "cupones" => Section::Coupons,
         "datos" => Section::StoreInfo,
         _ => Section::Home,
     }
@@ -521,6 +524,7 @@ fn SideNav(
                 <li class="menu-title mt-3 text-base-content/75">"Cómo vendés"</li>
                 {item(Section::Delivery, format!("{base}/ventas"), "truck", "Entregas", 0)}
                 {item(Section::Payments, format!("{base}/cobros"), "card", "Cobros", 0)}
+                {item(Section::Coupons, format!("{base}/cupones"), "ticket", "Cupones", 0)}
                 {item(Section::StoreInfo, format!("{base}/datos"), "store", "Datos de la tienda", 0)}
                 <li class="menu-title mt-3 text-base-content/75">"Tu cuenta"</li>
                 {item(Section::Photos, format!("/mis-fotos?tienda={s}"), "photo", "Mis fotos", 0)}
@@ -685,7 +689,13 @@ fn Overview(o: StoreOverview) -> impl IntoView {
 
     // Lo que falta para vender: cada paso con su enlace.
     // El último dato es la guía de "Ver cómo" (ninguna si no hay una que sirva).
-    let steps: Vec<(bool, &'static str, String, Option<(String, &'static str)>, Option<usize>)> = vec![
+    let steps: Vec<(
+        bool,
+        &'static str,
+        String,
+        Option<(String, &'static str)>,
+        Option<usize>,
+    )> = vec![
         (
             o.products > 0,
             "Cargá tus productos",
@@ -734,27 +744,33 @@ fn Overview(o: StoreOverview) -> impl IntoView {
     // Mientras falten pasos, van arriba de todo y a lo ancho; con todo listo,
     // quedan en la columna de al lado de los pedidos.
     let starting = done < total;
-    let steps_head = move || view! {
-        <div class="mb-2 flex items-center">
-            <h2 id="lista-para-vender" class="grow text-lg font-semibold">
-                {if done == total { "Tu tienda, lista para vender" } else { "Primeros pasos" }}
-            </h2>
-            <span class="text-sm text-base-content/60">{format!("{done} de {total}")}</span>
-        </div>
-        <progress class="progress progress-primary mb-2 h-2 w-full" value=done max=total
-            aria-label=format!("{done} de {total} pasos listos")></progress>
+    let steps_head = move || {
+        view! {
+            <div class="mb-2 flex items-center">
+                <h2 id="lista-para-vender" class="grow text-lg font-semibold">
+                    {if done == total { "Tu tienda, lista para vender" } else { "Primeros pasos" }}
+                </h2>
+                <span class="text-sm text-base-content/60">{format!("{done} de {total}")}</span>
+            </div>
+            <progress class="progress progress-primary mb-2 h-2 w-full" value=done max=total
+                aria-label=format!("{done} de {total} pasos listos")></progress>
+        }
     };
-    let see_how = move |title: &'static str, film: Option<usize>| film.map(|film| view! {
-        <button type="button" class="btn btn-ghost btn-sm text-primary"
-            aria-label=format!("Ver cómo: {title}")
-            on:click=move |_| {
-                if let Some(req) = use_context::<crate::help::HelpRequest>() {
-                    req.0.set(Some(film));
-                }
-            }>
-            <ui::Icon class="size-4" name="play"/>"Ver cómo"
-        </button>
-    });
+    let see_how = move |title: &'static str, film: Option<usize>| {
+        film.map(|film| {
+            view! {
+                <button type="button" class="btn btn-ghost btn-sm text-primary"
+                    aria-label=format!("Ver cómo: {title}")
+                    on:click=move |_| {
+                        if let Some(req) = use_context::<crate::help::HelpRequest>() {
+                            req.0.set(Some(film));
+                        }
+                    }>
+                    <ui::Icon class="size-4" name="play"/>"Ver cómo"
+                </button>
+            }
+        })
+    };
     let first_open = steps.iter().position(|s| !s.0);
     let step_slug = o.slug.clone();
     let (cards, rows) = if starting {

@@ -19,12 +19,12 @@ pub mod auth;
 mod buyer;
 mod buyer_ui;
 mod checkout;
+mod coupons;
 mod dev;
 #[cfg(feature = "ssr")]
 pub mod email;
 mod help;
 mod help_editor;
-mod welcome;
 mod landing;
 mod legal;
 #[cfg(feature = "ssr")]
@@ -41,13 +41,14 @@ mod platform;
 mod products;
 mod regret;
 mod sales;
+pub mod server;
 #[cfg(feature = "ssr")]
 pub mod shipments;
-mod store_info;
-mod variants_field;
-pub mod server;
 pub mod site;
+mod store_info;
 pub mod stores;
+mod variants_field;
+mod welcome;
 mod whitelist;
 
 pub use auth::*;
@@ -109,6 +110,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("productos/:id") view={leptos_router::Lazy::<ProductEditRoute>::new()} ssr=SsrMode::Async/>
                         <Route path=path!("pedidos") view={leptos_router::Lazy::<OrdersRoute>::new()} ssr=SsrMode::Async/>
                         <Route path=path!("cobros") view={leptos_router::Lazy::<PaymentsRoute>::new()} ssr=SsrMode::Async/>
+                        <Route path=path!("cupones") view={leptos_router::Lazy::<CouponsRoute>::new()} ssr=SsrMode::Async/>
                         <Route path=path!("ventas") view={leptos_router::Lazy::<SalesRoute>::new()} ssr=SsrMode::Async/>
                         <Route path=path!("datos") view={leptos_router::Lazy::<StoreInfoRoute>::new()} ssr=SsrMode::Async/>
                     </ParentRoute>
@@ -254,7 +256,12 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
     let image = banner
         .map(|b| b.image_url)
         .filter(|u| !u.is_empty())
-        .or_else(|| view.products.iter().map(|p| p.image_url.clone()).find(|u| !u.is_empty()))
+        .or_else(|| {
+            view.products
+                .iter()
+                .map(|p| p.image_url.clone())
+                .find(|u| !u.is_empty())
+        })
         .map(|u| {
             if u.starts_with('/') {
                 format!("{}://{}{u}", site::scheme(), site::current_host())
@@ -402,6 +409,20 @@ impl leptos_router::LazyRoute for PaymentsRoute {
 }
 
 #[derive(Debug)]
+struct CouponsRoute;
+
+#[leptos_router::lazy_route]
+impl leptos_router::LazyRoute for CouponsRoute {
+    fn data() -> Self {
+        CouponsRoute
+    }
+
+    fn view(_this: Self) -> AnyView {
+        view! { <coupons::CouponsPage/> }.into_any()
+    }
+}
+
+#[derive(Debug)]
 struct SalesRoute;
 
 #[leptos_router::lazy_route]
@@ -487,7 +508,13 @@ fn editor_preload(options: &LeptosOptions) -> Option<impl IntoView> {
             return None;
         }
         let href = editor_chunk_url(options)?;
-        Some(leptos::html::link().rel("preload").href(href).r#as("fetch").crossorigin("anonymous"))
+        Some(
+            leptos::html::link()
+                .rel("preload")
+                .href(href)
+                .r#as("fetch")
+                .crossorigin("anonymous"),
+        )
     }
     #[cfg(not(feature = "ssr"))]
     {

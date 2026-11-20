@@ -202,10 +202,7 @@ impl MyPhotos {
             let key = sh.next_key.get_value();
             sh.next_key.set_value(key + 1);
             let (name, preview) = match &src {
-                Source::File(f) => (
-                    f.name(),
-                    web_sys::Url::create_object_url_with_blob(f).ok(),
-                ),
+                Source::File(f) => (f.name(), web_sys::Url::create_object_url_with_blob(f).ok()),
                 Source::Link(l) => (short_link(l), None),
             };
             sh.queue.update(|q| {
@@ -358,10 +355,11 @@ impl MyPhotos {
             set_vt_name(Some(&c), None);
         }
         // La miniatura local se libera un rato después, cuando ya no se ve.
-        if let Some(url) = sh
-            .queue
-            .with_untracked(|q| q.iter().find(|e| e.key == key).and_then(|e| e.preview.clone()))
-        {
+        if let Some(url) = sh.queue.with_untracked(|q| {
+            q.iter()
+                .find(|e| e.key == key)
+                .and_then(|e| e.preview.clone())
+        }) {
             set_timeout(
                 move || _ = web_sys::Url::revoke_object_url(&url),
                 std::time::Duration::from_secs(5),
@@ -385,7 +383,10 @@ fn name_cards(max: u32) -> Vec<web_sys::Element> {
     let mut out = Vec::new();
     if let Ok(list) = document().query_selector_all("[data-photo-card]") {
         for i in 0..list.length().min(max) {
-            if let Some(el) = list.get(i).and_then(|n| n.dyn_into::<web_sys::Element>().ok()) {
+            if let Some(el) = list
+                .get(i)
+                .and_then(|n| n.dyn_into::<web_sys::Element>().ok())
+            {
                 let id = el.get_attribute("data-photo-card").unwrap_or_default();
                 set_vt_name(Some(&el), Some(&format!("t-{id}")));
                 out.push(el);
@@ -419,7 +420,11 @@ async fn preload(url: &str) {
 async fn with_view_transition(update: impl FnOnce() + 'static) {
     let doc = document();
     let reduce = web_sys::window()
-        .and_then(|w| w.match_media("(prefers-reduced-motion: reduce)").ok().flatten())
+        .and_then(|w| {
+            w.match_media("(prefers-reduced-motion: reduce)")
+                .ok()
+                .flatten()
+        })
         .is_some_and(|m| m.matches());
     let start = js_sys::Reflect::get(&doc, &"startViewTransition".into())
         .ok()
@@ -603,11 +608,12 @@ async fn shrink(file: &web_sys::File) -> Option<web_sys::Blob> {
     }
     let window = web_sys::window()?;
     // Gira la foto según cómo se sacó, igual que el servidor.
-    let bitmap: web_sys::ImageBitmap = JsFuture::from(window.create_image_bitmap_with_blob(file).ok()?)
-        .await
-        .ok()?
-        .dyn_into()
-        .ok()?;
+    let bitmap: web_sys::ImageBitmap =
+        JsFuture::from(window.create_image_bitmap_with_blob(file).ok()?)
+            .await
+            .ok()?
+            .dyn_into()
+            .ok()?;
     let (w, h) = (f64::from(bitmap.width()), f64::from(bitmap.height()));
     if w < 1.0 || h < 1.0 || (!heic && w <= MAX_UPLOAD_WIDTH) {
         return None;
@@ -628,9 +634,10 @@ async fn shrink(file: &web_sys::File) -> Option<web_sys::Blob> {
         .ok()?;
     bitmap.close();
     let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let cb = wasm_bindgen::closure::Closure::once_into_js(move |blob: wasm_bindgen::JsValue| {
-            _ = resolve.call1(&wasm_bindgen::JsValue::NULL, &blob);
-        });
+        let cb =
+            wasm_bindgen::closure::Closure::once_into_js(move |blob: wasm_bindgen::JsValue| {
+                _ = resolve.call1(&wasm_bindgen::JsValue::NULL, &blob);
+            });
         _ = canvas.to_blob_with_type_and_encoder_options(
             cb.unchecked_ref(),
             "image/jpeg",
@@ -843,7 +850,10 @@ pub fn UploadTray() -> impl IntoView {
                 .filter(|e| matches!(e.state, UploadState::Done(_)))
                 .count();
             if active > 0 {
-                format!("Subiendo {active} {}", if active == 1 { "foto" } else { "fotos" })
+                format!(
+                    "Subiendo {active} {}",
+                    if active == 1 { "foto" } else { "fotos" }
+                )
             } else if failed > 0 {
                 format!(
                     "{failed} {} no se pudo subir",
@@ -852,7 +862,11 @@ pub fn UploadTray() -> impl IntoView {
             } else if new > 0 {
                 format!(
                     "Listo: {new} {} en Mis fotos",
-                    if new == 1 { "foto nueva" } else { "fotos nuevas" }
+                    if new == 1 {
+                        "foto nueva"
+                    } else {
+                        "fotos nuevas"
+                    }
                 )
             } else {
                 "Listo".to_string()
@@ -871,11 +885,11 @@ pub fn UploadTray() -> impl IntoView {
         if finished && !failed {
             set_timeout(
                 move || {
-                    let still = queue.with_untracked(|q| {
-                        q.len() == n && q.iter().all(|e| !e.state.is_active())
+                    let still = queue
+                        .with_untracked(|q| q.len() == n && q.iter().all(|e| !e.state.is_active()));
+                    let failed = queue.with_untracked(|q| {
+                        q.iter().any(|e| matches!(e.state, UploadState::Failed(_)))
                     });
-                    let failed = queue
-                        .with_untracked(|q| q.iter().any(|e| matches!(e.state, UploadState::Failed(_))));
                     if still && !failed {
                         queue.set(Vec::new());
                     }
@@ -912,8 +926,13 @@ fn UploadRow(queue: RwSignal<Vec<Upload>>, key: u32) -> impl IntoView {
     let row = move || queue.with(|q| q.iter().find(|e| e.key == key).cloned());
     let name = move || row().map(|r| r.name).unwrap_or_default();
     let state = move || row().map(|r| r.state);
-    let preview = queue.with_untracked(|q| q.iter().find(|e| e.key == key).and_then(|e| e.preview.clone()));
-    let thumb = move || match state() {
+    let preview = queue.with_untracked(|q| {
+        q.iter()
+            .find(|e| e.key == key)
+            .and_then(|e| e.preview.clone())
+    });
+    let thumb = move || {
+        match state() {
         Some(UploadState::Done(_)) => view! {
             <svg viewBox="0 0 24 24" class="h-7 w-7 rounded-md bg-success/15 p-1 text-success" aria-hidden="true">
                 <path d="M6 12.5l3.6 3.6L18 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -928,8 +947,10 @@ fn UploadRow(queue: RwSignal<Vec<Upload>>, key: u32) -> impl IntoView {
             Some(src) => view! { <img src=src alt="" class="h-7 w-7 rounded-md object-cover"/> }.into_any(),
             None => view! { <span class="block h-7 w-7 rounded-md bg-base-300"></span> }.into_any(),
         },
+    }
     };
-    let status = move || match state() {
+    let status = move || {
+        match state() {
         Some(UploadState::Waiting) | None => view! { <span class="text-xs text-base-content/60">"En espera"</span> }.into_any(),
         Some(UploadState::Preparing) => view! {
             <progress class="progress progress-primary w-full" aria-label=move || format!("Preparando {}", name())></progress>
@@ -954,6 +975,7 @@ fn UploadRow(queue: RwSignal<Vec<Upload>>, key: u32) -> impl IntoView {
         }
         .into_any(),
         Some(UploadState::Failed(msg)) => view! { <span class="text-xs text-error">{msg}</span> }.into_any(),
+    }
     };
     view! {
         <li class="grid grid-cols-[1.75rem_1fr] items-center gap-x-2.5 gap-y-0.5 py-0.5">

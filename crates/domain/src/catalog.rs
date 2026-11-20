@@ -132,7 +132,11 @@ pub fn count_categories(products: &[Product]) -> Vec<CategoryCount> {
         let i = match out.iter().position(|c| c.name == p.category) {
             Some(i) => i,
             None => {
-                out.push(CategoryCount { name: p.category.clone(), products: 0, subs: Vec::new() });
+                out.push(CategoryCount {
+                    name: p.category.clone(),
+                    products: 0,
+                    subs: Vec::new(),
+                });
                 out.len() - 1
             }
         };
@@ -145,9 +149,14 @@ pub fn count_categories(products: &[Product]) -> Vec<CategoryCount> {
         }
     }
     for c in &mut out {
-        c.subs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        c.subs
+            .sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     }
-    out.sort_by(|a, b| b.products.cmp(&a.products).then_with(|| a.name.cmp(&b.name)));
+    out.sort_by(|a, b| {
+        b.products
+            .cmp(&a.products)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     out
 }
 
@@ -160,7 +169,11 @@ pub fn categories_from_pairs(pairs: &[(String, String, i64)]) -> Vec<CategoryCou
         let i = match out.iter().position(|c| &c.name == cat) {
             Some(i) => i,
             None => {
-                out.push(CategoryCount { name: cat.clone(), products: 0, subs: Vec::new() });
+                out.push(CategoryCount {
+                    name: cat.clone(),
+                    products: 0,
+                    subs: Vec::new(),
+                });
                 out.len() - 1
             }
         };
@@ -429,7 +442,11 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     p.description = p.description.trim().to_string();
     p.tags = clean_tags(p.tags.iter().map(String::as_str));
     p.category = clean_category(&p.category);
-    p.subcategory = if p.category.is_empty() { String::new() } else { clean_category(&p.subcategory) };
+    p.subcategory = if p.category.is_empty() {
+        String::new()
+    } else {
+        clean_category(&p.subcategory)
+    };
     p.photos.retain(|u| !u.trim().is_empty());
     p.photos.dedup();
     p.image_url = p.photos.first().cloned().unwrap_or_default();
@@ -609,9 +626,15 @@ mod tests {
         assert_eq!(parse_price("1.000.000"), Some(100_000_000));
         assert_eq!(parse_price(""), None);
         assert_eq!(parse_price("12,345"), None);
-        assert!(price_problem("-500", "El precio").unwrap().contains("negativo"));
-        assert!(price_problem("1,999", "El precio").unwrap().contains("miles"));
-        assert!(price_problem("9999999999999999999", "El precio").unwrap().contains("grande"));
+        assert!(price_problem("-500", "El precio")
+            .unwrap()
+            .contains("negativo"));
+        assert!(price_problem("1,999", "El precio")
+            .unwrap()
+            .contains("miles"));
+        assert!(price_problem("9999999999999999999", "El precio")
+            .unwrap()
+            .contains("grande"));
         assert!(price_problem("45.999,90", "El precio").is_none());
         assert_eq!(parse_price("doce"), None);
         // Punto con una o dos cifras detrás: centavos, como en la calculadora.
@@ -727,12 +750,22 @@ mod category_tests {
     use super::*;
 
     fn p(cat: &str, sub: &str) -> Product {
-        Product { category: cat.into(), subcategory: sub.into(), ..Product::default() }
+        Product {
+            category: cat.into(),
+            subcategory: sub.into(),
+            ..Product::default()
+        }
     }
 
     #[test]
     fn counts_categories_with_their_subcategories() {
-        let ps = [p("Botas", "Con taco"), p("Botas", "Con taco"), p("Botas", ""), p("Sandalias", ""), p("", "")];
+        let ps = [
+            p("Botas", "Con taco"),
+            p("Botas", "Con taco"),
+            p("Botas", ""),
+            p("Sandalias", ""),
+            p("", ""),
+        ];
         let c = count_categories(&ps);
         assert_eq!(c.len(), 2);
         assert_eq!((c[0].name.as_str(), c[0].products), ("Botas", 3));
@@ -755,7 +788,10 @@ mod category_tests {
         let mut a = p("  Botas   altas ", " Con  taco ");
         a.name = "Bota".into();
         tidy_product(&mut a);
-        assert_eq!((a.category.as_str(), a.subcategory.as_str()), ("Botas altas", "Con taco"));
+        assert_eq!(
+            (a.category.as_str(), a.subcategory.as_str()),
+            ("Botas altas", "Con taco")
+        );
         let mut b = p("   ", "Con taco");
         b.name = "Bota".into();
         tidy_product(&mut b);
@@ -764,7 +800,10 @@ mod category_tests {
 
     #[test]
     fn builds_categories_from_database_rows() {
-        let rows = [("Botas".to_string(), "Con taco".to_string(), 2), ("Botas".to_string(), String::new(), 1)];
+        let rows = [
+            ("Botas".to_string(), "Con taco".to_string(), 2),
+            ("Botas".to_string(), String::new(), 1),
+        ];
         let c = categories_from_pairs(&rows);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].products, 3);

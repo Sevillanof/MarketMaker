@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 mod account;
 mod buyer;
 mod catalog;
+mod coupons;
 mod layout;
 mod look;
 mod media;
@@ -22,6 +23,7 @@ mod widgets;
 pub use account::*;
 pub use buyer::*;
 pub use catalog::*;
+pub use coupons::*;
 pub use layout::*;
 pub use look::*;
 pub use media::*;
@@ -1061,11 +1063,23 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
             doc.product_modal.nodes.len()
         ));
     }
-    if !MODAL_OPEN_OPTIONS.iter().any(|(v, _)| *v == doc.product_modal.open) {
-        errors.push(format!("forma de abrir la ficha desconocida: {}", doc.product_modal.open));
+    if !MODAL_OPEN_OPTIONS
+        .iter()
+        .any(|(v, _)| *v == doc.product_modal.open)
+    {
+        errors.push(format!(
+            "forma de abrir la ficha desconocida: {}",
+            doc.product_modal.open
+        ));
     }
-    if !MODAL_BUYBAR_OPTIONS.iter().any(|(v, _)| *v == doc.product_modal.buybar) {
-        errors.push(format!("barra de compra desconocida: {}", doc.product_modal.buybar));
+    if !MODAL_BUYBAR_OPTIONS
+        .iter()
+        .any(|(v, _)| *v == doc.product_modal.buybar)
+    {
+        errors.push(format!(
+            "barra de compra desconocida: {}",
+            doc.product_modal.buybar
+        ));
     }
 
     if doc.pages.len() > MAX_PAGES {
@@ -1149,11 +1163,19 @@ mod tests {
             serde_json::json!({"type": "ProductImage", "props": {"fit": "cover"}}),
         )
         .unwrap();
-        let Widget::ProductImage(p) = w else { panic!("foto") };
-        assert_eq!((p.variant.as_str(), p.badge.as_str(), p.stock_note), ("a", "", true));
+        let Widget::ProductImage(p) = w else {
+            panic!("foto")
+        };
+        assert_eq!(
+            (p.variant.as_str(), p.badge.as_str(), p.stock_note),
+            ("a", "", true)
+        );
         let w: Widget =
-            serde_json::from_value(serde_json::json!({"type": "ProductPrice", "props": {}})).unwrap();
-        let Widget::ProductPrice(p) = w else { panic!("precio") };
+            serde_json::from_value(serde_json::json!({"type": "ProductPrice", "props": {}}))
+                .unwrap();
+        let Widget::ProductPrice(p) = w else {
+            panic!("precio")
+        };
         assert_eq!(p.variant, "a");
         assert!(p.show_installments && p.show_transfer);
     }
@@ -1165,14 +1187,19 @@ mod tests {
             "brand": "", "logo_url": "", "links": [], "button_label": "", "button_href": ""
         }}))
         .unwrap();
-        let Widget::Navbar(p) = w else { panic!("menú") };
+        let Widget::Navbar(p) = w else {
+            panic!("menú")
+        };
         assert_eq!((p.variant.as_str(), p.tone.as_str()), ("a", ""));
         assert!(!p.floats() && !p.search && !p.upper && !p.menu_color);
-        let w: Widget = serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
-            "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
-        }}))
-        .unwrap();
-        let Widget::Announcement(p) = w else { panic!("anuncio") };
+        let w: Widget =
+            serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
+                "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
+            }}))
+            .unwrap();
+        let Widget::Announcement(p) = w else {
+            panic!("anuncio")
+        };
         assert_eq!((p.code.as_str(), p.coupon.as_str()), ("", ""));
     }
 
@@ -1196,7 +1223,7 @@ mod tests {
                      "button_label": "", "button_href": "" },
           "pos": { "x": 0, "y": 0 }, "size": { "w": 48, "h": 48 } },
         { "id": "n2", "type": "ProductGrid",
-          "props": { "title": "Destacados", "limit": 8, "card": "", "card_transfer": true, "card_installments": true, "card_favorite": true },
+          "props": { "title": "Destacados", "limit": 8, "card": "", "card_transfer": true, "card_installments": true, "card_favorite": true, "card_colors": true },
           "pos": { "x": 0, "y": 48 }, "size": { "w": 48, "h": 60 } }
       ]
     }"#;

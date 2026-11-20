@@ -126,6 +126,8 @@ pub struct NewOrder<'a> {
     pub shipping_cents: i64,
     /// Descuento sobre los productos (por transferencia).
     pub discount_cents: i64,
+    /// Cupón usado (código ya normalizado) y cuánto descuenta.
+    pub coupon: Option<(&'a str, i64)>,
     pub pay: domain::PayMethod,
     /// Con Andreani: sucursal, DNI y cotización.
     pub shipment: Option<&'a domain::Shipment>,
@@ -142,24 +144,61 @@ pub enum Created {
         name: String,
         left: u32,
     },
+    /// El cupón ya no sirve (se acabaron los usos justo antes).
+    CouponGone,
 }
 
 /// Guarda el pedido con el próximo número de la tienda y descuenta el stock
 /// de los productos que lo cuentan, todo junto: si no alcanza, no se guarda.
 pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Result<Created> {
     let subtotal: i64 = o.items.iter().map(OrderItem::total_cents).sum();
-    let discount = o.discount_cents.clamp(0, subtotal);
+    let coupon_cents = o.coupon.map_or(0, |(_, c)| c.clamp(0, subtotal));
+    let coupon_code = o.coupon.map_or("", |(code, _)| code);
+    let discount = o.discount_cents.clamp(0, subtotal - coupon_cents);
     let items = serde_json::to_value(o.items).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
     let mut tx = pool.begin().await?;
     // Esperando el pago online es solo un intento: se revisa que alcance,
     // pero el stock se descuenta recién cuando se aprueba el pago.
     let attempt = o.status == OrderStatus::PendingPayment;
+    // El cupón cuenta un uso al guardar el pedido; un intento de pago online
+    // solo revisa que siga sirviendo (cuenta cuando se paga).
+    if !coupon_code.is_empty() {
+        let ok = if attempt {
+            sqlx::query(
+                "SELECT 1 FROM coupons WHERE tenant_id = $1 AND code = $2 AND active
+                 AND (max_uses IS NULL OR uses < max_uses)",
+            )
+        } else {
+            sqlx::query(
+                "UPDATE coupons SET uses = uses + 1 WHERE tenant_id = $1 AND code = $2 AND active
+                 AND (max_uses IS NULL OR uses < max_uses)",
+            )
+        }
+        .bind(tenant)
+        .bind(coupon_code)
+        .execute(&mut *tx)
+        .await?;
+        if ok.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Ok(Created::CouponGone);
+        }
+    }
     for item in o.items {
         let Ok(product) = Uuid::parse_str(&item.product_id) else {
             continue;
         };
         if item.is_variant() {
-            if let Err(left) = move_variant(&mut tx, tenant, product, item, -i64::from(item.qty), true, attempt).await? {
+            if let Err(left) = move_variant(
+                &mut tx,
+                tenant,
+                product,
+                item,
+                -i64::from(item.qty),
+                true,
+                attempt,
+            )
+            .await?
+            {
                 tx.rollback().await?;
                 return Ok(Created::Short {
                     name: item.name.clone(),
@@ -218,8 +257,8 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
         "INSERT INTO orders (tenant_id, number, status, customer_name, email, phone, delivery,
                              address, postal_code, city, notes, items,
                              subtotal_cents, shipping_cents, total_cents, payment, shipment,
-                             discount_cents)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                             discount_cents, coupon_code, coupon_cents)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
          RETURNING id",
     )
     .bind(tenant)
@@ -236,10 +275,12 @@ pub async fn create(pool: &PgPool, tenant: Uuid, o: &NewOrder<'_>) -> sqlx::Resu
     .bind(items)
     .bind(subtotal)
     .bind(o.shipping_cents)
-    .bind(subtotal - discount + o.shipping_cents)
+    .bind(subtotal - discount - coupon_cents + o.shipping_cents)
     .bind(o.pay.as_str())
     .bind(o.shipment.map(sqlx::types::Json))
     .bind(discount)
+    .bind(coupon_code)
+    .bind(coupon_cents)
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -285,15 +326,13 @@ async fn move_variant(
     }
     let now = (i64::from(left) + delta).clamp(0, i64::from(u32::MAX)) as u32;
     v.set_qty(&item.color, &item.size, now);
-    sqlx::query(
-        "UPDATE products SET variants = $3, stock = $4 WHERE tenant_id = $1 AND id = $2",
-    )
-    .bind(tenant)
-    .bind(product)
-    .bind(sqlx::types::Json(&v))
-    .bind(v.total() as i32)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE products SET variants = $3, stock = $4 WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant)
+        .bind(product)
+        .bind(sqlx::types::Json(&v))
+        .bind(v.total() as i32)
+        .execute(&mut *tx)
+        .await?;
     Ok(Ok(()))
 }
 
@@ -341,7 +380,16 @@ pub async fn mark_paid(
                 continue;
             };
             if item.is_variant() {
-                _ = move_variant(&mut tx, tenant, product, &item, -i64::from(item.qty), false, false).await?;
+                _ = move_variant(
+                    &mut tx,
+                    tenant,
+                    product,
+                    &item,
+                    -i64::from(item.qty),
+                    false,
+                    false,
+                )
+                .await?;
                 continue;
             }
             sqlx::query(
@@ -355,6 +403,15 @@ pub async fn mark_paid(
             .await?;
         }
         let n = next_number(&mut tx, tenant).await?;
+        // El pago ya está hecho: el cupón cuenta su uso aunque justo se haya acabado.
+        sqlx::query(
+            "UPDATE coupons SET uses = uses + 1
+             WHERE tenant_id = $1 AND code = (SELECT coupon_code FROM orders WHERE tenant_id = $1 AND id = $2)",
+        )
+        .bind(tenant)
+        .bind(order)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query("UPDATE orders SET number = $3 WHERE tenant_id = $1 AND id = $2")
             .bind(tenant)
             .bind(order)
@@ -392,6 +449,8 @@ struct OrderRow {
     subtotal_cents: i64,
     shipping_cents: i64,
     discount_cents: i64,
+    coupon_code: String,
+    coupon_cents: i64,
     total_cents: i64,
     created_at: String,
     payment: String,
@@ -417,6 +476,8 @@ impl From<OrderRow> for Order {
             subtotal_cents: r.subtotal_cents,
             shipping_cents: r.shipping_cents,
             discount_cents: r.discount_cents,
+            coupon_code: r.coupon_code,
+            coupon_cents: r.coupon_cents,
             total_cents: r.total_cents,
             created_at: r.created_at,
             pay: domain::PayMethod::from_str(&r.payment),
@@ -431,7 +492,7 @@ macro_rules! select {
     ($rest:literal) => {
         concat!(
             "SELECT id, COALESCE(number, 0) AS number, status, customer_name, email, phone, delivery, address, ",
-            "postal_code, city, notes, items, subtotal_cents, shipping_cents, discount_cents, total_cents, ",
+            "postal_code, city, notes, items, subtotal_cents, shipping_cents, discount_cents, coupon_code, coupon_cents, total_cents, ",
             "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, payment, regret_code, shipment ",
             "FROM orders ",
             $rest
@@ -526,19 +587,30 @@ pub async fn set_status(
     status: OrderStatus,
 ) -> sqlx::Result<bool> {
     let mut tx = pool.begin().await?;
-    let before: Option<(String, serde_json::Value)> = sqlx::query_as(
-        "SELECT status, items FROM orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+    let before: Option<(String, serde_json::Value, Option<i32>, String)> = sqlx::query_as(
+        "SELECT status, items, number, coupon_code FROM orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
     )
     .bind(tenant)
     .bind(id)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((before, items)) = before else {
+    let Some((before, items, number, coupon_code)) = before else {
         return Ok(false);
     };
     let was_cancelled = OrderStatus::from_str(&before) == OrderStatus::Cancelled;
     let cancel = status == OrderStatus::Cancelled;
     if was_cancelled != cancel {
+        // Un pedido cancelado devuelve el uso del cupón (y al reabrirlo lo vuelve a tomar).
+        if number.is_some() && !coupon_code.is_empty() {
+            sqlx::query(
+                "UPDATE coupons SET uses = GREATEST(uses + $3, 0) WHERE tenant_id = $1 AND code = $2",
+            )
+            .bind(tenant)
+            .bind(&coupon_code)
+            .bind(if cancel { -1 } else { 1 })
+            .execute(&mut *tx)
+            .await?;
+        }
         let items: Vec<OrderItem> = serde_json::from_value(items).unwrap_or_default();
         let sign: i32 = if cancel { 1 } else { -1 };
         for item in items {

@@ -10,13 +10,31 @@ use serde::{Deserialize, Serialize};
 /// dirección de una tienda, como el editor).
 #[cfg(feature = "ssr")]
 const OWNER_STEPS: &[&str] = &[
-    "inicio", "entrar", "panel", "productos", "pedidos", "cobros", "ventas", "datos", "editor",
-    "cuenta", "fotos", "tienda_creada", "publico",
+    "inicio",
+    "entrar",
+    "panel",
+    "productos",
+    "pedidos",
+    "cobros",
+    "ventas",
+    "datos",
+    "editor",
+    "cuenta",
+    "fotos",
+    "tienda_creada",
+    "publico",
 ];
 /// Pasos del comprador.
 #[cfg(feature = "ssr")]
 const BUYER_STEPS: &[&str] = &[
-    "tienda", "producto", "carrito", "comprar", "entrega", "pago", "pedido", "error_compra",
+    "tienda",
+    "producto",
+    "carrito",
+    "comprar",
+    "entrega",
+    "pago",
+    "pedido",
+    "error_compra",
 ];
 
 /// Lo corto, para la columna "Llegó hasta".
@@ -123,9 +141,11 @@ fn clean_detail(d: &str) -> Option<String> {
 fn is_bot(ua: &str) -> bool {
     let ua = ua.to_lowercase();
     ua.is_empty()
-        || ["bot", "crawl", "spider", "headless", "preview", "monitor", "curl"]
-            .iter()
-            .any(|w| ua.contains(w))
+        || [
+            "bot", "crawl", "spider", "headless", "preview", "monitor", "curl",
+        ]
+        .iter()
+        .any(|w| ua.contains(w))
 }
 
 /// Guarda un paso de la visita actual. No guarda nada si la persona pidió que
@@ -244,7 +264,9 @@ pub fn TrackPages() -> impl IntoView {
 async fn require_admin() -> Result<(), ServerFnError> {
     match crate::auth::current_user().await? {
         Some(u) if crate::auth::is_admin(&u.email) => Ok(()),
-        _ => Err(ServerFnError::new("Solo el administrador puede ver esta página.")),
+        _ => Err(ServerFnError::new(
+            "Solo el administrador puede ver esta página.",
+        )),
     }
 }
 
@@ -269,8 +291,12 @@ pub async fn usage_report(
     let pool = pool()?;
     let days = days.clamp(1, db::analytics::KEEP_DAYS);
     let who = if who == "owner" { "owner" } else { "buyer" };
-    let owner = db::analytics::owner_funnel(&pool, days).await.map_err(internal)?;
-    let buyer = db::analytics::buyer_funnel(&pool, days).await.map_err(internal)?;
+    let owner = db::analytics::owner_funnel(&pool, days)
+        .await
+        .map_err(internal)?;
+    let buyer = db::analytics::buyer_funnel(&pool, days)
+        .await
+        .map_err(internal)?;
     let visits = db::analytics::recent_visits(&pool, who, days, only_dropped, 40)
         .await
         .map_err(internal)?
@@ -279,12 +305,21 @@ pub async fn usage_report(
             code: v.visita,
             last: short(&v.ultimo).to_string(),
             time: duration_es(v.segundos),
-            device: if v.dispositivo == "celular" { "Celular" } else { "Escritorio" }.into(),
+            device: if v.dispositivo == "celular" {
+                "Celular"
+            } else {
+                "Escritorio"
+            }
+            .into(),
             done: v.termino,
             ago: domain::ago_es(v.hace),
         })
         .collect();
-    Ok(UsageSummary { owner, buyer, visits })
+    Ok(UsageSummary {
+        owner,
+        buyer,
+        visits,
+    })
 }
 
 /// El paso a paso de una visita.
@@ -337,7 +372,12 @@ fn href(days: i32, who: &str, dropped: bool, visit: &str) -> String {
 }
 
 #[component]
-fn Funnel(title: &'static str, note: &'static str, labels: [&'static str; 7], values: Vec<i64>) -> impl IntoView {
+fn Funnel(
+    title: &'static str,
+    note: &'static str,
+    labels: [&'static str; 7],
+    values: Vec<i64>,
+) -> impl IntoView {
     let first = values.first().copied().unwrap_or(0);
     let rows = labels
         .iter()
@@ -388,14 +428,36 @@ pub fn UsagePage() -> impl IntoView {
         "90" => 90,
         _ => 30,
     };
-    let who = move || if get("quien") == "owner" { "owner" } else { "buyer" };
+    let who = move || {
+        if get("quien") == "owner" {
+            "owner"
+        } else {
+            "buyer"
+        }
+    };
     let dropped = move || get("abandonaron") == "1";
     let visit = move || get("v");
-    let report = Resource::new(move || (days(), who(), dropped()), |(d, w, a)| usage_report(d, w.to_string(), a));
-    let steps = Resource::new(move || (visit(), who()), |(v, w)| async move {
-        if v.is_empty() { Ok(Vec::new()) } else { usage_visit(v, w.to_string()).await }
-    });
-    let pill = |active: bool| if active { "btn btn-sm btn-primary" } else { "btn btn-sm btn-outline" };
+    let report = Resource::new(
+        move || (days(), who(), dropped()),
+        |(d, w, a)| usage_report(d, w.to_string(), a),
+    );
+    let steps = Resource::new(
+        move || (visit(), who()),
+        |(v, w)| async move {
+            if v.is_empty() {
+                Ok(Vec::new())
+            } else {
+                usage_visit(v, w.to_string()).await
+            }
+        },
+    );
+    let pill = |active: bool| {
+        if active {
+            "btn btn-sm btn-primary"
+        } else {
+            "btn btn-sm btn-outline"
+        }
+    };
     view! {
         <leptos_meta::Title text="Uso y abandono · MarketMaker"/>
         <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">

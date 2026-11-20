@@ -29,6 +29,7 @@ fn order<'a>(items: &'a [OrderItem]) -> NewOrder<'a> {
         items,
         shipping_cents: 0,
         discount_cents: 0,
+        coupon: None,
         pay: domain::PayMethod::Coordinate,
         shipment: None,
     }
@@ -83,7 +84,7 @@ async fn stock_goes_down_never_below_zero_and_back_on_cancel(pool: PgPool) {
     let items = [item(id, 2)];
     match orders::create(&pool, t, &order(&items)).await.unwrap() {
         Created::Short { left, .. } => assert_eq!(left, 1),
-        Created::Saved { .. } => panic!("vendió de más"),
+        Created::Saved { .. } | Created::CouponGone => panic!("vendió de más"),
     }
     assert_eq!(orders::list(&pool, t).await.unwrap().len(), 1);
 
@@ -184,9 +185,16 @@ async fn an_online_order_enters_only_when_paid(pool: PgPool) {
     // Pide más de lo que hay: no deja.
     let too_many = [item(id, 4)];
     assert!(matches!(
-        orders::create(&pool, t, &NewOrder { status: OrderStatus::PendingPayment, ..order(&too_many) })
-            .await
-            .unwrap(),
+        orders::create(
+            &pool,
+            t,
+            &NewOrder {
+                status: OrderStatus::PendingPayment,
+                ..order(&too_many)
+            }
+        )
+        .await
+        .unwrap(),
         Created::Short { left: 3, .. }
     ));
 
@@ -194,7 +202,10 @@ async fn an_online_order_enters_only_when_paid(pool: PgPool) {
     assert!(!orders::mark_paid(&pool, t, o, "1", 100).await.unwrap());
     // Se aprueba el pago: número, stock y aparece para preparar.
     assert!(orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap());
-    assert!(!orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap(), "una sola vez");
+    assert!(
+        !orders::mark_paid(&pool, t, o, "2", 2000).await.unwrap(),
+        "una sola vez"
+    );
     assert_eq!(stock(&pool, t, id).await, Some(1));
     let listed = orders::list(&pool, t).await.unwrap();
     assert_eq!(listed.len(), 1);
@@ -220,8 +231,16 @@ async fn unpaid_attempts_are_dropped_and_manual_orders_cancelled(pool: PgPool) {
     };
     orders::create(&pool, t, &attempt).await.unwrap();
     orders::create(&pool, t, &order(&items)).await.unwrap();
-    assert_eq!(stock(&pool, t, id).await, Some(2), "la transferencia guarda la unidad");
-    assert_eq!(orders::expire_unpaid(&pool, 48).await.unwrap(), 0, "todavía no");
+    assert_eq!(
+        stock(&pool, t, id).await,
+        Some(2),
+        "la transferencia guarda la unidad"
+    );
+    assert_eq!(
+        orders::expire_unpaid(&pool, 48).await.unwrap(),
+        0,
+        "todavía no"
+    );
     sqlx::query("UPDATE orders SET updated_at = now() - interval '49 hours'")
         .execute(&pool)
         .await
@@ -241,9 +260,16 @@ async fn unpaid_attempts_are_dropped_and_manual_orders_cancelled(pool: PgPool) {
 async fn andreani_orders_keep_their_shipment(pool: PgPool) {
     use domain::{AndreaniService, Shipment, ShipmentState};
     let t = tenant(&pool, "ana").await;
-    let id = products::create(&pool, t, &Product { name: "Taza".into(), ..Product::default() })
-        .await
-        .unwrap();
+    let id = products::create(
+        &pool,
+        t,
+        &Product {
+            name: "Taza".into(),
+            ..Product::default()
+        },
+    )
+    .await
+    .unwrap();
     let items = [item(id, 1)];
     let shipment = Shipment {
         service: AndreaniService::Branch,
@@ -263,6 +289,7 @@ async fn andreani_orders_keep_their_shipment(pool: PgPool) {
         postal_code: "1425",
         shipping_cents: 450_000,
         discount_cents: 0,
+        coupon: None,
         shipment: Some(&shipment),
         ..order(&items)
     };
@@ -276,10 +303,17 @@ async fn andreani_orders_keep_their_shipment(pool: PgPool) {
 
     // Sin pagar no se crea; pagado, se toma una sola vez (y otra si falla).
     assert!(!orders::claim_shipment(&pool, t, o).await.unwrap());
-    assert!(orders::set_status(&pool, t, o, OrderStatus::Paid).await.unwrap());
+    assert!(orders::set_status(&pool, t, o, OrderStatus::Paid)
+        .await
+        .unwrap());
     assert!(orders::claim_shipment(&pool, t, o).await.unwrap());
     assert!(!orders::claim_shipment(&pool, t, o).await.unwrap());
-    let mut failed = orders::get(&pool, t, o).await.unwrap().unwrap().shipment.unwrap();
+    let mut failed = orders::get(&pool, t, o)
+        .await
+        .unwrap()
+        .unwrap()
+        .shipment
+        .unwrap();
     assert_eq!(failed.state, ShipmentState::Creating);
     failed.state = ShipmentState::Failed;
     orders::save_shipment(&pool, t, o, &failed).await.unwrap();
@@ -305,6 +339,7 @@ async fn the_transfer_discount_is_saved_and_lowers_the_total(pool: PgPool) {
         pay: domain::PayMethod::Transfer,
         shipping_cents: 500,
         discount_cents: 200,
+        coupon: None,
         ..order(&items)
     };
     let Created::Saved { id: o, .. } = orders::create(&pool, t, &new).await.unwrap() else {
@@ -327,7 +362,10 @@ async fn the_transfer_discount_is_saved_and_lowers_the_total(pool: PgPool) {
     assert_eq!(orders::payment_options(&pool, t).await.unwrap(), p);
     let info = db::auth::store_info(&pool, t).await.unwrap();
     // Sin Mercado Pago vinculado no hay cuotas para mostrar.
-    assert_eq!((info.offers.installments, info.offers.transfer_discount), (0, 10));
+    assert_eq!(
+        (info.offers.installments, info.offers.transfer_discount),
+        (0, 10)
+    );
     p.transfer = false;
     orders::save_payment_options(&pool, t, &p).await.unwrap();
     let info = db::auth::store_info(&pool, t).await.unwrap();
@@ -345,8 +383,14 @@ async fn variant_stock_goes_down_per_combo_and_back_on_cancel(pool: PgPool) {
     };
     p.variants = domain::Variants {
         colors: vec![
-            domain::VariantColor { name: "Azul".into(), ..Default::default() },
-            domain::VariantColor { name: "Rojo".into(), ..Default::default() },
+            domain::VariantColor {
+                name: "Azul".into(),
+                ..Default::default()
+            },
+            domain::VariantColor {
+                name: "Rojo".into(),
+                ..Default::default()
+            },
         ],
         sizes: vec!["40".into(), "41".into()],
         stock: Vec::new(),
@@ -363,7 +407,8 @@ async fn variant_stock_goes_down_per_combo_and_back_on_cancel(pool: PgPool) {
     };
 
     let items = [combo("Azul", "40", 2)];
-    let Created::Saved { id: first, .. } = orders::create(&pool, t, &order(&items)).await.unwrap() else {
+    let Created::Saved { id: first, .. } = orders::create(&pool, t, &order(&items)).await.unwrap()
+    else {
         panic!("tenía que alcanzar");
     };
     let got = products::get(&pool, t, id).await.unwrap().unwrap();
@@ -375,14 +420,92 @@ async fn variant_stock_goes_down_per_combo_and_back_on_cancel(pool: PgPool) {
     let items = [combo("Rojo", "41", 1), combo("Azul", "40", 1)];
     match orders::create(&pool, t, &order(&items)).await.unwrap() {
         Created::Short { left, .. } => assert_eq!(left, 0),
-        Created::Saved { .. } => panic!("no alcanzaba"),
+        Created::Saved { .. } | Created::CouponGone => panic!("no alcanzaba"),
     }
     let got = products::get(&pool, t, id).await.unwrap().unwrap();
-    assert_eq!(got.variants.qty("Rojo", "41"), 5, "el otro renglón tampoco se descontó");
+    assert_eq!(
+        got.variants.qty("Rojo", "41"),
+        5,
+        "el otro renglón tampoco se descontó"
+    );
 
     // Cancelar devuelve las unidades a su combinación.
-    assert!(orders::set_status(&pool, t, first, OrderStatus::Cancelled).await.unwrap());
+    assert!(orders::set_status(&pool, t, first, OrderStatus::Cancelled)
+        .await
+        .unwrap());
     let got = products::get(&pool, t, id).await.unwrap().unwrap();
     assert_eq!(got.variants.qty("Azul", "40"), 2);
     assert_eq!(got.stock, Some(7));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_coupon_counts_its_uses_stops_at_the_limit_and_gives_the_use_back(pool: PgPool) {
+    use db::coupons::{self, Saved};
+    use domain::{Coupon, CouponKind};
+    let t = tenant(&pool, "uma").await;
+    let id = products::create(
+        &pool,
+        t,
+        &Product {
+            name: "Taza".into(),
+            ..Product::default()
+        },
+    )
+    .await
+    .unwrap();
+    let c = Coupon {
+        code: "VERANO10".into(),
+        kind: CouponKind::Percent,
+        value: 10,
+        max_uses: 1,
+        ..Coupon::default()
+    };
+    assert_eq!(coupons::save(&pool, t, &c).await.unwrap(), Saved::Saved);
+    assert_eq!(coupons::save(&pool, t, &c).await.unwrap(), Saved::CodeTaken);
+
+    let items = [item(id, 2)];
+    let with_coupon = NewOrder {
+        coupon: Some(("VERANO10", 200)),
+        ..order(&items)
+    };
+    let Created::Saved { id: first, .. } = orders::create(&pool, t, &with_coupon).await.unwrap()
+    else {
+        panic!("guardado");
+    };
+    let got = orders::get(&pool, t, first).await.unwrap().unwrap();
+    assert_eq!(
+        (got.coupon_code.as_str(), got.coupon_cents, got.total_cents),
+        ("VERANO10", 200, 1800)
+    );
+    assert_eq!(
+        coupons::by_code(&pool, t, "VERANO10")
+            .await
+            .unwrap()
+            .unwrap()
+            .uses,
+        1
+    );
+
+    // Se acabaron los usos: el siguiente pedido no se guarda.
+    assert!(matches!(
+        orders::create(&pool, t, &with_coupon).await.unwrap(),
+        Created::CouponGone
+    ));
+
+    // Al cancelar el pedido, el uso vuelve.
+    assert!(orders::set_status(&pool, t, first, OrderStatus::Cancelled)
+        .await
+        .unwrap());
+    assert_eq!(
+        coupons::by_code(&pool, t, "VERANO10")
+            .await
+            .unwrap()
+            .unwrap()
+            .uses,
+        0
+    );
+    assert!(matches!(
+        orders::create(&pool, t, &with_coupon).await.unwrap(),
+        Created::Saved { .. }
+    ));
 }

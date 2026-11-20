@@ -236,7 +236,8 @@ pub fn transfer_account_problem(text: &str) -> Option<String> {
         });
     }
     let alias_ok = (6..=20).contains(&t.chars().count())
-        && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
     (!alias_ok).then(|| {
         "El alias tiene de 6 a 20 letras, números o puntos, sin espacios, como mi.tienda.mp."
             .to_string()
@@ -364,12 +365,15 @@ pub struct CheckoutForm {
     /// Con Andreani: el DNI de quien recibe (lo pide Andreani).
     #[serde(default)]
     pub dni: String,
+    /// Código de cupón (vacío: sin cupón).
+    #[serde(default)]
+    pub coupon: String,
 }
 
 /// Un campo del formulario con problema, para mostrarlo al lado del campo.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FieldError {
-    /// `name`, `email`, `phone`, `delivery`, `address`, `postal_code`, `city` o `cart`.
+    /// `name`, `email`, `phone`, `delivery`, `address`, `postal_code`, `city`, `coupon` o `cart`.
     pub field: String,
     pub message: String,
 }
@@ -682,6 +686,11 @@ pub struct Order {
     /// Descuento por pagar con transferencia (0 si no hubo).
     #[serde(default)]
     pub discount_cents: i64,
+    /// Cupón que usó el comprador (vacío: ninguno) y cuánto descontó.
+    #[serde(default)]
+    pub coupon_code: String,
+    #[serde(default)]
+    pub coupon_cents: i64,
     pub total_cents: i64,
     /// Cuándo se hizo, RFC 3339.
     pub created_at: String,
@@ -892,8 +901,12 @@ mod tests {
         assert!(transfer_account_problem("0000003100012345678901").is_none());
         assert!(transfer_account_problem("0000-0031 0001-2345678901").is_none());
         assert!(transfer_account_problem("a").unwrap().contains("6 a 20"));
-        assert!(transfer_account_problem("hola mundo").unwrap().contains("sin espacios"));
-        assert!(transfer_account_problem("123").unwrap().contains("22 números"));
+        assert!(transfer_account_problem("hola mundo")
+            .unwrap()
+            .contains("sin espacios"));
+        assert!(transfer_account_problem("123")
+            .unwrap()
+            .contains("22 números"));
         assert!(transfer_account_problem("").unwrap().contains("Escribí"));
     }
 
@@ -911,6 +924,7 @@ mod tests {
             pay: PayMethod::default(),
             branch: String::new(),
             dni: String::new(),
+            coupon: String::new(),
         }
     }
 

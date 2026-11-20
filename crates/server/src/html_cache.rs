@@ -32,8 +32,19 @@ const MAX_ENTRIES: usize = 500;
 
 /// Rutas que dependen de quién mira o que cambian algo: nunca se guardan.
 const NEVER: [&str; 13] = [
-    "/api", "/media", "/mp", "/tls-ok", "/admin", "/editor", "/tienda", "/cuenta", "/comprar",
-    "/pedido", "/entrar", "/envios", "/mi-cuenta",
+    "/api",
+    "/media",
+    "/mp",
+    "/tls-ok",
+    "/admin",
+    "/editor",
+    "/tienda",
+    "/cuenta",
+    "/comprar",
+    "/pedido",
+    "/entrar",
+    "/envios",
+    "/mi-cuenta",
 ];
 
 struct Entry {
@@ -104,7 +115,10 @@ fn cacheable_request(req: &Request) -> bool {
     }
     let path = req.uri().path();
     !NEVER.iter().any(|p| {
-        path == *p || path.strip_prefix(p).is_some_and(|rest| rest.starts_with('/'))
+        path == *p
+            || path
+                .strip_prefix(p)
+                .is_some_and(|rest| rest.starts_with('/'))
     })
 }
 
@@ -158,7 +172,11 @@ pub async fn middleware(State(cache): State<HtmlCache>, req: Request, next: Next
     }
     let (mut parts, body) = res.into_parts();
     let Ok(bytes) = to_bytes(body, MAX_BUFFER).await else {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "No pudimos armar la página.").into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "No pudimos armar la página.",
+        )
+            .into_response();
     };
     // El largo lo recalcula el servidor con el cuerpo completo.
     parts.headers.remove(header::CONTENT_LENGTH);
@@ -189,10 +207,25 @@ mod tests {
         assert!(cacheable_request(&get("/ofertas", false)));
         assert!(cacheable_request(&get("/terminos", false)));
         assert!(!cacheable_request(&get("/", true)));
-        for p in ["/editor", "/tienda/ana/pedidos", "/api/x", "/pedido/abc", "/comprar", "/entrar", "/cuenta", "/mi-cuenta/pedidos", "/mi-cuenta/entrar", "/tls-ok"] {
+        for p in [
+            "/editor",
+            "/tienda/ana/pedidos",
+            "/api/x",
+            "/pedido/abc",
+            "/comprar",
+            "/entrar",
+            "/cuenta",
+            "/mi-cuenta/pedidos",
+            "/mi-cuenta/entrar",
+            "/tls-ok",
+        ] {
             assert!(!cacheable_request(&get(p, false)), "{p}");
         }
-        let post = Request::builder().method("POST").uri("/").body(Body::empty()).unwrap();
+        let post = Request::builder()
+            .method("POST")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
         assert!(!cacheable_request(&post));
     }
 
@@ -209,8 +242,10 @@ mod tests {
         let html = |status: StatusCode, set_cookie: bool| {
             let mut r = Response::new(Body::empty());
             *r.status_mut() = status;
-            r.headers_mut()
-                .insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+            r.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
             if set_cookie {
                 r.headers_mut()
                     .insert(header::SET_COOKIE, HeaderValue::from_static("a=b"));

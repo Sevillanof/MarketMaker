@@ -8,7 +8,7 @@
 //! antes de salir.
 
 use crate::buyer::{
-    buyer_delete_account, buyer_favorite_ids, buyer_favorites, buyer_logout, buyer_account,
+    buyer_account, buyer_delete_account, buyer_favorite_ids, buyer_favorites, buyer_logout,
     buyer_order, buyer_orders, buyer_redeem, buyer_request_link, buyer_save_avatar,
     buyer_save_profile, buyer_set_favorite,
 };
@@ -383,7 +383,8 @@ fn AvatarPicker(
             };
             match result {
                 Ok(url) => {
-                    let mut updated = account_me(account).unwrap_or_else(|| me_for_save.get_value());
+                    let mut updated =
+                        account_me(account).unwrap_or_else(|| me_for_save.get_value());
                     updated.avatar = Some(url);
                     account.state.set(AccountState::In(updated));
                 }
@@ -713,7 +714,10 @@ fn OrderDetail(view: domain::PageView, order: Order) -> impl IntoView {
         ("Recibido", true),
         ("Pagado", rank >= 1),
         (if pickup { "Listo" } else { "Enviado" }, rank >= 2),
-        (if pickup { "Retirado" } else { "Entregado" }, rank >= 3 && !cancelled),
+        (
+            if pickup { "Retirado" } else { "Entregado" },
+            rank >= 3 && !cancelled,
+        ),
     ];
     let where_ = order.destination().unwrap_or_default();
     let needs_payment = matches!(order.status, OrderStatus::New);
@@ -779,6 +783,7 @@ fn OrderDetail(view: domain::PageView, order: Order) -> impl IntoView {
                     }).collect_view()}
                 </ul>
                 <div class="flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{format_price(order.subtotal_cents)}</span></div>
+                {(order.coupon_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Cupón {}", order.coupon_code)}</span><span>{format!("−{}", format_price(order.coupon_cents))}</span></div> })}
                 {(order.discount_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>"Descuento por transferencia"</span><span>{format!("−{}", format_price(order.discount_cents))}</span></div> })}
                 <div class="-mt-2 flex justify-between text-sm text-base-content/75"><span>{delivery}</span><span>{shipping_text}</span></div>
                 <div class="flex justify-between text-lg font-bold"><span>"Total"</span><span>{format_price(order.total_cents)}</span></div>
@@ -1022,7 +1027,12 @@ pub fn BuyerEnterPage() -> impl IntoView {
 
 /// Marca o desmarca un favorito de inmediato y lo confirma con el servidor;
 /// si el servidor no lo acepta, deja todo como estaba. Devuelve el aviso.
-fn toggle_favorite(account: Account, id: String, name: String, notice: RwSignal<Option<FavNotice>>) {
+fn toggle_favorite(
+    account: Account,
+    id: String,
+    name: String,
+    notice: RwSignal<Option<FavNotice>>,
+) {
     let was = account.favs.with_untracked(|f| f.contains(&id));
     account.favs.update(|f| {
         if was {
@@ -1034,7 +1044,14 @@ fn toggle_favorite(account: Account, id: String, name: String, notice: RwSignal<
     spawn_local(async move {
         let ok = buyer_set_favorite(id.clone(), !was).await.unwrap_or(false);
         if ok {
-            show_notice(notice, if was { FavNotice::Removed(name) } else { FavNotice::Saved(name) });
+            show_notice(
+                notice,
+                if was {
+                    FavNotice::Removed(name)
+                } else {
+                    FavNotice::Saved(name)
+                },
+            );
         } else {
             account.favs.update(|f| {
                 if was {
@@ -1260,7 +1277,10 @@ fn FavoritesList(view: domain::PageView, list: Vec<domain::Product>) -> impl Int
 }
 
 #[component]
-fn FavoriteCard(product: domain::Product, remove: impl Fn(String) + Copy + Send + Sync + 'static) -> impl IntoView {
+fn FavoriteCard(
+    product: domain::Product,
+    remove: impl Fn(String) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
     let id = product.id.clone();
     let name = product.name.clone();
     let fit = product.fit(&product.image_url);

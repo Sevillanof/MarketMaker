@@ -149,7 +149,10 @@ pub fn AccountFooterLink() -> impl IntoView {
 
 /// El icono del corazón (contorno o relleno).
 #[component]
-pub fn HeartIcon(#[prop(into)] filled: Signal<bool>, #[prop(into, default = "size-5".to_string())] class: String) -> impl IntoView {
+pub fn HeartIcon(
+    #[prop(into)] filled: Signal<bool>,
+    #[prop(into, default = "size-5".to_string())] class: String,
+) -> impl IntoView {
     view! {
         <svg class=class viewBox="0 0 24 24" fill=move || if filled.get() { "currentColor" } else { "none" }
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

@@ -301,7 +301,9 @@ pub async fn who_am_i() -> Result<Option<Me>, ServerFnError> {
 #[server]
 pub async fn send_editor_link() -> Result<(), ServerFnError> {
     let Some(user) = current_user().await? else {
-        return Err(ServerFnError::new("Entrá con tu cuenta para pedir el enlace."));
+        return Err(ServerFnError::new(
+            "Entrá con tu cuenta para pedir el enlace.",
+        ));
     };
     let tenant = current_tenant()
         .await
@@ -311,7 +313,9 @@ pub async fn send_editor_link() -> Result<(), ServerFnError> {
         .map_err(crate::server::internal)?
         .is_some();
     if !owner {
-        return Err(ServerFnError::new("Esta cuenta no puede editar esta tienda."));
+        return Err(ServerFnError::new(
+            "Esta cuenta no puede editar esta tienda.",
+        ));
     }
     if !may_ask_for_email() {
         return Err(ServerFnError::new(

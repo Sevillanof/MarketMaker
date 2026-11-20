@@ -135,6 +135,9 @@ pub struct CardOptions {
     /// El corazón para guardar el producto en favoritos (en las tarjetas y la ficha).
     #[serde(default = "yes")]
     pub card_favorite: bool,
+    /// Los puntos de color (o los talles) de los productos con variantes.
+    #[serde(default = "yes")]
+    pub card_colors: bool,
 }
 
 impl Default for CardOptions {
@@ -144,6 +147,7 @@ impl Default for CardOptions {
             card_transfer: true,
             card_installments: true,
             card_favorite: true,
+            card_colors: true,
         }
     }
 }
@@ -649,9 +653,26 @@ const PRODUCT_GRID_FIELDS: &[Field] = &[
             options: CARD_STYLE_OPTIONS,
         },
     ),
-    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
-    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
-    adv("card_favorite", "Corazón de favoritos en las tarjetas y la ficha", FieldKind::Bool),
+    adv(
+        "card_transfer",
+        "Tarjeta completa: precio con transferencia",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_installments",
+        "Tarjeta completa: cuotas sin interés",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_favorite",
+        "Corazón de favoritos en las tarjetas y la ficha",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_colors",
+        "Puntos de color en las tarjetas",
+        FieldKind::Bool,
+    ),
 ];
 const TAG_FILTER_FIELDS: &[Field] = &[
     field("title", "Título (opcional)", text(60)),
@@ -685,9 +706,26 @@ const TAG_TABS_FIELDS: &[Field] = &[
             options: CARD_STYLE_OPTIONS,
         },
     ),
-    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
-    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
-    adv("card_favorite", "Corazón de favoritos en las tarjetas y la ficha", FieldKind::Bool),
+    adv(
+        "card_transfer",
+        "Tarjeta completa: precio con transferencia",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_installments",
+        "Tarjeta completa: cuotas sin interés",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_favorite",
+        "Corazón de favoritos en las tarjetas y la ficha",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_colors",
+        "Puntos de color en las tarjetas",
+        FieldKind::Bool,
+    ),
 ];
 const FEATURED_PRODUCT_FIELDS: &[Field] = &[
     field("product_id", "Producto", FieldKind::ProductRef),
@@ -699,9 +737,26 @@ const FEATURED_PRODUCT_FIELDS: &[Field] = &[
             options: CARD_STYLE_OPTIONS,
         },
     ),
-    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
-    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
-    adv("card_favorite", "Corazón de favoritos en las tarjetas y la ficha", FieldKind::Bool),
+    adv(
+        "card_transfer",
+        "Tarjeta completa: precio con transferencia",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_installments",
+        "Tarjeta completa: cuotas sin interés",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_favorite",
+        "Corazón de favoritos en las tarjetas y la ficha",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_colors",
+        "Puntos de color en las tarjetas",
+        FieldKind::Bool,
+    ),
 ];
 
 const LINK_ITEM: &[Field] = &[
@@ -789,7 +844,11 @@ const NAVBAR_FIELDS: &[Field] = &[
             options: NAV_MENU_OPTIONS,
         },
     ),
-    adv("menu_color", "Desplegable en columnas con fondo de color", FieldKind::Bool),
+    adv(
+        "menu_color",
+        "Desplegable en columnas con fondo de color",
+        FieldKind::Bool,
+    ),
     adv("search", "Buscador de productos", FieldKind::Bool),
     adv("upper", "Enlaces en mayúsculas", FieldKind::Bool),
     adv("button_label", "Texto del botón", text(30)),
@@ -1019,8 +1078,16 @@ const PRODUCT_PRICE_FIELDS: &[Field] = &[
             options: VARIANT_PRODUCT_PRICE,
         },
     ),
-    field("show_installments", "Mostrar cuotas sin interés (se eligen en Cobros)", FieldKind::Bool),
-    field("show_transfer", "Mostrar precio con transferencia (se elige en Cobros)", FieldKind::Bool),
+    field(
+        "show_installments",
+        "Mostrar cuotas sin interés (se eligen en Cobros)",
+        FieldKind::Bool,
+    ),
+    field(
+        "show_transfer",
+        "Mostrar precio con transferencia (se elige en Cobros)",
+        FieldKind::Bool,
+    ),
 ];
 /// El botón de la ficha agrega al carrito: ya no lleva enlace (`href`
 /// queda solo para leer fichas viejas).
@@ -1083,7 +1150,11 @@ const ANNOUNCEMENT_FIELDS: &[Field] = &[
         },
     ),
     field("code", "Código del cupón (estilo cupón)", text(24)),
-    field("note", "Aclaración (estilo cupón), ej. «Hasta el domingo»", text(40)),
+    field(
+        "note",
+        "Aclaración (estilo cupón), ej. «Hasta el domingo»",
+        text(40),
+    ),
     field(
         "coupon",
         "Forma del cupón",
@@ -1185,9 +1256,26 @@ const PRODUCT_CAROUSEL_FIELDS: &[Field] = &[
             options: CARD_STYLE_OPTIONS,
         },
     ),
-    adv("card_transfer", "Tarjeta completa: precio con transferencia", FieldKind::Bool),
-    adv("card_installments", "Tarjeta completa: cuotas sin interés", FieldKind::Bool),
-    adv("card_favorite", "Corazón de favoritos en las tarjetas y la ficha", FieldKind::Bool),
+    adv(
+        "card_transfer",
+        "Tarjeta completa: precio con transferencia",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_installments",
+        "Tarjeta completa: cuotas sin interés",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_favorite",
+        "Corazón de favoritos en las tarjetas y la ficha",
+        FieldKind::Bool,
+    ),
+    adv(
+        "card_colors",
+        "Puntos de color en las tarjetas",
+        FieldKind::Bool,
+    ),
 ];
 
 pub const VARIANT_SOCIAL: &[(&str, &str)] = &[

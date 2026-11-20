@@ -161,6 +161,15 @@ fn order_lines(o: &Order) -> (String, String) {
         Delivery::Pickup => "Retiro".to_string(),
         _ => o.shipping_text(ui::format_price),
     };
+    if o.coupon_cents > 0 {
+        let d = format!("−{}", ui::format_price(o.coupon_cents));
+        let name = format!("Cupón {}", o.coupon_code);
+        html.push_str(&format!(
+            r#"<tr><td style="padding:6px 0;color:#15803d">{}</td><td style="padding:6px 0;text-align:right;color:#15803d">{d}</td></tr>"#,
+            esc(&name)
+        ));
+        text.push_str(&format!("{name}  {d}\n"));
+    }
     if o.discount_cents > 0 {
         let d = format!("−{}", ui::format_price(o.discount_cents));
         html.push_str(&format!(
@@ -409,7 +418,9 @@ pub fn editor_link(to: &str, store: &str, url: &str) -> Email {
         to: vec![to.to_string()],
         subject: title.clone(),
         html,
-        text: format!("{title}\n\nAbrí este enlace desde una computadora para diseñar tu tienda:\n{url}\n"),
+        text: format!(
+            "{title}\n\nAbrí este enlace desde una computadora para diseñar tu tienda:\n{url}\n"
+        ),
     }
 }
 
@@ -706,7 +717,10 @@ fn order_summary(o: &Order) -> (String, String) {
         let second = if variant.is_empty() {
             String::new()
         } else {
-            format!(r#"<br><span style="color:#71717a">{}</span>"#, esc(&variant))
+            format!(
+                r#"<br><span style="color:#71717a">{}</span>"#,
+                esc(&variant)
+            )
         };
         html.push_str(&format!(
             r#"<tr><td style="{cell}">{} × {}{second}</td><td style="{cell};text-align:right;vertical-align:top;white-space:nowrap">{}</td></tr>"#,
@@ -714,10 +728,21 @@ fn order_summary(o: &Order) -> (String, String) {
             esc(name),
             ui::format_price(i.total_cents())
         ));
-        text.push_str(&format!("{} × {}  {}\n", i.qty, i.name, ui::format_price(i.total_cents())));
+        text.push_str(&format!(
+            "{} × {}  {}\n",
+            i.qty,
+            i.name,
+            ui::format_price(i.total_cents())
+        ));
     }
     // Descuento y envío, para que la suma cierre con el total.
     let mut extra = vec![];
+    if o.coupon_cents > 0 {
+        extra.push((
+            format!("Cupón {}", o.coupon_code),
+            format!("−{}", ui::format_price(o.coupon_cents)),
+        ));
+    }
     if o.discount_cents > 0 {
         extra.push((
             "Descuento por transferencia".to_string(),
@@ -799,8 +824,19 @@ pub fn update_to_buyer(
         ("Dónde retirarlo", lines)
     } else {
         let to = o.destination().unwrap_or_else(|| o.city.clone());
-        let l = if what == BuyerUpdate::Shipped { "Lo enviamos a" } else { "Envío a domicilio" };
-        (l, if to.trim().is_empty() { vec![] } else { vec![to] })
+        let l = if what == BuyerUpdate::Shipped {
+            "Lo enviamos a"
+        } else {
+            "Envío a domicilio"
+        };
+        (
+            l,
+            if to.trim().is_empty() {
+                vec![]
+            } else {
+                vec![to]
+            },
+        )
     };
     if what == BuyerUpdate::Shipped && !whatsapp.trim().is_empty() {
         place.push(format!("WhatsApp de la tienda: {}", whatsapp.trim()));
@@ -812,7 +848,11 @@ pub fn update_to_buyer(
         format!(
             r#"{}<p style="margin:0;color:#3f3f46;line-height:1.6;font-size:14px">{}</p>"#,
             label(place_label),
-            place.iter().map(|l| esc(l)).collect::<Vec<_>>().join("<br>")
+            place
+                .iter()
+                .map(|l| esc(l))
+                .collect::<Vec<_>>()
+                .join("<br>")
         )
     };
     let html = format!(
@@ -835,7 +875,11 @@ pub fn update_to_buyer(
     let text = format!(
         "{title}\n{intro}\n\nTu pedido #{}\n{lines_text}\n{}{}\n\nTu pedido: {url}\n",
         o.number,
-        if place.is_empty() { String::new() } else { format!("{place_label}:\n") },
+        if place.is_empty() {
+            String::new()
+        } else {
+            format!("{place_label}:\n")
+        },
         place.join("\n")
     );
     Email {

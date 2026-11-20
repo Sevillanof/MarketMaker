@@ -3,15 +3,19 @@
 use domain::{Layer, PageView};
 use leptos::prelude::*;
 use widgets::{
-    render_widget, Cart, CartBar, CartDrawer, OpenProduct, ProductDialog,
-    ProductFilter, RenderCtx,
+    render_widget, Cart, CartBar, CartDrawer, OpenProduct, ProductDialog, ProductFilter, RenderCtx,
 };
 
 /// La página de la tienda que está en la dirección `path` (`/` es Inicio).
 /// Si no hay ninguna ahí, un aviso con un enlace a Inicio.
 #[component]
 pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoView {
-    let PageView { doc, products, store, .. } = view;
+    let PageView {
+        doc,
+        products,
+        store,
+        ..
+    } = view;
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(store);
     let Some(page) = doc.page_index(&path) else {
