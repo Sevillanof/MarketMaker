@@ -20,6 +20,7 @@ use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 pub mod account;
 pub mod cart;
 pub mod product_page;
+pub mod categories;
 pub mod tags;
 pub use product_page::{ProductImageWidget, ProductPriceWidget};
 pub use account::{
@@ -105,6 +106,11 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         | Widget::TagCircles(_)
         | Widget::TagSearch(_)
         | Widget::TagTabs(_) => tags::render(&node.widget, ctx),
+        Widget::CategoryTabs(_)
+        | Widget::CategorySide(_)
+        | Widget::CategoryCards(_)
+        | Widget::CategoryDrop(_)
+        | Widget::CategoryPage(_) => categories::render(&node.widget, ctx),
         Widget::FeaturedProduct(p) => {
             view! { <FeaturedProductWidget props=p.clone() products=ctx.products.clone()/> }
                 .into_any()

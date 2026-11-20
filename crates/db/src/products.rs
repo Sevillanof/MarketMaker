@@ -23,6 +23,8 @@ struct Row {
     visible: bool,
     photos: Vec<String>,
     tags: Vec<String>,
+    category: String,
+    subcategory: String,
     photo_fits: Json<BTreeMap<String, PhotoFit>>,
     example: bool,
     parcel: Option<Json<Parcel>>,
@@ -43,6 +45,8 @@ impl From<Row> for Product {
             visible: r.visible,
             photos: r.photos,
             tags: r.tags,
+            category: r.category,
+            subcategory: r.subcategory,
             photo_fits: r.photo_fits.0,
             example: r.example,
             parcel: r.parcel.map(|j| j.0),
@@ -56,7 +60,7 @@ macro_rules! select {
     ($rest:literal) => {
         concat!(
             "SELECT id, name, price_cents, image_url, description, compare_at_cents, ",
-            "in_stock, stock, visible, photos, tags, photo_fits, example, parcel, variants ",
+            "in_stock, stock, visible, photos, tags, category, subcategory, photo_fits, example, parcel, variants ",
             $rest
         )
     };
@@ -179,8 +183,8 @@ pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uu
     sqlx::query_scalar(
         "INSERT INTO products (tenant_id, name, price_cents, image_url, description,
                                compare_at_cents, in_stock, visible, photos, tags, stock,
-                               photo_fits, parcel, variants)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                               photo_fits, parcel, variants, category, subcategory)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING id",
     )
     .bind(tenant)
@@ -197,6 +201,8 @@ pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uu
     .bind(Json(&p.photo_fits))
     .bind(p.parcel.map(Json))
     .bind(Json(&p.variants))
+    .bind(&p.category)
+    .bind(&p.subcategory)
     .fetch_one(pool)
     .await
 }
@@ -206,7 +212,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     let done = sqlx::query(
         "UPDATE products SET name = $3, price_cents = $4, image_url = $5, description = $6,
                 compare_at_cents = $7, in_stock = $8, visible = $9, photos = $10, tags = $11,
-                stock = $12, photo_fits = $13, parcel = $14, variants = $15, example = false,
+                stock = $12, photo_fits = $13, parcel = $14, variants = $15, category = $16, subcategory = $17, example = false,
                 updated_at = now()
          WHERE tenant_id = $1 AND id = $2",
     )
@@ -225,6 +231,8 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     .bind(Json(&p.photo_fits))
     .bind(p.parcel.map(Json))
     .bind(Json(&p.variants))
+    .bind(&p.category)
+    .bind(&p.subcategory)
     .execute(pool)
     .await?;
     Ok(done.rows_affected() == 1)
@@ -276,6 +284,83 @@ pub async fn set_tags(
 }
 
 /// Todas las etiquetas de la tienda, de la más usada a la menos usada.
+/// Cambia el nombre de la categoría `cat` o, con `sub` no vacío, el de su
+/// subcategoría. Si `new` ya existe, los productos se juntan con ella.
+pub async fn rename_category(
+    pool: &PgPool,
+    tenant: Uuid,
+    cat: &str,
+    sub: &str,
+    new: &str,
+) -> sqlx::Result<()> {
+    if sub.is_empty() {
+        sqlx::query("UPDATE products SET category = $3 WHERE tenant_id = $1 AND category = $2")
+            .bind(tenant)
+            .bind(cat)
+            .bind(new)
+            .execute(pool)
+            .await?;
+    } else {
+        sqlx::query(
+            "UPDATE products SET subcategory = $4
+             WHERE tenant_id = $1 AND category = $2 AND subcategory = $3",
+        )
+        .bind(tenant)
+        .bind(cat)
+        .bind(sub)
+        .bind(new)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Saca la categoría `cat` (y sus subcategorías) o, con `sub` no vacío, solo
+/// esa subcategoría, de todos los productos. Los productos no se borran.
+pub async fn delete_category(
+    pool: &PgPool,
+    tenant: Uuid,
+    cat: &str,
+    sub: &str,
+) -> sqlx::Result<()> {
+    if sub.is_empty() {
+        sqlx::query(
+            "UPDATE products SET category = '', subcategory = '' WHERE tenant_id = $1 AND category = $2",
+        )
+        .bind(tenant)
+        .bind(cat)
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query(
+            "UPDATE products SET subcategory = ''
+             WHERE tenant_id = $1 AND category = $2 AND subcategory = $3",
+        )
+        .bind(tenant)
+        .bind(cat)
+        .bind(sub)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Las categorías de la tienda con sus subcategorías: una fila por cada
+/// par (categoría, subcategoría) que usa algún producto, con cuántos.
+pub async fn category_pairs(
+    pool: &PgPool,
+    tenant: Uuid,
+) -> sqlx::Result<Vec<(String, String, i64)>> {
+    sqlx::query_as(
+        "SELECT category, subcategory, count(*) FROM products
+         WHERE tenant_id = $1 AND category <> ''
+         GROUP BY category, subcategory ORDER BY category, subcategory",
+    )
+    .bind(tenant)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn tags(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<String>> {
     sqlx::query_scalar(
         "SELECT t FROM products, unnest(tags) AS t

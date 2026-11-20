@@ -406,9 +406,9 @@ pub async fn create_store(
     sqlx::query(
         "INSERT INTO products (tenant_id, name, price_cents, image_url, description, created_at,
                                compare_at_cents, in_stock, visible, photos, tags, photo_fits,
-                               example)
+                               example, category, subcategory)
          SELECT $1, p.name, p.price_cents, p.image_url, p.description, p.created_at,
-                p.compare_at_cents, p.in_stock, true, p.photos, p.tags, p.photo_fits, true
+                p.compare_at_cents, p.in_stock, true, p.photos, p.tags, p.photo_fits, true, p.category, p.subcategory
          FROM products p JOIN tenants t ON t.id = p.tenant_id
          WHERE t.slug = $2 AND p.visible",
     )

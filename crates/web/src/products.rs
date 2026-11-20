@@ -105,6 +105,47 @@ pub async fn delete_tag(slug: String, tag: String) -> Result<domain::TagSave, Se
     .await
 }
 
+/// Cambia el nombre de una categoría (o de una subcategoría, si `sub` no
+/// está vacío) en todos los productos. Devuelve cómo quedaron.
+#[server]
+pub async fn rename_category(
+    slug: String,
+    cat: String,
+    sub: String,
+    new: String,
+) -> Result<domain::TagSave, ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = server::require_store(&slug).await?;
+    let new = domain::clean_category(&new);
+    if new.is_empty() {
+        return Ok(domain::TagSave::Invalid { error: "Escribí un nombre.".into() });
+    }
+    let pool = pool()?;
+    db::products::rename_category(&pool, tenant.id, &cat, &sub, &new)
+        .await
+        .map_err(internal)?;
+    let products = db::products::list_all(&pool, tenant.id).await.map_err(internal)?;
+    Ok(domain::TagSave::Saved { products })
+}
+
+/// Saca una categoría (o una subcategoría) de todos los productos. Los
+/// productos no se borran.
+#[server]
+pub async fn delete_category(
+    slug: String,
+    cat: String,
+    sub: String,
+) -> Result<domain::TagSave, ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = server::require_store(&slug).await?;
+    let pool = pool()?;
+    db::products::delete_category(&pool, tenant.id, &cat, &sub)
+        .await
+        .map_err(internal)?;
+    let products = db::products::list_all(&pool, tenant.id).await.map_err(internal)?;
+    Ok(domain::TagSave::Saved { products })
+}
+
 /// Aplica `change` (las etiquetas nuevas de cada producto, o un problema)
 /// a los productos de la tienda y devuelve cómo quedaron.
 #[cfg(feature = "ssr")]
@@ -163,6 +204,11 @@ pub async fn product_to_edit(
         store_tags: db::products::tag_counts(&pool, tenant.id)
             .await
             .map_err(internal)?,
+        store_categories: domain::categories_from_pairs(
+            &db::products::category_pairs(&pool, tenant.id)
+                .await
+                .map_err(internal)?,
+        ),
         andreani: db::andreani::account(&pool, tenant.id)
             .await
             .map_err(internal)?
@@ -331,6 +377,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     });
     let _ = data.tags;
     let manage = NodeRef::<leptos::html::Dialog>::new();
+    let manage_cats = NodeRef::<leptos::html::Dialog>::new();
     let query = RwSignal::new(String::new());
     let tag = RwSignal::new(None::<String>);
     let problem = RwSignal::new(None::<String>);
@@ -422,12 +469,21 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
             <button type="button" class="btn max-sm:min-h-11" on:click=move |_| {
                 if let Some(d) = manage.get() { _ = d.show_modal(); }
             }>"Etiquetas"</button>
+            <button type="button" class="btn max-sm:min-h-11" on:click=move |_| {
+                if let Some(d) = manage_cats.get() { _ = d.show_modal(); }
+            }>"Categorías"</button>
             // En el teléfono es el botón flotante de abajo (ver `.mk-fab`).
             <a class="btn btn-primary mk-fab" href=new_href.clone()>"+ Nuevo producto"</a>
         </div>
         <dialog node_ref=manage class="modal" aria-labelledby="etiquetas-titulo">
             <div class="modal-box max-w-3xl">
                 <TagManager slug=slug.get_value() products tag dialog=manage/>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
+        <dialog node_ref=manage_cats class="modal" aria-labelledby="categorias-titulo">
+            <div class="modal-box max-w-xl">
+                <CategoryManager slug=slug.get_value() products dialog=manage_cats/>
             </div>
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
         </dialog>
@@ -855,6 +911,111 @@ fn TagManager(
     }
 }
 
+/// «Categorías»: las de la tienda con sus subcategorías, para cambiarles el
+/// nombre o sacarlas. Se crean al ponerlas en un producto.
+#[component]
+fn CategoryManager(
+    slug: String,
+    products: RwSignal<Vec<Product>>,
+    dialog: NodeRef<leptos::html::Dialog>,
+) -> impl IntoView {
+    let slug = StoredValue::new(slug);
+    let cats = Memo::new(move |_| products.with(|ps| domain::count_categories(ps)));
+    // La que se está renombrando o por borrar: (categoría, subcategoría).
+    let editing = RwSignal::new(None::<(String, String)>);
+    let doomed = RwSignal::new(None::<(String, String)>);
+    let name = RwSignal::new(String::new());
+    let problem = RwSignal::new(None::<String>);
+    let done = move |r: Result<domain::TagSave, ServerFnError>| match r {
+        Ok(domain::TagSave::Saved { products: ps }) => {
+            products.set(ps);
+            problem.set(None);
+            editing.set(None);
+            doomed.set(None);
+        }
+        Ok(domain::TagSave::Invalid { error }) => problem.set(Some(error)),
+        Err(e) => problem.set(Some(error_text(&e))),
+    };
+    let rename = Action::new(move |_: &()| {
+        let (c, s) = editing.get_untracked().unwrap_or_default();
+        let n = name.get_untracked();
+        async move { done(rename_category(slug.get_value(), c, s, n).await) }
+    });
+    let remove = Action::new(move |_: &()| {
+        let (c, s) = doomed.get_untracked().unwrap_or_default();
+        async move { done(delete_category(slug.get_value(), c, s).await) }
+    });
+    let busy = move || rename.pending().get() || remove.pending().get();
+    let close = move |_| {
+        if let Some(d) = dialog.get() {
+            d.close();
+        }
+    };
+    let row = move |label: String, cat: String, sub: String, n: usize| {
+        let key = (cat, sub);
+        let (k_edit, k_doom, k_start, k_ask) = (key.clone(), key.clone(), key.clone(), key.clone());
+        let is_sub = !key.1.is_empty();
+        let label2 = label.clone();
+        let label3 = label.clone();
+        view! {
+            <li class=if is_sub { "ml-6 border-b border-base-200 py-1.5 last:border-0" } else { "border-b border-base-200 py-2 last:border-0" }>
+                {move || if editing.get().as_ref() == Some(&k_edit) {
+                    view! {
+                        <form class="flex flex-wrap items-center gap-2" on:submit=move |ev| { ev.prevent_default(); rename.dispatch(()); }>
+                            <input class="input input-sm grow" maxlength=domain::CATEGORY_MAX required=true
+                                aria-label="Nombre nuevo"
+                                prop:value=move || name.get()
+                                on:input=move |ev| name.set(event_target_value(&ev))/>
+                            <button type="submit" class="btn btn-primary btn-sm" disabled=busy>"Guardar"</button>
+                            <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| editing.set(None)>"Cancelar"</button>
+                        </form>
+                    }.into_any()
+                } else if doomed.get().as_ref() == Some(&k_doom) {
+                    view! {
+                        <div role="alert" class="alert alert-warning flex flex-wrap text-sm">
+                            <span class="grow">{format!("¿Sacar «{}»? Los productos no se borran: quedan {}.", label2, if is_sub { "sin subcategoría" } else { "sin categoría" })}</span>
+                            <button type="button" class="btn btn-sm" on:click=move |_| doomed.set(None)>"Cancelar"</button>
+                            <button type="button" class="btn btn-error btn-sm" disabled=busy on:click=move |_| { remove.dispatch(()); }>"Sacar"</button>
+                        </div>
+                    }.into_any()
+                } else {
+                    let (ks, ka) = (k_start.clone(), k_ask.clone());
+                    let l = label3.clone();
+                    view! {
+                        <div class="flex items-center gap-2">
+                            <span class="grow truncate">{label3.clone()}</span>
+                            <span class="text-sm text-base-content/60">{n}</span>
+                            <button type="button" class="btn btn-ghost btn-xs" aria-label=format!("Cambiar el nombre de {l}")
+                                on:click=move |_| { name.set(if ks.1.is_empty() { ks.0.clone() } else { ks.1.clone() }); problem.set(None); doomed.set(None); editing.set(Some(ks.clone())); }>"Renombrar"</button>
+                            <button type="button" class="btn btn-ghost btn-xs text-error" aria-label=format!("Sacar {l}")
+                                on:click=move |_| { problem.set(None); editing.set(None); doomed.set(Some(ka.clone())); }>"Sacar"</button>
+                        </div>
+                    }.into_any()
+                }}
+            </li>
+        }
+    };
+    view! {
+        <div class="flex items-start gap-3">
+            <div class="grow">
+                <h2 id="categorias-titulo" class="text-xl font-bold">"Categorías"</h2>
+                <p class="text-sm text-base-content/70">"Cada producto tiene una categoría (y, si querés, una subcategoría). Se crean al elegirlas en el producto. Si sumás a tu tienda uno de los bloques de categorías, tus clientes las tocan para ver solo esos productos."</p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=close>"✕"</button>
+        </div>
+        <ul class="mt-4 max-h-96 overflow-y-auto" aria-label="Categorías de la tienda">
+            {move || cats.get().into_iter().map(|c| view! {
+                {row(c.name.clone(), c.name.clone(), String::new(), c.products)}
+                {c.subs.iter().map(|(s, n)| row(s.clone(), c.name.clone(), s.clone(), *n)).collect_view()}
+            }).collect_view()}
+        </ul>
+        {move || cats.with(Vec::is_empty).then(|| view! {
+            <p class="mt-2 text-sm text-base-content/60">"Todavía no hay categorías. Elegí una al cargar o editar un producto."</p>
+        })}
+        {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error mt-3 text-sm">{e}</div> })}
+    }
+}
+
 /// `/tienda/:slug/productos/:id`.
 #[component]
 pub fn ProductEditPage() -> impl IntoView {
@@ -871,7 +1032,7 @@ pub fn ProductEditPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Producto · MarketMaker"/>
             <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8 max-sm:py-4 max-sm:pb-28">
-                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Product/> }>
                     {move || Suspend::new(async move {
                         let back = format!("/tienda/{}/productos", slug.get_untracked());
                         match data.await {
@@ -904,6 +1065,8 @@ struct Form {
     /// Encuadre de cada foto en este producto.
     fits: RwSignal<BTreeMap<String, PhotoFit>>,
     tags: RwSignal<Vec<String>>,
+    category: RwSignal<String>,
+    subcategory: RwSignal<String>,
     in_stock: RwSignal<bool>,
     /// Cantidad disponible; vacío si no se cuenta.
     stock: RwSignal<String>,
@@ -938,6 +1101,8 @@ impl Form {
             photos: RwSignal::new(p.all_photos()),
             fits: RwSignal::new(p.photo_fits.clone()),
             tags: RwSignal::new(p.tags.clone()),
+            category: RwSignal::new(p.category.clone()),
+            subcategory: RwSignal::new(p.subcategory.clone()),
             in_stock: RwSignal::new(p.in_stock || p.stock.is_some()),
             stock: RwSignal::new(p.stock.map(|s| s.to_string()).unwrap_or_default()),
             visible: RwSignal::new(p.visible),
@@ -1018,6 +1183,8 @@ impl Form {
             visible: self.visible.get(),
             photos,
             tags: self.tags.get(),
+            category: self.category.get(),
+            subcategory: self.subcategory.get(),
             photo_fits: self.fits.get(),
             example: false,
             parcel,
@@ -1098,6 +1265,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     let list_href = format!("/tienda/{slug}/productos");
     let slug = StoredValue::new(slug);
     let store_tags = StoredValue::new(edit.store_tags);
+    let store_categories = StoredValue::new(edit.store_categories);
     // Peso y medidas solo sirven con Andreani (o si ya estaban cargados).
     let show_parcel = edit.andreani || edit.product.parcel.is_some();
     let errors = RwSignal::new(Vec::<String>::new());
@@ -1115,6 +1283,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         form.photos.track();
         form.fits.track();
         form.tags.track();
+        form.category.track();
+        form.subcategory.track();
         form.in_stock.track();
         form.stock.track();
         form.visible.track();
@@ -1340,6 +1510,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                     <p class="label">{move || format!("{} de {} letras", form.description.with(|d| d.chars().count()), domain::PRODUCT_DESC_MAX)}</p>
                     {field_error("description")}
                 </fieldset>
+                <CategoryField form store_categories=store_categories.get_value()/>
                 <TagsField form store_tags=store_tags.get_value()/>
                 <crate::variants_field::VariantsField form=form.variants photos=form.photos/>
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -1653,6 +1824,52 @@ fn PhotosField(
                 </div>
             })}
         </fieldset>
+    }
+}
+
+/// La categoría y la subcategoría: dos campos de texto con sugerencias de
+/// las que ya usa la tienda (para no escribirlas distinto) y la opción de
+/// escribir una nueva. Cada producto tiene una sola de cada una.
+#[component]
+fn CategoryField(form: Form, store_categories: Vec<domain::CategoryCount>) -> impl IntoView {
+    let cats = StoredValue::new(store_categories);
+    let subs = move || {
+        let typed = domain::clean_category(&form.category.get());
+        cats.with_value(|all| {
+            all.iter()
+                .find(|c| c.name.to_lowercase() == typed.to_lowercase())
+                .map(|c| c.subs.iter().map(|s| s.0.clone()).collect::<Vec<_>>())
+                .unwrap_or_default()
+        })
+    };
+    view! {
+        <div class="grid gap-4 sm:grid-cols-2">
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">"Categoría"</legend>
+                <input id="p-category" type="text" class="input w-full" list="p-category-list"
+                    maxlength=domain::CATEGORY_MAX autocomplete="off"
+                    placeholder="Ej.: Remeras"
+                    prop:value=move || form.category.get()
+                    on:input=move |ev| form.category.set(event_target_value(&ev))/>
+                <datalist id="p-category-list">
+                    {cats.with_value(|all| all.iter().map(|c| view! { <option value=c.name.clone()></option> }).collect_view())}
+                </datalist>
+                <p class="label whitespace-normal">"Elegí una de tu tienda o escribí una nueva. Es una sola por producto."</p>
+            </fieldset>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">"Subcategoría (opcional)"</legend>
+                <input id="p-subcategory" type="text" class="input w-full" list="p-subcategory-list"
+                    maxlength=domain::CATEGORY_MAX autocomplete="off"
+                    placeholder="Ej.: Manga larga"
+                    disabled=move || form.category.with(|c| c.trim().is_empty())
+                    prop:value=move || form.subcategory.get()
+                    on:input=move |ev| form.subcategory.set(event_target_value(&ev))/>
+                <datalist id="p-subcategory-list">
+                    {move || subs().into_iter().map(|s| view! { <option value=s></option> }).collect_view()}
+                </datalist>
+                <p class="label whitespace-normal">"Va dentro de la categoría."</p>
+            </fieldset>
+        </div>
     }
 }
 
