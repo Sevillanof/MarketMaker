@@ -253,6 +253,18 @@ pub async fn create_preference(
             })
         })
         .collect();
+    // Con un cupón, Mercado Pago no acepta renglones negativos: se cobra un
+    // solo renglón con lo que cuestan los productos ya con el descuento.
+    if order.coupon_cents > 0 {
+        let products = order.subtotal_cents - order.coupon_cents - order.discount_cents;
+        items = vec![json!({
+            "id": "pedido",
+            "title": format!("Tu pedido en {store_name} (cupón {})", order.coupon_code),
+            "quantity": 1,
+            "unit_price": amount(products),
+            "currency_id": "ARS",
+        })];
+    }
     if order.shipping_cents > 0 {
         items.push(json!({
             "id": "envio",

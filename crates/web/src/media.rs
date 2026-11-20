@@ -425,7 +425,10 @@ async fn serve(
         Ok(None) => match smaller_file(&state, &folder, &other, &file).await {
             Some((name, bytes)) => (
                 [
-                    (header::CONTENT_TYPE, media::content_type(&name).unwrap_or(content_type)),
+                    (
+                        header::CONTENT_TYPE,
+                        media::content_type(&name).unwrap_or(content_type),
+                    ),
                     (header::CACHE_CONTROL, "public, max-age=15"),
                 ],
                 bytes,

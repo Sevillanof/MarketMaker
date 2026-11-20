@@ -7,11 +7,11 @@
 //! Los textos se muestran siempre como texto, nunca como HTML.
 
 use domain::{
-    AnnouncementProps, ProductCarouselProps, SocialProps, StatsProps, StepsProps,
-    BannerProps, BenefitsProps, CardProps, ContactProps, CarouselProps, CategoriesProps, CountdownProps,
-    FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps, ImageProps, LogosProps,
-    LinkItem, NavbarProps, Node, Product, ProductButtonProps, ProductGridProps,
-    ProductModal, TabsProps, TestimonialsProps, TextProps, Widget,
+    AnnouncementProps, BannerProps, BenefitsProps, CardProps, CarouselProps, CategoriesProps,
+    ContactProps, CountdownProps, FaqProps, FeaturedProductProps, FooterProps, HoverGalleryProps,
+    ImageProps, LinkItem, LogosProps, NavbarProps, Node, Product, ProductButtonProps,
+    ProductCarouselProps, ProductGridProps, ProductModal, SocialProps, StatsProps, StepsProps,
+    TabsProps, TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
 use leptos::prelude::*;
@@ -19,15 +19,15 @@ use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
 pub mod account;
 pub mod cart;
-pub mod product_page;
 pub mod categories;
+pub mod product_page;
 pub mod tags;
-pub use product_page::{ProductImageWidget, ProductPriceWidget};
 pub use account::{
     Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar, FavRequest,
     FavoriteHeart, HeartIcon,
 };
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton, ItemName};
+pub use product_page::{ProductImageWidget, ProductPriceWidget};
 pub use tags::{FilteredProducts, ProductFilter};
 
 /// Contexto que recibe todo widget al dibujarse.
@@ -260,7 +260,9 @@ pub fn ProductDialog(
             .query_selector(".mk-pbtn")
             .ok()
             .flatten()
-            .map(|btn| btn.get_bounding_client_rect().bottom() < b.get_bounding_client_rect().top() + 48.0)
+            .map(|btn| {
+                btn.get_bounding_client_rect().bottom() < b.get_bounding_client_rect().top() + 48.0
+            })
             .unwrap_or(false);
         if bar_on.get_untracked() != below {
             bar_on.set(below);
@@ -440,13 +442,21 @@ fn BuyBar(product: Product, style: String, editing: bool, on_close: Callback<()>
     let mut detail = ui::format_price(product.price_cents);
     if style == "color" {
         if let Some(c) = offers.installment_cents(product.price_cents) {
-            detail = format!("{detail} · {} cuotas de {}", offers.installments, ui::format_price(c));
+            detail = format!(
+                "{detail} · {} cuotas de {}",
+                offers.installments,
+                ui::format_price(c)
+            );
         }
     }
     let cart = use_context::<Cart>().filter(|_| !editing);
     let id = StoredValue::new(product.id.clone());
     let added = RwSignal::new(false);
-    let label = if style == "color" { "Agregar al carrito" } else { "Agregar" };
+    let label = if style == "color" {
+        "Agregar al carrito"
+    } else {
+        "Agregar"
+    };
     let in_stock = product.in_stock;
     let variants = product.has_variants();
     view! {
@@ -513,7 +523,9 @@ pub fn page_nodes(nodes: &[Node]) -> Vec<(&'static str, String)> {
     let mut out: Vec<(&'static str, String)> =
         nodes.iter().map(|n| ("mk-node", node_style(n))).collect();
     for (k, nav) in nodes.iter().enumerate() {
-        let Widget::Navbar(p) = &nav.widget else { continue };
+        let Widget::Navbar(p) = &nav.widget else {
+            continue;
+        };
         if !p.floats() {
             continue;
         }
@@ -657,7 +669,13 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     match look.card.as_str() {
         "full" => return product_page::FullCard(product, show_price, &look).into_any(),
         "clean" => {
-            return product_page::CleanCard(product, show_price, look.card_favorite).into_any()
+            return product_page::CleanCard(
+                product,
+                show_price,
+                look.card_favorite,
+                look.card_colors,
+            )
+            .into_any()
         }
         _ => {}
     }
@@ -668,8 +686,11 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
     let few_left = product.few_left();
     let off = show_price.then(|| product.discount_pct()).flatten();
     let cart_product = product.clone();
+    let dots_product = product.clone();
     let fit = product.fit(&product.image_url);
-    let heart = look.card_favorite.then(|| (product.id.clone(), product.name.clone()));
+    let heart = look
+        .card_favorite
+        .then(|| (product.id.clone(), product.name.clone()));
     view! {
         <div class="relative h-full" data-product-id=product.id.clone()>
         <Card>
@@ -689,6 +710,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
             <div class="card-body grow-0 shrink-0 gap-0">
                 <h3 class="mk-sub card-title text-sm truncate block">{product.name.clone()}</h3>
                 {show_price.then(|| view! { <PriceWas cents=product.price_cents was=product.compare_at_cents/> })}
+                {look.card_colors.then(|| view! { <product_page::ColorDots product=dots_product.clone()/> })}
                 <CardCartButton product=cart_product/>
             </div>
         </Card>
@@ -725,9 +747,16 @@ fn place_popover(ev: leptos::ev::MouseEvent, pop_id: &str, wide: bool) {
     };
     let win = window();
     let (sx, sy) = (win.scroll_x().unwrap_or(0.0), win.scroll_y().unwrap_or(0.0));
-    let view_w = win.inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(1024.0);
+    let view_w = win
+        .inner_width()
+        .ok()
+        .and_then(|w| w.as_f64())
+        .unwrap_or(1024.0);
     let anchor = if wide {
-        btn.closest("nav").ok().flatten().unwrap_or_else(|| btn.clone().into())
+        btn.closest("nav")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| btn.clone().into())
     } else {
         btn.clone().into()
     };
@@ -749,11 +778,18 @@ fn place_popover(ev: leptos::ev::MouseEvent, pop_id: &str, wide: bool) {
 /// opciones es una columna con título; las opciones sueltas van juntas en la
 /// primera columna. La foto, si hay, va a la derecha.
 fn mega_panel(l: &LinkItem, editing: bool) -> AnyView {
-    let (titled, loose): (Vec<LinkItem>, Vec<LinkItem>) =
-        l.children.iter().cloned().partition(|c| !c.children.is_empty());
+    let (titled, loose): (Vec<LinkItem>, Vec<LinkItem>) = l
+        .children
+        .iter()
+        .cloned()
+        .partition(|c| !c.children.is_empty());
     let cols = titled.len() + usize::from(!loose.is_empty());
     let has_image = !l.image_url.is_empty();
-    let class = if has_image { "mk-mega mk-mega-img" } else { "mk-mega" };
+    let class = if has_image {
+        "mk-mega mk-mega-img"
+    } else {
+        "mk-mega"
+    };
     let all_href = l.href.clone();
     let label = l.label.clone();
     let image = l.image_url.clone();
@@ -1245,7 +1281,11 @@ pub fn copy_text(text: &str, done: impl Fn(bool) + 'static) {
 /// `role="status"`, así lo leen también los lectores de pantalla.
 #[component]
 fn CouponWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
-    let text = props.items.first().map(|m| m.text.clone()).unwrap_or_default();
+    let text = props
+        .items
+        .first()
+        .map(|m| m.text.clone())
+        .unwrap_or_default();
     let look = match props.coupon.as_str() {
         "solid" | "soft" | "line" => props.coupon.clone(),
         _ => "notch".to_string(),
@@ -1277,7 +1317,11 @@ fn CouponWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
             });
         }
     };
-    let label = if look == "solid" { "Copiar" } else { "Copiar código" };
+    let label = if look == "solid" {
+        "Copiar"
+    } else {
+        "Copiar código"
+    };
     view! {
         <div class=format!("mk-box mk-ann mk-coupon mk-coupon-{look} @container flex h-full items-center gap-3 overflow-hidden px-4 text-sm")>
             {(look == "line").then(|| view! { <span class="mk-coupon-kicker">"Cupón"</span> })}
@@ -1451,8 +1495,10 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
 #[component]
 pub fn StepsWidget(props: StepsProps) -> impl IntoView {
     let n = props.items.len();
-    let title = (!props.title.is_empty()).then(|| view! {
-        <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold">{props.title.clone()}</h2>
+    let title = (!props.title.is_empty()).then(|| {
+        view! {
+            <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold">{props.title.clone()}</h2>
+        }
     });
     match props.variant.as_str() {
         "b" => view! {
@@ -1632,7 +1678,12 @@ pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
         channels.push(Channel {
             icon: "facebook",
             label: "Facebook",
-            value: props.facebook.trim().trim_start_matches("https://").trim_start_matches("www.").to_string(),
+            value: props
+                .facebook
+                .trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("www.")
+                .to_string(),
             href: props.facebook.trim().to_string(),
             external: true,
         });
@@ -1641,7 +1692,12 @@ pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
         channels.push(Channel {
             icon: "tiktok",
             label: "TikTok",
-            value: props.tiktok.trim().trim_start_matches("https://").trim_start_matches("www.").to_string(),
+            value: props
+                .tiktok
+                .trim()
+                .trim_start_matches("https://")
+                .trim_start_matches("www.")
+                .to_string(),
             href: props.tiktok.trim().to_string(),
             external: true,
         });
@@ -2085,13 +2141,20 @@ pub fn ContactWidget(props: ContactProps, editing: bool) -> impl IntoView {
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
     let mut channels = store_channels(&store);
     // WhatsApp va como botón principal; el resto, como filas.
-    let whatsapp = (channels.first().is_some_and(|c| c.icon == "whatsapp")).then(|| channels.remove(0));
+    let whatsapp =
+        (channels.first().is_some_and(|c| c.icon == "whatsapp")).then(|| channels.remove(0));
     let has_channels = whatsapp.is_some() || !channels.is_empty();
-    let others_title = if whatsapp.is_some() { "También podés" } else { "Escribinos" };
+    let others_title = if whatsapp.is_some() {
+        "También podés"
+    } else {
+        "Escribinos"
+    };
     // Los horarios del bloque; si sigue el texto de ejemplo, los de Datos de
     // la tienda.
     let hours = match props.hours.trim() {
-        h if (h.is_empty() || domain::is_placeholder(h)) && !store.hours.is_empty() => store.hours.clone(),
+        h if (h.is_empty() || domain::is_placeholder(h)) && !store.hours.is_empty() => {
+            store.hours.clone()
+        }
         h => h.to_string(),
     };
     let address = props.address.trim().to_string();
@@ -2260,17 +2323,29 @@ mod tests {
     #[test]
     fn floating_navbar_overlaps_the_block_below() {
         let mut nav = node("nav", "Navbar", 0, 12);
-        let nodes = vec![nav.clone(), node("ban", "Banner", 12, 48), node("txt", "Text", 60, 10)];
+        let nodes = vec![
+            nav.clone(),
+            node("ban", "Banner", 12, 48),
+            node("txt", "Text", 60, 10),
+        ];
         let plain = page_nodes(&nodes);
         assert!(plain.iter().all(|(c, _)| *c == "mk-node"));
         if let Widget::Navbar(p) = &mut nav.widget {
             p.variant = "b".to_string();
         }
-        let nodes = vec![nav, node("ban", "Banner", 12, 48), node("txt", "Text", 60, 10)];
+        let nodes = vec![
+            nav,
+            node("ban", "Banner", 12, 48),
+            node("txt", "Text", 60, 10),
+        ];
         let out = page_nodes(&nodes);
         assert_eq!(out[0].0, "mk-node mk-node-float");
         assert_eq!(out[1].0, "mk-node mk-node-under");
-        assert!(out[1].1.contains("--y:1;") && out[1].1.contains("--h:60;"), "{}", out[1].1);
+        assert!(
+            out[1].1.contains("--y:1;") && out[1].1.contains("--h:60;"),
+            "{}",
+            out[1].1
+        );
         assert_eq!(out[2].0, "mk-node");
     }
 

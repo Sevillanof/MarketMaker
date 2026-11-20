@@ -186,20 +186,30 @@ pub(crate) fn NewStore(
     };
     let slug_note = move || {
         if let Some(e) = slug_error.get() {
-            return Some(view! { <p id="nueva-tienda-direccion-error" class="text-sm text-error">{e}</p> }.into_any());
+            return Some(
+                view! { <p id="nueva-tienda-direccion-error" class="text-sm text-error">{e}</p> }
+                    .into_any(),
+            );
         }
         match status.get()? {
-            domain::SlugStatus::Free => Some(view! { <p class="text-sm text-success">"✓ Está libre"</p> }.into_any()),
-            domain::SlugStatus::Taken { suggestion } => Some(view! {
-                <p class="text-sm text-error">
-                    "Ya la usa otra tienda. "
-                    <button type="button" class="link link-primary" on:click=move |_| {
-                        slug.set(suggestion.clone());
-                        slug_touched.set(true);
-                    }>{format!("Usar «{suggestion}»")}</button>
-                </p>
-            }.into_any()),
-            domain::SlugStatus::Problem(p) => Some(view! { <p class="text-sm text-error">{p}</p> }.into_any()),
+            domain::SlugStatus::Free => {
+                Some(view! { <p class="text-sm text-success">"✓ Está libre"</p> }.into_any())
+            }
+            domain::SlugStatus::Taken { suggestion } => Some(
+                view! {
+                    <p class="text-sm text-error">
+                        "Ya la usa otra tienda. "
+                        <button type="button" class="link link-primary" on:click=move |_| {
+                            slug.set(suggestion.clone());
+                            slug_touched.set(true);
+                        }>{format!("Usar «{suggestion}»")}</button>
+                    </p>
+                }
+                .into_any(),
+            ),
+            domain::SlugStatus::Problem(p) => {
+                Some(view! { <p class="text-sm text-error">{p}</p> }.into_any())
+            }
         }
     };
     view! {

@@ -89,7 +89,11 @@ impl Variants {
 
     /// Deja `qty` unidades en una combinación.
     pub fn set_qty(&mut self, color: &str, size: &str, qty: u32) {
-        match self.stock.iter_mut().find(|v| v.color == color && v.size == size) {
+        match self
+            .stock
+            .iter_mut()
+            .find(|v| v.color == color && v.size == size)
+        {
             Some(v) => v.qty = qty,
             None => self.stock.push(VariantStock {
                 color: color.to_string(),
@@ -107,7 +111,11 @@ impl Variants {
     /// Unidades de un color sumando sus talles (o de un talle sumando sus
     /// colores, con `color` vacío y `size` puesto).
     pub fn qty_of_color(&self, color: &str) -> u32 {
-        self.stock.iter().filter(|v| v.color == color).map(|v| v.qty).sum()
+        self.stock
+            .iter()
+            .filter(|v| v.color == color)
+            .map(|v| v.qty)
+            .sum()
     }
 
     pub fn color(&self, name: &str) -> Option<&VariantColor> {
@@ -124,7 +132,12 @@ impl Variants {
     /// quedan en 0). Devuelve los errores para mostrar.
     pub fn tidy(&mut self, photos: &[String]) -> Vec<String> {
         let mut errors = Vec::new();
-        let clean = |s: &str| s.replace(SEP, "-").split_whitespace().collect::<Vec<_>>().join(" ");
+        let clean = |s: &str| {
+            s.replace(SEP, "-")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
         let mut seen = Vec::new();
         self.colors.retain_mut(|c| {
             c.name = clean(&c.name);
@@ -230,7 +243,11 @@ pub fn line_id(product_id: &str, color: &str, size: &str) -> String {
 pub fn parse_line_id(line: &str) -> (&str, &str, &str) {
     let mut parts = line.splitn(3, SEP);
     let id = parts.next().unwrap_or_default();
-    (id, parts.next().unwrap_or_default(), parts.next().unwrap_or_default())
+    (
+        id,
+        parts.next().unwrap_or_default(),
+        parts.next().unwrap_or_default(),
+    )
 }
 
 impl Product {
@@ -280,7 +297,10 @@ mod tests {
 
     #[test]
     fn base_name_drops_the_combination() {
-        assert_eq!(base_name("Zapatillas · Azul · 40", "Azul", "40"), "Zapatillas");
+        assert_eq!(
+            base_name("Zapatillas · Azul · 40", "Azul", "40"),
+            "Zapatillas"
+        );
         assert_eq!(base_name("Zapatillas · Azul", "Azul", ""), "Zapatillas");
         assert_eq!(base_name("Taza", "", ""), "Taza");
         // Si el nombre no termina en la combinación, queda como está.
@@ -296,12 +316,27 @@ mod tests {
         };
         p.variants = Variants {
             colors: vec![
-                VariantColor { name: " Azul ".into(), hex: "#2563EB".into(), photo: "/b.webp".into() },
-                VariantColor { name: "rojo".into(), hex: "rojo".into(), photo: "/x.webp".into() },
-                VariantColor { name: "Rojo".into(), ..Default::default() },
+                VariantColor {
+                    name: " Azul ".into(),
+                    hex: "#2563EB".into(),
+                    photo: "/b.webp".into(),
+                },
+                VariantColor {
+                    name: "rojo".into(),
+                    hex: "rojo".into(),
+                    photo: "/x.webp".into(),
+                },
+                VariantColor {
+                    name: "Rojo".into(),
+                    ..Default::default()
+                },
             ],
             sizes: vec!["40".into(), " 41 ".into(), "".into()],
-            stock: vec![VariantStock { color: "Azul".into(), size: "41".into(), qty: 3 }],
+            stock: vec![VariantStock {
+                color: "Azul".into(),
+                size: "41".into(),
+                qty: 3,
+            }],
         };
         p
     }
@@ -313,11 +348,20 @@ mod tests {
         assert!(errors.is_empty(), "{errors:?}");
         let v = &p.variants;
         assert_eq!(v.colors.len(), 2, "el repetido se va");
-        assert_eq!((v.colors[0].name.as_str(), v.colors[0].hex.as_str()), ("Azul", "#2563eb"));
-        assert_eq!((v.colors[1].hex.as_str(), v.colors[1].photo.as_str()), ("", ""));
+        assert_eq!(
+            (v.colors[0].name.as_str(), v.colors[0].hex.as_str()),
+            ("Azul", "#2563eb")
+        );
+        assert_eq!(
+            (v.colors[1].hex.as_str(), v.colors[1].photo.as_str()),
+            ("", "")
+        );
         assert_eq!(v.sizes, vec!["40", "41"]);
         assert_eq!(v.stock.len(), 4);
-        assert_eq!((v.qty("Azul", "41"), v.qty("rojo", "40"), v.total()), (3, 0, 3));
+        assert_eq!(
+            (v.qty("Azul", "41"), v.qty("rojo", "40"), v.total()),
+            (3, 0, 3)
+        );
     }
 
     #[test]
@@ -339,12 +383,19 @@ mod tests {
 
     #[test]
     fn sizes_only_and_no_variants() {
-        let mut p = Product { id: "p2".into(), name: "Remera".into(), ..Product::default() };
+        let mut p = Product {
+            id: "p2".into(),
+            name: "Remera".into(),
+            ..Product::default()
+        };
         assert_eq!(p.sellable().len(), 1);
         p.variants.sizes = vec!["S".into(), "M".into()];
         p.variants.tidy(&[]);
         p.variants.set_qty("", "M", 2);
-        assert_eq!(p.variants.combos(), vec![(String::new(), "S".into()), (String::new(), "M".into())]);
+        assert_eq!(
+            p.variants.combos(),
+            vec![(String::new(), "S".into()), (String::new(), "M".into())]
+        );
         assert_eq!(p.for_variant("", "M").unwrap().name, "Remera · M");
         assert_eq!(p.for_variant("", "M").unwrap().id, "p2~~M");
     }

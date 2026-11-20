@@ -251,6 +251,9 @@ pub enum PanelSkeletonKind {
     /// Un producto: nombre, precios, descripción, fotos, categoría y
     /// subcategoría, etiquetas y stock.
     Product,
+    /// Cupones: la tabla de cupones y el formulario «Nuevo cupón» en dos
+    /// columnas.
+    Coupons,
     /// Datos de la tienda: nombre, logo, contacto en dos columnas,
     /// descripción y horarios, y la vista previa del pie.
     StoreInfo,
@@ -375,6 +378,32 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                     {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-32")}<Skeleton class="h-10 w-full"/>{sk_line("w-3/4")}</div> }).collect_view()}
                 </div>
                 {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
+                <Skeleton class="h-10 w-32"/>
+            }.into_any()))}
+        }
+        .into_any(),
+        PanelSkeletonKind::Coupons => view! {
+            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-40"/>{sk_line("w-96 max-w-full")}</div>
+            // Tus cupones: título y botón, y una fila por cupón (código, descuento,
+            // condición, usos, interruptor y acciones).
+            {sk_card("gap-3 p-6", Box::new(|| view! {
+                <div class="flex items-center justify-between"><Skeleton class="h-6 w-36"/><Skeleton class="h-8 w-32"/></div>
+                {(0..3).map(|_| view! {
+                    <div class="grid grid-cols-[7rem_4rem_1fr_4rem_3rem_6rem] items-center gap-4 border-t border-base-300 py-3 max-sm:grid-cols-[6rem_1fr_3rem]">
+                        <Skeleton class="h-7 w-full"/>{sk_line("w-full")}{sk_line("w-3/4")}{sk_line("w-full")}<Skeleton class="h-5 w-10 rounded-full"/>{sk_line("w-full")}
+                    </div>
+                }).collect_view()}
+            }.into_any()))}
+            // Nuevo cupón: título y dos columnas de campos.
+            {sk_card("gap-4 p-6", Box::new(|| view! {
+                <Skeleton class="h-6 w-32"/>
+                <div class="grid gap-6 sm:grid-cols-2">
+                    {(0..2).map(|n| view! {
+                        <div class="flex flex-col gap-3">
+                            {(0..if n == 0 { 2 } else { 3 }).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-28")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
+                        </div>
+                    }).collect_view()}
+                </div>
                 <Skeleton class="h-10 w-32"/>
             }.into_any()))}
         }

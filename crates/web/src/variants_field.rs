@@ -97,11 +97,18 @@ impl VariantsForm {
         } else {
             colors.iter().map(|c| (c.uid, c.name.get())).collect()
         };
-        let size_list: Vec<String> = if sizes.is_empty() { vec![String::new()] } else { sizes.clone() };
+        let size_list: Vec<String> = if sizes.is_empty() {
+            vec![String::new()]
+        } else {
+            sizes.clone()
+        };
         let mut out = Vec::new();
         for (uid, color) in &rows {
             for size in &size_list {
-                let text = stock.get(&(*uid, size.clone())).cloned().unwrap_or_default();
+                let text = stock
+                    .get(&(*uid, size.clone()))
+                    .cloned()
+                    .unwrap_or_default();
                 let text = text.trim().replace('.', "");
                 let qty = if text.is_empty() {
                     0
@@ -191,7 +198,12 @@ impl VariantsForm {
 
 /// Un campo de cantidad de un color y un talle.
 #[component]
-fn QtyInput(form: VariantsForm, uid: u32, size: String, #[prop(into)] label: Signal<String>) -> impl IntoView {
+fn QtyInput(
+    form: VariantsForm,
+    uid: u32,
+    size: String,
+    #[prop(into)] label: Signal<String>,
+) -> impl IntoView {
     let key = (uid, size);
     let k2 = key.clone();
     let k3 = key.clone();
@@ -230,7 +242,11 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
         let colors = form.colors.get();
         // Sin colores pero con talles: una sola fila de stock por talle.
         let rows: Vec<Option<ColorRow>> = if colors.is_empty() {
-            if sizes.is_empty() { Vec::new() } else { vec![None] }
+            if sizes.is_empty() {
+                Vec::new()
+            } else {
+                vec![None]
+            }
         } else {
             colors.into_iter().map(Some).collect()
         };

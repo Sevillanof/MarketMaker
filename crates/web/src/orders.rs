@@ -32,7 +32,9 @@ pub async fn move_order(
     let tenant = crate::products::server::require_store(&slug).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
     let pool = pool()?;
-    let before = db::orders::get(&pool, tenant.id, id).await.map_err(internal)?;
+    let before = db::orders::get(&pool, tenant.id, id)
+        .await
+        .map_err(internal)?;
     if !db::orders::set_status(&pool, tenant.id, id, status)
         .await
         .map_err(internal)?
@@ -106,13 +108,18 @@ pub async fn refresh_shipment(slug: String, id: String) -> Result<Option<Order>,
     let tenant = crate::products::server::require_store(&slug).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
     let pool = pool()?;
-    let Some(o) = db::orders::get(&pool, tenant.id, id).await.map_err(internal)? else {
+    let Some(o) = db::orders::get(&pool, tenant.id, id)
+        .await
+        .map_err(internal)?
+    else {
         return Ok(None);
     };
     if crate::shipments::refresh(&pool, tenant.id, std::slice::from_ref(&o)).await == 0 {
         return Ok(None);
     }
-    db::orders::get(&pool, tenant.id, id).await.map_err(internal)
+    db::orders::get(&pool, tenant.id, id)
+        .await
+        .map_err(internal)
 }
 
 /// `/tienda/:slug/pedidos`.
@@ -209,12 +216,12 @@ impl BoardCtx {
                 Ok(Some(o)) => self.replace(o),
                 Ok(None) => {}
                 Err(e) => {
-                set(before);
-                self.notice.set(String::new());
-                self.problem.set(Some(format!(
-                    "No pudimos mover el pedido #{number}. {}",
-                    error_text(&e)
-                )));
+                    set(before);
+                    self.notice.set(String::new());
+                    self.problem.set(Some(format!(
+                        "No pudimos mover el pedido #{number}. {}",
+                        error_text(&e)
+                    )));
                 }
             }
         });
@@ -547,6 +554,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                     }).collect_view()}
                 </ul>
                 <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{format_price(order.subtotal_cents)}</span></div>
+                {(order.coupon_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Cupón {}", order.coupon_code)}</span><span>{format!("−{}", format_price(order.coupon_cents))}</span></div> })}
                 {(order.discount_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>"Descuento por transferencia"</span><span>{format!("−{}", format_price(order.discount_cents))}</span></div> })}
                 <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
                 <div class="mt-2 flex justify-between text-lg font-bold"><span>"Total"</span><span>{format_price(order.total_cents)}</span></div>
@@ -613,7 +621,10 @@ fn ShipmentBox(ctx: BoardCtx, id: String, sh: domain::Shipment, paid: bool) -> i
         }
         new
     });
-    if sh.state == S::Created && !domain::tracking_is_delivered(&sh.status) && first_look == Some(true) {
+    if sh.state == S::Created
+        && !domain::tracking_is_delivered(&sh.status)
+        && first_look == Some(true)
+    {
         Effect::new(move |_| {
             let slug = ctx.slug.get_value();
             leptos::task::spawn_local(async move {

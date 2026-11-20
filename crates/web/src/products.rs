@@ -118,13 +118,17 @@ pub async fn rename_category(
     let tenant = server::require_store(&slug).await?;
     let new = domain::clean_category(&new);
     if new.is_empty() {
-        return Ok(domain::TagSave::Invalid { error: "Escribí un nombre.".into() });
+        return Ok(domain::TagSave::Invalid {
+            error: "Escribí un nombre.".into(),
+        });
     }
     let pool = pool()?;
     db::products::rename_category(&pool, tenant.id, &cat, &sub, &new)
         .await
         .map_err(internal)?;
-    let products = db::products::list_all(&pool, tenant.id).await.map_err(internal)?;
+    let products = db::products::list_all(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
     Ok(domain::TagSave::Saved { products })
 }
 
@@ -142,7 +146,9 @@ pub async fn delete_category(
     db::products::delete_category(&pool, tenant.id, &cat, &sub)
         .await
         .map_err(internal)?;
-    let products = db::products::list_all(&pool, tenant.id).await.map_err(internal)?;
+    let products = db::products::list_all(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
     Ok(domain::TagSave::Saved { products })
 }
 
@@ -370,7 +376,10 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     let tags = Memo::new(move |_| {
         products.with(|ps| {
             let own: Vec<Product> = ps.iter().filter(|p| !p.example).cloned().collect();
-            let mut t: Vec<String> = domain::count_tags(&own).into_iter().map(|c| c.tag).collect();
+            let mut t: Vec<String> = domain::count_tags(&own)
+                .into_iter()
+                .map(|c| c.tag)
+                .collect();
             t.sort();
             t
         })
@@ -435,7 +444,9 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                 Ok(()) => {
                     problem.set(None);
                     products.update(|ps| ps.retain(|p| p.id != id));
-                    if let Some(d) = confirm.get_untracked() { d.close(); }
+                    if let Some(d) = confirm.get_untracked() {
+                        d.close();
+                    }
                 }
                 Err(e) => problem.set(Some(error_text(&e))),
             }
@@ -443,7 +454,9 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     });
     let ask_delete = move |id: String, name: String| {
         doomed.set(Some((id, name)));
-        if let Some(d) = confirm.get() { _ = d.show_modal(); }
+        if let Some(d) = confirm.get() {
+            _ = d.show_modal();
+        }
     };
     // Los productos de ejemplo de la tienda nueva, con el botón para borrarlos.
     let examples = Memo::new(move |_| products.with(|ps| ps.iter().filter(|p| p.example).count()));
@@ -1106,10 +1119,26 @@ impl Form {
             in_stock: RwSignal::new(p.in_stock || p.stock.is_some()),
             stock: RwSignal::new(p.stock.map(|s| s.to_string()).unwrap_or_default()),
             visible: RwSignal::new(p.visible),
-            weight: RwSignal::new(p.parcel.map(|x| domain::kg_input(x.weight_g)).unwrap_or_default()),
-            length: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.length_mm)).unwrap_or_default()),
-            width: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.width_mm)).unwrap_or_default()),
-            height: RwSignal::new(p.parcel.map(|x| domain::cm_input(x.height_mm)).unwrap_or_default()),
+            weight: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::kg_input(x.weight_g))
+                    .unwrap_or_default(),
+            ),
+            length: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.length_mm))
+                    .unwrap_or_default(),
+            ),
+            width: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.width_mm))
+                    .unwrap_or_default(),
+            ),
+            height: RwSignal::new(
+                p.parcel
+                    .map(|x| domain::cm_input(x.height_mm))
+                    .unwrap_or_default(),
+            ),
             variants: crate::variants_field::VariantsForm::new(&p.variants),
         }
     }
@@ -1159,7 +1188,11 @@ impl Form {
             domain::Variants::default()
         });
         // Con variantes, el stock es la suma de las combinaciones.
-        let stock = if variants.is_empty() { stock } else { Some(variants.total()) };
+        let stock = if variants.is_empty() {
+            stock
+        } else {
+            Some(variants.total())
+        };
         let parcel = domain::parse_parcel(
             &self.weight.get(),
             &self.length.get(),
@@ -1313,7 +1346,10 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             dirty.set(false);
             saved.set(true);
             if id.get_untracked().is_empty() {
-                created.set(Some((form.name.get_untracked().trim().to_string(), form.visible.get_untracked())));
+                created.set(Some((
+                    form.name.get_untracked().trim().to_string(),
+                    form.visible.get_untracked(),
+                )));
                 id.set(new_id.clone());
                 // Cambia la dirección sin volver a cargar el formulario.
                 if let Ok(history) = window().history() {
@@ -1352,12 +1388,15 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             errors.with(|es| {
                 es.iter()
                     .filter(|e| error_field(e) == field)
-                    .map(|e| view! { <p class="label whitespace-normal text-error">{e.clone()}</p> })
+                    .map(
+                        |e| view! { <p class="label whitespace-normal text-error">{e.clone()}</p> },
+                    )
                     .collect_view()
             })
         }
     };
-    let has_error = move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
+    let has_error =
+        move |field: &'static str| errors.with(|es| es.iter().any(|e| error_field(e) == field));
     // Al salir de un precio: si se entiende, se reescribe como se va a leer
     // (1500.50 → 1.500,50) para que no haya sorpresas; si no, el error va
     // debajo del campo sin esperar a "Guardar".
@@ -1376,11 +1415,13 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             es.extend(problem);
         });
     };
-    let save_button = move || view! {
-        <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
-            on:click=move |_| on_save()>
-            {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
-        </button>
+    let save_button = move || {
+        view! {
+            <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
+                on:click=move |_| on_save()>
+                {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
+            </button>
+        }
     };
 
     let confirm_delete = RwSignal::new(false);
@@ -2149,7 +2190,11 @@ fn PhotoAdjust(
         }
         touches.update_value(|t| {
             t.retain(|p| p.0 != ev.pointer_id());
-            t.push((ev.pointer_id(), f64::from(ev.client_x()), f64::from(ev.client_y())));
+            t.push((
+                ev.pointer_id(),
+                f64::from(ev.client_x()),
+                f64::from(ev.client_y()),
+            ));
         });
         let two = touches.with_value(|t| t.len() >= 2);
         if two {

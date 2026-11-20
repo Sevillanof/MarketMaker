@@ -39,13 +39,16 @@ pub async fn save_store_info(
     let mut info = form.info;
     let errors = domain::tidy_store_info(&mut info);
     if !errors.is_empty() {
-        return Ok(errors.into_iter().map(|(f, e)| (f.to_string(), e)).collect());
+        return Ok(errors
+            .into_iter()
+            .map(|(f, e)| (f.to_string(), e))
+            .collect());
     }
     let logo = match form.logo_id.as_deref() {
         None | Some("") => None,
-        Some(id) => Some(
-            uuid::Uuid::parse_str(id).map_err(|_| ServerFnError::new("Esa foto no existe."))?,
-        ),
+        Some(id) => {
+            Some(uuid::Uuid::parse_str(id).map_err(|_| ServerFnError::new("Esa foto no existe."))?)
+        }
     };
     let saved = db::auth::save_store_info(&pool()?, tenant.id, user.id, &info, logo)
         .await
@@ -127,7 +130,8 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
     let invalid = move |field: &'static str| move || errors.get().iter().any(|(f, _)| f == field);
     let dirty = move || saved.set(false);
 
-    let save = Action::new(move |form: &StoreInfoForm| save_store_info(slug.get_value(), form.clone()));
+    let save =
+        Action::new(move |form: &StoreInfoForm| save_store_info(slug.get_value(), form.clone()));
     Effect::new(move |_| match save.value().get() {
         Some(Ok(e)) => {
             saved.set(e.is_empty());

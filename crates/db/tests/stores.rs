@@ -19,11 +19,16 @@ async fn user(pool: &PgPool, email: &str) -> uuid::Uuid {
 #[sqlx::test(migrations = "../../migrations")]
 async fn a_new_store_starts_unpublished_with_example_products(pool: PgPool) {
     let ana = user(&pool, "ana@correo.com").await;
-    assert!(
-        create_store(&pool, "La Casa de Ana", "lacasadeana", ana, "demo", &starter("x"))
-            .await
-            .unwrap()
-    );
+    assert!(create_store(
+        &pool,
+        "La Casa de Ana",
+        "lacasadeana",
+        ana,
+        "demo",
+        &starter("x")
+    )
+    .await
+    .unwrap());
     assert!(
         !create_store(&pool, "Otra", "lacasadeana", ana, "demo", &starter("x"))
             .await
@@ -56,15 +61,24 @@ async fn a_new_store_starts_unpublished_with_example_products(pool: PgPool) {
     let all = list_products(&pool, t.id).await.unwrap();
     assert_eq!(all.len(), 8);
     assert!(all.iter().all(|p| p.example));
-    assert!(db::products::list_for_buyers(&pool, t.id).await.unwrap().is_empty());
-    assert_eq!(db::products::count_real_visible(&pool, t.id).await.unwrap(), 0);
+    assert!(db::products::list_for_buyers(&pool, t.id)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        db::products::count_real_visible(&pool, t.id).await.unwrap(),
+        0
+    );
     assert_eq!(db::products::count_examples(&pool, t.id).await.unwrap(), 8);
     // Guardar un producto de ejemplo lo hace propio.
     let mut first = all[0].clone();
     first.name = "Mi taza".into();
     let id = uuid::Uuid::parse_str(&first.id).unwrap();
     assert!(db::products::save(&pool, t.id, id, &first).await.unwrap());
-    assert_eq!(db::products::count_real_visible(&pool, t.id).await.unwrap(), 1);
+    assert_eq!(
+        db::products::count_real_visible(&pool, t.id).await.unwrap(),
+        1
+    );
     assert_eq!(db::products::delete_examples(&pool, t.id).await.unwrap(), 7);
     assert_eq!(list_products(&pool, t.id).await.unwrap().len(), 1);
     assert!(!db::orders::delivery_set(&pool, t.id).await.unwrap());

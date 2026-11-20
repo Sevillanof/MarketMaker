@@ -18,11 +18,21 @@ pub(crate) fn render(widget: &Widget, ctx: &RenderCtx) -> AnyView {
     let products = ctx.products.clone();
     let editing = ctx.editing;
     match widget {
-        Widget::CategoryTabs(p) => view! { <CategoryTabs props=p.clone() products editing/> }.into_any(),
-        Widget::CategorySide(p) => view! { <CategorySide props=p.clone() products editing/> }.into_any(),
-        Widget::CategoryCards(p) => view! { <CategoryCards props=p.clone() products editing/> }.into_any(),
-        Widget::CategoryDrop(p) => view! { <CategoryDrop props=p.clone() products editing/> }.into_any(),
-        Widget::CategoryPage(p) => view! { <CategoryPage props=p.clone() products editing/> }.into_any(),
+        Widget::CategoryTabs(p) => {
+            view! { <CategoryTabs props=p.clone() products editing/> }.into_any()
+        }
+        Widget::CategorySide(p) => {
+            view! { <CategorySide props=p.clone() products editing/> }.into_any()
+        }
+        Widget::CategoryCards(p) => {
+            view! { <CategoryCards props=p.clone() products editing/> }.into_any()
+        }
+        Widget::CategoryDrop(p) => {
+            view! { <CategoryDrop props=p.clone() products editing/> }.into_any()
+        }
+        Widget::CategoryPage(p) => {
+            view! { <CategoryPage props=p.clone() products editing/> }.into_any()
+        }
         _ => ().into_any(),
     }
 }
@@ -69,7 +79,11 @@ fn find<'a>(cats: &'a [CategoryCount], name: &str) -> Option<&'a CategoryCount> 
 
 /// 2 · Pastillas: «Todas» fija a la izquierda y las categorías deslizándose.
 #[component]
-fn CategoryTabs(props: CategoryFilterProps, products: Vec<Product>, editing: bool) -> impl IntoView {
+fn CategoryTabs(
+    props: CategoryFilterProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
     let cats = domain::count_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
@@ -114,7 +128,11 @@ fn group_label_cat(title: &str) -> String {
 
 /// 1 · Columna al costado, con cantidades y las subcategorías de la elegida.
 #[component]
-fn CategorySide(props: CategoryFilterProps, products: Vec<Product>, editing: bool) -> impl IntoView {
+fn CategorySide(
+    props: CategoryFilterProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
     let cats = domain::count_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
@@ -160,7 +178,11 @@ fn CategorySide(props: CategoryFilterProps, products: Vec<Product>, editing: boo
 
 /// 3 · Tarjetas con la foto de un producto de cada categoría.
 #[component]
-fn CategoryCards(props: CategoryFilterProps, products: Vec<Product>, editing: bool) -> impl IntoView {
+fn CategoryCards(
+    props: CategoryFilterProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
     let cats = domain::count_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
@@ -203,7 +225,11 @@ fn CategoryCards(props: CategoryFilterProps, products: Vec<Product>, editing: bo
 
 /// 4 · Un botón «Categorías ▾» que abre un panel con todas y sus subcategorías.
 #[component]
-fn CategoryDrop(props: CategoryFilterProps, products: Vec<Product>, editing: bool) -> impl IntoView {
+fn CategoryDrop(
+    props: CategoryFilterProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
     let cats = domain::count_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
@@ -223,7 +249,10 @@ fn CategoryDrop(props: CategoryFilterProps, products: Vec<Product>, editing: boo
             return;
         };
         let r = b.get_bounding_client_rect();
-        _ = m.set_attribute("style", &format!("top: {}px; left: {}px", r.bottom() + 6.0, r.left()));
+        _ = m.set_attribute(
+            "style",
+            &format!("top: {}px; left: {}px", r.bottom() + 6.0, r.left()),
+        );
         _ = m.toggle_popover();
     };
     let pick = move |cat: String, sub: String| {
@@ -287,7 +316,11 @@ fn CategoryDrop(props: CategoryFilterProps, products: Vec<Product>, editing: boo
 /// 5 · Migas («Todas › Botas › Con taco»), el título de lo que se ve y
 /// círculos: las categorías, o las subcategorías de la elegida.
 #[component]
-fn CategoryPage(props: CategoryFilterProps, products: Vec<Product>, editing: bool) -> impl IntoView {
+fn CategoryPage(
+    props: CategoryFilterProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
     let cats = domain::count_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
@@ -295,7 +328,11 @@ fn CategoryPage(props: CategoryFilterProps, products: Vec<Product>, editing: boo
     let filter = use_context::<ProductFilter>();
     let counts = props.show_counts;
     let all = label_or(&props.all_label, "Todas");
-    let cur = move || filter.map(|f| (f.category.get(), f.sub.get())).unwrap_or_default();
+    let cur = move || {
+        filter
+            .map(|f| (f.category.get(), f.sub.get()))
+            .unwrap_or_default()
+    };
     let all2 = all.clone();
     let crumbs = move || {
         let (c, s) = cur();
@@ -308,7 +345,9 @@ fn CategoryPage(props: CategoryFilterProps, products: Vec<Product>, editing: boo
             }
             .into_any()
         };
-        let last = |text: String| view! { <span class="font-semibold" aria-current="page">{text}</span> }.into_any();
+        let last = |text: String| {
+            view! { <span class="font-semibold" aria-current="page">{text}</span> }.into_any()
+        };
         if c.is_empty() {
             parts.push(last(root));
         } else {
@@ -368,12 +407,24 @@ fn CategoryPage(props: CategoryFilterProps, products: Vec<Product>, editing: boo
             // Dentro de una categoría: «Todas» (toda la categoría) y sus subcategorías.
             Some(cc) => {
                 let first = circle(all_c.clone(), c.clone(), String::new(), cc.products);
-                let rest = cc.subs.clone().into_iter().map(|(s, n)| circle(s.clone(), c.clone(), s, n)).collect_view();
+                let rest = cc
+                    .subs
+                    .clone()
+                    .into_iter()
+                    .map(|(s, n)| circle(s.clone(), c.clone(), s, n))
+                    .collect_view();
                 (first.into_any(), rest.into_any())
             }
             None => {
                 let first = circle(all_c.clone(), String::new(), String::new(), total);
-                let rest = cats2.clone().into_iter().map(|cc| { let n = cc.products; circle(cc.name.clone(), cc.name, String::new(), n) }).collect_view();
+                let rest = cats2
+                    .clone()
+                    .into_iter()
+                    .map(|cc| {
+                        let n = cc.products;
+                        circle(cc.name.clone(), cc.name, String::new(), n)
+                    })
+                    .collect_view();
                 (first.into_any(), rest.into_any())
             }
         }

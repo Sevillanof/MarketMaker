@@ -70,7 +70,7 @@ pub fn starter_doc(name: &str) -> PageDoc {
             button_href: String::new(),
         }),
         Widget::ProductGrid(ProductGridProps {
-                cards: crate::CardOptions::default(),
+            cards: crate::CardOptions::default(),
             title: s("Productos"),
             limit: 8,
         }),
@@ -229,7 +229,10 @@ mod tests {
             panic!("Stats");
         };
         assert!(st.items.iter().all(|i| i.value == STAT_PLACEHOLDER));
-        assert!(st.items.iter().all(|i| is_placeholder(&i.value) && is_placeholder(&i.label)));
+        assert!(st
+            .items
+            .iter()
+            .all(|i| is_placeholder(&i.value) && is_placeholder(&i.label)));
         assert!(!is_placeholder("+500"));
     }
 

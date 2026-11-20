@@ -50,15 +50,26 @@ impl Default for VariantPick {
 #[component]
 pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
     // Al elegir un color en la ficha, la foto va a la de ese color.
-    let colors = product.as_ref().map(|p| p.variants.colors.clone()).unwrap_or_default();
-    let all = product.as_ref().map(Product::all_photos).unwrap_or_default();
-    let target = use_context::<VariantPick>().filter(|_| !colors.is_empty()).map(|pick| {
-        Memo::new(move |_| {
-            let c = pick.color.get();
-            let photo = colors.iter().find(|x| x.name == c).map(|x| x.photo.clone())?;
-            all.iter().position(|u| *u == photo)
-        })
-    });
+    let colors = product
+        .as_ref()
+        .map(|p| p.variants.colors.clone())
+        .unwrap_or_default();
+    let all = product
+        .as_ref()
+        .map(Product::all_photos)
+        .unwrap_or_default();
+    let target = use_context::<VariantPick>()
+        .filter(|_| !colors.is_empty())
+        .map(|pick| {
+            Memo::new(move |_| {
+                let c = pick.color.get();
+                let photo = colors
+                    .iter()
+                    .find(|x| x.name == c)
+                    .map(|x| x.photo.clone())?;
+                all.iter().position(|u| *u == photo)
+            })
+        });
     let few = product
         .as_ref()
         .filter(|_| props.stock_note)
@@ -67,7 +78,11 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
     // tarjetas), si el bloque de productos lo tiene prendido.
     let heart = product
         .as_ref()
-        .filter(|_| use_context::<domain::CardOptions>().unwrap_or_default().card_favorite)
+        .filter(|_| {
+            use_context::<domain::CardOptions>()
+                .unwrap_or_default()
+                .card_favorite
+        })
         .map(|p| (p.id.clone(), p.name.clone()));
     let (mut photos, alt, fits) =
         product.map_or_else(Default::default, |p| (p.all_photos(), p.name, p.photo_fits));
@@ -425,6 +440,61 @@ fn open_cover(id: String, name: &str) -> impl IntoView {
     })
 }
 
+/// Debajo del precio de una tarjeta: los puntos de color del producto (hasta
+/// 5 y «+N»), «3 colores» si algún color no tiene punto, o los talles si solo
+/// tiene talles. Sin variantes no muestra nada.
+#[component]
+pub fn ColorDots(product: Product) -> impl IntoView {
+    const MAX: usize = 5;
+    let v = &product.variants;
+    if !v.colors.is_empty() {
+        let names = v
+            .colors
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        if v.colors.iter().any(|c| c.hex.is_empty()) {
+            let n = v.colors.len();
+            return view! {
+                <p class="mk-cdots mt-1.5 truncate text-xs opacity-70" title=names>
+                    {if n == 1 { "1 color".to_string() } else { format!("{n} colores") }}
+                </p>
+            }
+            .into_any();
+        }
+        let more = v.colors.len().saturating_sub(MAX);
+        let dots = v
+            .colors
+            .iter()
+            .take(MAX)
+            .map(|c| {
+                let gone = v.qty_of_color(&c.name) == 0;
+                view! {
+                    <span aria-hidden="true" class="mk-dot size-3.5 shrink-0 rounded-full border border-base-content/25"
+                        class:opacity-35=gone style=format!("background-color:{}", c.hex)></span>
+                }
+            })
+            .collect_view();
+        return view! {
+            <p class="mk-cdots mt-1.5 flex items-center gap-1.5">
+                <span class="sr-only">{format!("Colores: {names}")}</span>
+                {dots}
+                {(more > 0).then(|| view! { <span aria-hidden="true" class="text-xs opacity-70">{format!("+{more}")}</span> })}
+            </p>
+        }
+        .into_any();
+    }
+    match (v.sizes.first(), v.sizes.last()) {
+        (Some(a), Some(z)) if a != z => view! {
+            <p class="mk-cdots mt-1.5 truncate text-xs opacity-70">{format!("Talles {a} al {z}")}</p>
+        }
+        .into_any(),
+        (Some(a), _) => view! { <p class="mk-cdots mt-1.5 truncate text-xs opacity-70">{format!("Talle {a}")}</p> }.into_any(),
+        _ => ().into_any(),
+    }
+}
+
 /// Tarjeta «Completa»: carteles sobre la foto, precio con el anterior
 /// tachado, y las líneas de transferencia y cuotas de Cobros (cada una se
 /// prende o se apaga en el bloque).
@@ -467,6 +537,7 @@ pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) 
                     })}
                     {transfer.map(|c| view! { <p class="mk-cfull-tr truncate text-xs font-semibold">{format!("{} con transferencia", format_price(c))}</p> })}
                     {per.map(|c| view! { <p class="truncate text-xs opacity-70">{format!("{n} cuotas sin interés de {}", format_price(c))}</p> })}
+                    {look.card_colors.then(|| view! { <ColorDots product=product.clone()/> })}
                 </div>
             </div>
             {open_cover(product.id.clone(), &product.name)}
@@ -477,7 +548,12 @@ pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) 
 /// Tarjeta «Limpia con Agregar»: tarjeta blanca redondeada, nombre en
 /// mayúsculas y «Agregar» siempre a la vista (suma uno al carrito).
 #[allow(non_snake_case)]
-pub fn CleanCard(product: Product, show_price: bool, favorite: bool) -> impl IntoView {
+pub fn CleanCard(
+    product: Product,
+    show_price: bool,
+    favorite: bool,
+    colors: bool,
+) -> impl IntoView {
     let fit = product.fit(&product.image_url);
     let cart = use_context::<crate::Cart>();
     let id = StoredValue::new(product.id.clone());
@@ -534,6 +610,7 @@ pub fn CleanCard(product: Product, show_price: bool, favorite: bool) -> impl Int
                         })}
                         {add}
                     </div>
+                    {colors.then(|| view! { <ColorDots product=product.clone()/> })}
                 </div>
             </div>
             {open_cover(product.id.clone(), &product.name)}
@@ -555,7 +632,11 @@ pub fn open_product(id: &str) {
 /// `<input type="radio">` de verdad dentro de un `<fieldset>` con su
 /// `<legend>`, así se maneja con el teclado y el lector de pantalla.
 #[component]
-pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<crate::Cart>) -> impl IntoView {
+pub fn VariantBuy(
+    product: Product,
+    #[prop(into)] label: String,
+    cart: Option<crate::Cart>,
+) -> impl IntoView {
     let pick = use_context::<VariantPick>().unwrap_or_default();
     let v = product.variants.clone();
     let colors = v.colors.clone();
@@ -590,10 +671,16 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
         if (need_color && c.is_empty()) || (need_size && s.is_empty()) {
             None
         } else {
-            Some((domain::line_id(&pid.get_value(), &c, &s), v.with_value(|v| v.qty(&c, &s))))
+            Some((
+                domain::line_id(&pid.get_value(), &c, &s),
+                v.with_value(|v| v.qty(&c, &s)),
+            ))
         }
     };
-    let what_missing = move || match (need_color && pick.color.get().is_empty(), need_size && pick.size.get().is_empty()) {
+    let what_missing = move || match (
+        need_color && pick.color.get().is_empty(),
+        need_size && pick.size.get().is_empty(),
+    ) {
         (true, true) => "Elegí un color y un talle para agregarlo al carrito.",
         (true, false) => "Elegí un color para agregarlo al carrito.",
         (false, true) => "Elegí un talle para agregarlo al carrito.",
@@ -683,7 +770,11 @@ pub fn VariantBuy(product: Product, #[prop(into)] label: String, cart: Option<cr
         match line() {
             Some((_, left)) if (1..=3).contains(&left) => {
                 let which = domain::variant_label(&pick.color.get(), &pick.size.get());
-                let t = if left == 1 { format!("Queda 1 en {which}") } else { format!("Quedan {left} en {which}") };
+                let t = if left == 1 {
+                    format!("Queda 1 en {which}")
+                } else {
+                    format!("Quedan {left} en {which}")
+                };
                 view! { <p class="mk-pvar-low">{t}</p> }.into_any()
             }
             _ => ().into_any(),

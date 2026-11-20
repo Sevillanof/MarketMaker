@@ -48,8 +48,12 @@ impl ProductFilter {
         let f = Self::new();
         provide_context(f);
         Effect::new(move |_| {
-            let Ok(search) = window().location().search() else { return };
-            let Ok(params) = web_sys::UrlSearchParams::new_with_str(&search) else { return };
+            let Ok(search) = window().location().search() else {
+                return;
+            };
+            let Ok(params) = web_sys::UrlSearchParams::new_with_str(&search) else {
+                return;
+            };
             if let Some(q) = params.get("buscar").filter(|q| !q.trim().is_empty()) {
                 f.query.set(q);
             }
@@ -137,7 +141,8 @@ pub fn FilteredProducts(
     products.sort_by_key(|p| !p.in_stock);
     let products = StoredValue::new(products);
     let chosen = move || filter.map_or_else(Default::default, |f| (f.tags.get(), f.query.get()));
-    let category = move || filter.map_or_else(Default::default, |f| (f.category.get(), f.sub.get()));
+    let category =
+        move || filter.map_or_else(Default::default, |f| (f.category.get(), f.sub.get()));
     let shown = move || {
         let (tags, query) = chosen();
         let (cat, sub) = category();

@@ -1092,23 +1092,24 @@ pub(crate) fn Canvas(
     };
     // La página como la ve la tienda, sin edición: para la vista previa y
     // para el fondo oscurecido mientras se edita la ficha.
-    let static_page =
-        move || {
-            let ctx = RenderCtx {
-                products: products.get_value(),
-                editing: true,
-                product: None,
-            };
-            let mut nodes = state.doc.with(|d| d.layer(state.page_layer()).clone());
-            grid::sort_by_position(&mut nodes);
-            widgets::page_nodes(&nodes)
+    let static_page = move || {
+        let ctx = RenderCtx {
+            products: products.get_value(),
+            editing: true,
+            product: None,
+        };
+        let mut nodes = state.doc.with(|d| d.layer(state.page_layer()).clone());
+        grid::sort_by_position(&mut nodes);
+        widgets::page_nodes(&nodes)
             .into_iter()
             .zip(nodes)
-            .map(|((class, style), node)| view! {
-                <div class=class style=style>{render_widget(&node, &ctx)}</div>
+            .map(|((class, style), node)| {
+                view! {
+                    <div class=class style=style>{render_widget(&node, &ctx)}</div>
+                }
             })
             .collect_view()
-        };
+    };
     // Bordes de la página: se arrastran (o se mueven con las flechas) para
     // cambiar el ancho del contenido de toda la tienda.
     let finish_width_drag = move |apply: bool| {

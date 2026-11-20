@@ -37,6 +37,7 @@ async fn place_order(pool: &PgPool, t: Uuid, email: &str, status: OrderStatus) -
         items: &items,
         shipping_cents: 0,
         discount_cents: 0,
+        coupon: None,
         pay: domain::PayMethod::Coordinate,
         shipment: None,
     };
@@ -244,16 +245,30 @@ async fn favorites_belong_to_the_buyer_of_that_store(pool: PgPool) {
     let lucia_b = buyer(&pool, b, "lucia@correo.com").await;
     assert_ne!(lucia_a, lucia_b);
 
-    assert!(buyers::set_favorite(&pool, a, lucia_a, taza, true).await.unwrap());
+    assert!(buyers::set_favorite(&pool, a, lucia_a, taza, true)
+        .await
+        .unwrap());
     // Marcar dos veces no duplica.
-    assert!(buyers::set_favorite(&pool, a, lucia_a, taza, true).await.unwrap());
-    assert_eq!(buyers::favorite_ids(&pool, a, lucia_a).await.unwrap(), vec![taza]);
+    assert!(buyers::set_favorite(&pool, a, lucia_a, taza, true)
+        .await
+        .unwrap());
+    assert_eq!(
+        buyers::favorite_ids(&pool, a, lucia_a).await.unwrap(),
+        vec![taza]
+    );
     // Un producto de otra tienda no se puede guardar en esta cuenta.
-    assert!(!buyers::set_favorite(&pool, a, lucia_a, remera, true).await.unwrap());
+    assert!(!buyers::set_favorite(&pool, a, lucia_a, remera, true)
+        .await
+        .unwrap());
     // Y la misma persona en la otra tienda no ve los favoritos de esta.
-    assert!(buyers::favorite_ids(&pool, b, lucia_b).await.unwrap().is_empty());
+    assert!(buyers::favorite_ids(&pool, b, lucia_b)
+        .await
+        .unwrap()
+        .is_empty());
     // La lista de la página trae el producto.
-    let list = db::products::list_favorites(&pool, a, lucia_a).await.unwrap();
+    let list = db::products::list_favorites(&pool, a, lucia_a)
+        .await
+        .unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].name, "Taza");
 
@@ -263,15 +278,23 @@ async fn favorites_belong_to_the_buyer_of_that_store(pool: PgPool) {
         .execute(&pool)
         .await
         .unwrap();
-    assert!(buyers::favorite_ids(&pool, a, lucia_a).await.unwrap().is_empty());
+    assert!(buyers::favorite_ids(&pool, a, lucia_a)
+        .await
+        .unwrap()
+        .is_empty());
     sqlx::query("UPDATE products SET visible = true WHERE id = $1")
         .bind(taza)
         .execute(&pool)
         .await
         .unwrap();
 
-    assert!(buyers::set_favorite(&pool, a, lucia_a, taza, false).await.unwrap());
-    assert!(buyers::favorite_ids(&pool, a, lucia_a).await.unwrap().is_empty());
+    assert!(buyers::set_favorite(&pool, a, lucia_a, taza, false)
+        .await
+        .unwrap());
+    assert!(buyers::favorite_ids(&pool, a, lucia_a)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -285,7 +308,10 @@ async fn a_favorite_chosen_before_signing_in_is_saved_on_redeem(pool: PgPool) {
         .unwrap()
         .unwrap();
     let id = buyers::redeem_link(&pool, a, &key).await.unwrap().unwrap();
-    assert_eq!(buyers::favorite_ids(&pool, a, id).await.unwrap(), vec![taza]);
+    assert_eq!(
+        buyers::favorite_ids(&pool, a, id).await.unwrap(),
+        vec![taza]
+    );
     // Un producto de otra tienda en el enlace se ignora.
     let key = buyers::create_link_for(&pool, a, "otra@correo.com", Some(remera))
         .await

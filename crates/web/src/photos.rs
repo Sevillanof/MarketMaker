@@ -37,7 +37,9 @@ pub async fn photo_quota() -> Result<Option<domain::PhotoQuota>, ServerFnError> 
         return Ok(None);
     };
     Ok(Some(
-        db::media::quota(&pool()?, user.id).await.map_err(internal)?,
+        db::media::quota(&pool()?, user.id)
+            .await
+            .map_err(internal)?,
     ))
 }
 
@@ -189,7 +191,16 @@ fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
                 .collect();
             // `items` trae la más nueva primero.
             for item in new.into_iter().rev() {
-                l.insert(0, to_entry(MyPhoto { item, used_in: Vec::new() }, true));
+                l.insert(
+                    0,
+                    to_entry(
+                        MyPhoto {
+                            item,
+                            used_in: Vec::new(),
+                        },
+                        true,
+                    ),
+                );
             }
         });
     });

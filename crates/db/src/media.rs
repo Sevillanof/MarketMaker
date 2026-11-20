@@ -129,14 +129,12 @@ pub async fn add_sizes(
     extra_stored: usize,
     web_bytes: usize,
 ) -> sqlx::Result<()> {
-    sqlx::query(
-        "UPDATE media SET stored_bytes = stored_bytes + $2, web_bytes = $3 WHERE id = $1",
-    )
-    .bind(id)
-    .bind(extra_stored as i64)
-    .bind(web_bytes as i64)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE media SET stored_bytes = stored_bytes + $2, web_bytes = $3 WHERE id = $1")
+        .bind(id)
+        .bind(extra_stored as i64)
+        .bind(web_bytes as i64)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

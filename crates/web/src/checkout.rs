@@ -221,6 +221,52 @@ fn may_ask_andreani(what: &str, tenant: uuid::Uuid) -> bool {
     )
 }
 
+/// El aviso cuando el código no existe.
+#[cfg(feature = "ssr")]
+const COUPON_NOT_FOUND: &str = "No encontramos ese cupón. Revisá que esté bien escrito.";
+
+/// "Finalizar compra": ¿sirve este código? Devuelve el cupón (para mostrar el
+/// descuento en el resumen) o por qué no sirve. La compra mínima se mira en
+/// el navegador con el carrito, y otra vez al confirmar el pedido.
+#[server]
+pub async fn check_coupon(code: String) -> Result<domain::CouponCheck, ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = crate::auth::current_tenant().await?;
+    let problem = |m: &str| {
+        Ok(domain::CouponCheck {
+            offer: None,
+            problem: m.to_string(),
+        })
+    };
+    // Frena la adivinanza de códigos.
+    if !crate::limits::allow(
+        &format!("coupon|{}|{}", tenant.id, crate::limits::client_ip()),
+        20,
+        std::time::Duration::from_secs(10 * 60),
+    ) {
+        return problem("Probaste muchos códigos seguidos. Esperá unos minutos y probá de nuevo.");
+    }
+    let code = domain::normalize_coupon_code(&code);
+    if code.is_empty() {
+        return problem("Escribí el código del cupón.");
+    }
+    let pool = pool()?;
+    let today = db::coupons::today(&pool).await.map_err(internal)?;
+    match db::coupons::by_code(&pool, tenant.id, &code)
+        .await
+        .map_err(internal)?
+    {
+        None => problem(COUPON_NOT_FOUND),
+        Some(c) => match c.status_problem(&today) {
+            Some(m) => problem(&m),
+            None => Ok(domain::CouponCheck {
+                offer: Some(c.offer()),
+                problem: String::new(),
+            }),
+        },
+    }
+}
+
 /// "Finalizar compra": lo que cuesta el envío con Andreani a `postal_code`.
 #[server(input = Json)]
 pub async fn quote_shipping(
@@ -413,12 +459,10 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         let p = if variant {
             match base.for_variant(color, size) {
                 Some(p) => p,
-                None => {
-                    return changed(format!(
-                        "\"{}\" cambió sus colores o talles. Sacalo del carrito y elegilo de nuevo.",
-                        base.name
-                    ))
-                }
+                None => return changed(format!(
+                    "\"{}\" cambió sus colores o talles. Sacalo del carrito y elegilo de nuevo.",
+                    base.name
+                )),
             }
         } else {
             base.clone()
@@ -497,15 +541,35 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         shipment = Some(s);
     }
     let pay_online = form.pay == domain::PayMethod::MercadoPago;
-    // Con transferencia, el descuento que configuró la tienda en Cobros.
+    let subtotal: i64 = items.iter().map(domain::OrderItem::total_cents).sum();
+    // El cupón que escribió el comprador: se revisa de nuevo acá, con los
+    // precios de ahora.
+    let mut coupon_used: Option<(String, i64)> = None;
+    if !form.coupon.trim().is_empty() {
+        let code = domain::normalize_coupon_code(&form.coupon);
+        let today = db::coupons::today(&pool).await.map_err(internal)?;
+        let found = db::coupons::by_code(&pool, tenant.id, &code)
+            .await
+            .map_err(internal)?;
+        match found.as_ref().map(|c| c.problem(subtotal, &today)) {
+            None => return invalid("coupon", COUPON_NOT_FOUND),
+            Some(Some(problem)) => return invalid("coupon", &problem),
+            Some(None) => {}
+        }
+        if let Some(c) = found {
+            coupon_used = Some((c.code.clone(), c.offer().discount_cents(subtotal)));
+        }
+    }
+    let after_coupon = subtotal - coupon_used.as_ref().map_or(0, |(_, c)| *c);
+    // Con transferencia, el descuento que configuró la tienda en Cobros
+    // (sobre lo que queda después del cupón).
     let discount_cents = if form.pay == domain::PayMethod::Transfer {
         let pct = db::orders::payment_options(&pool, tenant.id)
             .await
             .map_err(internal)?
             .offers(false)
             .transfer_discount;
-        let subtotal: i64 = items.iter().map(domain::OrderItem::total_cents).sum();
-        domain::transfer_discount_cents(subtotal, pct)
+        domain::transfer_discount_cents(after_coupon, pct)
     } else {
         0
     };
@@ -526,6 +590,7 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         items: &items,
         shipping_cents,
         discount_cents,
+        coupon: coupon_used.as_ref().map(|(c, n)| (c.as_str(), *n)),
         pay: form.pay,
         shipment: shipment.as_ref(),
     };
@@ -534,6 +599,9 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         .map_err(internal)?
     {
         db::orders::Created::Saved { id, number } => (id, number),
+        db::orders::Created::CouponGone => {
+            return invalid("coupon", "Este cupón ya no tiene usos disponibles.")
+        }
         db::orders::Created::Short { name, left: 0 } => {
             return changed(format!(
                 "\"{name}\" se agotó. Sacalo del carrito para seguir."
@@ -727,17 +795,29 @@ struct Fields {
     quote: RwSignal<Option<AndreaniQuote>>,
     /// Descuento por transferencia de la tienda, en por ciento.
     transfer_off: u8,
+    /// Lo que escribió en «¿Tenés un cupón?».
+    coupon_text: RwSignal<String>,
+    /// El cupón ya aplicado (el servidor lo vuelve a revisar al confirmar).
+    coupon: RwSignal<Option<domain::CouponOffer>>,
+    /// Por qué no sirve el código que probó.
+    coupon_msg: RwSignal<Option<String>>,
     /// Hasta qué paso llegó (1 datos, 2 entrega, 3 pago). El resumen suma el
     /// envío y el descuento recién cuando vio esos pasos: antes todavía no
     /// eligió y el total no tiene que cambiarle después.
     reached: RwSignal<u8>,
 }
 
+/// Lo que descuenta el cupón aplicado (0 si no hay o no llega al mínimo).
+fn coupon_cents(f: Fields, subtotal: i64) -> i64 {
+    f.coupon
+        .with(|c| c.as_ref().map_or(0, |c| c.discount_cents(subtotal)))
+}
+
 /// El descuento que corresponde ahora (solo si eligió transferencia, ya en
 /// el paso del pago).
 fn discount_cents(f: Fields, subtotal: i64) -> i64 {
     if f.reached.get() >= 3 && f.pay.get() == domain::PayMethod::Transfer {
-        domain::transfer_discount_cents(subtotal, f.transfer_off)
+        domain::transfer_discount_cents(subtotal - coupon_cents(f, subtotal), f.transfer_off)
     } else {
         0
     }
@@ -864,6 +944,9 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         dni: RwSignal::new(String::new()),
         quote: RwSignal::new(None),
         transfer_off: info.transfer_discount,
+        coupon_text: RwSignal::new(String::new()),
+        coupon: RwSignal::new(None),
+        coupon_msg: RwSignal::new(None),
         reached: RwSignal::new(1),
     };
     remember_buyer(&f);
@@ -940,6 +1023,10 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     let problem = RwSignal::new(None::<String>);
     // Muestra los errores: abre el paso del primero y lleva el foco ahí.
     let show_errors = move |e: Vec<FieldError>| {
+        if let Some(c) = e.iter().find(|e| e.field == "coupon") {
+            f.coupon.set(None);
+            f.coupon_msg.set(Some(c.message.clone()));
+        }
         if let Some(first) = e.first() {
             crate::analytics::track_client("error_compra", Some(first.field.clone()));
             step.set(step_of(&first.field));
@@ -978,6 +1065,10 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         lines: lines_now(),
         branch: f.branch.get_untracked(),
         dni: f.dni.get_untracked(),
+        coupon: f
+            .coupon
+            .get_untracked()
+            .map_or_else(|| f.coupon_text.get_untracked(), |c| c.code),
     };
     // "Seguir": revisa solo los campos de este paso y abre el siguiente.
     let next = move |from: u8| {
@@ -1574,20 +1665,110 @@ fn OrderLines(cart: Cart) -> impl IntoView {
     }
 }
 
+/// «¿Tenés un cupón?»: el campo, el botón y el aviso de si sirve.
+#[component]
+fn CouponBox(cart: Cart, f: Fields, id: &'static str) -> impl IntoView {
+    let check = Action::new(|code: &String| check_coupon(code.clone()));
+    Effect::new(move |_| match check.value().get() {
+        Some(Ok(c)) => match c.offer {
+            Some(o) => match o.min_problem(cart.total_cents()) {
+                Some(p) => f.coupon_msg.set(Some(p)),
+                None => {
+                    f.coupon.set(Some(o));
+                    f.coupon_msg.set(None);
+                }
+            },
+            None => f.coupon_msg.set(Some(c.problem)),
+        },
+        Some(Err(e)) => f.coupon_msg.set(Some(error_text(&e))),
+        None => {}
+    });
+    let apply = move || {
+        f.coupon_msg.set(None);
+        let code = f.coupon_text.get_untracked();
+        if code.trim().is_empty() {
+            f.coupon_msg
+                .set(Some("Escribí el código del cupón.".into()));
+        } else {
+            check.dispatch(code);
+        }
+    };
+    let applied = move || f.coupon.with(|c| c.is_some());
+    // Si el carrito bajó del mínimo, el cupón deja de descontar: se avisa.
+    let note = move || {
+        f.coupon_msg.get().or_else(|| {
+            f.coupon
+                .with(|c| c.as_ref().and_then(|c| c.min_problem(cart.total_cents())))
+        })
+    };
+    let err_id = format!("{id}-msg");
+    let err_id2 = err_id.clone();
+    view! {
+        <div class="mt-3">
+            <label for=id class="text-sm text-base-content/75">"¿Tenés un cupón?"</label>
+            <div class="mt-1.5 flex gap-2">
+                <input id=id type="text" name="coupon" class="input input-sm h-10 min-w-0 flex-1 uppercase placeholder:normal-case"
+                    autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30"
+                    placeholder="Escribí tu código"
+                    disabled=applied
+                    aria-invalid=move || (note().is_some() && !applied()).to_string()
+                    aria-describedby=err_id.clone()
+                    prop:value=move || f.coupon_text.get()
+                    on:input=move |ev| { f.coupon_text.set(event_target_value(&ev)); f.coupon_msg.set(None); }
+                    on:keydown=move |ev| {
+                        if ev.key() == "Enter" {
+                            ev.prevent_default();
+                            if !applied() { apply(); }
+                        }
+                    }/>
+                {move || (!applied()).then(|| view! {
+                    <button type="button" class="btn btn-outline btn-sm h-10"
+                        disabled=move || check.pending().get()
+                        on:click=move |_| apply()>
+                        {move || if check.pending().get() { "Revisando…" } else { "Aplicar" }}
+                    </button>
+                })}
+            </div>
+            <p id=err_id2 role="status" class="mt-1.5 text-xs">
+                {move || match (f.coupon.get(), note()) {
+                    (Some(c), None) => view! {
+                        <span class="text-success">{format!("✓ Cupón aplicado: {}", c.label())}</span>
+                        " "
+                        <button type="button" class="link link-hover text-base-content/70"
+                            on:click=move |_| { f.coupon.set(None); f.coupon_text.set(String::new()); }>"Quitar"</button>
+                    }.into_any(),
+                    (Some(_), Some(p)) => view! {
+                        <span class="text-error">{p}</span>
+                        " "
+                        <button type="button" class="link link-hover text-base-content/70"
+                            on:click=move |_| { f.coupon.set(None); f.coupon_text.set(String::new()); }>"Quitar"</button>
+                    }.into_any(),
+                    (None, Some(p)) => view! { <span class="text-error">{p}</span> }.into_any(),
+                    (None, None) => ().into_any(),
+                }}
+            </p>
+        </div>
+    }
+}
+
 /// Subtotal, envío y total.
 #[component]
-fn Totals(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
+fn Totals(cart: Cart, f: Fields, d: DeliverySettings, coupon_id: &'static str) -> impl IntoView {
     let d = StoredValue::new(d);
     let subtotal = move || cart.total_cents();
     let shipping = move || d.with_value(|d| ship_cents(f, d));
     let shipping_text = move || d.with_value(|d| ship_text(f, d));
     view! {
+        <CouponBox cart f id=coupon_id/>
         <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span class="tabular-nums">{move || format_price(subtotal())}</span></div>
+        {move || (coupon_cents(f, subtotal()) > 0).then(|| view! {
+            <div class="mt-1 flex justify-between text-sm text-success"><span>{move || format!("Cupón {}", f.coupon.with(|c| c.as_ref().map(|c| c.code.clone()).unwrap_or_default()))}</span><span class="tabular-nums">{move || format!("−{}", format_price(coupon_cents(f, subtotal())))}</span></div>
+        })}
         {move || (discount_cents(f, subtotal()) > 0).then(|| view! {
             <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Descuento por transferencia ({} %)", f.transfer_off)}</span><span class="tabular-nums">{move || format!("−{}", format_price(discount_cents(f, subtotal())))}</span></div>
         })}
         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
-        <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span class="tabular-nums">{move || format_price(subtotal() - discount_cents(f, subtotal()) + shipping())}</span></div>
+        <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span class="tabular-nums">{move || format_price(subtotal() - coupon_cents(f, subtotal()) - discount_cents(f, subtotal()) + shipping())}</span></div>
     }
 }
 
@@ -1597,7 +1778,7 @@ fn MobileSummary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
     let d2 = d.clone();
     let total = move || {
         let sub = cart.total_cents();
-        sub - discount_cents(f, sub) + ship_cents(f, &d2)
+        sub - coupon_cents(f, sub) - discount_cents(f, sub) + ship_cents(f, &d2)
     };
     view! {
         <details class="group rounded-box bg-base-100 shadow-sm lg:hidden">
@@ -1609,7 +1790,7 @@ fn MobileSummary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
             <div class="px-5 pb-4">
                 <OrderLines cart/>
                 <a href="/" class="link link-hover mt-2 inline-block text-sm text-base-content/70">"Cambiar productos"</a>
-                <Totals cart f d/>
+                <Totals cart f d coupon_id="f-coupon-m"/>
             </div>
         </details>
     }
@@ -1623,7 +1804,7 @@ fn Summary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
             <h2 class="mk-h mb-1 text-lg font-bold">"Tu pedido"</h2>
             <OrderLines cart/>
             <a href="/" class="link link-hover mt-2 self-start text-sm text-base-content/70">"Cambiar productos"</a>
-            <Totals cart f d/>
+            <Totals cart f d coupon_id="f-coupon"/>
         </div></aside>
     }
 }
@@ -1738,6 +1919,7 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
                         }).collect_view()}
                     </ul>
                     <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{format_price(order.subtotal_cents)}</span></div>
+                    {(order.coupon_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Cupón {}", order.coupon_code)}</span><span>{format!("−{}", format_price(order.coupon_cents))}</span></div> })}
                     {(order.discount_cents > 0).then(|| view! { <div class="mt-1 flex justify-between text-sm text-success"><span>"Descuento por transferencia"</span><span>{format!("−{}", format_price(order.discount_cents))}</span></div> })}
                     <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
                     <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span>{format_price(order.total_cents)}</span></div>
@@ -1876,7 +2058,9 @@ fn ReceiptHead(
 fn url_encode(text: &str) -> String {
     text.bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect()
@@ -1889,7 +2073,11 @@ fn TransferBox(info: String, total: i64) -> impl IntoView {
     let mut lines = info.lines();
     let alias = lines.next().unwrap_or("").trim().to_string();
     let holder = lines
-        .find_map(|l| l.trim().strip_prefix("Titular:").map(|h| h.trim().to_string()))
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix("Titular:")
+                .map(|h| h.trim().to_string())
+        })
         .unwrap_or_default();
     // El monto sin el signo, como se escribe en la app del banco.
     let amount = format_price(total);

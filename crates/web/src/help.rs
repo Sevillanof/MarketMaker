@@ -322,6 +322,7 @@ pub fn HelpButton(
         let n = match section.get_untracked() {
             _ if editor => FIRST_EDITOR,
             Section::Payments => 1,
+            Section::Coupons => 0,
             Section::Delivery => 2,
             _ => 0,
         };

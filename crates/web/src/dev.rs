@@ -245,7 +245,10 @@ pub fn DevProductStylesPage() -> impl IntoView {
             p.variant = (*v).to_string();
         }
         let mut node = Node::new(format!("price-{v}"), w);
-        node.size = domain::Size { w: 20, h: if *v == "d" { 22 } else { 10 } };
+        node.size = domain::Size {
+            w: 20,
+            h: if *v == "d" { 22 } else { 10 },
+        };
         cases.push((format!("Precio · {label}"), node));
     }
     for (v, label) in domain::CARD_STYLE_OPTIONS {
@@ -255,7 +258,10 @@ pub fn DevProductStylesPage() -> impl IntoView {
             p.limit = 4;
             p.title = "Novedades".to_string();
         }
-        let mut node = Node::new(format!("cards-{}", if v.is_empty() { "classic" } else { v }), w);
+        let mut node = Node::new(
+            format!("cards-{}", if v.is_empty() { "classic" } else { v }),
+            w,
+        );
         node.size = domain::Size { w: 48, h: 50 };
         cases.push((format!("Tarjetas · {label}"), node));
     }
@@ -317,11 +323,13 @@ pub fn DevMenusPage() -> impl IntoView {
     }
     provide_sample_store();
     let account = widgets::Account::new();
-    account.state.set(widgets::AccountState::In(domain::BuyerMe {
-        email: "fran@example.com".to_string(),
-        name: "Francisco Sevillano".to_string(),
-        ..Default::default()
-    }));
+    account
+        .state
+        .set(widgets::AccountState::In(domain::BuyerMe {
+            email: "fran@example.com".to_string(),
+            name: "Francisco Sevillano".to_string(),
+            ..Default::default()
+        }));
     provide_context(account);
     widgets::ProductFilter::provide();
     let ctx = RenderCtx {
@@ -349,33 +357,84 @@ pub fn DevMenusPage() -> impl IntoView {
         ..leaf("Hombre")
     };
     let links = vec![leaf("Ofertas"), mega, leaf("Mujer"), leaf("Niños")];
-    let nav = |variant: &str, tone: &str, upper: bool, search: bool, menu: &str, menu_color: bool| {
-        Widget::Navbar(domain::NavbarProps {
-            menu: menu.to_string(),
-            brand: "Casa Luna".to_string(),
-            logo_url: "/img/logo.svg".to_string(),
-            links: links.clone(),
-            button_label: String::new(),
-            button_href: String::new(),
-            variant: variant.to_string(),
-            tone: tone.to_string(),
-            upper,
-            search,
-            menu_color,
-        })
-    };
+    let nav =
+        |variant: &str, tone: &str, upper: bool, search: bool, menu: &str, menu_color: bool| {
+            Widget::Navbar(domain::NavbarProps {
+                menu: menu.to_string(),
+                brand: "Casa Luna".to_string(),
+                logo_url: "/img/logo.svg".to_string(),
+                links: links.clone(),
+                button_label: String::new(),
+                button_href: String::new(),
+                variant: variant.to_string(),
+                tone: tone.to_string(),
+                upper,
+                search,
+                menu_color,
+            })
+        };
     // (título, menú, color del bloque, con portada debajo)
     let cases = vec![
-        ("Flotante · claro", nav("b", "", true, false, "list", false), "", true),
-        ("Flotante · vidrio", nav("b", "glass", true, false, "list", false), "", true),
-        ("Flotante · oscuro", nav("b", "dark", true, false, "list", false), "", true),
-        ("Flotante · color del bloque", nav("b", "color", true, false, "list", false), "#e85d04", true),
-        ("Logo al centro · claro con buscador", nav("c", "", false, true, "columns", false), "", false),
-        ("Logo al centro · oscuro en mayúsculas", nav("c", "dark", true, true, "list", false), "", false),
-        ("Logo al centro · suave, sin buscador", nav("c", "soft", false, false, "list", false), "secondary", false),
-        ("Clásico · desplegable en columnas", nav("a", "", false, true, "columns", false), "", false),
-        ("Clásico · columnas con fondo de color", nav("a", "", false, false, "columns", true), "#e3001b", false),
-        ("Clásico · columnas con fondo de color (azul noche)", nav("a", "color", false, false, "columns", true), "#1e1b4b", false),
+        (
+            "Flotante · claro",
+            nav("b", "", true, false, "list", false),
+            "",
+            true,
+        ),
+        (
+            "Flotante · vidrio",
+            nav("b", "glass", true, false, "list", false),
+            "",
+            true,
+        ),
+        (
+            "Flotante · oscuro",
+            nav("b", "dark", true, false, "list", false),
+            "",
+            true,
+        ),
+        (
+            "Flotante · color del bloque",
+            nav("b", "color", true, false, "list", false),
+            "#e85d04",
+            true,
+        ),
+        (
+            "Logo al centro · claro con buscador",
+            nav("c", "", false, true, "columns", false),
+            "",
+            false,
+        ),
+        (
+            "Logo al centro · oscuro en mayúsculas",
+            nav("c", "dark", true, true, "list", false),
+            "",
+            false,
+        ),
+        (
+            "Logo al centro · suave, sin buscador",
+            nav("c", "soft", false, false, "list", false),
+            "secondary",
+            false,
+        ),
+        (
+            "Clásico · desplegable en columnas",
+            nav("a", "", false, true, "columns", false),
+            "",
+            false,
+        ),
+        (
+            "Clásico · columnas con fondo de color",
+            nav("a", "", false, false, "columns", true),
+            "#e3001b",
+            false,
+        ),
+        (
+            "Clásico · columnas con fondo de color (azul noche)",
+            nav("a", "color", false, false, "columns", true),
+            "#1e1b4b",
+            false,
+        ),
     ];
     let menus = cases
         .into_iter()
@@ -386,7 +445,10 @@ pub fn DevMenusPage() -> impl IntoView {
             n.look.color = color.to_string();
             let mut nodes = vec![n];
             if cover {
-                let mut b = Node::new(format!("ban{i}"), Widget::defaults("Banner").expect("tipo conocido"));
+                let mut b = Node::new(
+                    format!("ban{i}"),
+                    Widget::defaults("Banner").expect("tipo conocido"),
+                );
                 if let Widget::Banner(p) = &mut b.widget {
                     p.title = "Zapatillas para todos los días".to_string();
                     p.subtitle = "Nueva temporada".to_string();

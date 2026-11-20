@@ -121,7 +121,9 @@ fn NewPageMenu() -> impl IntoView {
     // Se cierra al tocar afuera, como cualquier menú.
     let outside = window_event_listener(leptos::ev::pointerdown, move |ev| {
         use wasm_bindgen::JsCast;
-        let Some(d) = menu.get_untracked() else { return };
+        let Some(d) = menu.get_untracked() else {
+            return;
+        };
         let inside = ev
             .target()
             .and_then(|t| t.dyn_into::<web_sys::Node>().ok())

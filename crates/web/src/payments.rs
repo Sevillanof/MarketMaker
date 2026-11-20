@@ -215,7 +215,8 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
         true
     };
     // La transferencia cuenta recién con un alias que sirve.
-    let transfer_ready = move || transfer.get() && alias.with(|a| domain::transfer_account_problem(a).is_none());
+    let transfer_ready =
+        move || transfer.get() && alias.with(|a| domain::transfer_account_problem(a).is_none());
     let none_active = move || link.with(|l| l.is_none()) && !transfer_ready() && !coordinate.get();
 
     view! {
