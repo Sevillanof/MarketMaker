@@ -545,8 +545,8 @@ pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) 
     }
 }
 
-/// Tarjeta «Limpia con Agregar»: tarjeta blanca redondeada, nombre en
-/// mayúsculas y «Agregar» siempre a la vista (suma uno al carrito).
+/// Tarjeta «Limpia con Añadir»: tarjeta blanca redondeada, nombre en
+/// mayúsculas y un «+» que se estira a «Añadir» (suma uno al carrito).
 #[allow(non_snake_case)]
 pub fn CleanCard(
     product: Product,
@@ -574,8 +574,11 @@ pub fn CleanCard(
             format!("Agregar {} al carrito", product.name)
         };
         view! {
+            // Un «+» redondo que, al pasar el mouse o con el teclado, se estira y
+            // dice «Añadir» (ver `.mk-cclean-add` en el CSS). En el editor no
+            // hay carrito: se ve igual, pero no hace nada.
             <button type="button" class="mk-cclean-add btn btn-sm relative z-10" aria-label=label
-                disabled=cart.is_none()
+                class:is-on=move || added.get()
                 on:click=move |_| {
                     if variants {
                         open_id.with_value(|id| open_product(id));
@@ -585,7 +588,8 @@ pub fn CleanCard(
                         set_timeout(move || added.set(false), std::time::Duration::from_millis(1800));
                     }
                 }>
-                {move || if added.get() { view! { "✓ Listo" }.into_any() } else if variants { view! { "Elegir" }.into_any() } else { view! { <crate::cart::BagIcon class="h-4 w-4"/>"Agregar" }.into_any() }}
+                <span class="mk-cclean-icon" aria-hidden="true">{move || if added.get() { "✓" } else { "+" }}</span>
+                <span class="mk-cclean-txt" aria-hidden="true">{move || if added.get() { "Listo" } else { "Añadir" }}</span>
             </button>
         }
     });

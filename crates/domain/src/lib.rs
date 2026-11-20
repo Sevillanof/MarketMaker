@@ -439,7 +439,7 @@ pub const MODAL_OPEN_OPTIONS: &[(&str, &str)] = &[
     ("", "Ventana al centro"),
     ("drawer", "Cajón a la derecha"),
     ("sheet", "Hoja que sube desde abajo"),
-    ("auto", "Cajón en compu, hoja en celular"),
+    ("auto", "Cajón en computadora, hoja en celular"),
 ];
 
 /// Los estilos de la barra de compra al bajar.
@@ -928,7 +928,9 @@ impl LinkKind {
             LinkKind::Product
         } else if h.starts_with("/?categoria=") {
             LinkKind::Category
-        } else if h.is_empty() || (h.starts_with('/') && !h.starts_with("//") && !h.contains(['?', '#'])) {
+        } else if h.is_empty()
+            || (h.starts_with('/') && !h.starts_with("//") && !h.contains(['?', '#']))
+        {
             LinkKind::Page
         } else {
             LinkKind::Other
@@ -971,9 +973,10 @@ pub fn field_error(kind: &FieldKind, v: Option<&serde_json::Value>) -> Option<St
         },
         FieldKind::Url => match v.and_then(|v| v.as_str()) {
             Some(s) if url_ok(s) => None,
-            Some(_) => {
-                Some("Escribí una página de tu tienda (/ofertas), una dirección (https://…) o un email.".to_string())
-            }
+            Some(_) => Some(
+                "Escribí una página de tu tienda (/ofertas), una dirección (https://…) o un email."
+                    .to_string(),
+            ),
             None => Some("Tiene que ser un texto.".to_string()),
         },
         FieldKind::Number { min, max } => match v.and_then(|v| v.as_i64()) {
@@ -1684,8 +1687,14 @@ mod tests {
 
     #[test]
     fn link_kinds_and_hrefs() {
-        assert_eq!(category_href("Ropa de cama"), "/?categoria=Ropa%20de%20cama");
-        assert_eq!(LinkKind::of(&category_href("Mesa y cocina")), LinkKind::Category);
+        assert_eq!(
+            category_href("Ropa de cama"),
+            "/?categoria=Ropa%20de%20cama"
+        );
+        assert_eq!(
+            LinkKind::of(&category_href("Mesa y cocina")),
+            LinkKind::Category
+        );
         assert_eq!(LinkKind::of(&product_href("ab-12")), LinkKind::Product);
         assert_eq!(LinkKind::of("/ofertas"), LinkKind::Page);
         assert_eq!(LinkKind::of(""), LinkKind::Page);
@@ -1772,7 +1781,10 @@ mod tests {
         if let Widget::Banner(b) = &mut doc.nodes[0].widget {
             b.button_href = "javascript:alert(1)".into();
         }
-        assert_invalid(&doc, "Banner › Enlace del botón: Escribí una página de tu tienda");
+        assert_invalid(
+            &doc,
+            "Banner › Enlace del botón: Escribí una página de tu tienda",
+        );
     }
 
     #[test]
@@ -1804,8 +1816,14 @@ mod tests {
     #[test]
     fn validates_datetime() {
         assert_eq!(tidy_link(" www.google.com "), "https://www.google.com");
-        assert_eq!(tidy_link("instagram.com/macetas"), "https://instagram.com/macetas");
-        assert_eq!(tidy_link("hola@macetas.com.ar"), "mailto:hola@macetas.com.ar");
+        assert_eq!(
+            tidy_link("instagram.com/macetas"),
+            "https://instagram.com/macetas"
+        );
+        assert_eq!(
+            tidy_link("hola@macetas.com.ar"),
+            "mailto:hola@macetas.com.ar"
+        );
         assert_eq!(tidy_link("ofertas"), "/ofertas");
         assert_eq!(tidy_link("#contacto"), "#contacto");
         assert_eq!(tidy_link("javascript:alert(1)"), "javascript:alert(1)");

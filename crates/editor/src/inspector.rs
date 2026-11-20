@@ -151,8 +151,11 @@ fn ModalSettings() -> impl IntoView {
     view! {
         <section class="flex flex-col gap-3 rounded-box border border-base-300 p-3" aria-labelledby="mk-modal-settings">
             <h3 id="mk-modal-settings" class="text-sm font-bold">"Toda la ficha"</h3>
-            {select("mk-modal-open", "Cómo se abre", "Se ve en la vista previa y en tu tienda.",
-                domain::MODAL_OPEN_OPTIONS, |m| &m.open, |m, v| m.open = v)}
+            <crate::pictures::PicturePicker kind=crate::pictures::Pictures::ModalOpen
+                uid="mk-modal-open".to_string() legend="Cómo se abre" options=domain::MODAL_OPEN_OPTIONS
+                help="Se ve en la vista previa y en tu tienda."
+                value=Signal::derive(move || state.doc.with(|d| d.product_modal.open.clone()))
+                pick=Callback::new(move |v: String| state.apply(|d| d.product_modal.open = v.clone()))/>
             {select("mk-modal-buybar", "Barra de compra al bajar", "Aparece cuando el botón de compra queda fuera de la vista. En el celular no hace falta: el botón ya queda abajo.",
                 domain::MODAL_BUYBAR_OPTIONS, |m| &m.buybar, |m, v| m.buybar = v)}
         </section>
@@ -210,7 +213,15 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     // Filtros que mueven la cuadrícula de la página (no la llevan adentro).
     let filters_grid = matches!(
         widget.type_name(),
-        "TagFilter" | "TagList" | "TagCircles" | "TagSearch" | "CategoryTabs" | "CategorySide" | "CategoryCards" | "CategoryDrop" | "CategoryPage"
+        "TagFilter"
+            | "TagList"
+            | "TagCircles"
+            | "TagSearch"
+            | "CategoryTabs"
+            | "CategorySide"
+            | "CategoryCards"
+            | "CategoryDrop"
+            | "CategoryPage"
     );
 
     // Pestañas con el patrón de ARIA: flechas, Inicio y Fin cambian de
@@ -369,7 +380,11 @@ fn field_condition(key: &str) -> Option<(&'static str, &'static str)> {
 /// Un campo del panel que se muestra solo si su opción está elegida (ver
 /// [`field_condition`]).
 #[component]
-fn ShownField(products: StoredValue<Vec<Product>>, id: String, field: &'static Field) -> impl IntoView {
+fn ShownField(
+    products: StoredValue<Vec<Product>>,
+    id: String,
+    field: &'static Field,
+) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let sid = StoredValue::new(id.clone());
     let cond = field_condition(field.key);
@@ -387,7 +402,11 @@ fn ShownField(products: StoredValue<Vec<Product>>, id: String, field: &'static F
             })
         })
     });
-    move || shown.get().then(|| view! { <PropField products id=id.clone() field=field/> })
+    move || {
+        shown
+            .get()
+            .then(|| view! { <PropField products id=id.clone() field=field/> })
+    }
 }
 
 /// Sección "Tamaño" de la pestaña Diseño: ancho con nombres, alto con dos
@@ -418,8 +437,13 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
         0 => domain::Layer::Page(0).design_width(),
         w => w,
     });
-    let page_w = if state.in_modal_untracked() { domain::Layer::ProductModal.design_width() } else { page_w };
-    let cols_px = move |c: u8| (f64::from(c) * f64::from(page_w) / f64::from(GRID_COLS)).round() as u32;
+    let page_w = if state.in_modal_untracked() {
+        domain::Layer::ProductModal.design_width()
+    } else {
+        page_w
+    };
+    let cols_px =
+        move |c: u8| (f64::from(c) * f64::from(page_w) / f64::from(GRID_COLS)).round() as u32;
     let px_to_cols = move |px: f64| (px * f64::from(GRID_COLS) / f64::from(page_w)).round() as i32;
     let (fixed_w, fixed_h) = (RwSignal::new(None::<String>), RwSignal::new(None::<String>));
 

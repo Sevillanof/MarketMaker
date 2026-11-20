@@ -15,6 +15,7 @@ mod inspector;
 mod look;
 mod palette;
 mod photos;
+mod pictures;
 pub use photos::{provide_photos, take_files, LinkImport, MyPhotos, UploadTray};
 
 /// Dirección del panel de la tienda en la plataforma. Si está en el contexto,
@@ -416,14 +417,31 @@ impl Actions {
         let id = new_node_id(&self.state.doc.get_untracked());
         let is_footer = matches!(widget, domain::Widget::Footer(_));
         let node = Node::new(id.clone(), widget);
-        // "Al final" es antes del pie de página: si no, el bloque nuevo quedaba
-        // debajo del pie y se publicaba así.
+        // Si entra, va al lado del último bloque (sin contar el pie); si no,
+        // "al final", que es antes del pie de página: si no, el bloque nuevo
+        // quedaba debajo del pie y se publicaba así.
+        let is_footer_node = |n: &Node| matches!(n.widget, domain::Widget::Footer(_));
+        let mut beside: Option<String> = None;
         self.state.apply_nodes(|nodes| {
+            let node = if is_footer {
+                node
+            } else {
+                match grid::add_beside_last(nodes, node, is_footer_node) {
+                    Ok(other) => {
+                        beside = nodes
+                            .iter()
+                            .find(|n| n.id == other)
+                            .map(|n| n.widget.label().to_string());
+                        return;
+                    }
+                    Err(node) => node,
+                }
+            };
             let footer_y = (!is_footer)
                 .then(|| {
                     nodes
                         .iter()
-                        .filter(|n| matches!(n.widget, domain::Widget::Footer(_)))
+                        .filter(|n| is_footer_node(n))
                         .map(|n| n.pos.y)
                         .max()
                 })
@@ -439,8 +457,10 @@ impl Actions {
         } else {
             "de la página"
         };
-        self.ui
-            .announce(format!("Agregaste {label} al final {place}."));
+        self.ui.announce(match beside {
+            Some(o) => format!("Agregaste {label} al lado de {o}."),
+            None => format!("Agregaste {label} al final {place}."),
+        });
         reveal_node(&id, true);
     }
 
@@ -608,9 +628,16 @@ impl Actions {
         }
         let path = format!("/{slug}");
         if domain::is_reserved_path(&path) {
-            return Some(format!("La dirección {path} la usa la aplicación: probá con otro nombre."));
+            return Some(format!(
+                "La dirección {path} la usa la aplicación: probá con otro nombre."
+            ));
         }
-        if self.state.doc.with_untracked(|d| d.page_index(&path)).is_some() {
+        if self
+            .state
+            .doc
+            .with_untracked(|d| d.page_index(&path))
+            .is_some()
+        {
             return Some("Ya tenés una página con esa dirección: probá con otro nombre.".into());
         }
         if self.state.doc.with_untracked(|d| d.pages.len()) >= domain::MAX_PAGES {
@@ -779,7 +806,8 @@ pub(crate) fn size_text(size: domain::Size) -> String {
         // Fuera de los anchos con nombre, en píxeles, como en «Ajustar a mano».
         None => format!(
             "{} píxeles de ancho",
-            u32::from(size.w) * u32::from(domain::Layer::Page(0).design_width()) / u32::from(domain::GRID_COLS)
+            u32::from(size.w) * u32::from(domain::Layer::Page(0).design_width())
+                / u32::from(domain::GRID_COLS)
         ),
     };
     let rows = u32::from(size.h) * u32::from(domain::ROW_PX);
