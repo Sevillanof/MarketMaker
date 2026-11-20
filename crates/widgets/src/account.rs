@@ -112,6 +112,7 @@ pub fn AccountNavButton() -> impl IntoView {
                 AccountState::In(me) => format!("Mi cuenta, {}", me.display_name()),
                 _ => "Ingresar a mi cuenta".to_string(),
             }
+            title=move || matches!(account.state.get(), AccountState::In(_)).then_some("Mi cuenta")
             on:click=move |_| account.open.set(true)
         >
             {move || match account.state.get() {

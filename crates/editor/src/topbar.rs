@@ -170,7 +170,7 @@ fn NewPageMenu() -> impl IntoView {
                     })
                     .collect_view()}
                 <li class="menu-title pt-2 text-xs font-normal whitespace-normal">
-                    "Para otra página, poné un enlace en el menú y tocalo."
+                    "¿Otra página, como «Nosotros»? Agregá ese enlace en el Menú superior y tocalo en el lienzo: la página se crea sola."
                 </li>
             </ul>
         </details>

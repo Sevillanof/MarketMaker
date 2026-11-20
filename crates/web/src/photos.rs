@@ -230,7 +230,9 @@ fn PhotoGrid(initial: Vec<MyPhoto>, shared: editor::MyPhotos) -> impl IntoView {
                                 <button type="button" class="mk-photo-tile" aria-pressed=move || on.get().to_string()
                                     on:click=move |_| selected.set((!on.get_untracked()).then(|| id2.clone()))>
                                     <span class="mk-photo-tile-img" style=fig_style>
-                                        <img src=thumb alt="" loading=if fresh { "eager" } else { "lazy" } class=if svg { "object-contain p-3" } else { "object-cover" }/>
+                                        // Un logo o una foto muy apaisada se ve entera, no recortada.
+                                        <img src=thumb alt="" loading=if fresh { "eager" } else { "lazy" } class=if svg { "object-contain p-3" } else { "object-cover" }
+                                            onload="if(this.naturalWidth>this.naturalHeight*1.6)this.className='object-contain p-2'"/>
                                     </span>
                                     <span class="block px-2.5 py-2">
                                         <span class="block truncate text-sm font-semibold">{move || name.get()}</span>

@@ -492,7 +492,7 @@ fn SignInForm(store_name: String, #[prop(into)] title_id: String) -> impl IntoVi
                     <h2 id=title_id.clone() class="mk-h mt-4 text-2xl font-bold">"Revisá tu email"</h2>
                     // La respuesta es la misma tenga o no pedidos: no decimos si esa
                     // dirección compró acá.
-                    <p role="status" class="mt-2 text-sm leading-relaxed text-base-content/70">"Si podés entrar con esta dirección, te mandamos un enlace."</p>
+                    <p role="status" class="mt-2 text-sm leading-relaxed text-base-content/70">"Si esta dirección tiene cuenta en la tienda, te llega un enlace para entrar. Revisá también la carpeta de spam."</p>
                     <p class="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-base-200 px-4 py-2 text-sm font-semibold">
                         <Icon name="mail" class="size-4 shrink-0 text-base-content/50"/>
                         <span class="truncate">{addr.clone()}</span>
@@ -937,7 +937,7 @@ fn ProfileForm(view: domain::PageView, me: BuyerMe, section: &'static str) -> im
             </form>
             {on_data.then(|| view! {
                 <div class="card bg-base-100 shadow-sm"><div class="card-body gap-3 p-6">
-                    <h2 class="font-semibold">"Salir y borrar"</h2>
+                    <h2 class="font-semibold">"Tu sesión y tu cuenta"</h2>
                     <div class="flex flex-wrap gap-3">
                         <button type="button" class="btn btn-outline btn-sm" on:click=move |_| {
                             spawn_local(async move { _ = buyer_logout().await; _ = window().location().set_href("/"); });

@@ -539,7 +539,7 @@ pub(crate) fn EditorFilm(f: RwSignal<Frame>) -> impl IntoView {
                             <ul class="menu absolute left-0 top-full z-50 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
                                 {domain::PAGE_TEMPLATES.iter().map(|(_, name)| view! { <li><span>{*name}</span></li> }).collect_view()}
                                 <li class="menu-title pt-2 text-xs font-normal whitespace-normal">
-                                    "Para otra página, poné un enlace en el menú y tocalo."
+                                    "¿Otra página, como «Nosotros»? Agregá ese enlace en el Menú superior y tocalo en el lienzo: la página se crea sola."
                                 </li>
                             </ul>
                         })}

@@ -30,8 +30,8 @@ pub fn Landing() -> impl IntoView {
     let demo = demo_url();
     view! {
         <div data-theme="light" class="min-h-screen bg-[#faf9f7] text-[#16131f]">
-            <Hero demo=demo.clone()/>
-            <Stores demo=demo.clone()/>
+            <Hero demo/>
+            <Stores/>
             <Included/>
             <Faq/>
             <footer class="bg-[#110e1c] py-14 text-sm text-white/60">
@@ -93,15 +93,16 @@ fn Hero(demo: String) -> impl IntoView {
 /// Dibujo del editor (no es una captura: liviano y siempre al día con la marca).
 #[component]
 fn EditorPreview() -> impl IntoView {
+    // Cada bloque con su dibujito de color, como en la paleta real.
     let blocks = [
-        "Banner",
-        "Productos",
-        "Carrusel",
-        "Texto",
-        "Etiquetas",
-        "Preguntas",
-        "Oferta",
-        "Contacto",
+        ("Banner", "bg-gradient-to-r from-[#203a2c] to-[#3e6b52]"),
+        ("Productos", "bg-[repeating-linear-gradient(90deg,#c9c3f5_0_8px,transparent_8px_11px)]"),
+        ("Carrusel", "bg-gradient-to-r from-[#ff5f6d] to-[#ffc371]"),
+        ("Texto", "bg-[repeating-linear-gradient(180deg,#bdb9cc_0_2px,transparent_2px_6px)]"),
+        ("Etiquetas", "bg-[radial-gradient(circle,#6a55f0_0_3px,transparent_3.5px)] bg-[length:10px_10px]"),
+        ("Preguntas", "bg-[repeating-linear-gradient(180deg,#d8d4e6_0_5px,transparent_5px_8px)]"),
+        ("Oferta", "bg-[#ffb547]"),
+        ("Contacto", "bg-gradient-to-r from-[#4330d6] to-[#8f7dff]"),
     ];
     view! {
         <div class="relative mx-auto hidden h-[460px] w-[min(1080px,calc(100%-48px))] grid-cols-[200px_1fr_220px] grid-rows-[48px_1fr] overflow-hidden rounded-t-2xl bg-white text-left text-[#16131f] shadow-[0_-10px_80px_rgba(106,85,240,.35)] md:grid"
@@ -113,8 +114,11 @@ fn EditorPreview() -> impl IntoView {
                 <span class="ml-auto rounded-lg bg-[#4330d6] px-3.5 py-1.5 font-semibold text-white">"Publicar"</span>
             </div>
             <div class="grid grid-cols-2 content-start gap-2.5 border-r border-[#e7e4ee] p-3.5">
-                {blocks.into_iter().map(|b| view! {
-                    <div class="flex h-[60px] items-end rounded-[10px] bg-[#f3f2f8] p-2 text-[11px] font-semibold text-[#5d5a6e]">{b}</div>
+                {blocks.into_iter().map(|(b, art)| view! {
+                    <div class="flex h-[60px] flex-col justify-between gap-1.5 rounded-[10px] bg-[#f3f2f8] p-2 text-[11px] font-semibold text-[#5d5a6e]">
+                        <i class=format!("block h-5 w-full rounded {art}")></i>
+                        {b}
+                    </div>
                 }).collect_view()}
             </div>
             <div class="bg-[#f1f0f6] p-5">
@@ -157,7 +161,7 @@ fn EditorPreview() -> impl IntoView {
 
 /// Tres diseños de muestra hechos con el mismo editor.
 #[component]
-fn Stores(demo: String) -> impl IntoView {
+fn Stores() -> impl IntoView {
     struct Sample {
         name: &'static str,
         banner: &'static str,
@@ -200,7 +204,6 @@ fn Stores(demo: String) -> impl IntoView {
                         <h2 class="text-4xl leading-tight font-extrabold tracking-[-0.035em] lg:text-[44px]">"Una tienda, mil estilos"</h2>
                         <p class="mt-2.5 text-lg text-[#5d5a6e]">"Mismo editor, tres estilos que no se parecen en nada. Así pueden verse las tiendas."</p>
                     </div>
-                    <a href=demo class="btn h-11 rounded-[10px] border-[#e7e4ee] bg-white px-5">"Ver la tienda de ejemplo →"</a>
                 </div>
                 <div class="grid gap-6 md:grid-cols-3">
                     {samples.into_iter().map(|s| view! {

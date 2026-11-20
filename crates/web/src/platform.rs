@@ -50,7 +50,7 @@ pub fn PlatformHome() -> impl IntoView {
                             Some(s) => view! { <Redirect path=format!("/tienda/{}", s.slug)/> }.into_any(),
                             None => view! {
                                 <leptos_meta::Title text="Tu primera tienda · MarketMaker"/>
-                                <Shell wide=true><FirstStore email=me.email/></Shell>
+                                <Shell wide=true><FirstStore email=if me.name.trim().is_empty() { me.email } else { me.name }/></Shell>
                             }.into_any(),
                         }
                     }

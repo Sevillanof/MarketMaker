@@ -318,8 +318,8 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                 {matches!(widget, Widget::ProductGrid(_)).then(|| {
                     let state = expect_context::<EditorState>();
                     let id = id.clone();
-                    // Los de ejemplo cuentan: en el editor se ven.
-                    let total = products.with_value(|p| p.iter().filter(|p| p.visible).count());
+                    // Solo los propios: los de ejemplo no los ven los clientes.
+                    let total = products.with_value(|p| p.iter().filter(|p| p.visible && !p.example).count());
                     move || {
                         let limit = state.doc.with(|d| match d.node(&id).map(|n| &n.widget) {
                             Some(Widget::ProductGrid(g)) => usize::try_from(g.limit).unwrap_or(0),

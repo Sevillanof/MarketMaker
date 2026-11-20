@@ -333,6 +333,14 @@ impl Ui {
     }
 
     /// Cierra el aviso a mano.
+    /// Después de deshacer por otro lado (Ctrl+Z, la flecha de arriba), el
+    /// aviso «… Deshacer» ya no corresponde.
+    pub fn drop_undo_toast(&self) {
+        if self.toast.with_untracked(|t| t.as_ref().is_some_and(|t| t.undo)) {
+            self.close_toast();
+        }
+    }
+
     fn close_toast(&self) {
         self.toast_hover.set_value(false);
         self.toast_focus.set_value(false);
@@ -1208,6 +1216,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     "z" => {
                         ev.prevent_default();
                         state.undo();
+                        ui.drop_undo_toast();
                     }
                     "y" => {
                         ev.prevent_default();
@@ -1295,7 +1304,10 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                         title="Deshacer (Ctrl+Z o ⌘Z)"
                         aria-keyshortcuts="Control+Z Meta+Z"
                         disabled=move || state.undo.with(Vec::is_empty)
-                        on:click=move |_| state.undo()
+                        on:click=move |_| {
+                            state.undo();
+                            ui.drop_undo_toast();
+                        }
                     >
                         <Icon name="undo" class="h-5 w-5"/>
                     </button>
@@ -1648,7 +1660,7 @@ fn FirstPublish(open: RwSignal<bool>) -> impl IntoView {
                 <h2 id="mk-live-title" class="mt-3 text-2xl font-bold">"¡Tu tienda está en línea!"</h2>
                 <p class="mt-1 text-base-content/75">"Ya la puede ver cualquiera. Compartí la dirección con tus clientes."</p>
                 <div class="mt-5 flex gap-2">
-                    <span class="flex min-w-0 grow items-center truncate rounded-field border border-base-300 bg-base-200 px-3 font-mono text-sm">{address}</span>
+                    <span class="flex min-w-0 grow items-center truncate rounded-field border border-base-300 bg-base-200 px-3 text-sm font-medium">{address}</span>
                     <button type="button" class="btn btn-outline" autofocus=true on:click=move |_| {
                         widgets::copy_text(&url_copy, move |ok| copied.set(ok));
                     }>{move || if copied.get() { "Copiada ✓" } else { "Copiar" }}</button>

@@ -443,7 +443,13 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
 
                 <div class="flex min-h-6 items-center gap-3">
                     <span role="status" class="text-sm text-base-content/60">
-                        {move || if save.pending().get() { Some("Guardando…") } else { None }}
+                        {move || if save.pending().get() {
+                            "Guardando…"
+                        } else if saved.get() || failure.with(Option::is_some) {
+                            ""
+                        } else {
+                            "Los cambios se guardan solos."
+                        }}
                     </span>
                     <span role="status" class="text-sm text-success">{move || (saved.get() && !save.pending().get()).then_some("✓ Guardado")}</span>
                     {move || failure.get().map(|m| view! { <span role="alert" class="text-sm text-error">{m}</span> })}

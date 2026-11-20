@@ -717,9 +717,11 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
                 </span>
             </AccountRow>
             <AccountRow icon="mail" label="Email"
-                action=view! { <span class="text-xs text-base-content/60">"No se puede cambiar"</span> }.into_any()>
+                action=view! {
+                    <a class="link link-hover text-xs" href="mailto:hola@mkr.com.ar?subject=Cambiar%20mi%20email">"Pedir cambio"</a>
+                }.into_any()>
                 <div class="truncate">{account.email.clone()}</div>
-                <div class="text-xs text-base-content/60">"Con este email entrás."</div>
+                <div class="text-xs text-base-content/60">"Con este email entrás. Para cambiarlo, escribinos a hola@mkr.com.ar."</div>
             </AccountRow>
             <AccountRow icon="key" label="Contraseña"
                 action=change_btn(Signal::derive(move || if has_password.get() { "Cambiar" } else { "Elegir" }), pw_dialog)>
