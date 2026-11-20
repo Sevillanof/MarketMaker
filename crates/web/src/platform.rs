@@ -352,19 +352,36 @@ pub fn NotAStore() -> impl IntoView {
     }
 }
 
-/// La dirección no es de ninguna tienda (`nadie.localhost:3000`).
+/// La dirección no es de ninguna tienda (`nadie.localhost:3000`): página
+/// oscura con estantes vacíos y la dirección que se buscó.
 #[component]
 pub fn StoreNotFound() -> impl IntoView {
     crate::not_found_status();
+    let host = crate::site::current_host();
+    let (name, rest) = match host.split_once('.') {
+        Some((n, r)) => (n.to_string(), format!(".{r}")),
+        None => (host.clone(), String::new()),
+    };
     view! {
         <leptos_meta::Title text="Tienda no encontrada · MarketMaker"/>
-        <Shell>
-            <div class="card bg-base-100 shadow-sm"><div class="card-body gap-3">
-                <h1 class="card-title text-2xl">"No encontramos esta tienda"</h1>
-                <p>"No hay ninguna tienda en esta dirección. Revisá que esté bien escrita."</p>
-                <a class="btn btn-primary self-start" href=crate::site::platform_url()>"Ir a MarketMaker"</a>
-            </div></div>
-        </Shell>
+        <div data-theme="dark" class="flex min-h-screen flex-col bg-[#1f2330] text-white">
+            <header class="px-6 py-4"><a href=crate::site::platform_url() class="text-lg"><crate::account::Logo/></a></header>
+            <main class="flex flex-1 items-center justify-center px-4 py-10 text-center">
+                <div class="flex max-w-md flex-col items-center gap-4">
+                    <div class="flex gap-3" aria-hidden="true">
+                        <span class="size-14 rounded-xl border-2 border-dashed border-[#565d78]"></span>
+                        <span class="size-14 rounded-xl border-2 border-dashed border-[#565d78]"></span>
+                        <span class="size-14 rounded-xl border-2 border-dashed border-[#565d78]"></span>
+                    </div>
+                    <p class="max-w-full break-all rounded-full border border-[#454c68] bg-[#2c3146] px-4 py-1 text-sm">
+                        <strong class="font-semibold text-[#b4a9ff]">{name}</strong>{rest}
+                    </p>
+                    <h1 class="text-3xl font-extrabold tracking-tight sm:text-4xl">"Acá todavía no hay nada"</h1>
+                    <p class="text-[#c3c8da]">"Esta tienda no existe o dejó de estar disponible. Revisá que la dirección esté bien escrita."</p>
+                    <a class="btn btn-primary mt-2" href=crate::site::platform_url()>"Ir a MarketMaker"</a>
+                </div>
+            </main>
+        </div>
     }
 }
 
