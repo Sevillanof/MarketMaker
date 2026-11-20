@@ -1423,8 +1423,10 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
             })}
             // Un solo renglón: si el mensaje no entra se corta con «…» y el enlace
             // queda siempre a la vista. En el celular baja de renglón y la barra
-            // crece (ver `.mk-ann-msg` en el CSS).
-            <p class="mk-ann-msg flex min-w-0 flex-1 items-baseline justify-center whitespace-nowrap">
+            // crece (ver `.mk-ann-msg` en el CSS). Es un `div` y no un `p`: en el
+            // editor el enlace es un `div`, y dentro de un `p` el navegador lo
+            // saca afuera y la hidratación falla.
+            <div class="mk-ann-msg flex min-w-0 flex-1 items-baseline justify-center whitespace-nowrap">
                 {move || message().map(|m| view! {
                     <span class="mk-ann-text min-w-0 truncate">{m.text}</span>
                     {(!m.link_label.is_empty()).then(|| view! {
@@ -1434,7 +1436,7 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
                         </span>
                     })}
                 })}
-            </p>
+            </div>
             {rotating.then(|| view! {
                 <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Mensaje siguiente" on:click=move |_| step(1)>
                     <Icon name="chevron-right" class="h-4 w-4"/>
