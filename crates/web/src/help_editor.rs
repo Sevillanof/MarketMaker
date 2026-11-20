@@ -895,7 +895,7 @@ fn Inspector(f: RwSignal<Frame>) -> impl IntoView {
                                     }).collect_view()}
                                 </div>
                                 <div class="grid grid-cols-3 gap-1.5">
-                                    {[("", "Principal", "bg-primary"), ("secondary", "Secundario", "bg-secondary"), ("info", "Celeste", "bg-info")].into_iter().map(|(id, name, bg)| {
+                                    {[("", "Tienda", "bg-primary"), ("secondary", "Tienda 2", "bg-secondary"), ("info", "Celeste", "bg-info")].into_iter().map(|(id, name, bg)| {
                                         let on = move || (id == "info" && has(f, E_COLOR)) || (id.is_empty() && !has(f, E_COLOR));
                                         view! {
                                             <div data-t=if id == "info" { "color-info" } else { "" }
@@ -960,7 +960,7 @@ fn PublishDialog() -> impl IntoView {
                         </li>
                     }).collect_view()}
                 </ul>
-                <p class="mt-3 text-sm text-base-content/75">"También quedan 3 fotos de muestra. Cambialas por las tuyas en Mis fotos."</p>
+                <p class="mt-3 text-sm text-base-content/75">"También quedan 3 fotos de muestra. Para cambiarlas, tocá cada bloque con foto y elegí una tuya."</p>
                 <div class="modal-action">
                     <span data-t="publish-anyway" class="btn btn-ghost">"Publicar igual"</span>
                     <span class="btn btn-primary">"Corregir"</span>

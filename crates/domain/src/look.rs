@@ -25,9 +25,9 @@ pub const DESIGNS: &[(u8, &str, &str)] = &[
 
 /// Colores del tema: (id, nombre). El vacío es el principal de la tienda.
 pub const THEME_COLORS: &[(&str, &str)] = &[
-    ("", "Principal"),
-    ("secondary", "Secundario"),
-    ("accent", "Acento"),
+    ("", "Tienda"),
+    ("secondary", "Tienda 2"),
+    ("accent", "Tienda 3"),
     ("neutral", "Oscuro"),
     ("info", "Celeste"),
     ("success", "Verde"),

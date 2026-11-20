@@ -383,7 +383,7 @@ pub fn ProductPriceWidget(
             {transfer.map(|c| view! {
                 <p class="flex flex-wrap items-center gap-2 text-sm">
                     <b class="text-lg">{format_price(c)}</b>" con transferencia"
-                    <span class="mk-psave">{format!("{pct}% off")}</span>
+                    <span class="mk-psave">{format!("{pct} % menos")}</span>
                 </p>
             })}
             {per.map(|c| view! {
@@ -397,7 +397,7 @@ pub fn ProductPriceWidget(
                     <div><span>{format!("💳 {n} cuotas sin interés")}</span><b>{format_price(c)}</b></div>
                 })}
                 {transfer.map(|c| view! {
-                    <div><span>{format!("🏦 Transferencia ({pct}% off)")}</span><b>{format_price(c)}</b></div>
+                    <div><span>{format!("🏦 Transferencia ({pct} % menos)")}</span><b>{format_price(c)}</b></div>
                 })}
                 {coordinate.then(|| view! {
                     <div><span>"💵 Efectivo o a acordar"</span><b>{format_price(cents)}</b></div>

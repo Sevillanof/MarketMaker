@@ -92,6 +92,10 @@ pub struct ProductEdit {
     pub product: Product,
     /// Las etiquetas que ya usa la tienda, para sugerir.
     pub store_tags: Vec<TagCount>,
+    /// La tienda tiene Andreani conectado: recién ahí sirven el peso y las
+    /// medidas del producto.
+    #[serde(default)]
+    pub andreani: bool,
 }
 
 /// Una etiqueta de la tienda y en cuántos productos está.

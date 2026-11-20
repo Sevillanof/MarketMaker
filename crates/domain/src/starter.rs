@@ -159,6 +159,8 @@ pub struct PlaceholderNode {
     pub widget: &'static str,
     /// El primer texto de ejemplo que tiene.
     pub text: String,
+    /// Dónde está: "Inicio", el nombre de la página o "Ficha del producto".
+    pub place: String,
 }
 
 /// Los bloques de `doc` que tienen textos de ejemplo sin cambiar, en el
@@ -183,11 +185,20 @@ pub fn placeholder_nodes(doc: &PageDoc) -> Vec<PlaceholderNode> {
                 .as_ref()
                 .and_then(first)
             {
+                let place = match layer {
+                    crate::Layer::Page(0) => "Inicio".to_string(),
+                    crate::Layer::Page(i) => doc
+                        .pages
+                        .get(i - 1)
+                        .map_or_else(|| "Otra página".to_string(), |p| p.name.clone()),
+                    crate::Layer::ProductModal => "Ficha del producto".to_string(),
+                };
                 out.push(PlaceholderNode {
                     id: n.id.clone(),
                     layer,
                     widget: n.widget.label(),
                     text,
+                    place,
                 });
             }
         }

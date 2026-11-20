@@ -198,8 +198,9 @@ fn QtyInput(form: VariantsForm, uid: u32, size: String, #[prop(into)] label: Sig
     let out = move || {
         form.stock.with(|m| {
             m.get(&k3)
-                .map(|t| t.trim().is_empty() || t.trim() == "0")
-                .unwrap_or(true)
+                // En rojo solo un 0 escrito: vacío es que todavía no lo cargó.
+                .map(|t| t.trim() == "0")
+                .unwrap_or(false)
         })
     };
     view! {
@@ -251,7 +252,7 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
                         .iter()
                         .map(|s| {
                             let s2 = s.clone();
-                            let label = Signal::derive(move || format!("Unidades talle {s2} de {}", color_name()));
+                            let label = Signal::derive(move || format!("Unidades {s2} de {}", color_name()));
                             view! {
                                 <label class="flex flex-col items-center gap-1 text-xs font-medium">
                                     {s.clone()}
@@ -265,7 +266,7 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
                 match row {
                     None => view! {
                         <div class="rounded-box border border-base-300 p-3">
-                            <p class="mb-2 text-sm font-medium">"Unidades por talle"</p>
+                            <p class="mb-2 text-sm font-medium">"Unidades por tamaño o talle"</p>
                             <div class="flex flex-wrap gap-2">{qty_cells}</div>
                         </div>
                     }
@@ -326,26 +327,27 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
     };
     view! {
         <fieldset class="fieldset">
-            <legend class="fieldset-legend">"Colores y talles " <span class="font-normal text-base-content/60">"(opcional)"</span></legend>
+            <legend class="fieldset-legend">"Colores, tamaños o talles " <span class="font-normal text-base-content/60">"(opcional)"</span></legend>
             {move || if !form.on.get() {
                 view! {
                     <div class="flex flex-wrap items-center gap-3">
-                        <button type="button" class="btn btn-sm" on:click=move |_| form.on.set(true)>"+ Agregar colores o talles"</button>
-                        <span class="label whitespace-normal">"Para vender un mismo producto en varios colores o talles, cada uno con su stock."</span>
+                        <button type="button" class="btn btn-sm" on:click=move |_| form.on.set(true)>"+ Agregar colores, tamaños o talles"</button>
+                        <span class="label whitespace-normal">"Para vender un mismo producto en varios colores, tamaños o talles, cada uno con su stock."</span>
                     </div>
                 }.into_any()
             } else {
                 view! {
                     <div class="flex flex-col gap-3">
+                        <p class="label whitespace-normal">"Con colores, tamaños o talles, cargá cuántas unidades tenés de cada combinación: así la tienda no vende de más. Las que dejes en 0 se muestran agotadas."</p>
                         <div class="flex flex-col gap-1">
-                            <span class="text-sm font-medium">"Talles " <span class="font-normal text-base-content/60">"(valen para todos los colores)"</span></span>
+                            <span class="text-sm font-medium">"Tamaños o talles " <span class="font-normal text-base-content/60">"(valen para todos los colores)"</span></span>
                             <div class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-field border border-base-300 px-2 py-1.5">
                                 {move || form.sizes.get().into_iter().map(|s| {
                                     let s2 = s.clone();
                                     view! {
                                         <span class="mk-pill-soft inline-flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-sm">
                                             {s.clone()}
-                                            <button type="button" class="btn btn-ghost btn-circle btn-xs" aria-label=format!("Quitar el talle {s}")
+                                            <button type="button" class="btn btn-ghost btn-circle btn-xs" aria-label=format!("Quitar {s}")
                                                 on:click=move |_| {
                                                     let s = s2.clone();
                                                     form.sizes.update(|ss| ss.retain(|x| *x != s));
@@ -354,8 +356,8 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
                                         </span>
                                     }
                                 }).collect_view()}
-                                <input class="min-w-32 flex-1 bg-transparent text-sm outline-none" placeholder="Escribí un talle y apretá Enter (ej. S, M, L o 38, 39)"
-                                    aria-label="Agregar talles"
+                                <input class="min-w-32 flex-1 bg-transparent text-sm outline-none" placeholder="Escribí uno y apretá Enter (ej. Chica, Grande o S, M, L)"
+                                    aria-label="Agregar tamaños o talles"
                                     prop:value=move || size_text.get()
                                     on:input=move |ev| {
                                         let v = event_target_value(&ev);

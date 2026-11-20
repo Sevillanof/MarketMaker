@@ -359,7 +359,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                             {move || if alias.with(|a| a.trim().is_empty()) && alias_problem.get().is_none() {
                                 "Escribí tu alias, CBU o CVU para activar la transferencia."
                             } else {
-                                "El comprador los ve al confirmar el pedido."
+                                "El comprador ve el alias y el titular después de confirmar la compra, en la página de su pedido y en el email."
                             }}
                         </p>
                     })}

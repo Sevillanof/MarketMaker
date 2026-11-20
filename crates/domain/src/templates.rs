@@ -452,7 +452,7 @@ fn taller(name: &str) -> PageDoc {
             ],
             vec![block(testimonials("Lo que dicen quienes nos compraron")).look(3, "secondary")],
             vec![block(text("Nuestra historia", crate::STARTER_PLACEHOLDERS[1])).h(24).text("", "center")],
-            vec![block(card("/img/banner.webp", "¿Tenés una idea?", "Contá acá cómo pueden pedirte algo especial.", ("Escribinos", "/contacto"), "side")).h(40).look(4, "")],
+            vec![block(card("/img/gallery-4.webp", "¿Tenés una idea?", "Contá acá cómo pueden pedirte algo especial.", ("Escribinos", "/contacto"), "side")).h(40).look(4, "")],
             vec![block(footer(crate::STARTER_PLACEHOLDERS[2])).look(3, "")],
         ],
     )

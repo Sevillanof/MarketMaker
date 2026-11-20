@@ -101,7 +101,8 @@ pub(crate) fn BlockLook(
                 </div>
             </fieldset>
             <fieldset>
-                <legend class="mb-2 text-sm font-medium">"Color"</legend>
+                <legend class="mb-1 text-sm font-medium">"Color"</legend>
+                <p class="mb-2 text-xs text-base-content/70">"«Tienda», «Tienda 2» y «Tienda 3» son los colores que elegiste en Mi tienda."</p>
                 <div data-theme=theme class="grid grid-cols-3 gap-1.5 rounded-box bg-base-100 p-1 text-base-content">
                     {THEME_COLORS.iter().map(|(cid, name)| {
                         let cid: &'static str = cid;

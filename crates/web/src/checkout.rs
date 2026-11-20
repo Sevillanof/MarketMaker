@@ -727,19 +727,28 @@ struct Fields {
     quote: RwSignal<Option<AndreaniQuote>>,
     /// Descuento por transferencia de la tienda, en por ciento.
     transfer_off: u8,
+    /// Hasta qué paso llegó (1 datos, 2 entrega, 3 pago). El resumen suma el
+    /// envío y el descuento recién cuando vio esos pasos: antes todavía no
+    /// eligió y el total no tiene que cambiarle después.
+    reached: RwSignal<u8>,
 }
 
-/// El descuento que corresponde ahora (solo si eligió transferencia).
+/// El descuento que corresponde ahora (solo si eligió transferencia, ya en
+/// el paso del pago).
 fn discount_cents(f: Fields, subtotal: i64) -> i64 {
-    if f.pay.get() == domain::PayMethod::Transfer {
+    if f.reached.get() >= 3 && f.pay.get() == domain::PayMethod::Transfer {
         domain::transfer_discount_cents(subtotal, f.transfer_off)
     } else {
         0
     }
 }
 
-/// Lo que cuesta el envío elegido (con Andreani, según la cotización).
+/// Lo que cuesta el envío elegido (con Andreani, según la cotización). Antes
+/// del paso de la entrega todavía no cuenta.
 fn ship_cents(f: Fields, d: &DeliverySettings) -> i64 {
+    if f.reached.get() < 2 {
+        return 0;
+    }
     match f.delivery.get() {
         Delivery::Andreani(s) => f
             .quote
@@ -751,6 +760,9 @@ fn ship_cents(f: Fields, d: &DeliverySettings) -> i64 {
 
 /// Cómo se muestra el costo del envío elegido.
 fn ship_text(f: Fields, d: &DeliverySettings) -> String {
+    if f.reached.get() < 2 {
+        return "Se elige en el paso 2".to_string();
+    }
     match f.delivery.get() {
         Delivery::Pickup => "Gratis".to_string(),
         Delivery::Shipping => domain::shipping_label(d, format_price),
@@ -852,6 +864,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         dni: RwSignal::new(String::new()),
         quote: RwSignal::new(None),
         transfer_off: info.transfer_discount,
+        reached: RwSignal::new(1),
     };
     remember_buyer(&f);
     let has_andreani = d.with_value(|d| !d.andreani.is_empty());
@@ -914,6 +927,9 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     // Uso y abandono: hasta qué paso llegó (solo hacia adelante).
     Effect::new(move |reached: Option<u8>| {
         let now = step.get();
+        if now > f.reached.get_untracked() {
+            f.reached.set(now);
+        }
         match (now, reached.unwrap_or(1)) {
             (2, r) if r < 2 => crate::analytics::track_client("entrega", None),
             (3, r) if r < 3 => crate::analytics::track_client("pago", None),
@@ -1101,6 +1117,12 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                                         <TextField id="address" label="Dirección" value=f.address errors autocomplete="street-address" placeholder="Calle, número, piso y depto." max=domain::ADDRESS_MAX/>
                                         <TextField id="city" label="Localidad" value=f.city errors autocomplete="address-level2" placeholder="CABA" max=domain::CITY_MAX/>
                                     </div>
+                                    // Con Andreani el código postal ya se pidió arriba.
+                                    {(!has_andreani).then(|| view! {
+                                        <div class="sm:max-w-xs">
+                                            <TextField id="postal_code" label="Código postal (opcional)" value=f.postal errors autocomplete="postal-code" inputmode="numeric" placeholder="1425" max=10/>
+                                        </div>
+                                    })}
                                 })}
                                 {move || f.delivery.get().andreani().is_some().then(|| view! {
                                     <div class="sm:max-w-xs">
@@ -1319,6 +1341,8 @@ fn DeliveryChoice(
         v
     };
     let error = move || error_for(errors, "delivery");
+    // El aviso que la tienda escribió en Entregas, debajo del envío propio.
+    let note = StoredValue::new(d.shipping_note.trim().to_string());
     view! {
         <div role="radiogroup" aria-label="Cómo lo recibís" class="grid gap-2 sm:grid-cols-2">
             {move || options().into_iter().enumerate().map(|(i, (kind, detail))| {
@@ -1334,6 +1358,9 @@ fn DeliveryChoice(
                         <span class="min-w-0 flex-1">
                             <span class="block font-semibold">{kind.label()}</span>
                             <span class="block truncate text-sm" class:text-success=free class:text-base-content=move || !free class:opacity-70=!free>{detail}</span>
+                            {(kind == Delivery::Shipping && note.with_value(|n| !n.is_empty())).then(|| view! {
+                                <span class="block text-sm text-base-content/70">{note.get_value()}</span>
+                            })}
                         </span>
                     </label>
                 }
@@ -1461,10 +1488,16 @@ fn PayChoice(
                 let (title, detail) = match kind {
                     P::MercadoPago => ("Mercado Pago", "Tarjeta, débito o dinero en cuenta"),
                     P::Transfer => ("Transferencia", "Te pasamos el alias al confirmar"),
-                    P::Coordinate => ("Acordar con la tienda", "Por ejemplo, efectivo al retirar"),
+                    P::Coordinate => ("Acordar con la tienda", ""),
+                };
+                // "Efectivo al retirar" solo si lo retira en el local.
+                let detail = move || match kind {
+                    P::Coordinate if f.delivery.get() == Delivery::Pickup => "Por ejemplo, efectivo al retirar",
+                    P::Coordinate => "La tienda te escribe para acordar cómo pagás",
+                    _ => detail,
                 };
                 let off = (kind == P::Transfer && f.transfer_off > 0)
-                    .then(|| view! { <span class="badge badge-success badge-soft badge-sm shrink-0">{format!("{}% off", f.transfer_off)}</span> });
+                    .then(|| view! { <span class="badge badge-success badge-soft badge-sm shrink-0">{format!("{} % de descuento", f.transfer_off)}</span> });
                 view! {
                     <label class="flex cursor-pointer items-center gap-3 px-4 py-3 has-checked:bg-primary/8">
                         <input type="radio" name="pay" class="radio radio-primary radio-sm" id=format!("f-pay-{i}")
@@ -1551,7 +1584,7 @@ fn Totals(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
     view! {
         <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span class="tabular-nums">{move || format_price(subtotal())}</span></div>
         {move || (discount_cents(f, subtotal()) > 0).then(|| view! {
-            <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Descuento por transferencia ({}%)", f.transfer_off)}</span><span class="tabular-nums">{move || format!("−{}", format_price(discount_cents(f, subtotal())))}</span></div>
+            <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Descuento por transferencia ({} %)", f.transfer_off)}</span><span class="tabular-nums">{move || format!("−{}", format_price(discount_cents(f, subtotal())))}</span></div>
         })}
         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
         <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span class="tabular-nums">{move || format_price(subtotal() - discount_cents(f, subtotal()) + shipping())}</span></div>

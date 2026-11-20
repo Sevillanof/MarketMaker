@@ -558,7 +558,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                             <button type="button" class="btn btn-primary btn-block"
                                 on:click=move |_| ctx.set_status(id.get_value(), n.status())>{n.action(delivery)}</button>
                         })}
-                        <div class="flex gap-2">
+                        <div class="flex flex-wrap gap-2">
                             <label class="select select-sm grow">
                                 <span class="label">"Mover a"</span>
                                 <select aria-label="Mover a otra columna"
@@ -575,9 +575,10 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                             </label>
                             {move || if confirm_cancel.get() {
                                 view! {
+                                    <p class="w-full text-sm text-base-content/75">"Las unidades vuelven a tu stock. Al comprador no le llega ningún aviso: escribile para contarle."</p>
                                     <button type="button" class="btn btn-error btn-sm"
-                                        on:click=move |_| ctx.set_status(id.get_value(), OrderStatus::Cancelled)>"Sí, cancelar"</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| confirm_cancel.set(false)>"No"</button>
+                                        on:click=move |_| ctx.set_status(id.get_value(), OrderStatus::Cancelled)>"Sí, cancelar el pedido"</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| confirm_cancel.set(false)>"No, dejarlo"</button>
                                 }.into_any()
                             } else {
                                 view! {

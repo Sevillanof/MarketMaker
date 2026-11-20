@@ -399,7 +399,7 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
                     }).collect_view()}
                 </div>
                 {move || custom().then(|| view! {
-                    <p class="label text-xs text-base-content/75">"Ahora tiene un ancho a medida."</p>
+                    <p class="label text-xs text-base-content/75">"Este ancho lo ajustaste a mano, en «Ajustar a mano»."</p>
                 })}
             </fieldset>
             <fieldset class="fieldset gap-1 p-0">

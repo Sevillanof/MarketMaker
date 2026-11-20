@@ -275,6 +275,7 @@ pub struct HelpRequest(pub RwSignal<Option<usize>>);
 /// el recorrido del editor.
 pub const FILM_PRODUCT: usize = 0;
 pub const FILM_PAYMENTS: usize = 1;
+#[allow(dead_code)]
 pub const FILM_ANDREANI: usize = 2;
 pub const FILM_EDITOR: usize = FIRST_EDITOR;
 
@@ -419,13 +420,13 @@ pub fn HelpButton(
                         </button>
                         <div class="flex items-center justify-center gap-4">
                             <button type="button" class="btn btn-primary" disabled=move || film.get() == film_range(film.get()).0
-                                on:click=move |_| play(film.get_untracked().saturating_sub(1))>"Anterior"</button>
+                                on:click=move |_| play(film.get_untracked().saturating_sub(1))>{move || if film.get() >= FIRST_EDITOR { "Anterior" } else { "Guía anterior" }}</button>
                             <span class="min-w-16 text-center text-lg font-bold tabular-nums">
                                 {move || { let (a, _) = film_range(film.get()); film.get() - a + 1 }}
                                 <span class="font-normal text-base-content/60">{move || { let (a, b) = film_range(film.get()); format!(" / {}", b - a + 1) }}</span>
                             </span>
                             <button type="button" class="btn btn-primary" disabled=move || film.get() == film_range(film.get()).1
-                                on:click=move |_| play((film.get_untracked() + 1).min(film_range(film.get_untracked()).1))>"Siguiente"</button>
+                                on:click=move |_| play((film.get_untracked() + 1).min(film_range(film.get_untracked()).1))>{move || if film.get() >= FIRST_EDITOR { "Siguiente" } else { "Guía siguiente" }}</button>
                         </div>
                     </div>
                 })}
