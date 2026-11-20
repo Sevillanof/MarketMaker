@@ -207,6 +207,11 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
         Widget::ProductGrid(_) | Widget::TagTabs(_) | Widget::FeaturedProduct(_)
     );
     let (basic_id, advanced_id, button_id) = (id.clone(), id.clone(), id.clone());
+    // Filtros que mueven la cuadrícula de la página (no la llevan adentro).
+    let filters_grid = matches!(
+        widget.type_name(),
+        "TagFilter" | "TagList" | "TagCircles" | "TagSearch" | "CategoryTabs" | "CategorySide" | "CategoryCards" | "CategoryDrop" | "CategoryPage"
+    );
 
     // Pestañas con el patrón de ARIA: flechas, Inicio y Fin cambian de
     // pestaña y llevan el foco a la nueva.
@@ -274,6 +279,13 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                 </section>
             })}
 
+            {filters_grid.then(|| view! {
+                <p class="flex items-start gap-2 rounded-box bg-base-200 px-3 py-2 text-xs text-base-content/80">
+                    <Icon name="grid" class="mt-px h-4 w-4 shrink-0"/>
+                    "Este filtro actúa sobre la Cuadrícula de productos de esta página. Si está lejos, la pantalla baja sola hasta los productos."
+                </p>
+            })}
+
             <div role="tablist" aria-label="Qué querés cambiar" class="tabs tabs-box tabs-sm grid grid-cols-2" on:keydown=on_tab_key>
                 {tab_button(Tab::Content, "Contenido")}
                 {tab_button(Tab::Design, "Diseño")}
@@ -288,23 +300,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
             >
                 {basic
                     .into_iter()
-                    .map(|f| {
-                        // Barra de anuncio: los campos del cupón, solo con el estilo Cupón.
-                        let coupon_only = matches!(widget, Widget::Announcement(_))
-                            && matches!(f.key, "code" | "note" | "coupon");
-                        let fid = basic_id.clone();
-                        let vid = basic_id.clone();
-                        // Un Memo: el campo se redibuja solo si cambia el estilo,
-                        // no con cada tecla (perdería el foco).
-                        let doc = expect_context::<EditorState>().doc;
-                        let shown = Memo::new(move |_| {
-                            !coupon_only
-                                || doc.with(|d| {
-                                    matches!(d.node(&vid).map(|n| &n.widget), Some(Widget::Announcement(a)) if a.variant == "d")
-                                })
-                        });
-                        move || shown.get().then(|| view! { <PropField products id=fid.clone() field=f/> })
-                    })
+                    .map(|f| view! { <ShownField products id=basic_id.clone() field=f/> })
                     .collect_view()}
                 {button.map(|(label_field, href_field)| view! {
                     <ButtonGroup products id=button_id.clone() label_field href_field/>
@@ -337,7 +333,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                         <div class="collapse-content flex flex-col gap-4">
                             {advanced
                                 .into_iter()
-                                .map(|f| view! { <PropField products id=advanced_id.clone() field=f/> })
+                                .map(|f| view! { <ShownField products id=advanced_id.clone() field=f/> })
                                 .collect_view()}
                         </div>
                     </details>
@@ -357,6 +353,41 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
             </div>
         </div>
     }
+}
+
+/// Campos que solo valen con cierta opción elegida: (campo, opción, valor).
+/// Barra de anuncio: los del cupón, con el estilo Cupón; cuadrículas: los de
+/// la tarjeta Completa, con esa tarjeta.
+fn field_condition(key: &str) -> Option<(&'static str, &'static str)> {
+    match key {
+        "code" | "note" | "coupon" => Some(("variant", "d")),
+        "card_transfer" | "card_installments" => Some(("card", "full")),
+        _ => None,
+    }
+}
+
+/// Un campo del panel que se muestra solo si su opción está elegida (ver
+/// [`field_condition`]).
+#[component]
+fn ShownField(products: StoredValue<Vec<Product>>, id: String, field: &'static Field) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let sid = StoredValue::new(id.clone());
+    let cond = field_condition(field.key);
+    // Un Memo: el campo se redibuja solo si cambia la opción, no con cada
+    // tecla (perdería el foco).
+    let shown = Memo::new(move |_| {
+        let Some((key, want)) = cond else {
+            return true;
+        };
+        state.doc.with(|d| {
+            sid.with_value(|id| {
+                let v = crate::fields::field_value(d, id, key);
+                // Si el bloque no tiene esa opción (el bloque Cupón), se muestra.
+                v.is_null() || v.as_str() == Some(want)
+            })
+        })
+    });
+    move || shown.get().then(|| view! { <PropField products id=id.clone() field=field/> })
 }
 
 /// Sección "Tamaño" de la pestaña Diseño: ancho con nombres, alto con dos
@@ -381,6 +412,16 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
         .collect();
     let custom = move || !WIDTHS.iter().any(|(w, _)| *w == size().w);
     let change_h = move |rows: i32| resize(i32::from(size().w), i32::from(size().h) + rows);
+    // "Ajustar a mano": en píxeles del ancho de la tienda, y si lo escrito
+    // no entra, se corrige y se avisa.
+    let page_w = state.doc.with_untracked(|d| match d.layout.max_width {
+        0 => domain::Layer::Page(0).design_width(),
+        w => w,
+    });
+    let page_w = if state.in_modal_untracked() { domain::Layer::ProductModal.design_width() } else { page_w };
+    let cols_px = move |c: u8| (f64::from(c) * f64::from(page_w) / f64::from(GRID_COLS)).round() as u32;
+    let px_to_cols = move |px: f64| (px * f64::from(GRID_COLS) / f64::from(page_w)).round() as i32;
+    let (fixed_w, fixed_h) = (RwSignal::new(None::<String>), RwSignal::new(None::<String>));
 
     view! {
         <section class="flex flex-col gap-4" aria-labelledby="mk-size-title">
@@ -425,21 +466,29 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
                 <summary class="collapse-title text-sm font-medium">"Ajustar a mano"</summary>
                 <div class="collapse-content grid grid-cols-2 gap-2">
                     <label class="flex flex-col gap-1">
-                        <span class="text-sm font-medium">"Ancho exacto"</span>
+                        <span class="text-sm font-medium">"Ancho (px)"</span>
                         <input
                             type="number"
                             class="input input-sm w-full"
-                            min=limits.min_w
-                            max=limits.max_w
+                            min=cols_px(limits.min_w)
+                            max=cols_px(limits.max_w)
+                            inputmode="numeric"
                             aria-describedby="mk-size-w-help"
-                            prop:value=move || size().w.to_string()
+                            prop:value=move || cols_px(size().w).to_string()
                             on:change=move |ev| {
-                                if let Ok(w) = event_target_value(&ev).parse::<i32>() {
-                                    resize(w, i32::from(size().h));
-                                }
+                                let input = event_target::<web_sys::HtmlInputElement>(&ev);
+                                let typed = input.value().trim().replace(',', ".").parse::<f64>().ok();
+                                let w = typed.map_or(i32::from(size().w), px_to_cols);
+                                resize(w, i32::from(size().h));
+                                let got = cols_px(size().w);
+                                input.set_value(&got.to_string());
+                                fixed_w.set((typed.map(|t| t.round() as u32) != Some(got)).then(|| format!("Quedó en {got} px.")));
                             }
                         />
-                        <span id="mk-size-w-help" class="text-xs text-base-content/75">{format!("De {} a {} columnas ({GRID_COLS} = todo el ancho)", limits.min_w, limits.max_w)}</span>
+                        <span id="mk-size-w-help" class="text-xs text-base-content/75">
+                            {format!("Entre {} y {} px.", cols_px(limits.min_w), cols_px(limits.max_w))}
+                            {move || fixed_w.get().map(|t| view! { " " <span class="font-medium text-amber-800">{t}</span> })}
+                        </span>
                     </label>
                     <label class="flex flex-col gap-1">
                         <span class="text-sm font-medium">"Alto (px)"</span>
@@ -449,15 +498,23 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
                             min=rows_to_px(limits.min_h)
                             max=rows_to_px(limits.max_h)
                             step=ROW_PX
+                            inputmode="numeric"
                             aria-describedby="mk-size-h-help"
                             prop:value=move || rows_to_px(size().h).to_string()
                             on:change=move |ev| {
-                                if let Ok(px) = event_target_value(&ev).parse::<f64>() {
-                                    resize(i32::from(size().w), px_to_rows(px));
-                                }
+                                let input = event_target::<web_sys::HtmlInputElement>(&ev);
+                                let typed = input.value().trim().replace(',', ".").parse::<f64>().ok();
+                                let h = typed.map_or(i32::from(size().h), px_to_rows);
+                                resize(i32::from(size().w), h);
+                                let got = rows_to_px(size().h);
+                                input.set_value(&got.to_string());
+                                fixed_h.set((typed.map(|t| t.round() as u32) != Some(got)).then(|| format!("Quedó en {got} px.")));
                             }
                         />
-                        <span id="mk-size-h-help" class="text-xs text-base-content/75">{format!("De {} a {} píxeles, de {ROW_PX} en {ROW_PX}", rows_to_px(limits.min_h), rows_to_px(limits.max_h))}</span>
+                        <span id="mk-size-h-help" class="text-xs text-base-content/75">
+                            {format!("Entre {} y {} px.", rows_to_px(limits.min_h), rows_to_px(limits.max_h))}
+                            {move || fixed_h.get().map(|t| view! { " " <span class="font-medium text-amber-800">{t}</span> })}
+                        </span>
                     </label>
                 </div>
             </details>

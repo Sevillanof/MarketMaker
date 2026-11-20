@@ -1135,9 +1135,11 @@ pub(crate) fn Canvas(
             } else {
                 ("right", f.right)
             };
+            // Casi todo afuera del contenido: un clic cerca del borde de un
+            // bloque es para el bloque, no para el ancho de la tienda.
             format!(
                 "{edge}:{:.1}px; top:{:.1}px; bottom:{:.1}px",
-                pad * f.k - 12.0,
+                pad * f.k - 21.0,
                 f.top * f.k,
                 f.bottom * f.k
             )

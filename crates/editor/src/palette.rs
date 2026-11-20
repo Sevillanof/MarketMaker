@@ -385,7 +385,8 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
             let q = fold(query.get().trim());
             return q.is_empty()
                 || fold(label_of(type_name)).contains(&q)
-                || fold(desc).contains(&q);
+                || fold(desc).contains(&q)
+                || keywords(type_name).split(' ').any(|k| k.starts_with(&q) || (q.len() > 3 && q.contains(k)));
         }
         group == current
     };
@@ -511,7 +512,7 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
                     }
                     let shown: Vec<_> = BLOCKS.iter().filter(|b| matches(b.1, b.3, b.0)).collect();
                     if shown.is_empty() {
-                        view! { <li class="text-sm text-base-content/75">"No hay bloques con ese nombre."</li> }.into_any()
+                        view! { <li class="text-sm text-base-content/75">"Todavía no hay un bloque así. Probá con «texto», «imagen», «productos» o «botón»."</li> }.into_any()
                     } else {
                         shown
                             .into_iter()
@@ -551,6 +552,40 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
 /// la tienda sea oscura, no tiñe la tira.
 const STAGE: &str = "grid place-items-center rounded-field bg-base-200 [background-image:radial-gradient(var(--color-base-300)_1px,transparent_1px)] [background-size:12px_12px]";
 const ZOOM_STAGE: &str = "grid place-items-center bg-base-200 p-5 [background-image:radial-gradient(var(--color-base-300)_1px,transparent_1px)] [background-size:12px_12px]";
+
+/// Otras palabras con que se busca cada bloque (sin tildes, en minúscula):
+/// así "slider", "cupón" o "reseñas" encuentran el bloque aunque se llame
+/// distinto.
+fn keywords(type_name: &str) -> &'static str {
+    match type_name {
+        "Announcement" => "anuncio barra franja aviso envio gratis promo mensaje",
+        "Coupon" => "cupon descuento codigo promo oferta rebaja",
+        "Navbar" => "menu encabezado header logo navegacion barra",
+        "Banner" => "portada hero imagen grande titulo foto principal",
+        "Carousel" => "slider slideshow diapositivas presentacion fotos rotan",
+        "ProductGrid" => "productos catalogo tienda grilla lista articulos",
+        "ProductCarousel" => "slider productos fila deslizar destacados",
+        "TagFilter" | "TagList" | "TagCircles" | "TagSearch" | "TagTabs" => "etiquetas filtro filtrar buscar",
+        "CategoryTabs" | "CategorySide" | "CategoryCards" | "CategoryDrop" | "CategoryPage" | "Categories" => "categorias secciones rubros filtro",
+        "FeaturedProduct" => "destacado producto estrella oferta",
+        "Countdown" => "cuenta regresiva reloj temporizador oferta black hot sale cyber",
+        "Text" => "texto parrafo titulo escribir contenido",
+        "Steps" => "pasos como comprar proceso",
+        "Social" => "redes whatsapp instagram facebook tiktok",
+        "Card" => "tarjeta imagen texto boton",
+        "Image" => "imagen foto picture",
+        "HoverGallery" => "galeria fotos imagenes",
+        "Tabs" => "pestañas informacion",
+        "Faq" => "preguntas frecuentes ayuda dudas",
+        "Testimonials" => "testimonios reseñas opiniones comentarios clientes resenas",
+        "Benefits" => "beneficios ventajas envio cuotas garantia",
+        "Stats" => "cifras numeros estadisticas",
+        "Logos" => "logos marcas",
+        "Contact" => "contacto mapa direccion telefono email formulario horario",
+        "Footer" => "pie footer legal",
+        _ => "",
+    }
+}
 
 fn cat_label(g: &str) -> &str {
     if g == SEARCH {

@@ -309,9 +309,17 @@ pub(crate) fn InlineEditor(edit: RwSignal<Option<InlineEdit>>) -> impl IntoView 
             grow(&el);
             // Después del cuadro que lleva el foco al bloque al soltar el
             // clic (ver `reveal_node`), que si no se lo saca enseguida.
+            // Un texto de ejemplo se marca entero (para reemplazarlo); uno
+            // propio no: la primera tecla lo borraría todo. El cursor va al final.
             request_animation_frame(move || {
                 _ = el.focus();
-                el.select();
+                let v = el.value();
+                if domain::is_placeholder(&v) {
+                    el.select();
+                } else {
+                    let end = v.encode_utf16().count() as u32;
+                    _ = el.set_selection_range(end, end);
+                }
             });
         }
     });

@@ -398,7 +398,7 @@ pub fn filter_summary(n: usize, tags: &[String], query: &str) -> Option<String> 
         return None;
     }
     let what = match n {
-        0 => "Ningún producto".to_string(),
+        0 => "No encontramos productos".to_string(),
         1 => "1 producto".to_string(),
         n => format!("{n} productos"),
     };
@@ -412,9 +412,9 @@ pub fn filter_summary(n: usize, tags: &[String], query: &str) -> Option<String> 
         parts.push(format!("con «{list}»"));
     }
     if !query.is_empty() {
-        parts.push(format!("que coinciden con «{query}»"));
+        parts.push(format!("para «{query}»"));
     }
-    Some(format!("{what} {}", parts.join(" y ")))
+    Some(format!("{what} {}", parts.join(" ")))
 }
 
 /// Resultado de guardar o borrar una etiqueta desde "Etiquetas".
@@ -649,7 +649,11 @@ mod tests {
         );
         assert_eq!(
             filter_summary(3, &t(&["moda", "hogar", "regalos"]), "taza").unwrap(),
-            "3 productos con «Moda, Hogar o Regalos» y que coinciden con «taza»"
+            "3 productos con «Moda, Hogar o Regalos» para «taza»"
+        );
+        assert_eq!(
+            filter_summary(0, &[], "zzzz").unwrap(),
+            "No encontramos productos para «zzzz»"
         );
     }
 

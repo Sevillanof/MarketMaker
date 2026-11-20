@@ -88,11 +88,39 @@ impl ProductFilter {
     pub(crate) fn pick_category(self, cat: &str, sub: &str) {
         self.category.set(cat.to_string());
         self.sub.set(sub.to_string());
+        self.reveal();
     }
 
     /// Deja elegida solo `tag` (`None`: todas).
     fn pick(self, tag: Option<String>) {
         self.tags.set(tag.into_iter().collect());
+        self.reveal();
+    }
+
+    /// En la tienda, si la cuadrícula filtrada no está a la vista, la pantalla
+    /// baja (o sube) hasta ella: si el filtro está lejos, se ve que pasó algo.
+    fn reveal(self) {
+        if !self.url {
+            return;
+        }
+        request_animation_frame(|| {
+            let Some(grid) = document().query_selector(".mk-pgrid").ok().flatten() else {
+                return;
+            };
+            let r = grid.get_bounding_client_rect();
+            let vh = window().inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0);
+            if r.top() < 0.0 || r.top() > vh * 0.6 {
+                let opts = web_sys::ScrollIntoViewOptions::new();
+                let calm = window()
+                    .match_media("(prefers-reduced-motion: reduce)")
+                    .ok()
+                    .flatten()
+                    .is_some_and(|m| m.matches());
+                opts.set_behavior(if calm { web_sys::ScrollBehavior::Auto } else { web_sys::ScrollBehavior::Smooth });
+                opts.set_block(web_sys::ScrollLogicalPosition::Start);
+                grid.scroll_into_view_with_scroll_into_view_options(&opts);
+            }
+        });
     }
 
     /// Agrega o saca `tag` de las elegidas.
@@ -104,6 +132,7 @@ impl ProductFilter {
                 l.push(tag.to_string());
             }
         });
+        self.reveal();
     }
 
     fn has(self, tag: &str) -> bool {
@@ -538,7 +567,7 @@ fn TagSearch(
     let menu_id = format!("mk-tagmenu-{}", products.len());
     view! {
         <div class="mk-box mk-pad mk-tagsearch flex h-full items-center gap-3 overflow-hidden rounded-box">
-            <label class="input mk-search w-72 max-w-[45%] shrink-0">
+            <label class="input mk-search min-w-0 max-w-xl flex-1">
                 <span class="opacity-60" aria-hidden="true">"⌕"</span>
                 <input type="search" placeholder=label_or(&props.placeholder, "Buscar productos")
                     aria-label="Buscar productos"

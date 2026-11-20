@@ -776,9 +776,10 @@ pub(crate) fn size_text(size: domain::Size) -> String {
         Some("Completo") => "todo el ancho".to_string(),
         Some("Mitad") => "mitad del ancho".to_string(),
         Some(name) => format!("{name} del ancho"),
+        // Fuera de los anchos con nombre, en píxeles, como en «Ajustar a mano».
         None => format!(
-            "{} por ciento del ancho",
-            u32::from(size.w) * 100 / u32::from(domain::GRID_COLS)
+            "{} píxeles de ancho",
+            u32::from(size.w) * u32::from(domain::Layer::Page(0).design_width()) / u32::from(domain::GRID_COLS)
         ),
     };
     let rows = u32::from(size.h) * u32::from(domain::ROW_PX);
@@ -1744,7 +1745,12 @@ fn PublishCheck(
             }
         }
     });
+    // Publicar sube todas las páginas: la que se está editando va primero.
+    let mut items = items;
+    let here = expect_context::<EditorState>().layer.get_untracked();
+    items.sort_by_key(|i| i.layer != here);
     let n = items.len();
+    let other_pages = items.iter().any(|i| i.layer != here);
     let first = items.first().map(|i| i.id.clone());
     let rows = items
         .into_iter()
@@ -1791,7 +1797,11 @@ fn PublishCheck(
                     </span>
                     <h2 id="mk-pc-title" class="text-lg font-extrabold">{title}</h2>
                 </div>
-                <ul class="flex flex-col gap-2">{rows}</ul>
+                {other_pages.then(|| view! {
+                    <p class="mb-2 text-sm text-base-content/75">"Publicar sube todas las páginas de tu tienda, por eso aparecen textos de otras."</p>
+                })}
+                // Con muchos textos, la lista se desplaza y la ventana entra en la pantalla.
+                <ul class="-mx-1 flex max-h-[min(50vh,24rem)] flex-col gap-2 overflow-y-auto px-1 py-0.5">{rows}</ul>
                 {(photos > 0 && (n > 0 || examples > 0)).then(|| view! {
                     <p class="mt-3 text-sm text-base-content/75">
                         {if photos == 1 { "También queda 1 foto de muestra.".to_string() } else { format!("También quedan {photos} fotos de muestra.") }}

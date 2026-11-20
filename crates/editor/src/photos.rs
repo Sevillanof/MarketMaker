@@ -808,7 +808,13 @@ pub fn LinkImport(
                     placeholder="Pegá el enlace de la foto (Dropbox, Drive, una página…)"
                     aria-label="Enlace de la foto" aria-describedby=help_id.clone()
                     prop:value=move || text.get()
-                    on:input=move |ev| text.set(event_target_value(&ev))
+                    on:input=move |ev| {
+                        text.set(event_target_value(&ev));
+                        // El aviso de antes se va al corregir el enlace.
+                        if photos.upload_errors.with_untracked(|e| !e.is_empty()) {
+                            photos.upload_errors.set(Vec::new());
+                        }
+                    }
                     on:keydown=move |ev| {
                         if ev.key() == "Enter" {
                             ev.prevent_default();
