@@ -374,6 +374,24 @@ pub async fn check_payment(
             }
         }
     }
+    // Devuelto desde Mercado Pago o desconocido por el comprador: el pedido
+    // ya no está pagado.
+    if matches!(status.as_str(), "refunded" | "charged_back") {
+        let order = v["external_reference"]
+            .as_str()
+            .and_then(|r| Uuid::parse_str(r).ok());
+        if let Some(order) = order {
+            if db::orders::cancel_refunded(pool, tenant, order, payment_id)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                leptos::logging::log!(
+                    "Mercado Pago: pedido {order} cancelado, pago {payment_id} {status}"
+                );
+                crate::email::tell_refunded(pool, tenant, order, status == "charged_back").await;
+            }
+        }
+    }
     Ok(status)
 }
 

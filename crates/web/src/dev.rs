@@ -58,10 +58,21 @@ fn sample_products() -> Vec<Product> {
         .collect()
 }
 
+/// Fuera del modo de desarrollo estas páginas no existen: 404 y sin guardar
+/// en Google.
+fn hidden_page() -> AnyView {
+    crate::not_found_status();
+    view! {
+        <leptos_meta::Meta name="robots" content="noindex"/>
+        "Página no encontrada."
+    }
+    .into_any()
+}
+
 #[component]
 pub fn DevWidgetsPage() -> impl IntoView {
     if !cfg!(debug_assertions) {
-        return view! { "Página no encontrada." }.into_any();
+        return hidden_page();
     }
     provide_sample_store();
     let products = sample_products();
@@ -137,7 +148,7 @@ pub fn DevWidgetsPage() -> impl IntoView {
 #[component]
 pub fn DevDesignsPage() -> impl IntoView {
     if !cfg!(debug_assertions) {
-        return view! { "Página no encontrada." }.into_any();
+        return hidden_page();
     }
     provide_sample_store();
     let theme = leptos_router::hooks::use_query_map()
@@ -216,7 +227,7 @@ pub fn DevDesignsPage() -> impl IntoView {
 #[component]
 pub fn DevProductStylesPage() -> impl IntoView {
     if !cfg!(debug_assertions) {
-        return view! { "Página no encontrada." }.into_any();
+        return hidden_page();
     }
     provide_sample_store();
     let mut product = sample_products().remove(0);
@@ -320,7 +331,7 @@ pub fn DevProductStylesPage() -> impl IntoView {
 #[component]
 pub fn DevMenusPage() -> impl IntoView {
     if !cfg!(debug_assertions) {
-        return view! { "Página no encontrada." }.into_any();
+        return hidden_page();
     }
     provide_sample_store();
     let account = widgets::Account::new();

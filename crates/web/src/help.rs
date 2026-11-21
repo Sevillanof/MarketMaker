@@ -630,7 +630,7 @@ fn AndreaniFilm(f: RwSignal<Frame>) -> impl IntoView {
                         view! {
                             <div class="flex flex-wrap items-center gap-3 rounded-box bg-success/10 px-4 py-3">
                                 <span class="grow text-sm">
-                                    <span class="font-semibold text-success">"✓ Conectado"</span>
+                                    <span class="mk-ok-text font-semibold">"✓ Conectado"</span>
                                     " como " <span class="font-semibold">"Taller Norte"</span>
                                     <span class="text-base-content/70">" · CUIT 30-71234567-8"</span>
                                 </span>

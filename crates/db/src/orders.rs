@@ -644,6 +644,32 @@ pub async fn note_buyer_update(
     Ok(r.rows_affected() == 1)
 }
 
+/// Mercado Pago devolvió el pago `payment_id` (desde la cuenta del dueño) o
+/// hubo un contracargo: el pedido que se pagó con ese pago pasa a cancelado
+/// y sus unidades vuelven al stock. `true` si lo canceló ahora (`false` si no
+/// es de este pago o ya estaba cancelado).
+pub async fn cancel_refunded(
+    pool: &PgPool,
+    tenant: Uuid,
+    order: Uuid,
+    payment_id: &str,
+) -> sqlx::Result<bool> {
+    let hit: Option<(String,)> = sqlx::query_as(
+        "SELECT status FROM orders WHERE tenant_id = $1 AND id = $2 AND mp_payment_id = $3",
+    )
+    .bind(tenant)
+    .bind(order)
+    .bind(payment_id)
+    .fetch_optional(pool)
+    .await?;
+    match hit {
+        Some((status,)) if OrderStatus::from_str(&status) != OrderStatus::Cancelled => {
+            set_status(pool, tenant, order, OrderStatus::Cancelled).await
+        }
+        _ => Ok(false),
+    }
+}
+
 pub async fn set_status(
     pool: &PgPool,
     tenant: Uuid,

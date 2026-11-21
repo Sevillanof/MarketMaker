@@ -136,6 +136,7 @@ async fn main() {
     app = app.merge(web::mp::routes(pool.clone()));
     app = app.merge(web::shipments::routes(pool.clone()));
     app = app.merge(web::reports::routes(pool.clone()));
+    app = app.merge(web::seo::routes(pool.clone()));
     if web::mp::config().is_none() {
         log!("Mercado Pago sin configurar (MP_CLIENT_ID y MP_CLIENT_SECRET en .env.local): los pedidos se pagan coordinando.");
     }
@@ -221,6 +222,7 @@ async fn main() {
         )
         .fallback(leptos_axum::file_and_error_handler(shell))
         .layer(axum::middleware::from_fn(same_site_posts))
+        .layer(axum::middleware::from_fn(web::seo::www_redirect))
         // Las páginas (y `/pkg` sin versión en el nombre) van con `no-cache`:
         // el navegador pregunta antes de reusarlas y nunca mezcla una versión
         // vieja con el HTML nuevo (pasaba después de un `git pull`).

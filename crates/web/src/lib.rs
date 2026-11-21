@@ -41,6 +41,7 @@ mod platform;
 mod products;
 mod regret;
 pub mod reports;
+pub mod seo;
 mod sales;
 pub mod server;
 #[cfg(feature = "ssr")]
@@ -340,19 +341,80 @@ fn TestStoreTag() -> impl IntoView {
 }
 
 /// Título de la pestaña y lo que se ve al compartir el enlace (WhatsApp,
-/// redes): el nombre de la tienda, una frase y una foto.
+/// redes): el nombre de la tienda, una frase y una foto. Con `?ver=` (el
+/// enlace de "Compartir" de una ficha), los del producto.
 #[component]
 fn StoreMeta(view: domain::PageView) -> impl IntoView {
     let name = view.store_name.clone();
+    let absolute = |u: String| {
+        if u.starts_with('/') {
+            format!("{}://{}{u}", site::scheme(), site::current_host())
+        } else {
+            u
+        }
+    };
+    let shared = leptos_router::hooks::use_query_map()
+        .with_untracked(|q| q.get("ver"))
+        .and_then(|id| {
+            view.products
+                .iter()
+                .find(|p| p.id == id && p.visible)
+                .cloned()
+        });
+    // La tienda sin publicar no tiene que aparecer en Google.
+    let hidden = view.published == 0;
+    if let Some(p) = shared {
+        let title = format!("{} · {name}", p.name);
+        let text = p.description.split_whitespace().collect::<Vec<_>>().join(" ");
+        let price = ui::format_price(p.price_cents);
+        let description = if text.is_empty() {
+            format!("{price} en {name}.")
+        } else {
+            let short: String = text.chars().take(150).collect();
+            let cut = if short.len() < text.len() { "…" } else { "" };
+            format!("{price}. {short}{cut}")
+        };
+        let image = Some(p.image_url).filter(|u| !u.is_empty()).map(absolute);
+        return view! {
+            <Title text=title.clone()/>
+            {hidden.then(|| view! { <leptos_meta::Meta name="robots" content="noindex"/> })}
+            <leptos_meta::Meta name="description" content=description.clone()/>
+            <leptos_meta::Meta property="og:type" content="product"/>
+            <leptos_meta::Meta property="og:title" content=title/>
+            <leptos_meta::Meta property="og:description" content=description/>
+            {image.map(|i| view! { <leptos_meta::Meta property="og:image" content=i/> })}
+        }
+        .into_any();
+    }
     let banner = view.doc.nodes.iter().find_map(|n| match &n.widget {
         domain::Widget::Banner(b) => Some(b.clone()),
         _ => None,
     });
-    let description = banner
-        .as_ref()
-        .map(|b| b.subtitle.trim().to_string())
-        .filter(|s| !s.is_empty() && !domain::STARTER_PLACEHOLDERS.contains(&s.as_str()))
-        .unwrap_or_else(|| format!("Comprá online en {name}."));
+    let real = |s: &str| {
+        let s = s.trim();
+        (!s.is_empty() && !domain::STARTER_PLACEHOLDERS.contains(&s)).then(|| s.to_string())
+    };
+    // La frase de la tienda (Datos de la tienda), la del banner o, si no hay
+    // ninguna, qué vende: sus primeras categorías.
+    let description = real(&view.store.tagline)
+        .or_else(|| banner.as_ref().and_then(|b| real(&b.subtitle)))
+        .unwrap_or_else(|| {
+            let mut cats: Vec<&str> = Vec::new();
+            for p in view.products.iter().filter(|p| p.visible) {
+                let c = p.category.trim();
+                if !c.is_empty() && !cats.contains(&c) {
+                    cats.push(c);
+                }
+            }
+            match cats.len() {
+                0 => format!("Comprá online en {name}."),
+                1 => format!("{} en {name}. Comprá online.", cats[0]),
+                _ => {
+                    let list = cats.iter().take(3).copied().collect::<Vec<_>>().join(", ");
+                    format!("{list} y más en {name}. Comprá online.")
+                }
+            }
+        });
     let image = banner
         .map(|b| b.image_url)
         .filter(|u| !u.is_empty())
@@ -362,21 +424,17 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
                 .map(|p| p.image_url.clone())
                 .find(|u| !u.is_empty())
         })
-        .map(|u| {
-            if u.starts_with('/') {
-                format!("{}://{}{u}", site::scheme(), site::current_host())
-            } else {
-                u
-            }
-        });
+        .map(absolute);
     view! {
         <Title text=name.clone()/>
+        {hidden.then(|| view! { <leptos_meta::Meta name="robots" content="noindex"/> })}
         <leptos_meta::Meta name="description" content=description.clone()/>
         <leptos_meta::Meta property="og:type" content="website"/>
         <leptos_meta::Meta property="og:title" content=name/>
         <leptos_meta::Meta property="og:description" content=description/>
         {image.map(|i| view! { <leptos_meta::Meta property="og:image" content=i/> })}
     }
+    .into_any()
 }
 
 /// Las pantallas que no usa quien compra (entrar, cuenta, fotos, panel y

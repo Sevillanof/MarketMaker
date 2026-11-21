@@ -596,7 +596,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                             <div class="flex flex-wrap items-center gap-x-2 text-sm">
                                                 <span class="font-semibold">{ui::format_price(p.price_cents)}</span>
                                                 {(p.compare_at_cents > p.price_cents).then(|| view! {
-                                                    <s class="text-xs text-base-content/50">{ui::format_price(p.compare_at_cents)}</s>
+                                                    <s class="text-xs text-base-content/70">{ui::format_price(p.compare_at_cents)}</s>
                                                 })}
                                                 {if p.in_stock {
                                                     view! { <span class="text-green-800">"· Hay stock"</span> }.into_any()
@@ -674,7 +674,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                                             <td>
                                                 <div class="font-semibold">{ui::format_price(p.price_cents)}</div>
                                                 {(p.compare_at_cents > p.price_cents).then(|| view! {
-                                                    <s class="text-xs text-base-content/50">{ui::format_price(p.compare_at_cents)}</s>
+                                                    <s class="text-xs text-base-content/70">{ui::format_price(p.compare_at_cents)}</s>
                                                 })}
                                             </td>
                                             <td>

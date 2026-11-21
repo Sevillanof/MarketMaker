@@ -717,7 +717,7 @@ fn AndreaniConnected(
     view! {
         <div class="flex flex-wrap items-center gap-3 rounded-box bg-success/10 px-4 py-3">
             <span class="grow text-sm">
-                <span class="font-semibold text-success">"✓ Conectado"</span>
+                <span class="mk-ok-text font-semibold">"✓ Conectado"</span>
                 " como " <span class="font-semibold">{holder}</span>
                 {cuit.map(|c| view! { <span class="text-base-content/70">" · " {c}</span> })}
             </span>

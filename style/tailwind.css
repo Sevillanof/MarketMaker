@@ -1174,10 +1174,14 @@ dialog.mk-cart::backdrop {
   background: color-mix(in oklab, var(--color-success) 22%, var(--color-base-100));
   color: color-mix(in oklab, var(--color-success) 55%, black);
 }
-/* Etiquetas suaves de la tienda («Esperando pago», «10 % de descuento»): el
-   texto en el color puro casi no se leía sobre el fondo claro. */
-.mk-store .badge-soft.badge-warning { color: color-mix(in oklab, var(--color-warning) 45%, black); }
-.mk-store .badge-soft.badge-success { color: color-mix(in oklab, var(--color-success) 50%, black); }
+/* Etiquetas suaves («Esperando pago», «Agotado», «Venció», «10 % de
+   descuento») en la tienda y en el panel: el texto en el color puro casi no
+   se leía sobre el fondo claro (contraste menor a 4,5:1). */
+.badge-soft.badge-warning { color: color-mix(in oklab, var(--color-warning) 45%, black); }
+.badge-soft.badge-success { color: color-mix(in oklab, var(--color-success) 50%, black); }
+.badge-soft.badge-error { color: color-mix(in oklab, var(--color-error) 70%, black); }
+/* Texto verde sobre fondo claro («✓ Conectado»). */
+.mk-ok-text { color: color-mix(in oklab, var(--color-success) 55%, black); }
 
 /* Estilo «Etiquetas chicas»: una debajo de la otra. */
 .mk-pprice .mk-ptags:empty { display: none; }

@@ -555,3 +555,33 @@ async fn two_payments_for_the_last_unit_are_noted(pool: PgPool) {
         None
     );
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_payment_refunded_in_mercado_pago_cancels_its_order(pool: PgPool) {
+    let t = tenant(&pool, "ana").await;
+    let taza = Product {
+        name: "Taza".into(),
+        stock: Some(3),
+        ..Product::default()
+    };
+    let id = products::create(&pool, t, &taza).await.unwrap();
+    let items = [item(id, 1)];
+    let attempt = NewOrder {
+        status: OrderStatus::PendingPayment,
+        pay: domain::PayMethod::MercadoPago,
+        ..order(&items)
+    };
+    let Created::Saved { id: o, .. } = orders::create(&pool, t, &attempt).await.unwrap() else {
+        panic!("alcanza el stock");
+    };
+    orders::mark_paid_noting(&pool, t, o, "77", 1000)
+        .await
+        .unwrap();
+    assert_eq!(stock(&pool, t, id).await, Some(2));
+    // Otro pago no toca este pedido.
+    assert!(!orders::cancel_refunded(&pool, t, o, "78").await.unwrap());
+    // El suyo lo cancela una sola vez y devuelve la unidad.
+    assert!(orders::cancel_refunded(&pool, t, o, "77").await.unwrap());
+    assert!(!orders::cancel_refunded(&pool, t, o, "77").await.unwrap());
+    assert_eq!(stock(&pool, t, id).await, Some(3));
+}
