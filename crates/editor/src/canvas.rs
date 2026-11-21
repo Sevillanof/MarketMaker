@@ -1440,3 +1440,108 @@ mod tests {
         assert!((fit_scale(576.0, 1152.0) - 0.5).abs() < 1e-9);
     }
 }
+
+/// Bloques que crecen cuando su contenido no entra: los de texto y listas.
+/// Los de fotos (banner con imagen de fondo, galerías, productos) mantienen
+/// su alto, porque su foto se acomoda sola. Es la misma lista que en la
+/// tienda (ver `.mk-grid` en el CSS).
+pub(crate) const FIT_SELECTOR: &str = ".mk-text, .mk-benefits, .mk-ann, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-tagrow, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social, .mk-contact, .mk-footer, .mk-testi, .mk-pprice, .mk-banner";
+
+/// Agranda los bloques de la capa que se edita cuyo contenido no entra.
+fn fit_contents(state: EditorState, drag: RwSignal<Option<Drag>>) {
+    if drag.with_untracked(Option::is_some) {
+        return;
+    }
+    let Ok(list) = document().query_selector_all("#mk-canvas .mk-anode[data-node-id]") else {
+        return;
+    };
+    let mut grow: Vec<(String, i32)> = Vec::new();
+    for i in 0..list.length() {
+        let Some(el) = list
+            .item(i)
+            .and_then(|n| n.dyn_into::<web_sys::Element>().ok())
+        else {
+            continue;
+        };
+        let Some(id) = el.get_attribute("data-node-id") else {
+            continue;
+        };
+        let Some(root) = el.query_selector(".mk-content > *").ok().flatten() else {
+            continue;
+        };
+        // La raíz del bloque (la que corta lo que sobra), si es de los que crecen.
+        let fit = if root.matches(FIT_SELECTOR).unwrap_or(false) {
+            Some(root)
+        } else {
+            root.query_selector(FIT_SELECTOR).ok().flatten()
+        };
+        let Some(fit) = fit else {
+            continue;
+        };
+        // En píxeles de diseño: la escala del lienzo no cambia scrollHeight.
+        let extra = fit.scroll_height() - fit.client_height();
+        if extra > 2 {
+            let rows = (extra + i32::from(ROW_PX) - 1) / i32::from(ROW_PX);
+            grow.push((id, rows));
+        }
+    }
+    if grow.is_empty() {
+        return;
+    }
+    state.apply_fit(|d| {
+        let layer = state.layer.get_untracked();
+        let nodes = d.layer_mut(layer);
+        for (id, rows) in &grow {
+            if let Some(n) = nodes.iter().find(|n| n.id == *id) {
+                let (w, h) = (i32::from(n.size.w), i32::from(n.size.h) + rows);
+                grid::resize_node(nodes, id, w, h);
+            }
+        }
+    });
+}
+
+/// Cómo se dibuja la ficha en el lienzo según «Cómo se abre» y el
+/// interruptor Computadora / Celular.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ModalMode {
+    /// Ventana al centro (la de siempre).
+    Center,
+    /// Cajón a la derecha, con los bloques apilados.
+    Drawer,
+    /// Hoja desde abajo, con la grilla de siempre.
+    Sheet,
+    /// Celular: hoja apilada de ancho de teléfono.
+    Phone,
+}
+
+impl ModalMode {
+    fn stacked(self) -> bool {
+        matches!(self, Self::Drawer | Self::Phone)
+    }
+
+    fn note(self) -> &'static str {
+        match self {
+            Self::Center => "Se abre en el centro al tocar un producto. Es la misma para todos tus productos.",
+            Self::Drawer => "Se abre como cajón al costado. Los bloques se apilan en una columna, como los ve tu cliente.",
+            Self::Sheet => "Se abre desde abajo al tocar un producto. Es la misma para todos tus productos.",
+            Self::Phone => "Así se ve en el celular: una hoja con los bloques apilados. Elegí Computadora para moverlos.",
+        }
+    }
+
+    fn panel_class(self) -> &'static str {
+        match self {
+            Self::Center => "mk-modal-panel relative z-10 mx-auto mb-10 mt-6 self-start rounded-box bg-base-100 shadow-2xl [grid-area:1/1]",
+            Self::Drawer => "mk-modal-panel relative z-10 ml-auto self-stretch rounded-none bg-base-100 shadow-2xl [grid-area:1/1]",
+            Self::Sheet => "mk-modal-panel relative z-10 mx-auto mt-6 self-end rounded-t-box bg-base-100 shadow-2xl [grid-area:1/1]",
+            Self::Phone => "mk-modal-panel relative z-10 mx-auto mt-6 self-end rounded-t-box bg-base-100 shadow-2xl [grid-area:1/1]",
+        }
+    }
+
+    fn panel_style(self) -> &'static str {
+        match self {
+            Self::Drawer => "width:min(520px,100%);max-width:none",
+            Self::Phone => "width:min(390px,100%);max-width:none",
+            _ => "",
+        }
+    }
+}
