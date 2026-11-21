@@ -352,18 +352,21 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
     };
     view! {
         <fieldset class="fieldset">
-            <legend class="fieldset-legend">"Colores, tamaños o talles " <span class="font-normal text-base-content/60">"(opcional)"</span></legend>
+            <legend class="fieldset-legend mk-tip-legend">"Colores, tamaños o talles " <span class="font-normal text-base-content/60">"(opcional)"</span>
+                <ui::HelpTip id="tip-variants" label="Colores, tamaños o talles" text=Signal::derive(move || if form.on.get() {
+                    "Cargá cuántas unidades tenés de cada combinación: así la tienda no vende de más. En 0 se ve tachada y no se puede elegir.".to_string()
+                } else {
+                    "Para vender un mismo producto en varios colores, tamaños o talles, cada uno con su stock.".to_string()
+                })/></legend>
             {move || if !form.on.get() {
                 view! {
                     <div class="flex flex-wrap items-center gap-3">
                         <button type="button" class="btn btn-sm" on:click=move |_| form.on.set(true)>"+ Agregar colores, tamaños o talles"</button>
-                        <span class="label whitespace-normal">"Para vender un mismo producto en varios colores, tamaños o talles, cada uno con su stock."</span>
                     </div>
                 }.into_any()
             } else {
                 view! {
                     <div class="flex flex-col gap-3">
-                        <p class="label whitespace-normal">"Con colores, tamaños o talles, cargá cuántas unidades tenés de cada combinación: así la tienda no vende de más. Las que dejes en 0 se muestran agotadas."</p>
                         <div class="flex flex-col gap-1">
                             <span class="text-sm font-medium">"Tamaños o talles " <span class="font-normal text-base-content/60">"(valen para todos los colores)"</span></span>
                             <div class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-field border border-base-300 px-2 py-1.5">
@@ -403,7 +406,6 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
                             {move || (!form.active()).then(|| view! {
                                 <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| form.on.set(false)>"Cancelar"</button>
                             })}
-                            <span class="label whitespace-normal">"En 0 se ve tachado en la tienda y no se puede elegir."</span>
                         </div>
                     </div>
                 }.into_any()

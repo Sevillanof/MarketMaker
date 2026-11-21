@@ -378,6 +378,8 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                             <div class="flex flex-col gap-2">
                                 <Skeleton class="aspect-square w-full"/>
                                 <div class="grid grid-cols-4 gap-2">{(0..4).map(|_| view! { <Skeleton class="aspect-square"/> }).collect_view()}</div>
+                                // «En la tienda», debajo de las fotos.
+                                <Skeleton class="mt-2 h-16 w-full"/>
                             </div>
                             <div class="flex flex-col gap-3">
                                 <Skeleton class="h-8 w-3/4"/>
@@ -387,7 +389,6 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                             </div>
                         </div>
                         {sk_line("w-24")}<Skeleton class="h-32 w-full"/>
-                        <Skeleton class="h-14 w-full"/>
                         <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-base-200 pt-4">
                             <Skeleton class="h-10 w-36"/><Skeleton class="h-8 w-16"/>
                             <div class="flex justify-end gap-2"><Skeleton class="h-10 w-24"/><Skeleton class="h-10 w-24"/></div>
@@ -453,7 +454,9 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                     </div>
                     {sk_line("w-20")}
                     <div class="flex gap-3">{(0..3).map(|_| view! { <Skeleton class="size-20 shrink-0"/> }).collect_view()}</div>
-                    {sk_line("w-28")}<Skeleton class="h-28 w-full"/>
+                    // Descripción, con «Ver en la tienda» a la derecha.
+                    <div class="flex items-center justify-between">{sk_line("w-28")}<Skeleton class="h-4 w-28"/></div>
+                    <Skeleton class="h-28 w-full"/>
                     <div class="grid gap-4 sm:grid-cols-2">
                         {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-32")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
                     </div>
@@ -657,6 +660,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "photo" => "M3 3h18v18H3zM9 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4M21 15l-5-5L5 21",
         "camera" => "M3 8h4l2-3h6l2 3h4v12H3zM12 10a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7",
         "plus" => "M12 5v14M5 12h14",
+        "eye" => "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6",
         "trash" => "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
         "check" => "M5 12l5 5 9-10",
         "chevron-down" => "M6 9l6 6 6-6",
@@ -693,6 +697,49 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
 }
 
 /// Precio con formato argentino a partir de centavos: `$ 12.345`.
+/// Ayuda de un campo (ⓘ junto a su título): se abre al pasar el mouse, al
+/// llegar con el teclado o al tocarla, y se cierra con Esc o al salir. El
+/// globo se ubica debajo del título y ocupa a lo sumo su ancho, así nunca se
+/// sale de la pantalla: el título (o su contenedor) va con `relative`.
+/// `id` es el del globo, para que el campo lo nombre en `aria-describedby`.
+#[component]
+pub fn HelpTip(
+    #[prop(into)] text: Signal<String>,
+    #[prop(into)] id: String,
+    /// De qué campo es la ayuda, para lectores de pantalla.
+    #[prop(into)]
+    label: String,
+) -> impl IntoView {
+    let hover = RwSignal::new(false);
+    let focused = RwSignal::new(false);
+    let open = move || hover.get() || focused.get();
+    let btn = NodeRef::<leptos::html::Button>::new();
+    view! {
+        <button type="button" node_ref=btn class="mk-tip-btn" aria-label=format!("Ayuda: {label}")
+            aria-describedby=id.clone() aria-expanded=move || open().to_string()
+            on:mouseenter=move |_| hover.set(true)
+            on:mouseleave=move |_| hover.set(false)
+            on:focus=move |_| focused.set(true)
+            on:blur=move |_| { focused.set(false); hover.set(false); }
+            // Safari no enfoca los botones al tocarlos: lo enfocamos a mano.
+            on:click=move |ev| {
+                ev.prevent_default();
+                if let Some(b) = btn.get() { _ = b.focus(); }
+                focused.set(true);
+            }
+            on:keydown=move |ev| if ev.key() == "Escape" && open() {
+                // Cierra solo la ayuda, no la ventana en la que está.
+                ev.prevent_default();
+                ev.stop_propagation();
+                hover.set(false);
+                focused.set(false);
+            }>
+            "i"
+        </button>
+        <span id=id role="tooltip" class="mk-tip" hidden=move || !open()>{move || text.get()}</span>
+    }
+}
+
 #[component]
 pub fn Price(cents: i64) -> impl IntoView {
     view! { <span class="mk-price font-semibold">{format_price(cents)}</span> }

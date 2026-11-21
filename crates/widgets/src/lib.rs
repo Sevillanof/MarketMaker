@@ -375,6 +375,44 @@ pub fn ProductDialog(
     }
 }
 
+/// La ficha de un producto tal como se ve en la tienda, sin la ventana ni
+/// botones que compren o naveguen: la vista previa de Productos mientras se
+/// escribe. Va dentro de un contenedor con el tema de la tienda (`mk-store`).
+#[component]
+pub fn ProductSheetPreview(
+    modal: ProductModal,
+    #[prop(into)] product: Signal<Option<Product>>,
+) -> impl IntoView {
+    let mut nodes = modal.nodes;
+    nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
+    let nodes = StoredValue::new(nodes);
+    move || {
+        product.get().map(|p| {
+            provide_context(product_page::VariantPick::new());
+            let offers = use_context::<domain::StoreInfo>()
+                .map(|s| s.offers)
+                .unwrap_or_default();
+            let shown = fit_price(fit_name(nodes.get_value(), &p), &p, offers);
+            let shown = stretch_image(grow_for_variants(fit_description(shown, &p), &p));
+            let ctx = RenderCtx {
+                products: vec![p.clone()],
+                editing: true,
+                product: Some(p),
+            };
+            view! {
+                <div class="mk-grid">
+                    {shown
+                        .into_iter()
+                        .map(|node| view! {
+                            <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
+                        })
+                        .collect_view()}
+                </div>
+            }
+        })
+    }
+}
+
 /// La descripción ocupa lo que necesita su texto (más o menos, según el
 /// largo de cada producto) y lo que está debajo sube o baja lo mismo: sin
 /// el hueco grande de una descripción corta ni la barra de una larga.
