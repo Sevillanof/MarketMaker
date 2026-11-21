@@ -576,7 +576,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
     }
 }
 
-/// Precio con formato argentino a partir de centavos: `$ 12.345,00`.
+/// Precio con formato argentino a partir de centavos: `$ 12.345`.
 #[component]
 pub fn Price(cents: i64) -> impl IntoView {
     view! { <span class="mk-price font-semibold">{format_price(cents)}</span> }
@@ -597,7 +597,8 @@ pub fn PriceWas(cents: i64, was: i64) -> impl IntoView {
     }
 }
 
-/// Formatea centavos como `$ 12.345,00`.
+/// Formatea centavos como `$ 12.345`; los centavos (`$ 12.345,50`) solo
+/// cuando existen: en pesos casi nunca hay y alargan el precio.
 pub fn format_price(cents: i64) -> String {
     let sign = if cents < 0 { "-" } else { "" };
     let cents = cents.unsigned_abs();
@@ -609,7 +610,10 @@ pub fn format_price(cents: i64) -> String {
         }
         grouped.push(ch);
     }
-    format!("{sign}$ {grouped},{:02}", cents % 100)
+    match cents % 100 {
+        0 => format!("{sign}$ {grouped}"),
+        c => format!("{sign}$ {grouped},{c:02}"),
+    }
 }
 
 #[cfg(test)]
@@ -639,11 +643,11 @@ mod tests {
 
     #[test]
     fn formats_argentine_prices() {
-        assert_eq!(format_price(1_234_500), "$ 12.345,00");
+        assert_eq!(format_price(1_234_500), "$ 12.345");
         assert_eq!(format_price(5), "$ 0,05");
-        assert_eq!(format_price(99_900), "$ 999,00");
+        assert_eq!(format_price(99_900), "$ 999");
         assert_eq!(format_price(123_456_789), "$ 1.234.567,89");
-        assert_eq!(format_price(-100), "-$ 1,00");
+        assert_eq!(format_price(-100), "-$ 1");
     }
 }
 

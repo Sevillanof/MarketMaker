@@ -1055,6 +1055,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
         Delivery::Pickup
     };
     // Quien entró a su cuenta ya tiene sus datos puestos.
+    let has_buyer = info.buyer.is_some();
     let buyer = info.buyer.clone().unwrap_or_default();
     // La cuenta guarda «Rosario, Santa Fe»: acá va cada parte en su campo.
     let (city, province) = split_province(&buyer.city);
@@ -1222,6 +1223,22 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             show_errors(e);
         }
     };
+    // Con la cuenta abierta y los datos completos arranca en el pago; los
+    // pasos anteriores quedan con «Cambiar».
+    if has_buyer {
+        Effect::new(move |ran: Option<()>| {
+            if ran.is_none() && step.get_untracked() == 1 {
+                let mut form = form_now();
+                let ready = d
+                    .with_value(|d| domain::tidy_checkout(&mut form, d))
+                    .iter()
+                    .all(|e| step_of(&e.field) > 2);
+                if ready {
+                    step.set(3);
+                }
+            }
+        });
+    }
     let submit = move || {
         problem.set(None);
         gone.set(Vec::new());
@@ -2157,7 +2174,10 @@ fn Receipt(view: PageView, r: OrderReceipt) -> impl IntoView {
                         <h3 class="mt-4 font-semibold">"Tu nota para la tienda"</h3>
                         <p class="text-sm text-base-content/75 whitespace-pre-line">{order.notes.clone()}</p>
                     })}
-                    <p class="mt-4 text-xs text-base-content/60">"Guardá esta página: es la de tu pedido."</p>
+                    <div class="mt-5 flex items-center gap-3 rounded-box border border-base-300 p-3.5">
+                        <p class="min-w-0 flex-1 text-sm font-semibold leading-snug">"Seguí tu pedido con tu email"</p>
+                        <a class="btn btn-primary btn-sm" href="/mi-cuenta/pedidos">"Ver mis pedidos"</a>
+                    </div>
                 </div></div>
             </div>
         </StoreFrame>
@@ -2214,7 +2234,14 @@ fn ReceiptHead(
     let body = match status {
         S::Paid | S::Shipped | S::Delivered => view! {
             {check}
-            <h1 class="mk-h text-2xl font-bold">{format!("¡Gracias, {first_name}! Tu pago está aprobado")}</h1>
+            // El título sigue al pedido: no queda en "pago aprobado" cuando
+            // ya está enviado o entregado.
+            <h1 class="mk-h text-2xl font-bold">{match status {
+                S::Shipped if pickup => format!("{first_name}, tu pedido está listo para retirar"),
+                S::Shipped => format!("{first_name}, tu pedido está en camino"),
+                S::Delivered => format!("{first_name}, tu pedido fue entregado"),
+                _ => format!("¡Gracias, {first_name}! Tu pago está aprobado"),
+            }}</h1>
             // Lo que dice tiene que seguir al pedido: antes repetía "lo está
             // preparando" aunque ya estuviera enviado.
             <p class="text-base-content/75">{match status {
@@ -2223,6 +2250,25 @@ fn ReceiptHead(
                 S::Delivered => format!("Pedido #{number} · Tu pedido ya fue entregado. ¡Que lo disfrutes!"),
                 _ => format!("Pedido #{number} · La tienda ya lo está preparando. Si hace falta algo, te escribe al {phone}."),
             }}</p>
+            {
+                let done = match status { S::Delivered => 4, S::Shipped => 3, _ => 2 };
+                let names = ["Recibido", "Pagado", if pickup { "Listo" } else { "Enviado" }, "Entregado"];
+                view! {
+                    <ol class="mk-osteps mt-3 flex w-full max-w-sm justify-between" aria-label="Estado del pedido">
+                        {names.into_iter().enumerate().map(|(i, n)| {
+                            let on = i < done;
+                            view! {
+                                <li class="flex flex-1 flex-col items-center gap-1.5 text-xs font-semibold" class=("text-base-content/40", !on)
+                                    aria-current=(i + 1 == done).then_some("step")>
+                                    <span class=if on { "h-3 w-3 rounded-full bg-primary" } else { "h-3 w-3 rounded-full bg-base-300" } aria-hidden="true"></span>
+                                    {n}
+                                    {(!on).then(|| view! { <span class="sr-only">" (falta)"</span> })}
+                                </li>
+                            }
+                        }).collect_view()}
+                    </ol>
+                }
+            }
             <a class="btn btn-primary mt-3" href="/">"Seguir comprando"</a>
         }.into_any(),
         S::Cancelled => view! {

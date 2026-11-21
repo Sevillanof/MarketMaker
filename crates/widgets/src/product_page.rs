@@ -48,7 +48,11 @@ impl Default for VariantPick {
 }
 
 #[component]
-pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) -> impl IntoView {
+pub fn ProductImageWidget(
+    props: ProductImageProps,
+    product: Option<Product>,
+    #[prop(optional)] editing: bool,
+) -> impl IntoView {
     let whole = product.clone();
     // Al elegir un color en la ficha, la foto va a la de ese color.
     let colors = product
@@ -105,11 +109,66 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
             }
         })
     };
+    // Tocar la foto la abre grande: el recuadro crece sobre la tienda.
+    let zoom = RwSignal::new(None::<(String, String)>);
+    let zoom_ref = NodeRef::<leptos::html::Dialog>::new();
     let photo = move |i: usize| {
         let src = photos.with_value(|p| p[i].clone());
         let fit = fits.with_value(|f| f.get(&src).copied());
-        view! { <Image src alt=alt_for(i) contain fit/> }.into_any()
+        let alt = alt_for(i);
+        if editing || src.is_empty() {
+            return view! { <Image src alt contain fit/> }.into_any();
+        }
+        let big = (src.clone(), alt.clone());
+        let label = format!("Ver más grande: {alt}");
+        view! {
+            <button type="button" class="mk-pzoom-open" aria-label=label
+                on:click=move |_| {
+                    zoom.set(Some(big.clone()));
+                    if let Some(d) = zoom_ref.get_untracked() {
+                        _ = d.show_modal();
+                    }
+                }>
+                <Image src alt contain fit/>
+            </button>
+        }
+        .into_any()
     };
+    let close_zoom = move || {
+        if let Some(d) = zoom_ref.get_untracked() {
+            d.close();
+        }
+    };
+    let zoom_dialog = (!editing).then(|| view! {
+        // Ocupa toda la ventana: tocar fuera del recuadro es tocar el propio
+        // diálogo, y eso lo cierra (también Esc y el gesto de volver).
+        <dialog node_ref=zoom_ref class="mk-pzoom" closedby="any" aria-label="Foto del producto"
+            on:click=move |ev| {
+                if ev.target() == ev.current_target() {
+                    close_zoom();
+                }
+            }>
+            <div class="mk-pzoom-box">
+                {move || zoom.get().map(|(src, alt)| {
+                    let (avif, webp) = match ui::srcsets(&src) {
+                        Some((a, w)) => (Some(a), Some(w)),
+                        None => (ui::avif_variant(&src), None),
+                    };
+                    let sizes = webp.as_ref().map(|_| "100vw");
+                    view! {
+                        <picture>
+                            {avif.map(|a| view! { <source type="image/avif" srcset=a sizes=sizes/> })}
+                            <img src=src srcset=webp sizes=sizes alt=alt draggable="false" decoding="async"
+                                onload="this.closest('.mk-pzoom-box').style.setProperty('--ar', this.naturalWidth / this.naturalHeight)"/>
+                        </picture>
+                    }
+                })}
+                <button type="button" class="mk-pzoom-x btn btn-circle btn-sm" aria-label="Cerrar la foto" on:click=move |_| close_zoom()>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+            </div>
+        </dialog>
+    });
 
     let body = match props.variant.as_str() {
         // Mosaico: dos fotos altas y una ancha, y así sigue (se desplaza
@@ -147,12 +206,13 @@ pub fn ProductImageWidget(props: ProductImageProps, product: Option<Product>) ->
         .filter(|_| use_context::<crate::SharePlace>().is_some_and(|s| s.on_photo))
         .map(|product| view! { <crate::ShareButton product on_photo=true/> });
     match heart {
-        None => body,
+        None => view! { {body}{zoom_dialog} }.into_any(),
         Some((product_id, name)) => view! {
             <div class="mk-pheart relative h-full">
                 {body}
                 {share}
                 <crate::FavoriteHeart product_id name/>
+                {zoom_dialog}
             </div>
         }
         .into_any(),
@@ -824,7 +884,7 @@ pub fn VariantBuy(
             {color_set}
             {size_set}
             <div aria-live="polite" class="min-h-4 empty:hidden">{note}</div>
-            <div class="flex flex-nowrap items-start gap-2">
+            <div class="mk-pvar-buy flex flex-nowrap items-start gap-2">
                 {move || view! { <crate::cart::QtyStepper value=qty label="Cantidad" max=max.get() disabled=cart.is_none()/> }}
                 <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
                     disabled=move || room() == Some(0) && !added.get()
