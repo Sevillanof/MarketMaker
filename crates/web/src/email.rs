@@ -643,32 +643,96 @@ pub fn password_link(to: &str, url: &str, new_account: bool) -> Email {
 /// administrador desde la Whitelist, con el asunto, el título y el mensaje
 /// que haya dejado (ya pasados por [`domain::InviteText::clean`]).
 pub fn invitation(to: &str, url: &str, words: &domain::InviteText) -> Email {
-    let days = db::auth::INVITE_DAYS;
-    let step = |n: u8, title: &str, text: &str| {
-        format!(
-            r#"<tr><td width="44" valign="top" style="padding:0 0 18px"><div style="width:30px;height:30px;line-height:30px;border-radius:15px;background:#eeebff;color:#4330d6;font-weight:700;font-size:14px;text-align:center">{n}</div></td><td valign="top" style="padding:0 0 18px"><div style="font-weight:700;font-size:15px;color:#18181b">{title}</div><div style="font-size:14px;line-height:21px;color:#52525b">{text}</div></td></tr>"#
+    invitation_with(
+        to,
+        url,
+        words,
+        &[
+            ("Creá tu cuenta", "Elegís tu nombre y una contraseña."),
+            ("Armá tu tienda", "Diseño, productos y formas de cobro."),
+            ("Publicala", "Tu dirección propia: tutienda.mkr.com.ar"),
+        ],
+        "Crear mi cuenta",
+        "Tu enlace personal para crear la cuenta.",
+        &format!("El enlace es personal y vence en {} días.", db::auth::INVITE_DAYS),
+    )
+}
+
+/// Invitación al equipo de una tienda: con el mismo formato que la de la
+/// Whitelist. Para quien ya tiene cuenta no lleva vencimiento (solo entra).
+pub fn team_invitation(
+    to: &str,
+    url: &str,
+    store: &str,
+    has_account: bool,
+    words: &domain::InviteText,
+) -> Email {
+    let fill = |t: &str| t.replace("{store}", store);
+    let steps: Vec<(String, String)> = if has_account {
+        domain::TEAM_STEPS_OLD.iter()
+    } else {
+        domain::TEAM_STEPS_NEW.iter()
+    }
+    .map(|(a, b)| (fill(a), fill(b)))
+    .collect();
+    let steps: Vec<(&str, &str)> = steps.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    let (button, note) = if has_account {
+        (
+            fill(domain::TEAM_BUTTON_OLD),
+            "Si no querés participar, ignorá este email.".to_string(),
+        )
+    } else {
+        (
+            domain::TEAM_BUTTON_NEW.to_string(),
+            format!("El enlace es personal y vence en {} días.", db::auth::INVITE_DAYS),
         )
     };
-    let steps = [
-        step(1, "Creá tu cuenta", "Elegís tu nombre y una contraseña."),
-        step(2, "Armá tu tienda", "Diseño, productos y formas de cobro."),
-        step(3, "Publicala", "Tu dirección propia: tutienda.mkr.com.ar"),
-    ]
-    .concat();
+    invitation_with(to, url, words, &steps, &button, "Tu enlace personal para sumarte al equipo.", &note)
+}
+
+fn invitation_with(
+    to: &str,
+    url: &str,
+    words: &domain::InviteText,
+    steps: &[(&str, &str)],
+    button: &str,
+    preheader: &str,
+    note: &str,
+) -> Email {
+    let step = |n: usize, title: &str, text: &str| {
+        format!(
+            r#"<tr><td width="44" valign="top" style="padding:0 0 18px"><div style="width:30px;height:30px;line-height:30px;border-radius:15px;background:#eeebff;color:#4330d6;font-weight:700;font-size:14px;text-align:center">{n}</div></td><td valign="top" style="padding:0 0 18px"><div style="font-weight:700;font-size:15px;color:#18181b">{title}</div><div style="font-size:14px;line-height:21px;color:#52525b">{text}</div></td></tr>"#,
+            title = esc(title),
+            text = esc(text)
+        )
+    };
+    let steps_html: String = steps
+        .iter()
+        .enumerate()
+        .map(|(i, (t, x))| step(i + 1, t, x))
+        .collect();
+    let steps_text: String = steps
+        .iter()
+        .enumerate()
+        .map(|(i, (t, x))| format!("{}. {t}: {x}\n", i + 1))
+        .collect();
     let html = format!(
         r#"<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head><body style="margin:0;background:#f4f4f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
-<div style="display:none;max-height:0;overflow:hidden">Tu enlace personal para crear la cuenta. Vence en {days} días.</div>
+<div style="display:none;max-height:0;overflow:hidden">{preheader}</div>
 <div style="max-width:520px;margin:0 auto;padding:32px 16px">
 <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:20px;padding:36px">
 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr><td style="width:36px;height:36px;border-radius:10px;background:#4330d6;background-image:linear-gradient(135deg,#4330d6,#6a55f0);color:#ffffff;font-weight:800;font-size:20px;text-align:center">m</td><td style="padding-left:10px;font-weight:800;font-size:18px;color:#18181b">MarketMaker</td></tr></table>
 <h1 style="font-size:28px;line-height:34px;font-weight:800;letter-spacing:-0.5px;margin:28px 0 10px;color:#18181b">{title}</h1>
 <p style="font-size:16px;line-height:24px;margin:0 0 26px;color:#52525b">{message}</p>
-<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">{steps}</table>
-<a href="{href}" style="display:block;margin:8px 0 0;background:#4330d6;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;text-align:center;padding:15px 20px;border-radius:12px">Crear mi cuenta</a>
-<p style="font-size:13px;line-height:20px;margin:14px 0 0;color:#71717a;text-align:center">El enlace es personal y vence en {days} días.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">{steps_html}</table>
+<a href="{href}" style="display:block;margin:8px 0 0;background:#4330d6;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;text-align:center;padding:15px 20px;border-radius:12px">{button}</a>
+<p style="font-size:13px;line-height:20px;margin:14px 0 0;color:#71717a;text-align:center">{note}</p>
 </div>
 <p style="font-size:12px;line-height:19px;margin:18px 0 0;color:#71717a;text-align:center">Si no esperabas esta invitación, podés ignorar este email.<br>MarketMaker · mkr.com.ar</p>
 </div></body></html>"#,
+        preheader = esc(preheader),
+        button = esc(button),
+        note = esc(note),
         href = esc(url),
         title = esc(&words.title),
         message = esc(&words.message).replace('\n', "<br>")
@@ -678,9 +742,11 @@ pub fn invitation(to: &str, url: &str, words: &domain::InviteText) -> Email {
         subject: words.subject.clone(),
         html,
         text: format!(
-            "{title}\n\n{message}\n\n1. Creá tu cuenta: elegís tu nombre y una contraseña.\n2. Armá tu tienda: diseño, productos y formas de cobro.\n3. Publicala: tu dirección propia, tutienda.mkr.com.ar\n\nCrear mi cuenta:\n{url}\n\nEl enlace es personal y vence en {days} días.\n\nSi no esperabas esta invitación, podés ignorar este email.\nMarketMaker · mkr.com.ar\n",
+            "{title}\n\n{message}\n\n{steps_text}\n{button}:\n{url}\n\n{note}\n\nSi no esperabas esta invitación, podés ignorar este email.\nMarketMaker · mkr.com.ar\n",
             title = words.title,
-            message = words.message
+            message = words.message,
+            button = button,
+            note = note,
         ),
     }
 }

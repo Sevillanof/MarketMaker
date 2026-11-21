@@ -854,7 +854,7 @@ pub async fn to_prepare_by_store(pool: &PgPool, user: Uuid) -> sqlx::Result<Vec<
          FROM memberships m
          JOIN tenants t ON t.id = m.tenant_id
          LEFT JOIN orders o ON o.tenant_id = t.id AND o.status = 'paid'
-         WHERE m.user_id = $1
+         WHERE m.user_id = $1 AND m.role <> 'editor'
          GROUP BY t.slug",
     )
     .bind(user)

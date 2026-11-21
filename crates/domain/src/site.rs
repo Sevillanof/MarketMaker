@@ -181,6 +181,9 @@ pub struct NavStore {
     pub url: String,
     /// Pedidos pagados que falta preparar.
     pub to_prepare: i64,
+    /// El rol de quien entró en esta tienda: `owner`, `admin` o `editor`.
+    #[serde(default)]
+    pub role: String,
 }
 
 /// Lo que muestra el menú del panel: quién entró y sus tiendas.
@@ -194,6 +197,13 @@ pub struct PanelNav {
     pub stores: Vec<NavStore>,
     /// Administra MarketMaker: ve la Whitelist en su menú.
     pub is_admin: bool,
+    /// Puede crear tiendas propias (quien solo trabaja en el equipo de otra, no).
+    #[serde(default = "yes")]
+    pub can_create: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Una persona de la Whitelist, con lo que sabemos de su cuenta.
@@ -279,6 +289,120 @@ impl InviteText {
     }
 }
 
+/// Cuánto dura el enlace de una invitación, en días.
+pub const INVITE_DAYS: i32 = 7;
+
+/// Lo que el equipo de una tienda puede ver y hacer según su rol.
+pub fn role_rank(role: &str) -> u8 {
+    match role {
+        "owner" => 3,
+        "admin" => 2,
+        "editor" => 1,
+        _ => 0,
+    }
+}
+
+/// Nombre del rol para mostrar.
+pub fn role_label(role: &str) -> &'static str {
+    match role {
+        "owner" => "Dueño",
+        "admin" => "Administrador",
+        _ => "Editor",
+    }
+}
+
+/// El email de invitación a un equipo, listo para editar antes de enviarlo.
+/// `has_account`: la persona ya tiene cuenta, así que solo entra.
+pub fn team_invite_text(store: &str, inviter: &str, has_account: bool) -> InviteText {
+    if has_account {
+        InviteText {
+            subject: format!("Ya sos parte del equipo de {store}"),
+            title: "Ya sos parte del equipo".into(),
+            message: if inviter.is_empty() {
+                format!("Te sumaron al equipo de {store}. Entrá con tu cuenta de siempre para trabajar en la tienda.")
+            } else {
+                format!("{inviter} te sumó al equipo de {store}. Entrá con tu cuenta de siempre para trabajar en la tienda.")
+            },
+        }
+    } else {
+        InviteText {
+            subject: format!("Sumate al equipo de {store} en MarketMaker"),
+            title: format!("Sumate a {store}"),
+            message: if inviter.is_empty() {
+                format!("Te invitaron a colaborar en {store}. Creá tu cuenta para empezar a trabajar en la tienda.")
+            } else {
+                format!("{inviter} te invitó a colaborar en {store}. Creá tu cuenta para empezar a trabajar en la tienda.")
+            },
+        }
+    }
+}
+
+/// Los pasos del email de invitación al equipo: para quien todavía no tiene
+/// cuenta y para quien ya la tiene. `{store}` se reemplaza por la tienda.
+pub const TEAM_STEPS_NEW: [(&str, &str); 3] = [
+    ("Creá tu cuenta", "Elegís tu nombre y una contraseña."),
+    (
+        "Entrá a {store}",
+        "Aparece en tu panel, junto a tus tiendas.",
+    ),
+    ("Empezá a trabajar", "Cargá productos y editá el diseño."),
+];
+pub const TEAM_STEPS_OLD: [(&str, &str); 2] = [
+    (
+        "Entrá con tu cuenta",
+        "Usá tu email y contraseña de siempre.",
+    ),
+    ("Elegí {store}", "La encontrás en el selector de tiendas."),
+];
+pub const TEAM_BUTTON_NEW: &str = "Crear mi cuenta y entrar";
+pub const TEAM_BUTTON_OLD: &str = "Abrir {store}";
+
+/// Una persona del equipo de una tienda.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TeamPerson {
+    pub email: String,
+    /// "" si todavía no creó su cuenta o no dijo su nombre.
+    pub name: String,
+    pub avatar: Option<String>,
+    /// `owner`, `admin` o `editor`.
+    pub role: String,
+    /// Tiene cuenta y ya está en el equipo.
+    pub joined: bool,
+    /// "Se unió hace 3 días" / "Invitación pendiente desde ayer".
+    pub since: String,
+    /// "Último acceso ayer", si se sabe.
+    pub last_seen: String,
+    /// "Invitación enviada ayer", si ya se mandó el email.
+    pub sent: String,
+    /// Quien mira puede cambiarle el rol o sacarla.
+    pub manageable: bool,
+}
+
+/// El equipo de una tienda visto por alguien que puede administrarlo.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TeamInfo {
+    pub store_name: String,
+    /// El rol de quien mira.
+    pub me: String,
+    /// Cómo se llama quien mira ("" si no lo dijo), para firmar la invitación.
+    pub me_name: String,
+    pub people: Vec<TeamPerson>,
+}
+
+/// Qué pasó al sumar a alguien al equipo.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum TeamChange {
+    Done,
+    Invalid,
+    Already,
+    /// Esa persona no puede sumarse (la bloqueó el administrador).
+    Blocked,
+    /// Demasiadas invitaciones pendientes.
+    TooMany,
+    /// El rol de quien pide no alcanza.
+    NotAllowed,
+}
+
 /// Qué pasó al agregar o quitar un email de la Whitelist.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum WhitelistChange {
@@ -362,6 +486,9 @@ pub struct StoreOverview {
     pub pay_ready: bool,
     /// Los últimos pedidos, el más nuevo primero.
     pub recent: Vec<crate::Order>,
+    /// Quien mira es editor: no ve ventas, pedidos ni cobros.
+    #[serde(default)]
+    pub restricted: bool,
 }
 
 /// Los datos de la tienda que se ven en el diseño: el menú y el pie los usan

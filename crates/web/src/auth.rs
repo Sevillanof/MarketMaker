@@ -75,13 +75,30 @@ mod ssr {
     static WEB_LIST: std::sync::LazyLock<std::sync::RwLock<(HashSet<String>, HashSet<String>)>> =
         std::sync::LazyLock::new(Default::default);
 
+    /// Emails habilitados solo por una invitación de equipo: pueden trabajar
+    /// en la tienda que los invitó, pero no crear tiendas propias.
+    static WEB_TEAM: std::sync::LazyLock<std::sync::RwLock<HashSet<String>>> =
+        std::sync::LazyLock::new(Default::default);
+
     /// Vuelve a leer la Whitelist de la base de datos.
     pub async fn refresh_allowlist(pool: &db::Pool) -> Result<(), ServerFnError> {
         let (added, removed) = db::auth::load_allowlist(pool).await.map_err(internal)?;
+        let team = db::auth::load_team_only(pool).await.map_err(internal)?;
         if let Ok(mut list) = WEB_LIST.write() {
             *list = (added.into_iter().collect(), removed.into_iter().collect());
         }
+        if let Ok(mut t) = WEB_TEAM.write() {
+            *t = team.into_iter().collect();
+        }
         Ok(())
+    }
+
+    /// Puede crear tiendas propias: todos menos quien entró solo por la
+    /// invitación al equipo de otra tienda (a menos que también esté en
+    /// `ALLOWED_EMAILS` o sea administrador).
+    pub fn may_create_stores(email: &str) -> bool {
+        let team_only = WEB_TEAM.read().is_ok_and(|t| t.contains(email));
+        !team_only || email_list("ALLOWED_EMAILS").contains(email) || is_admin(email)
     }
 
     /// Emails que pueden tener cuenta: `ALLOWED_EMAILS` del servidor más los

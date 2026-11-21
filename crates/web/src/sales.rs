@@ -15,7 +15,7 @@ pub async fn store_delivery(
     slug: String,
 ) -> Result<Option<(String, DeliverySettings)>, ServerFnError> {
     use crate::server::{internal, pool};
-    let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
+    let Some(tenant) = crate::products::server::owned_store_min(&slug, "admin").await? else {
         return Ok(None);
     };
     let d = db::orders::delivery(&pool()?, tenant.id)
@@ -31,7 +31,7 @@ pub async fn save_store_delivery(
     delivery: DeliverySettings,
 ) -> Result<Vec<FieldError>, ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let mut d = delivery;
     let errors = domain::tidy_delivery(&mut d);
     if errors.is_empty() {
@@ -90,7 +90,7 @@ fn account_view(
 #[server]
 pub async fn load_andreani(slug: String) -> Result<Option<AndreaniPanel>, ServerFnError> {
     use crate::server::{internal, pool};
-    let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
+    let Some(tenant) = crate::products::server::owned_store_min(&slug, "admin").await? else {
         return Ok(None);
     };
     let pool = pool()?;
@@ -116,7 +116,7 @@ pub async fn connect_andreani(
 ) -> Result<AndreaniConnect, ServerFnError> {
     use crate::andreani::Error;
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
     if code.is_empty() {
         return Ok(AndreaniConnect::Problem(
@@ -190,7 +190,7 @@ pub async fn save_andreani(
     settings: AndreaniSettings,
 ) -> Result<AndreaniSaved, ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let pool = pool()?;
     let Some(acc) = db::andreani::account(&pool, tenant.id)
         .await
@@ -233,7 +233,7 @@ pub async fn save_andreani(
 #[server]
 pub async fn disconnect_andreani(slug: String) -> Result<(), ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     db::andreani::disconnect(&pool()?, tenant.id)
         .await
         .map_err(internal)

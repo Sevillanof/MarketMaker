@@ -262,6 +262,28 @@ fn sk_line(w: &'static str) -> impl IntoView {
     view! { <Skeleton class=format!("h-3.5 {w}")/> }
 }
 
+/// La tarjeta "Equipo" de Datos de la tienda: título, campo con rol y botón,
+/// y filas de personas.
+#[component]
+pub fn TeamSkeleton() -> impl IntoView {
+    view! {
+        <div aria-busy="true" aria-label="Cargando el equipo">
+            {sk_card("gap-3 p-6", Box::new(|| view! {
+                <Skeleton class="h-5 w-24"/>{sk_line("w-96 max-w-full")}
+                <div class="flex gap-2"><Skeleton class="h-10 grow"/><Skeleton class="h-10 w-32"/><Skeleton class="h-10 w-24"/></div>
+                {sk_line("w-40")}
+                {(0..3).map(|_| view! {
+                    <div class="flex items-center gap-3 border-t border-base-200 pt-3">
+                        <Skeleton class="size-10 rounded-full"/>
+                        <div class="flex grow flex-col gap-2">{sk_line("w-44")}{sk_line("w-56")}</div>
+                        <Skeleton class="h-8 w-28"/>
+                    </div>
+                }).collect_view()}
+            }.into_any()))}
+        </div>
+    }
+}
+
 /// Una tarjeta blanca del panel para armar skeletons.
 fn sk_card(class: &'static str, children: Children) -> impl IntoView {
     view! { <div class=format!("flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-4 {class}")>{children()}</div> }
@@ -522,6 +544,8 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                 </div>
                 <Skeleton class="h-10 w-28"/>
             }.into_any()))}
+            // "Equipo": campo para sumar gente y la lista (solo dueño y administradores).
+            <TeamSkeleton/>
             // "Tu tienda": dirección, pausar y borrar.
             {sk_card("!gap-0", Box::new(|| view! {
                 <Skeleton class="mb-3 h-5 w-28"/>

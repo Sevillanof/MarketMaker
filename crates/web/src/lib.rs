@@ -49,6 +49,7 @@ pub mod shipments;
 pub mod site;
 mod store_info;
 pub mod stores;
+mod team;
 mod variants_field;
 mod welcome;
 mod whitelist;

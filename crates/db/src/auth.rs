@@ -76,7 +76,7 @@ pub async fn create_login_link_key(
 }
 
 /// Cuánto dura el enlace de una invitación.
-pub const INVITE_DAYS: i32 = 7;
+pub const INVITE_DAYS: i32 = domain::INVITE_DAYS;
 
 /// La llave del enlace de invitación de `email` (ya normalizado): sirve una
 /// vez, por [`INVITE_DAYS`] días, para crear la cuenta. La pide el
@@ -253,6 +253,7 @@ pub async fn create_session(pool: &PgPool, user_id: Uuid) -> sqlx::Result<String
     .bind(SESSION_DAYS)
     .execute(pool)
     .await?;
+    claim_team_invites(pool, user_id).await?;
     Ok(token)
 }
 
@@ -293,7 +294,8 @@ pub async fn delete_session(pool: &PgPool, token: &str) -> sqlx::Result<()> {
     Ok(())
 }
 
-/// El rol de la persona en la tienda (`"owner"`), si tiene alguno.
+/// El rol de la persona en la tienda (`"owner"`, `"admin"` o `"editor"`), si
+/// tiene alguno.
 pub async fn role_in(
     pool: &PgPool,
     tenant_id: Uuid,
@@ -772,11 +774,13 @@ pub async fn load_allowlist(pool: &PgPool) -> sqlx::Result<(Vec<String>, Vec<Str
 }
 
 /// Habilita `email` (ya normalizado). Si estaba quitado, vuelve a entrar.
+/// Quien se habilita desde la Whitelist puede crear tiendas propias.
 pub async fn allow_email(pool: &PgPool, email: &str, by: Uuid) -> sqlx::Result<()> {
     sqlx::query(
         "INSERT INTO allowed_emails (email, status, added_by) VALUES ($1, 'allowed', $2)
          ON CONFLICT (email) DO UPDATE
-           SET status = 'allowed', added_by = $2, created_at = now(), updated_at = now()",
+           SET status = 'allowed', team_only = false, added_by = $2,
+               created_at = now(), updated_at = now()",
     )
     .bind(email)
     .bind(by)
@@ -977,4 +981,269 @@ pub async fn delete_user(pool: &PgPool, user: Uuid) -> sqlx::Result<Vec<String>>
         .await?;
     tx.commit().await?;
     Ok(alone.into_iter().map(|(_, s)| s).collect())
+}
+
+// ───────────────────────── Equipo de la tienda ─────────────────────────
+
+/// Los emails habilitados solo porque un dueño los invitó a su equipo.
+pub async fn load_team_only(pool: &PgPool) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar("SELECT email FROM allowed_emails WHERE status = 'allowed' AND team_only")
+        .fetch_all(pool)
+        .await
+}
+
+/// Una persona del equipo de una tienda, con la cuenta si ya la tiene.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TeamMember {
+    pub email: String,
+    pub name: String,
+    pub avatar_id: Option<Uuid>,
+    /// `"owner"`, `"admin"` o `"editor"`.
+    pub role: String,
+    /// Tiene cuenta y ya está en la tienda; si no, es una invitación pendiente.
+    pub joined: bool,
+    /// Segundos desde que se sumó o se la invitó.
+    pub since: i64,
+    /// Segundos desde la última vez que entró (solo si tiene cuenta).
+    pub last_seen: Option<i64>,
+    /// Segundos desde que se le mandó el email, si ya se le mandó.
+    pub sent: Option<i64>,
+}
+
+/// El equipo: el dueño primero, después administradores y editores, y al
+/// final las invitaciones pendientes.
+pub async fn team_members(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<TeamMember>> {
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(
+        String,
+        Option<String>,
+        Option<Uuid>,
+        String,
+        bool,
+        i64,
+        Option<i64>,
+        Option<i64>,
+    )> = sqlx::query_as(
+        "SELECT u.email, u.name, u.avatar_id, m.role, true,
+                    extract(epoch FROM now() - m.created_at)::bigint,
+                    (SELECT extract(epoch FROM now() - max(s.created_at))::bigint
+                       FROM sessions s WHERE s.user_id = u.id),
+                    NULL::bigint
+             FROM memberships m JOIN users u ON u.id = m.user_id
+             WHERE m.tenant_id = $1
+             UNION ALL
+             SELECT i.email, NULL, NULL, i.role, false,
+                    extract(epoch FROM now() - i.created_at)::bigint, NULL,
+                    extract(epoch FROM now() - i.sent_at)::bigint
+             FROM team_invites i WHERE i.tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_all(pool)
+    .await?;
+    let rank = |role: &str| match role {
+        "owner" => 0,
+        "admin" => 1,
+        _ => 2,
+    };
+    let mut team: Vec<TeamMember> = rows
+        .into_iter()
+        .map(
+            |(email, name, avatar_id, role, joined, since, last_seen, sent)| TeamMember {
+                email,
+                name: name.unwrap_or_default(),
+                avatar_id,
+                role,
+                joined,
+                since,
+                last_seen,
+                sent,
+            },
+        )
+        .collect();
+    team.sort_by_key(|m| (!m.joined, rank(&m.role), m.since));
+    Ok(team)
+}
+
+/// Qué pasó al sumar a alguien al equipo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TeamAdd {
+    /// Ya tenía cuenta: quedó en el equipo al instante.
+    Joined,
+    /// No tiene cuenta: queda pendiente hasta que la cree.
+    Pending,
+    /// Ya estaba en el equipo o ya tenía una invitación.
+    Already,
+    /// El email fue quitado de la Whitelist por el administrador.
+    Blocked,
+}
+
+/// Cuántas invitaciones pendientes puede tener una tienda a la vez.
+pub const TEAM_PENDING_MAX: i64 = 10;
+
+/// Suma a `email` (ya normalizado) al equipo de `tenant` con `role`
+/// (`"admin"` o `"editor"`). Si no tiene cuenta, queda invitado y habilitado
+/// para crearla (solo para trabajar en equipos). `None` si hay demasiadas
+/// invitaciones pendientes.
+pub async fn add_team_member(
+    pool: &PgPool,
+    tenant: Uuid,
+    email: &str,
+    role: &str,
+    by: Uuid,
+) -> sqlx::Result<Option<TeamAdd>> {
+    let mut tx = pool.begin().await?;
+    let blocked: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM allowed_emails WHERE email = $1 AND status = 'removed')",
+    )
+    .bind(email)
+    .fetch_one(&mut *tx)
+    .await?;
+    if blocked {
+        return Ok(Some(TeamAdd::Blocked));
+    }
+    let user: Option<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE email = $1")
+        .bind(email)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if let Some(user) = user {
+        let done = sqlx::query(
+            "INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, $3)
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(tenant)
+        .bind(user)
+        .bind(role)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        return Ok(Some(if done.rows_affected() == 1 {
+            TeamAdd::Joined
+        } else {
+            TeamAdd::Already
+        }));
+    }
+    let pending: i64 = sqlx::query_scalar("SELECT count(*) FROM team_invites WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_one(&mut *tx)
+        .await?;
+    let done = sqlx::query(
+        "INSERT INTO team_invites (tenant_id, email, role, invited_by)
+         SELECT $1, $2, $3, $4 WHERE $5 < $6
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(tenant)
+    .bind(email)
+    .bind(role)
+    .bind(by)
+    .bind(pending)
+    .bind(TEAM_PENDING_MAX)
+    .execute(&mut *tx)
+    .await?;
+    if done.rows_affected() == 0 {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM team_invites WHERE tenant_id = $1 AND email = $2)",
+        )
+        .bind(tenant)
+        .bind(email)
+        .fetch_one(&mut *tx)
+        .await?;
+        return Ok(exists.then_some(TeamAdd::Already));
+    }
+    // Habilita el email para crear la cuenta, sin darle permiso para crear tiendas.
+    sqlx::query(
+        "INSERT INTO allowed_emails (email, status, added_by, team_only)
+         VALUES ($1, 'allowed', $2, true)
+         ON CONFLICT (email) DO NOTHING",
+    )
+    .bind(email)
+    .bind(by)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Some(TeamAdd::Pending))
+}
+
+/// Anota que se le mandó el email de invitación a `email`.
+pub async fn mark_team_invite_sent(pool: &PgPool, tenant: Uuid, email: &str) -> sqlx::Result<()> {
+    sqlx::query("UPDATE team_invites SET sent_at = now() WHERE tenant_id = $1 AND email = $2")
+        .bind(tenant)
+        .bind(email)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// El rol que tendrá `email` en la tienda: el de su invitación pendiente.
+pub async fn pending_team_role(
+    pool: &PgPool,
+    tenant: Uuid,
+    email: &str,
+) -> sqlx::Result<Option<String>> {
+    sqlx::query_scalar("SELECT role FROM team_invites WHERE tenant_id = $1 AND email = $2")
+        .bind(tenant)
+        .bind(email)
+        .fetch_optional(pool)
+        .await
+}
+
+/// Cambia el rol de alguien del equipo (nunca del dueño). `false` si no está.
+pub async fn set_team_role(
+    pool: &PgPool,
+    tenant: Uuid,
+    email: &str,
+    role: &str,
+) -> sqlx::Result<bool> {
+    let a = sqlx::query(
+        "UPDATE memberships m SET role = $3 FROM users u
+         WHERE m.user_id = u.id AND m.tenant_id = $1 AND u.email = $2 AND m.role <> 'owner'",
+    )
+    .bind(tenant)
+    .bind(email)
+    .bind(role)
+    .execute(pool)
+    .await?;
+    let b = sqlx::query("UPDATE team_invites SET role = $3 WHERE tenant_id = $1 AND email = $2")
+        .bind(tenant)
+        .bind(email)
+        .bind(role)
+        .execute(pool)
+        .await?;
+    Ok(a.rows_affected() + b.rows_affected() > 0)
+}
+
+/// Saca a alguien del equipo o anula su invitación (nunca al dueño). Sus
+/// sesiones siguen, pero ya no ve la tienda. `false` si no estaba.
+pub async fn remove_team_member(pool: &PgPool, tenant: Uuid, email: &str) -> sqlx::Result<bool> {
+    let a = sqlx::query(
+        "DELETE FROM memberships m USING users u
+         WHERE m.user_id = u.id AND m.tenant_id = $1 AND u.email = $2 AND m.role <> 'owner'",
+    )
+    .bind(tenant)
+    .bind(email)
+    .execute(pool)
+    .await?;
+    let b = sqlx::query("DELETE FROM team_invites WHERE tenant_id = $1 AND email = $2")
+        .bind(tenant)
+        .bind(email)
+        .execute(pool)
+        .await?;
+    Ok(a.rows_affected() + b.rows_affected() > 0)
+}
+
+/// Pasa las invitaciones pendientes de la cuenta a equipos de verdad. Se
+/// llama al abrir una sesión: así sirve para cualquier forma de entrar.
+pub async fn claim_team_invites(pool: &PgPool, user_id: Uuid) -> sqlx::Result<()> {
+    sqlx::query(
+        "WITH mine AS (
+           DELETE FROM team_invites i USING users u
+           WHERE u.id = $1 AND i.email = u.email
+           RETURNING i.tenant_id, i.role)
+         INSERT INTO memberships (tenant_id, user_id, role)
+         SELECT tenant_id, $1, role FROM mine
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

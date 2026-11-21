@@ -11,7 +11,7 @@ use ui::{format_price, Image};
 #[server]
 pub async fn store_orders(slug: String) -> Result<Option<(String, Vec<Order>)>, ServerFnError> {
     use crate::server::{internal, pool};
-    let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
+    let Some(tenant) = crate::products::server::owned_store_min(&slug, "admin").await? else {
         return Ok(None);
     };
     let orders = db::orders::list(&pool()?, tenant.id)
@@ -29,7 +29,7 @@ pub async fn move_order(
     status: OrderStatus,
 ) -> Result<Option<Order>, ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
     let pool = pool()?;
     let before = db::orders::get(&pool, tenant.id, id)
@@ -110,7 +110,7 @@ async fn tell_buyer(
 /// "Reintentar": vuelve a crear en Andreani el envío que falló.
 #[server]
 pub async fn retry_shipment(slug: String, id: String) -> Result<Option<Order>, ServerFnError> {
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
     Ok(crate::shipments::ship_order(&crate::server::pool()?, tenant.id, id).await)
 }
@@ -119,7 +119,7 @@ pub async fn retry_shipment(slug: String, id: String) -> Result<Option<Order>, S
 #[server]
 pub async fn refresh_shipment(slug: String, id: String) -> Result<Option<Order>, ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Ese pedido no existe."))?;
     let pool = pool()?;
     let Some(o) = db::orders::get(&pool, tenant.id, id)

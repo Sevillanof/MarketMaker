@@ -12,8 +12,18 @@ pub(crate) mod server {
     use crate::server::{internal, pool};
     use leptos::prelude::ServerFnError;
 
-    /// La tienda `slug`, si quien entró es su dueño. `Ok(None)` si no entró.
+    /// La tienda `slug`, si quien entró está en su equipo (cualquier rol).
+    /// `Ok(None)` si no entró.
     pub async fn owned_store(slug: &str) -> Result<Option<db::Tenant>, ServerFnError> {
+        owned_store_min(slug, "editor").await
+    }
+
+    /// Como [`owned_store`], pero pide al menos el rol `min` (`editor`, `admin`
+    /// u `owner`). Pedidos, entregas, cobros y cupones piden `admin`.
+    pub async fn owned_store_min(
+        slug: &str,
+        min: &str,
+    ) -> Result<Option<db::Tenant>, ServerFnError> {
         let Some(user) = crate::auth::current_user().await? else {
             return Ok(None);
         };
@@ -26,13 +36,20 @@ pub(crate) mod server {
             .await
             .map_err(internal)?
         {
-            Some(_) => Ok(Some(tenant)),
+            Some(role) if domain::role_rank(&role) >= domain::role_rank(min) => Ok(Some(tenant)),
+            Some(_) => Err(ServerFnError::new(
+                "Tu rol en esta tienda no alcanza para hacer esto.",
+            )),
             None => Err(ServerFnError::new("Tu cuenta no puede editar esta tienda.")),
         }
     }
 
     pub async fn require_store(slug: &str) -> Result<db::Tenant, ServerFnError> {
-        owned_store(slug)
+        require_store_min(slug, "editor").await
+    }
+
+    pub async fn require_store_min(slug: &str, min: &str) -> Result<db::Tenant, ServerFnError> {
+        owned_store_min(slug, min)
             .await?
             .ok_or_else(|| ServerFnError::new("Tenés que entrar con tu cuenta."))
     }
