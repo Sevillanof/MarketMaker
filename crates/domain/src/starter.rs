@@ -290,3 +290,28 @@ mod tests {
         }
     }
 }
+
+/// Como [`placeholder_nodes`], pero sin contar lo que la tienda ya completa
+/// sola: la frase del pie (si hay una en Datos de la tienda) y su «©
+/// Nombre de tu tienda» (si la tienda tiene nombre).
+pub fn placeholder_nodes_for(doc: &PageDoc, store: &crate::StoreInfo) -> Vec<PlaceholderNode> {
+    let mut doc = doc.clone();
+    let fix = |nodes: &mut Vec<Node>| {
+        for n in nodes.iter_mut() {
+            if let crate::Widget::Footer(f) = &mut n.widget {
+                if is_placeholder(f.description.trim()) && !store.tagline.trim().is_empty() {
+                    f.description.clear();
+                }
+                if f.legal.ends_with("Nombre de tu tienda") && !store.name.trim().is_empty() {
+                    f.legal.clear();
+                }
+            }
+        }
+    };
+    fix(&mut doc.nodes);
+    fix(&mut doc.product_modal.nodes);
+    for p in &mut doc.pages {
+        fix(&mut p.nodes);
+    }
+    placeholder_nodes(&doc)
+}

@@ -220,6 +220,10 @@ pub async fn product_to_edit(
             .map_err(internal)?
             .is_some(),
         store_url: crate::email::store_url(&slug),
+        published: db::get_current_page(&pool, tenant.id, "home")
+            .await
+            .map_err(internal)?
+            .is_some_and(|p| p.published > 0),
     }))
 }
 
@@ -1307,6 +1311,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     // El nombre del producto recién creado: muestra qué hacer después.
     let created = RwSignal::new(None::<(String, bool)>);
     let store_url = edit.store_url.clone();
+    let published = edit.published;
     // Cualquier cambio en el formulario saca el "Guardado".
     Effect::new(move |first: Option<()>| {
         form.name.track();
@@ -1482,7 +1487,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             view! {
                 <div role="status" class="flex flex-wrap items-center gap-3 rounded-box border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
                     <span class="grid size-7 shrink-0 place-items-center rounded-full bg-success text-success-content"><ui::Icon class="size-[18px]" name="check"/></span>
-                    <p class="min-w-0 grow"><b>{format!("Creaste «{name}».")}</b>{if shown { " Ya está en tu tienda." } else { " Está oculto: tus clientes no lo ven hasta que lo muestres." }}</p>
+                    <p class="min-w-0 grow"><b>{format!("Creaste «{name}».")}</b>{if !shown { " Está oculto: tus clientes no lo ven hasta que lo muestres." } else if published { " Ya está en tu tienda." } else { " Se va a ver cuando publiques la tienda." }}</p>
                     // Recarga entera: el formulario arranca vacío.
                     <a class="btn btn-primary btn-sm" href=again rel="external">"+ Cargar otro producto"</a>
                     <a class="btn btn-outline btn-sm" href=store target="_blank" rel="noopener">

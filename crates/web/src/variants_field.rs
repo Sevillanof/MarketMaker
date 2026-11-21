@@ -307,7 +307,16 @@ pub fn VariantsField(form: VariantsForm, photos: RwSignal<Vec<String>>) -> impl 
                                         <input class="input input-sm w-44 font-semibold" placeholder="Nombre, ej. Azul"
                                             maxlength=domain::VARIANT_NAME_MAX aria-label="Nombre del color"
                                             prop:value=move || r.name.get()
-                                            on:input=move |ev| r.name.set(event_target_value(&ev))/>
+                                            on:input=move |ev| {
+                                                let v = event_target_value(&ev);
+                                                // Mientras el punto siga con el color de arranque, toma el del nombre.
+                                                if r.hex.with_untracked(|h| h.is_empty() || SWATCHES.contains(&h.as_str()) || r.name.with_untracked(|n| domain::color_hex_for_name(n) == Some(h.as_str()))) {
+                                                    if let Some(h) = domain::color_hex_for_name(&v) {
+                                                        r.hex.set(h.to_string());
+                                                    }
+                                                }
+                                                r.name.set(v);
+                                            }/>
                                         <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70"
                                             on:click=move |_| form.remove_color(r.uid)>"✕ Quitar color"</button>
                                     </div>

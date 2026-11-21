@@ -278,8 +278,8 @@ fn Included() -> impl IntoView {
 fn Faq() -> impl IntoView {
     let questions = [
         ("¿Necesito saber programar?", "No. Todo se hace con clics y arrastrando bloques. Lo que ves en el editor es lo que ven tus clientes."),
-        ("¿Cómo me pagan?", "Vinculás tu cuenta de Mercado Pago una vez y cada compra se cobra ahí, directo a tu cuenta. También podés aceptar pagos al retirar."),
-        ("¿Mis clientes necesitan una cuenta para comprar?", "No. Eligen sus productos, dejan sus datos y pagan. La cuenta es solo para quien arma la tienda."),
+        ("¿Cómo me pagan?", "Con Mercado Pago, que vinculás una vez y cobra directo a tu cuenta, con transferencia a tu alias o acordando el pago con cada cliente. Elegís cuáles ofrecer."),
+        ("¿Mis clientes necesitan una cuenta para comprar?", "No. Eligen sus productos, dejan sus datos y pagan. Si quieren, después entran con su email para ver sus pedidos y guardar favoritos."),
         ("¿Puedo usar mi propio dominio?", "Por ahora cada tienda vive en su dirección nombre.mkr.com.ar, con candado de seguridad incluido. El dominio propio llega más adelante."),
     ];
     view! {

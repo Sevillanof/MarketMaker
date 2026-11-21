@@ -103,7 +103,28 @@ mod ssr {
 /// Quién entró a la cuenta de esta tienda. `None` si nadie.
 #[server]
 pub async fn buyer_account() -> Result<Option<BuyerMe>, ServerFnError> {
-    Ok(current_buyer().await?.map(|(_, b)| to_me(b)))
+    let Some((tenant, b)) = current_buyer().await? else {
+        return Ok(None);
+    };
+    let mut me = to_me(b);
+    // Todavía no guardó sus datos: arranca con los de su última compra.
+    if me.name.is_empty() && me.phone.is_empty() && me.address.is_empty() {
+        let orders = db::orders::list_for_email(&pool()?, tenant.id, &me.email)
+            .await
+            .map_err(internal)?;
+        if let Some(o) = orders.first() {
+            me.name = o.customer_name.clone();
+            me.phone = o.phone.clone();
+            if o.delivery != domain::Delivery::Pickup
+                && o.shipment.as_ref().is_none_or(|s| s.branch_code.is_empty())
+            {
+                me.address = o.address.clone();
+                me.postal_code = o.postal_code.clone();
+                me.city = o.city.clone();
+            }
+        }
+    }
+    Ok(Some(me))
 }
 
 /// Manda al email un enlace para entrar a la cuenta de esta tienda. La

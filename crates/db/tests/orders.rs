@@ -379,6 +379,7 @@ async fn variant_stock_goes_down_per_combo_and_back_on_cancel(pool: PgPool) {
     let t = tenant(&pool, "zapas").await;
     let mut p = Product {
         name: "Zapatillas".into(),
+        price_cents: 5_000_000,
         ..Product::default()
     };
     p.variants = domain::Variants {

@@ -723,6 +723,16 @@ impl OrderStatus {
             OrderStatus::Cancelled => "Cancelado",
         }
     }
+
+    /// Como [`OrderStatus::label`], pero un pedido que se retira en el local
+    /// no se «envía»: queda listo para retirar.
+    pub fn label_for(self, delivery: Delivery) -> &'static str {
+        match (self, delivery) {
+            (OrderStatus::Shipped, Delivery::Pickup) => "Listo para retirar",
+            (OrderStatus::Delivered, Delivery::Pickup) => "Retirado",
+            _ => self.label(),
+        }
+    }
 }
 
 /// Un pedido, para mostrarlo.
@@ -932,6 +942,24 @@ pub fn order_time_ar(created_at: &str) -> String {
     format!("{d:02}/{mo:02} {:02}:{:02}", mins / 60, mins % 60)
 }
 
+/// El día de un pedido en Argentina: (día, mes, año). Una compra de las
+/// 22:42 del 20/11 queda en el 20/11 aunque en UTC ya sea el 21.
+pub fn order_day_ar(created_at: &str) -> Option<(u32, usize, u32)> {
+    let num = |a: usize, b: usize| created_at.get(a..b).and_then(|t| t.parse::<i64>().ok());
+    let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    if !(1..=12).contains(&mo) {
+        return None;
+    }
+    // Sin hora (solo la fecha), el día queda como viene.
+    let mins = match (num(11, 13), num(14, 16)) {
+        (Some(h), Some(mi)) => h * 60 + mi - 180,
+        _ => 0,
+    };
+    let days = days_from_civil(y, mo, d) + mins.div_euclid(1440);
+    let (y, mo, d) = civil_from_days(days);
+    Some((d as u32, mo as usize, y as u32))
+}
+
 // Algoritmos de Howard Hinnant para pasar de fecha a días y al revés.
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
@@ -958,6 +986,23 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn order_day_is_argentine() {
+        assert_eq!(
+            super::order_day_ar("2026-11-21T01:42:00Z"),
+            Some((20, 11, 2026))
+        );
+        assert_eq!(
+            super::order_day_ar("2026-11-21T03:00:00Z"),
+            Some((21, 11, 2026))
+        );
+        assert_eq!(
+            super::order_day_ar("2027-01-01T02:00:00.123Z"),
+            Some((31, 12, 2026))
+        );
+        assert_eq!(super::order_day_ar("2026-11-21"), Some((21, 11, 2026)));
+    }
+
     use super::*;
 
     #[test]

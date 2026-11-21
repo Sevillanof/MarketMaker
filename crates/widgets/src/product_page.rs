@@ -559,12 +559,13 @@ pub fn ColorDots(product: Product) -> impl IntoView {
         }
         .into_any();
     }
+    let word = domain::size_word(&v.sizes);
     match (v.sizes.first(), v.sizes.last()) {
         (Some(a), Some(z)) if a != z => view! {
-            <p class="mk-cdots mt-1.5 min-h-4 truncate text-xs opacity-70">{format!("Talles {a} al {z}")}</p>
+            <p class="mk-cdots mt-1.5 min-h-4 truncate text-xs opacity-70">{format!("{word}s {a} al {z}")}</p>
         }
         .into_any(),
-        (Some(a), _) => view! { <p class="mk-cdots mt-1.5 min-h-4 truncate text-xs opacity-70">{format!("Talle {a}")}</p> }.into_any(),
+        (Some(a), _) => view! { <p class="mk-cdots mt-1.5 min-h-4 truncate text-xs opacity-70">{format!("{word} {a}")}</p> }.into_any(),
         // Sin variantes: un renglón vacío que solo ocupa lugar si otra
         // tarjeta del mismo bloque muestra colores o talles (ver
         // `.mk-cdots-none` en el CSS). Así todas las fotos de la fila quedan
@@ -725,6 +726,7 @@ pub fn VariantBuy(
     let v = product.variants.clone();
     let colors = v.colors.clone();
     let sizes = v.sizes.clone();
+    let size_word = domain::size_word(&sizes);
     let need_color = !colors.is_empty();
     let need_size = !sizes.is_empty();
     if colors.len() == 1 && pick.color.get_untracked().is_empty() {
@@ -765,9 +767,13 @@ pub fn VariantBuy(
         need_color && pick.color.get().is_empty(),
         need_size && pick.size.get().is_empty(),
     ) {
-        (true, true) => "Elegí un color y un talle para agregarlo al carrito.",
+        (true, true) if size_word == "Talle" => {
+            "Elegí un color y un talle para agregarlo al carrito."
+        }
+        (true, true) => "Elegí un color y un tamaño para agregarlo al carrito.",
         (true, false) => "Elegí un color para agregarlo al carrito.",
-        (false, true) => "Elegí un talle para agregarlo al carrito.",
+        (false, true) if size_word == "Talle" => "Elegí un talle para agregarlo al carrito.",
+        (false, true) => "Elegí un tamaño para agregarlo al carrito.",
         _ => "",
     };
     let group = format!("mk-var-{}", product.id);
@@ -818,7 +824,7 @@ pub fn VariantBuy(
         let name_attr = format!("{group}-size");
         view! {
             <fieldset class="mk-pvar-set">
-                <legend class="mk-pvar-lbl">"Talle: " <span>{move || { let s = pick.size.get(); if s.is_empty() { "elegí uno".to_string() } else { s } }}</span></legend>
+                <legend class="mk-pvar-lbl">{size_word}": " <span>{move || { let s = pick.size.get(); if s.is_empty() { "elegí uno".to_string() } else { s } }}</span></legend>
                 <div class="mk-psizes">
                     {sizes.into_iter().map(|s| {
                         let s2 = s.clone();
