@@ -61,12 +61,15 @@ pub async fn load_panel_nav() -> Result<Option<PanelNav>, ServerFnError> {
                 .iter()
                 .find(|(s, _)| *s == r.slug)
                 .map_or(0, |(_, n)| *n),
+            role: r.role,
             name: r.name,
             slug: r.slug,
         })
         .collect();
     let is_admin = crate::auth::is_admin(&user.email);
+    let can_create = crate::auth::may_create_stores(&user.email);
     Ok(Some(PanelNav {
+        can_create,
         email: user.email,
         name: user.name,
         avatar: user.avatar_id.map(domain::avatar_url),
@@ -89,6 +92,42 @@ pub async fn load_store_overview(slug: String) -> Result<Option<StoreOverview>, 
     let publish = page.map_or(PublishState::Never, |p| {
         PublishState::of(p.version, p.published)
     });
+    // Un editor ve el estado de la tienda, pero no las ventas ni los cobros.
+    let user = crate::auth::current_user().await?;
+    let is_editor = match user {
+        Some(u) => {
+            db::auth::role_in(&pool, tenant.id, u.id)
+                .await
+                .map_err(internal)?
+                .as_deref()
+                == Some("editor")
+        }
+        None => false,
+    };
+    if is_editor {
+        return Ok(Some(StoreOverview {
+            url: crate::stores::store_url(&tenant.slug),
+            name: tenant.name,
+            slug: tenant.slug,
+            publish,
+            awaiting_payment: 0,
+            to_prepare: 0,
+            month_orders: 0,
+            month_cents: 0,
+            products: db::products::count_real_visible(&pool, tenant.id)
+                .await
+                .map_err(internal)?,
+            examples: 0,
+            out_of_stock: db::products::out_of_stock(&pool, tenant.id)
+                .await
+                .map_err(internal)?,
+            delivery_ready: false,
+            mp_linked: false,
+            pay_ready: false,
+            recent: Vec::new(),
+            restricted: true,
+        }));
+    }
     let sums = db::orders::summary(&pool, tenant.id)
         .await
         .map_err(internal)?;
@@ -129,6 +168,7 @@ pub async fn load_store_overview(slug: String) -> Result<Option<StoreOverview>, 
         recent: db::orders::recent(&pool, tenant.id, 5)
             .await
             .map_err(internal)?,
+        restricted: false,
     }))
 }
 
@@ -420,6 +460,11 @@ fn SideNav(
         .find(|s| s.slug == slug)
         .or(nav.stores.first())
         .cloned();
+    // Un editor no ve pedidos, entregas, cobros ni cupones.
+    let can_sell = current
+        .as_ref()
+        .is_some_and(|c| domain::role_rank(&c.role) >= domain::role_rank("admin"));
+    let can_create = nav.can_create;
     let (open, open_problem) = editor_opener();
     let out = Action::new(|_: &()| crate::auth::sign_out());
     Effect::new(move |_| {
@@ -495,11 +540,13 @@ fn SideNav(
                             </a></li>
                         }
                     }).collect_view()}
-                    <li class="mt-1 border-t border-base-300 pt-1">
-                        <button type="button" class="font-semibold text-primary" on:click=open_dialog>
-                            <ui::Icon class="size-[18px]" name="plus"/>"Crear tienda"
-                        </button>
-                    </li>
+                    {can_create.then(|| view! {
+                        <li class="mt-1 border-t border-base-300 pt-1">
+                            <button type="button" class="font-semibold text-primary" on:click=open_dialog>
+                                <ui::Icon class="size-[18px]" name="plus"/>"Crear tienda"
+                            </button>
+                        </li>
+                    })}
                 </ul>
             </details>
         }
@@ -538,11 +585,11 @@ fn SideNav(
                     </button>
                 </li>
                 {item(Section::Products, format!("{base}/productos"), "box", "Productos", 0)}
-                {item(Section::Orders, format!("{base}/pedidos"), "bag", "Pedidos", to_prepare)}
-                <li class="menu-title mt-3 text-base-content/75">"Cómo vendés"</li>
-                {item(Section::Delivery, format!("{base}/ventas"), "truck", "Entregas", 0)}
-                {item(Section::Payments, format!("{base}/cobros"), "card", "Cobros", 0)}
-                {item(Section::Coupons, format!("{base}/cupones"), "ticket", "Cupones", 0)}
+                {can_sell.then(|| item(Section::Orders, format!("{base}/pedidos"), "bag", "Pedidos", to_prepare))}
+                {can_sell.then(|| view! { <li class="menu-title mt-3 text-base-content/75">"Cómo vendés"</li> })}
+                {can_sell.then(|| item(Section::Delivery, format!("{base}/ventas"), "truck", "Entregas", 0))}
+                {can_sell.then(|| item(Section::Payments, format!("{base}/cobros"), "card", "Cobros", 0))}
+                {can_sell.then(|| item(Section::Coupons, format!("{base}/cupones"), "ticket", "Cupones", 0))}
                 {item(Section::StoreInfo, format!("{base}/datos"), "store", "Datos de la tienda", 0)}
                 <li class="menu-title mt-3 text-base-content/75">"Tu cuenta"</li>
                 {item(Section::Photos, format!("/mis-fotos?tienda={s}"), "photo", "Mis fotos", 0)}
@@ -703,6 +750,9 @@ fn ExamplesNotice(slug: String, count: i64) -> impl IntoView {
 
 #[component]
 fn Overview(o: StoreOverview) -> impl IntoView {
+    if o.restricted {
+        return view! { <EditorHome o/> }.into_any();
+    }
     let (open, open_problem) = editor_opener();
     let base = format!("/tienda/{}", o.slug);
     let address = o
@@ -959,6 +1009,50 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                     </div>
                 </section>
             })}
+        </div>
+    }
+    .into_any()
+}
+
+/// Inicio de un editor: el estado de la tienda y sus dos tareas, sin ventas.
+#[component]
+fn EditorHome(o: StoreOverview) -> impl IntoView {
+    let (open, open_problem) = editor_opener();
+    let base = format!("/tienda/{}", o.slug);
+    let slug = o.slug.clone();
+    let address = o
+        .url
+        .split_once("://")
+        .map_or(o.url.clone(), |(_, a)| a.to_string());
+    let products = match o.products {
+        0 => "Todavía no hay productos".to_string(),
+        1 => "1 producto".to_string(),
+        n => format!("{n} productos"),
+    };
+    view! {
+        <div class="flex flex-col gap-6">
+            <div>
+                <h1 class="text-3xl font-extrabold max-sm:text-2xl">{o.name.clone()}</h1>
+                <p class="text-base-content/70">{address}</p>
+            </div>
+            {move || open_problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
+            <div class="grid gap-4 sm:grid-cols-2">
+                <section class="card border border-base-300 bg-base-100" aria-labelledby="editor-productos">
+                    <div class="card-body gap-3 p-5">
+                        <h2 id="editor-productos" class="text-lg font-bold">"Productos"</h2>
+                        <p class="text-sm text-base-content/70">{products}</p>
+                        <a class="btn btn-primary self-start" href=format!("{base}/productos")>"Cargar productos"</a>
+                    </div>
+                </section>
+                <section class="card border border-base-300 bg-base-100 max-sm:hidden" aria-labelledby="editor-diseno">
+                    <div class="card-body gap-3 p-5">
+                        <h2 id="editor-diseno" class="text-lg font-bold">"Diseño"</h2>
+                        <p class="text-sm text-base-content/70">"Cambiá cómo se ve la tienda."</p>
+                        <button type="button" class="btn self-start" disabled=move || open.pending().get()
+                            on:click=move |_| { open.dispatch(slug.clone()); }>"Abrir el editor"</button>
+                    </div>
+                </section>
+            </div>
         </div>
     }
 }

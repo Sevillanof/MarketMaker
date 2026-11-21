@@ -8,7 +8,7 @@ use leptos::prelude::*;
 #[server]
 pub async fn store_coupons(slug: String) -> Result<Option<CouponsInfo>, ServerFnError> {
     use crate::server::{internal, pool};
-    let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
+    let Some(tenant) = crate::products::server::owned_store_min(&slug, "admin").await? else {
         return Ok(None);
     };
     let pool = pool()?;
@@ -26,7 +26,7 @@ pub async fn store_coupons(slug: String) -> Result<Option<CouponsInfo>, ServerFn
 #[server]
 pub async fn save_coupon(slug: String, form: CouponForm) -> Result<CouponSaved, ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let pool = pool()?;
     let coupon = match domain::tidy_coupon(&form) {
         Ok(c) => c,
@@ -88,7 +88,7 @@ pub async fn set_coupon_active(
     active: bool,
 ) -> Result<(), ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Cupón inválido."))?;
     db::coupons::set_active(&pool()?, tenant.id, id, active)
         .await
@@ -99,7 +99,7 @@ pub async fn set_coupon_active(
 #[server]
 pub async fn delete_coupon(slug: String, id: String) -> Result<(), ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ServerFnError::new("Cupón inválido."))?;
     db::coupons::delete(&pool()?, tenant.id, id)
         .await

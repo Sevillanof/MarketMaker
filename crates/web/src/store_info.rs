@@ -84,6 +84,7 @@ pub fn StoreInfoPage() -> impl IntoView {
                                 let admin = admin.await.ok().flatten();
                                 view! {
                                     <StoreInfoEditor slug=slug.get_untracked() form/>
+                                    <crate::team::TeamCard slug=slug.get_untracked()/>
                                     {admin.map(|(rest, paused)| view! {
                                         <StoreAdminCard slug=slug.get_untracked() name rest paused/>
                                     })}
@@ -368,6 +369,19 @@ pub async fn store_admin(slug: String) -> Result<Option<(String, bool)>, ServerF
     let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
         return Ok(None);
     };
+    // Pausar, cambiar la dirección y borrar son solo del dueño.
+    let me = crate::auth::current_user().await?;
+    let is_owner = match me {
+        Some(u) => db::auth::role_in(&pool()?, tenant.id, u.id)
+            .await
+            .map_err(internal)?
+            .as_deref()
+            == Some("owner"),
+        None => false,
+    };
+    if !is_owner {
+        return Ok(None);
+    }
     let paused = db::auth::store_paused(&pool()?, tenant.id)
         .await
         .map_err(internal)?;
@@ -379,7 +393,7 @@ pub async fn store_admin(slug: String) -> Result<Option<(String, bool)>, ServerF
 
 #[server]
 pub async fn pause_store(slug: String, paused: bool) -> Result<(), ServerFnError> {
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "owner").await?;
     db::auth::set_store_paused(&crate::server::pool()?, tenant.id, paused)
         .await
         .map_err(crate::server::internal)
@@ -391,7 +405,7 @@ pub async fn change_store_slug(
     slug: String,
     new_slug: String,
 ) -> Result<Result<String, String>, ServerFnError> {
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "owner").await?;
     let new_slug = new_slug.trim().to_lowercase();
     if new_slug == tenant.slug {
         return Ok(Ok(new_slug));
@@ -415,7 +429,7 @@ pub async fn delete_store(
     slug: String,
     typed: String,
 ) -> Result<Result<(), String>, ServerFnError> {
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "owner").await?;
     let norm = |s: &str| {
         s.split_whitespace()
             .collect::<Vec<_>>()

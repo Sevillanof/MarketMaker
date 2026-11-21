@@ -86,6 +86,11 @@ pub async fn create_store(
     let user = crate::auth::current_user().await?.ok_or_else(|| {
         ServerFnError::new("Tenés que entrar con tu cuenta para crear una tienda.")
     })?;
+    if !crate::auth::may_create_stores(&user.email) {
+        return Ok(NewStoreOutcome::Problem(
+            "Tu cuenta es parte de un equipo y no puede crear tiendas propias. Escribinos a hola@mkr.com.ar si querés tener la tuya.".into(),
+        ));
+    }
     let name = name.trim().to_string();
     if name.is_empty() {
         return Ok(NewStoreOutcome::Problem(

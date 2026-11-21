@@ -434,3 +434,157 @@ async fn whitelist_adds_and_removes_emails(pool: PgPool) {
     assert!(!m[0].has_account && m[0].added.is_some());
     assert!(m[1].has_account && m[1].joined.is_some());
 }
+
+// ───────────── Equipo de la tienda ─────────────
+
+async fn user(pool: &PgPool, email: &str) -> uuid::Uuid {
+    sqlx::query_scalar("INSERT INTO users (email) VALUES ($1) RETURNING id")
+        .bind(email)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn team_invite_for_new_account_waits_and_then_joins(pool: PgPool) {
+    let tenant = get_tenant_by_slug(&pool, "demo").await.unwrap().unwrap();
+    let owner = user(&pool, "duena@correo.com").await;
+    claim_if_ownerless(&pool, tenant.id, owner).await.unwrap();
+
+    let added = add_team_member(&pool, tenant.id, "sofi@correo.com", "editor", owner)
+        .await
+        .unwrap();
+    assert_eq!(added, Some(TeamAdd::Pending));
+    // Queda habilitada para crear la cuenta, pero solo para trabajar en equipo.
+    assert_eq!(
+        load_team_only(&pool).await.unwrap(),
+        vec!["sofi@correo.com"]
+    );
+    // Repetir la invitación no la duplica.
+    assert_eq!(
+        add_team_member(&pool, tenant.id, "sofi@correo.com", "editor", owner)
+            .await
+            .unwrap(),
+        Some(TeamAdd::Already)
+    );
+    let team = team_members(&pool, tenant.id).await.unwrap();
+    assert_eq!(team[0].role, "owner");
+    assert!(!team[1].joined);
+
+    // Al crear la cuenta y abrir una sesión, entra al equipo con su rol.
+    let sofi = user(&pool, "sofi@correo.com").await;
+    create_session(&pool, sofi).await.unwrap();
+    assert_eq!(
+        role_in(&pool, tenant.id, sofi).await.unwrap().as_deref(),
+        Some("editor")
+    );
+    assert!(team_members(&pool, tenant.id)
+        .await
+        .unwrap()
+        .iter()
+        .all(|m| m.joined));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn team_invite_for_existing_account_joins_at_once(pool: PgPool) {
+    let tenant = get_tenant_by_slug(&pool, "demo").await.unwrap().unwrap();
+    let owner = user(&pool, "duena@correo.com").await;
+    claim_if_ownerless(&pool, tenant.id, owner).await.unwrap();
+    let martin = user(&pool, "martin@correo.com").await;
+    assert_eq!(
+        add_team_member(&pool, tenant.id, "martin@correo.com", "admin", owner)
+            .await
+            .unwrap(),
+        Some(TeamAdd::Joined)
+    );
+    assert_eq!(
+        role_in(&pool, tenant.id, martin).await.unwrap().as_deref(),
+        Some("admin")
+    );
+    // Tenía cuenta: no se la marca como "solo equipo".
+    assert!(load_team_only(&pool).await.unwrap().is_empty());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn team_roles_change_and_the_owner_is_untouchable(pool: PgPool) {
+    let tenant = get_tenant_by_slug(&pool, "demo").await.unwrap().unwrap();
+    let owner = user(&pool, "duena@correo.com").await;
+    claim_if_ownerless(&pool, tenant.id, owner).await.unwrap();
+    let lu = user(&pool, "lu@correo.com").await;
+    add_team_member(&pool, tenant.id, "lu@correo.com", "editor", owner)
+        .await
+        .unwrap();
+    assert!(set_team_role(&pool, tenant.id, "lu@correo.com", "admin")
+        .await
+        .unwrap());
+    assert_eq!(
+        role_in(&pool, tenant.id, lu).await.unwrap().as_deref(),
+        Some("admin")
+    );
+    // El dueño no cambia ni se quita.
+    assert!(
+        !set_team_role(&pool, tenant.id, "duena@correo.com", "editor")
+            .await
+            .unwrap()
+    );
+    assert!(!remove_team_member(&pool, tenant.id, "duena@correo.com")
+        .await
+        .unwrap());
+    assert_eq!(
+        role_in(&pool, tenant.id, owner).await.unwrap().as_deref(),
+        Some("owner")
+    );
+    // Quitarla le saca el acceso.
+    assert!(remove_team_member(&pool, tenant.id, "lu@correo.com")
+        .await
+        .unwrap());
+    assert_eq!(role_in(&pool, tenant.id, lu).await.unwrap(), None);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn team_has_a_pending_limit_and_respects_removed_emails(pool: PgPool) {
+    let tenant = get_tenant_by_slug(&pool, "demo").await.unwrap().unwrap();
+    let owner = user(&pool, "duena@correo.com").await;
+    claim_if_ownerless(&pool, tenant.id, owner).await.unwrap();
+    for i in 0..TEAM_PENDING_MAX {
+        let e = format!("p{i}@correo.com");
+        assert_eq!(
+            add_team_member(&pool, tenant.id, &e, "editor", owner)
+                .await
+                .unwrap(),
+            Some(TeamAdd::Pending)
+        );
+    }
+    assert_eq!(
+        add_team_member(&pool, tenant.id, "otra@correo.com", "editor", owner)
+            .await
+            .unwrap(),
+        None
+    );
+    // Quien el administrador quitó de la Whitelist no se puede invitar.
+    disallow_email(&pool, "malo@correo.com", owner)
+        .await
+        .unwrap();
+    remove_team_member(&pool, tenant.id, "p0@correo.com")
+        .await
+        .unwrap();
+    assert_eq!(
+        add_team_member(&pool, tenant.id, "malo@correo.com", "editor", owner)
+            .await
+            .unwrap(),
+        Some(TeamAdd::Blocked)
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn whitelist_allow_lets_a_team_only_email_create_stores(pool: PgPool) {
+    let tenant = get_tenant_by_slug(&pool, "demo").await.unwrap().unwrap();
+    let owner = user(&pool, "duena@correo.com").await;
+    claim_if_ownerless(&pool, tenant.id, owner).await.unwrap();
+    add_team_member(&pool, tenant.id, "sofi@correo.com", "editor", owner)
+        .await
+        .unwrap();
+    assert_eq!(load_team_only(&pool).await.unwrap().len(), 1);
+    allow_email(&pool, "sofi@correo.com", owner).await.unwrap();
+    assert!(load_team_only(&pool).await.unwrap().is_empty());
+}

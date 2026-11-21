@@ -10,7 +10,7 @@ use leptos_router::hooks::use_query_map;
 #[server]
 pub async fn store_payments(slug: String) -> Result<Option<PaymentsInfo>, ServerFnError> {
     use crate::server::{internal, pool};
-    let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
+    let Some(tenant) = crate::products::server::owned_store_min(&slug, "admin").await? else {
         return Ok(None);
     };
     let pool = pool()?;
@@ -32,7 +32,7 @@ pub async fn save_payment_options(
     options: PaymentOptions,
 ) -> Result<Option<String>, ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let mut options = options;
     if let Some(problem) = domain::tidy_payment_options(&mut options) {
         return Ok(Some(problem));
@@ -47,7 +47,7 @@ pub async fn save_payment_options(
 #[server]
 pub async fn mp_connect(slug: String) -> Result<String, ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     let c = crate::mp::config_for(&tenant.slug).ok_or_else(|| {
         ServerFnError::new("Los cobros con Mercado Pago todavía no están disponibles.")
     })?;
@@ -65,7 +65,7 @@ pub async fn mp_connect(slug: String) -> Result<String, ServerFnError> {
 #[server]
 pub async fn mp_unlink(slug: String) -> Result<(), ServerFnError> {
     use crate::server::{internal, pool};
-    let tenant = crate::products::server::require_store(&slug).await?;
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
     db::mp::unlink(&pool()?, tenant.id).await.map_err(internal)
 }
 
