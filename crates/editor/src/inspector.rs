@@ -1,21 +1,21 @@
 //! Inspector: el panel de la derecha con los campos del bloque elegido.
 //!
-//! Dos pestañas: "Contenido" (textos, imágenes, listas y el botón) y
-//! "Diseño" (diseño y color, tamaño y letras). Al elegir un bloque se abre en Contenido,
-//! que es lo que la persona viene a cambiar casi siempre.
+//! Una sola pestaña con secciones plegables: "Contenido" (textos, imágenes,
+//! listas y el botón), "Estilo y color", "Tamaño", "Letras" y, si el bloque
+//! las tiene, "Más opciones". Se abre una a la vez y cada una cerrada muestra
+//! su valor actual. Al elegir un bloque se abre Contenido, que es lo que la
+//! persona viene a cambiar casi siempre.
 
-use domain::{Field, Product, Widget, GRID_COLS, ROW_PX};
+use domain::{Field, Product, Widget, DESIGNS, GRID_COLS, ROW_PX};
 use leptos::prelude::*;
 
 use crate::fields::{ButtonGroup, PropField};
 use crate::icons::Icon;
-use crate::look::BlockLook;
+use crate::look::{swatch_class, BlockLook};
 use crate::palette::block_info;
 use crate::typography::BlockTypography;
-use crate::{choice_class, focus_selector, Actions, EditorState, Ui, WIDTHS};
+use crate::{size_badge, Actions, EditorState, Ui, WIDTHS};
 
-/// Filas que suma o resta cada botón de alto (48 px).
-const HEIGHT_STEP: i32 = 6;
 
 /// Alto en píxeles de `h` filas.
 fn rows_to_px(h: u8) -> u32 {
@@ -162,25 +162,88 @@ fn ModalSettings() -> impl IntoView {
     }
 }
 
+/// Secciones del panel del bloque.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Tab {
+enum Section {
     Content,
-    Design,
+    Look,
+    Size,
+    Letters,
+    More,
 }
 
-impl Tab {
-    fn ids(self) -> (&'static str, &'static str) {
+impl Section {
+    fn key(self) -> &'static str {
         match self {
-            Tab::Content => ("mk-tab-content", "mk-tabpanel-content"),
-            Tab::Design => ("mk-tab-design", "mk-tabpanel-design"),
+            Section::Content => "content",
+            Section::Look => "look",
+            Section::Size => "size",
+            Section::Letters => "letters",
+            Section::More => "more",
         }
     }
+}
 
-    fn other(self) -> Tab {
-        match self {
-            Tab::Content => Tab::Design,
-            Tab::Design => Tab::Content,
-        }
+/// Sección plegable del panel: título con ícono y ayuda (ⓘ), a la derecha el
+/// valor actual cuando está cerrada. Solo hay una abierta a la vez. El
+/// contenido queda armado aunque esté cerrado, para no perder lo escrito.
+#[component]
+fn PanelSection(
+    which: Section,
+    open: RwSignal<Option<Section>>,
+    title: &'static str,
+    icon: &'static str,
+    /// Ayuda en un ⓘ junto al título.
+    #[prop(optional)]
+    help: Option<&'static str>,
+    /// Valor actual, a la derecha del título.
+    #[prop(optional, into)]
+    summary: ViewFn,
+    children: Children,
+) -> impl IntoView {
+    let is_open = move || open.get() == Some(which);
+    let key = which.key();
+    let (btn_id, body_id) = (format!("mk-sec-{key}"), format!("mk-sec-body-{key}"));
+    let toggle = move |_| open.set(if is_open() { None } else { Some(which) });
+    view! {
+        <section
+            class="rounded-box border border-base-300 bg-base-100"
+            class=("border-primary", is_open)
+        >
+            <div class="flex items-center gap-1 pr-3">
+                <button
+                    type="button"
+                    id=btn_id.clone()
+                    class="flex min-w-0 items-center gap-2 rounded-box py-2.5 pl-3 pr-1 text-left text-sm font-semibold"
+                    aria-expanded=move || is_open().to_string()
+                    aria-controls=body_id.clone()
+                    on:click=toggle
+                >
+                    <Icon name=icon class="h-4 w-4 shrink-0 text-base-content/70"/>
+                    {title}
+                </button>
+                {help.map(|text| view! { <ui::HelpTip id=format!("tip-sec-{key}") label=title text=text/> })}
+                <button
+                    type="button"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    class="flex min-w-0 flex-1 items-center justify-end gap-2 py-2.5 text-xs font-normal text-base-content/75"
+                    on:click=toggle
+                >
+                    <span class="flex min-w-0 items-center gap-1.5 truncate" class:hidden=is_open>{summary.run()}</span>
+                    <span class="shrink-0 transition-transform" class=("rotate-180", is_open)><Icon name="chevron-down" class="h-4 w-4"/></span>
+                </button>
+            </div>
+            <div
+                id=body_id
+                role="region"
+                aria-labelledby=btn_id
+                class="flex flex-col gap-5 border-t border-base-300 p-3"
+                class:hidden=move || !is_open()
+            >
+                {children()}
+            </div>
+        </section>
     }
 }
 
@@ -191,13 +254,8 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     let label = widget.label();
     let (icon, description) = block_info(widget.type_name());
     let sid = StoredValue::new(id.clone());
-    let tab = RwSignal::new(Tab::Content);
-    // Al intentar guardar con errores, los campos están en Contenido.
-    Effect::new(move |_| {
-        if ui.show_errors.get() {
-            tab.set(Tab::Content);
-        }
-    });
+    let (size_sid, look_id, type_id) = (id.clone(), id.clone(), id.clone());
+    let widget_size = widget.clone();
     let FieldGroups {
         basic,
         button,
@@ -224,34 +282,44 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
             | "CategoryPage"
     );
 
-    // Pestañas con el patrón de ARIA: flechas, Inicio y Fin cambian de
-    // pestaña y llevan el foco a la nueva.
-    let on_tab_key = move |ev: leptos::ev::KeyboardEvent| {
-        let next = match ev.key().as_str() {
-            "ArrowLeft" | "ArrowRight" => tab.get_untracked().other(),
-            "Home" => Tab::Content,
-            "End" => Tab::Design,
-            _ => return,
-        };
-        ev.prevent_default();
-        tab.set(next);
-        focus_selector(&format!("#{}", next.ids().0));
-    };
-    let tab_button = move |t: Tab, text: &'static str| {
-        let (tab_id, panel_id) = t.ids();
-        view! {
-            <button
-                type="button"
-                role="tab"
-                id=tab_id
-                class="tab font-medium"
-                class:tab-active=move || tab.get() == t
-                aria-selected=move || (tab.get() == t).to_string()
-                aria-controls=panel_id
-                tabindex=move || if tab.get() == t { "0" } else { "-1" }
-                on:click=move |_| tab.set(t)
-            >{text}</button>
+    let state = expect_context::<EditorState>();
+    // Con bloques sin nada para escribir se abre directo el estilo.
+    let open = RwSignal::new(Some(if no_fields { Section::Look } else { Section::Content }));
+    // Al intentar guardar con errores, los campos están en Contenido.
+    Effect::new(move |_| {
+        if ui.show_errors.get() {
+            open.set(Some(Section::Content));
         }
+    });
+    let node_look = Memo::new(move |_| {
+        state.doc.with(|d| sid.with_value(|id| d.node(id).map(|n| (n.look.clone(), n.size, n.style.clone()))))
+    });
+    let look_summary = move || {
+        node_look.with(|n| {
+            let look = n.as_ref().map(|(l, _, _)| l.clone()).unwrap_or_default();
+            let name = DESIGNS.iter().find(|(d, _, _)| *d == look.design).map_or("Clásico", |(_, n, _)| *n);
+            let dot = if look.color.starts_with('#') {
+                format!("background:{}", look.color)
+            } else {
+                String::new()
+            };
+            let class = if look.color.starts_with('#') { String::new() } else { swatch_class(&look.color).to_string() };
+            view! {
+                <span class="truncate">{name}</span>
+                <span data-theme=move || state.doc.with(|d| d.theme.clone()) class=format!("{class} h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-base-content/25") style=dot aria-hidden="true"></span>
+            }
+        })
+    };
+    let size_summary = move || {
+        node_look.with(|n| {
+            n.as_ref().map_or_else(String::new, |(_, size, _)| size_badge(*size))
+        })
+    };
+    let letters_summary = move || {
+        node_look.with(|n| match n {
+            Some((_, _, style)) if !style.is_default() => "Personalizadas",
+            _ => "Igual que la tienda",
+        })
     };
 
     view! {
@@ -297,18 +365,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                 </p>
             })}
 
-            <div role="tablist" aria-label="Qué querés cambiar" class="tabs tabs-box tabs-sm grid grid-cols-2" on:keydown=on_tab_key>
-                {tab_button(Tab::Content, "Contenido")}
-                {tab_button(Tab::Design, "Diseño")}
-            </div>
-
-            <div
-                role="tabpanel"
-                id=Tab::Content.ids().1
-                aria-labelledby=Tab::Content.ids().0
-                class="flex flex-col gap-5"
-                class:hidden=move || tab.get() != Tab::Content
-            >
+            <PanelSection which=Section::Content open title="Contenido" icon="pencil">
                 {basic
                     .into_iter()
                     .map(|f| view! { <ShownField products id=basic_id.clone() field=f/> })
@@ -317,10 +374,9 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                     <ButtonGroup products id=button_id.clone() label_field href_field/>
                 })}
                 {no_fields.then(|| view! {
-                    <p class="text-sm text-base-content/75">"Este bloque muestra el dato del producto que se abre, así que no hay nada para escribir. Su diseño, color, tamaño y letras se cambian en Diseño."</p>
+                    <p class="text-sm text-base-content/75">"Este bloque muestra el dato del producto que se abre, así que no hay nada para escribir. Su estilo, color, tamaño y letras se cambian en las otras secciones."</p>
                 })}
                 {move || {
-                    let state = expect_context::<EditorState>();
                     let pages = state.doc.with(|d| {
                         d.node(&sid.get_value())
                             .map_or(0, |n| d.shared_pages(&n.shared))
@@ -338,30 +394,35 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
                         </section>
                     })
                 }}
-                {has_advanced.then(|| view! {
-                    <details class="collapse collapse-arrow border border-base-300">
-                        <summary class="collapse-title text-sm font-medium">"Más opciones"</summary>
-                        <div class="collapse-content flex flex-col gap-4">
-                            {advanced
-                                .into_iter()
-                                .map(|f| view! { <ShownField products id=advanced_id.clone() field=f/> })
-                                .collect_view()}
-                        </div>
-                    </details>
-                })}
-            </div>
+            </PanelSection>
 
-            <div
-                role="tabpanel"
-                id=Tab::Design.ids().1
-                aria-labelledby=Tab::Design.ids().0
-                class="flex flex-col gap-5"
-                class:hidden=move || tab.get() != Tab::Design
+            <PanelSection which=Section::Look open title="Estilo y color" icon="star" summary=look_summary>
+                <BlockLook id=look_id visible=Signal::derive(move || open.get() == Some(Section::Look)) products/>
+            </PanelSection>
+
+            <PanelSection which=Section::Size open title="Tamaño" icon="desktop" summary=size_summary>
+                <BlockSize id=size_sid widget=widget_size/>
+            </PanelSection>
+
+            <PanelSection
+                which=Section::Letters
+                open
+                title="Letras"
+                icon="type"
+                help="Lo que no cambies sigue a las letras de toda la tienda."
+                summary=letters_summary
             >
-                <BlockLook id=id.clone() visible=Signal::derive(move || tab.get() == Tab::Design) products/>
-                <BlockSize id=id.clone() widget=widget.clone()/>
-                <BlockTypography id=id.clone()/>
-            </div>
+                <BlockTypography id=type_id/>
+            </PanelSection>
+
+            {has_advanced.then(|| view! {
+                <PanelSection which=Section::More open title="Más opciones" icon="plus">
+                    {advanced
+                        .into_iter()
+                        .map(|f| view! { <ShownField products id=advanced_id.clone() field=f/> })
+                        .collect_view()}
+                </PanelSection>
+            })}
         </div>
     }
 }
@@ -409,8 +470,8 @@ fn ShownField(
     }
 }
 
-/// Sección "Tamaño" de la pestaña Diseño: ancho con nombres, alto con dos
-/// botones y los números exactos plegados para quien los quiera.
+/// Contenido de la sección "Tamaño": ancho dibujado con su nombre, alto con
+/// deslizador y los números exactos plegados para quien los quiera.
 #[component]
 fn BlockSize(id: String, widget: Widget) -> impl IntoView {
     let state = expect_context::<EditorState>();
@@ -429,8 +490,8 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
         .copied()
         .filter(|(w, _)| (limits.min_w..=limits.max_w).contains(w))
         .collect();
+    let cols_n = widths.len().max(1);
     let custom = move || !WIDTHS.iter().any(|(w, _)| *w == size().w);
-    let change_h = move |rows: i32| resize(i32::from(size().w), i32::from(size().h) + rows);
     // "Ajustar a mano": en píxeles del ancho de la tienda, y si lo escrito
     // no entra, se corrige y se avisa.
     let page_w = state.doc.with_untracked(|d| match d.layout.max_width {
@@ -446,20 +507,32 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
         move |c: u8| (f64::from(c) * f64::from(page_w) / f64::from(GRID_COLS)).round() as u32;
     let px_to_cols = move |px: f64| (px * f64::from(GRID_COLS) / f64::from(page_w)).round() as i32;
     let (fixed_w, fixed_h) = (RwSignal::new(None::<String>), RwSignal::new(None::<String>));
+    // Alto mientras se arrastra el deslizador; se aplica al soltar.
+    let live_h = RwSignal::new(None::<u8>);
 
     view! {
-        <section class="flex flex-col gap-4" aria-labelledby="mk-size-title">
-            <h3 id="mk-size-title" class="text-sm font-semibold">"Tamaño"</h3>
+        <section class="flex flex-col gap-4">
             <fieldset class="fieldset gap-1 p-0">
                 <legend class="fieldset-legend pt-0 text-sm font-medium">"Ancho"</legend>
-                <div class="join w-full">
+                <div class="grid gap-1.5" style=format!("grid-template-columns:repeat({}, minmax(0, 1fr))", cols_n)>
                     {widths.into_iter().map(|(w, name)| view! {
                         <button
                             type="button"
-                            class=move || format!("{} join-item flex-1", choice_class(size().w == w))
+                            class=move || format!(
+                                "flex flex-col items-stretch gap-1 rounded-field border p-1.5 text-[11px] leading-tight hover:bg-base-200 {}",
+                                if size().w == w { "border-primary bg-primary/10 font-semibold text-primary" } else { "border-base-300" },
+                            )
                             aria-pressed=move || (size().w == w).to_string()
                             on:click=move |_| resize(i32::from(w), i32::from(size().h))
-                        >{name}</button>
+                        >
+                            <span class="h-3 rounded-sm bg-base-300" aria-hidden="true">
+                                <span
+                                    class=move || format!("block h-full rounded-sm {}", if size().w == w { "bg-primary" } else { "bg-base-content/40" })
+                                    style=format!("width:{}%", u32::from(w) * 100 / u32::from(GRID_COLS))
+                                ></span>
+                            </span>
+                            <span class="text-center">{name}</span>
+                        </button>
                     }).collect_view()}
                 </div>
                 {move || custom().then(|| view! {
@@ -468,22 +541,27 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
             </fieldset>
             <fieldset class="fieldset gap-1 p-0">
                 <legend class="fieldset-legend pt-0 text-sm font-medium">"Alto"</legend>
-                <div class="flex items-center gap-2">
-                    <button
-                        type="button"
-                        class="btn btn-sm flex-1"
-                        disabled={move || size().h <= limits.min_h}
-                        on:click=move |_| change_h(-HEIGHT_STEP)
-                    >"Más bajo"</button>
-                    <span class="min-w-16 text-center text-sm tabular-nums" aria-live="polite">
-                        {move || format!("{} px", rows_to_px(size().h))}
+                <div class="flex items-center gap-3">
+                    <input
+                        type="range"
+                        class="range range-primary range-xs flex-1"
+                        aria-label="Alto del bloque"
+                        min=limits.min_h
+                        max=limits.max_h
+                        prop:value=move || size().h.to_string()
+                        on:input=move |ev| {
+                            let rows = event_target_value(&ev).parse::<i32>().unwrap_or(i32::from(size().h));
+                            live_h.set(Some(rows as u8));
+                        }
+                        on:change=move |ev| {
+                            let rows = event_target_value(&ev).parse::<i32>().unwrap_or(i32::from(size().h));
+                            live_h.set(None);
+                            resize(i32::from(size().w), rows);
+                        }
+                    />
+                    <span class="min-w-14 text-right text-sm tabular-nums" aria-live="polite">
+                        {move || format!("{} px", rows_to_px(live_h.get().unwrap_or(size().h)))}
                     </span>
-                    <button
-                        type="button"
-                        class="btn btn-sm flex-1"
-                        disabled={move || size().h >= limits.max_h}
-                        on:click=move |_| change_h(HEIGHT_STEP)
-                    >"Más alto"</button>
                 </div>
             </fieldset>
             <details class="collapse collapse-arrow border border-base-300">
