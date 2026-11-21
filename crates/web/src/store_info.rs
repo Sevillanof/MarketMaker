@@ -70,6 +70,9 @@ pub fn StoreInfoPage() -> impl IntoView {
     }
     let slug = slug_param();
     let data = Resource::new(move || slug.get(), load_store_info);
+    // Las dos se piden desde la página (no desde adentro del Suspend): un
+    // recurso creado durante la hidratación no coincide con el del servidor.
+    let admin = Resource::new(move || slug.get(), store_admin);
     view! {
         <leptos_meta::Title text="Datos de la tienda · MarketMaker"/>
             <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-5 max-sm:pb-28">
@@ -78,9 +81,12 @@ pub fn StoreInfoPage() -> impl IntoView {
                         match data.await {
                             Ok(Some(form)) => {
                                 let name = form.info.name.clone();
+                                let admin = admin.await.ok().flatten();
                                 view! {
                                     <StoreInfoEditor slug=slug.get_untracked() form/>
-                                    <StoreAdmin slug=slug.get_untracked() name/>
+                                    {admin.map(|(rest, paused)| view! {
+                                        <StoreAdminCard slug=slug.get_untracked() name rest paused/>
+                                    })}
                                 }.into_any()
                             }
                             Ok(None) => view! { <SignInFirst back=format!("/tienda/{}/datos", slug.get_untracked())/> }.into_any(),
@@ -401,22 +407,6 @@ pub async fn delete_store(slug: String, typed: String) -> Result<Result<(), Stri
 
 /// "Tu tienda", al final de Datos de la tienda: cambiar la dirección,
 /// pausarla y borrarla.
-#[component]
-pub fn StoreAdmin(slug: String, name: String) -> impl IntoView {
-    let slug = StoredValue::new(slug);
-    let name = StoredValue::new(name);
-    let data = Resource::new(|| (), move |_| store_admin(slug.get_value()));
-    view! {
-        <Suspense fallback=|| ()>
-            {move || Suspend::new(async move {
-                data.await.ok().flatten().map(|(rest, paused)| view! {
-                    <StoreAdminCard slug=slug.get_value() name=name.get_value() rest paused/>
-                })
-            })}
-        </Suspense>
-    }
-}
-
 #[component]
 fn StoreAdminCard(slug: String, name: String, rest: String, paused: bool) -> impl IntoView {
     let slug = StoredValue::new(slug);
