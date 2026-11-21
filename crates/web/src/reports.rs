@@ -474,11 +474,3 @@ pub fn ReportsDialog(
         </dialog>
     }
 }
-
-fn state_badge(estado: &str) -> (&'static str, &'static str) {
-    match estado {
-        "resuelto" => ("badge badge-success badge-soft badge-sm", "Resuelto"),
-        "en_curso" => ("badge badge-warning badge-soft badge-sm", "En curso"),
-        _ => ("badge badge-error badge-soft badge-sm", "Nuevo"),
-    }
-}
