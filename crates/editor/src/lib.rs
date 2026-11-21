@@ -1075,7 +1075,11 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     // ¿Hay otro editor de esta tienda abierto en otra pestaña? Cada pestaña
     // late cada 2 s; si el último latido ajeno es de hace menos de 6 s, avisa.
     let other_tab = RwSignal::new(false);
+    // Solo en el navegador: en el servidor `js_sys` no existe y el editor no abría.
+    #[cfg(target_arch = "wasm32")]
     let tab_id = format!("{:x}", (js_sys::Math::random() * 1e12) as u64);
+    #[cfg(not(target_arch = "wasm32"))]
+    let tab_id = String::new();
     let tab_id_claim = StoredValue::new(tab_id.clone());
     {
         let tab_id = tab_id.clone();
