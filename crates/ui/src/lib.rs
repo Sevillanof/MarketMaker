@@ -210,29 +210,33 @@ pub fn PageSkeleton() -> impl IntoView {
     }
 }
 
-/// Skeleton de `/admin/reportes`: la lista de reportes a la izquierda (número,
-/// estado y dos líneas) y el detalle a la derecha (captura, texto, datos y
-/// botones de estado), con las mismas medidas que la pantalla real.
+/// Skeleton de la ventana Reportes: la lista a la izquierda (número, estado y
+/// dos líneas), el detalle a la derecha (captura, texto y datos) y, abajo, la
+/// fila de botones de estado, con las mismas medidas que la ventana real.
 #[component]
 pub fn ReportsSkeleton() -> impl IntoView {
     view! {
-        <div class="grid items-start gap-4 lg:grid-cols-[2fr_3fr]" aria-busy="true" aria-label="Cargando">
-            <ul class="divide-y divide-base-300 overflow-hidden rounded-box border border-base-300 bg-base-100">
-                {(0..5).map(|_| view! {
-                    <li class="flex flex-col gap-2 px-3 py-2.5">
-                        <div class="flex items-center gap-2">
-                            <Skeleton class="h-4 w-8"/><Skeleton class="h-4 w-14 rounded-full"/><Skeleton class="ml-auto h-3 w-16"/>
-                        </div>
-                        <Skeleton class="h-3.5 w-full"/><Skeleton class="h-3.5 w-2/3"/>
-                    </li>
-                }).collect_view()}
-            </ul>
-            <section class="card border border-base-300 bg-base-100"><div class="card-body gap-3 p-4">
-                <div class="flex items-center gap-2"><Skeleton class="h-6 w-40"/><Skeleton class="h-4 w-14 rounded-full"/></div>
-                <Skeleton class="h-72 w-full"/>
-                <Skeleton class="h-3.5 w-full"/><Skeleton class="h-3.5 w-4/5"/>
-                <div class="flex gap-2"><Skeleton class="h-8 w-20"/><Skeleton class="h-8 w-24"/><Skeleton class="h-8 w-24"/></div>
-            </div></section>
+        <div class="min-h-0 grow overflow-hidden" aria-busy="true" aria-label="Cargando">
+            <div class="grid border-t border-base-300 md:grid-cols-[2fr_3fr]">
+                <ul class="divide-y divide-base-300">
+                    {(0..4).map(|_| view! {
+                        <li class="flex flex-col gap-2 px-6 py-2.5">
+                            <div class="flex items-center gap-2">
+                                <Skeleton class="h-4 w-8"/><Skeleton class="h-4 w-14 rounded-full"/><Skeleton class="ml-auto h-3 w-16"/>
+                            </div>
+                            <Skeleton class="h-3.5 w-full"/><Skeleton class="h-3.5 w-2/3"/>
+                        </li>
+                    }).collect_view()}
+                </ul>
+                <section class="flex flex-col gap-3 p-5 max-md:hidden md:border-l md:border-base-300">
+                    <div class="flex items-center gap-2"><Skeleton class="h-5 w-32"/><Skeleton class="h-4 w-14 rounded-full"/></div>
+                    <Skeleton class="h-56 w-full"/>
+                    <Skeleton class="h-3.5 w-full"/><Skeleton class="h-3.5 w-4/5"/>
+                </section>
+            </div>
+            <div class="flex items-center gap-2 border-t border-base-300 p-4">
+                <Skeleton class="h-4 w-12"/><Skeleton class="h-8 w-20"/><Skeleton class="h-8 w-24"/><Skeleton class="h-8 w-24"/>
+            </div>
         </div>
     }
 }

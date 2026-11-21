@@ -171,7 +171,7 @@ pub fn bug_report(
     has_image: bool,
 ) -> Email {
     let who = if r.quien.is_empty() { "Visitante sin cuenta" } else { r.quien.as_str() };
-    let link = format!("{}/admin/reportes?r={}", app_url(), r.num);
+    let link = app_url();
     let img = if has_image {
         r#"<p style="margin:16px 0 0"><img src="cid:captura" alt="Captura del problema" style="max-width:100%;border:1px solid #e4e4e7;border-radius:8px"></p>"#
     } else {
@@ -179,20 +179,20 @@ pub fn bug_report(
     };
     let body = format!(
         r#"<p style="margin:0 0 12px;font-size:16px;line-height:1.5;white-space:pre-wrap">{}</p>
-<p style="margin:0;color:#52525b;font-size:13px;line-height:1.6">Página: {}<br>De: {}<br>Pantalla: {} · {}</p>{img}{}"#,
+<p style="margin:0;color:#52525b;font-size:13px;line-height:1.6">Página: {}<br>De: {}<br>Pantalla: {} · {}</p>{img}<p style="margin:16px 0 0;color:#52525b;font-size:13px">Lo ves y cambiás su estado en Reportes, desde el menú de tu cuenta.</p>{}"#,
         esc(&r.descripcion),
         esc(&r.pagina),
         esc(who),
         esc(&r.pantalla),
         esc(&r.navegador),
-        button(&link, "Abrir en reportes"),
+        button(&link, "Abrir MarketMaker"),
     );
     Email {
         to,
         subject: format!("Reporte #{} · {}", r.num, r.descripcion.chars().take(60).collect::<String>().replace('\n', " ")),
         html: frame(&format!("Reporte #{}", r.num), &body),
         text: format!(
-            "Reporte #{}\n\n{}\n\nPágina: {}\nDe: {}\nPantalla: {} · {}\n\nAbrir: {link}\n",
+            "Reporte #{}\n\n{}\n\nPágina: {}\nDe: {}\nPantalla: {} · {}\n\nLo ves en Reportes, desde el menú de tu cuenta: {link}\n",
             r.num, r.descripcion, r.pagina, who, r.pantalla, r.navegador
         ),
     }

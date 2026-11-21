@@ -96,6 +96,18 @@ pub async fn set_status(pool: &PgPool, num: i64, estado: &str) -> sqlx::Result<b
         > 0)
 }
 
+/// Cuántos hay de cada estado: (nuevos, en curso, resueltos).
+pub async fn counts(pool: &PgPool) -> sqlx::Result<(i64, i64, i64)> {
+    sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE estado = 'nuevo'),
+                count(*) FILTER (WHERE estado = 'en_curso'),
+                count(*) FILTER (WHERE estado = 'resuelto')
+         FROM reportes",
+    )
+    .fetch_one(pool)
+    .await
+}
+
 /// Cuántos reportes siguen sin atender.
 pub async fn count_new(pool: &PgPool) -> sqlx::Result<i64> {
     sqlx::query_scalar("SELECT count(*) FROM reportes WHERE estado = 'nuevo'")
