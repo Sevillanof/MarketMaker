@@ -62,6 +62,7 @@ pub async fn list_store_products(slug: String) -> Result<Option<StoreProducts>, 
         category_order: db::products::category_order(&pool, tenant.id)
             .await
             .map_err(internal)?,
+        store_url: crate::email::store_url(&slug),
     }))
 }
 

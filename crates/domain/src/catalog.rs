@@ -78,6 +78,9 @@ pub struct StoreProducts {
     /// El orden de las categorías (ver [`order_categories`]).
     #[serde(default)]
     pub category_order: Vec<String>,
+    /// La dirección de la tienda, para «Ver en la tienda».
+    #[serde(default)]
+    pub store_url: String,
 }
 
 /// Resultado de guardar un producto.
