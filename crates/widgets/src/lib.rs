@@ -339,7 +339,7 @@ pub fn ProductDialog(
                     // Lugar para "Ver carrito y comprar / Seguir comprando" al agregar.
                     let shown = if editing { shown } else { grow_button(shown, 13) };
                     let shown = stretch_image(shown);
-                    provide_context(SharePlace { on_photo: share_on_photo });
+                    provide_context(SharePlace { on_photo: Signal::stored(share_on_photo) });
                     let share = (!editing && !share_on_photo).then(|| view! { <ShareButton product=p.clone() on_photo=false/> });
                     let ctx = RenderCtx {
                         products: products.get_value(),
@@ -561,7 +561,7 @@ fn stretch_image(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Dónde va el botón Compartir de la ficha (ver `ProductModal::share`).
 #[derive(Clone, Copy)]
 pub struct SharePlace {
-    pub on_photo: bool,
+    pub on_photo: Signal<bool>,
 }
 
 /// «Compartir»: en el celular abre el menú de compartir del teléfono; en la
@@ -602,7 +602,7 @@ pub fn ShareButton(product: Product, on_photo: bool) -> impl IntoView {
     };
     let icon = view! {
         <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/>
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>
         </svg>
     };
     if on_photo {
@@ -720,7 +720,7 @@ fn grow_for_variants(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
 /// Barra de compra de la ficha: foto, nombre, precio y "Agregar". Aparece
 /// cuando el botón de la ficha quedó fuera de la vista y se puede cerrar.
 #[component]
-fn BuyBar(product: Product, style: String, editing: bool, on_close: Callback<()>) -> impl IntoView {
+pub fn BuyBar(product: Product, style: String, editing: bool, on_close: Callback<()>) -> impl IntoView {
     let offers = use_context::<domain::StoreInfo>()
         .map(|s| s.offers)
         .unwrap_or_default();
