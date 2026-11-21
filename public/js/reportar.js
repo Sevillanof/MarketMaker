@@ -18,6 +18,7 @@
     '@media (prefers-reduced-motion:reduce){#mkbug-fab,#mkbug-fab span{transition:none}}' +
     '#mkbug-fab:focus-visible{outline:3px solid #818cf8;outline-offset:2px}#mkbug-fab[disabled]{opacity:.7;cursor:progress}' +
     '#mkbug-fab svg{width:18px;height:18px;flex:none}' +
+    '@media (min-width:640px){body:has(.mk-help) #mkbug-fab{left:auto;right:16px;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 56px)}}' +
     '@media (max-width:639px){#mkbug-fab{bottom:max(84px,env(safe-area-inset-bottom))}}' +
     '@media print{#mkbug-fab,#mkbug-root{display:none!important}}' +
     '#mkbug-root{position:fixed;inset:0;z-index:2147483000;font:14px/1.45 system-ui,sans-serif;color:#1f2430;touch-action:none;overscroll-behavior:contain}' +
@@ -243,8 +244,10 @@
     root.appendChild(dlg);
     var hb = document.getElementById('mkbug-hint');
     if (hb) hb.style.display = 'none';
-    placeDialog();
     dlg.showModal();
+    placeDialog();
+    // La miniatura carga después: al cambiar el alto, se vuelve a acomodar.
+    if (window.ResizeObserver) new ResizeObserver(placeDialog).observe(dlg);
     desc.focus();
 
     x.onclick = function () { closeAll(); };
@@ -295,15 +298,19 @@
     }
   }
 
-  // En pantallas anchas el formulario va pegado al área marcada.
+  // En pantallas anchas el formulario va pegado al área marcada, siempre
+  // entero dentro de la pantalla (si no entra, se achica y se desplaza).
   function placeDialog() {
     if (window.innerWidth < 640 || !rect) return;
-    var W = 340, pad = 16, vw = window.innerWidth, vh = window.innerHeight;
+    var W = 340, pad = 16, m = 12, vw = window.innerWidth, vh = window.innerHeight;
     var left = rect.x + rect.w + pad;
-    if (left + W > vw - 12) left = rect.x - pad - W;
-    if (left < 12) left = Math.max(12, Math.min(vw - W - 12, rect.x + 12));
-    var top = Math.max(12, Math.min(rect.y, vh - 420));
-    dlg.style.cssText = 'margin:0;left:' + left + 'px;top:' + top + 'px';
+    if (left + W > vw - m) left = rect.x - pad - W;
+    if (left < m) left = Math.max(m, Math.min(vw - W - m, rect.x + m));
+    dlg.style.cssText = 'margin:0;left:' + left + 'px;top:' + m + 'px;max-height:' + (vh - 2 * m) + 'px;overflow:auto';
+    // Con el formulario ya medido, se sube lo justo para que no se corte abajo.
+    var h = dlg.getBoundingClientRect().height;
+    var top = Math.max(m, Math.min(rect.y, vh - m - h));
+    dlg.style.top = top + 'px';
   }
 
   function closeAll(keepFab) {
