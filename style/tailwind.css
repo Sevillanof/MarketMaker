@@ -2236,6 +2236,51 @@ dialog.mk-cart::backdrop {
   .mk-load-msg-n:first-child { opacity: 1; }
 }
 
+/* Productos: lista + panel rápido + ficha completa (ver `products::ProductList`). */
+.mk-prow {
+  display: flex; width: 100%; align-items: center; gap: 0.75rem;
+  padding: 0.625rem 0.875rem; text-align: left; cursor: pointer;
+  border-inline-start: 3px solid transparent;
+}
+.mk-prow:hover { background: color-mix(in oklab, var(--color-base-200) 60%, transparent); }
+.mk-prow:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.mk-prow-on { background: color-mix(in oklab, var(--color-primary) 8%, var(--color-base-100)); border-inline-start-color: var(--color-primary); }
+/* Pastilla de stock: en negrita para que se lea de un vistazo. */
+.mk-stock {
+  display: inline-block; margin-top: 0.125rem; border-radius: 999px; padding: 0.0625rem 0.5rem;
+  font-size: 0.75rem; font-weight: 700; white-space: nowrap;
+  background: var(--color-base-200); color: var(--color-base-content);
+}
+.mk-stock-out { background: #fee2e2; color: #b91c1c; }
+/* Pie del panel y de la ficha: izquierda | centro | derecha. */
+.mk-qfoot { display: flex; flex-direction: column; gap: 0.5rem; }
+.mk-qfoot-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.75rem; }
+.mk-qpanel .mk-qfoot { border-top: 1px solid var(--color-base-200); padding-top: 1rem; }
+/* Menú ⋯ del teléfono (popover). */
+.mk-pmenu {
+  position: fixed; inset: auto; top: 3.5rem; right: 0.75rem; margin: 0;
+  min-width: 13rem; padding: 0.25rem; border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box); background: var(--color-base-100);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.15);
+}
+/* La ficha completa en ventana: cabecera y pie fijos, el medio se desplaza. */
+.mk-ficha .modal-box > :not(header, footer, [aria-busy]) { min-height: 0; }
+@media (max-width: 639px) {
+  /* El panel rápido a pantalla completa, con el pie fijo abajo. */
+  .mk-qpanel {
+    position: fixed; inset: 0; z-index: 60; overflow-y: auto; overscroll-behavior: contain;
+    border-radius: 0; box-shadow: none;
+  }
+  .mk-qpanel .mk-qfoot {
+    position: fixed; inset-inline: 0; bottom: 0; z-index: 11;
+    background: var(--color-base-100);
+    padding: 0.75rem 1rem max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .mk-qfoot-row { grid-template-columns: auto 1fr auto; }
+  .mk-qfoot > .btn-primary { min-height: 3rem; }
+  body:has(.mk-qpanel:not(.max-sm\:hidden)) .mk-help { display: none; }
+}
+
 /* Ficha de un producto con cambios sin guardar (ver `products::ProductForm`):
    la barra de Guardar queda fija abajo, oscura, con "Descartar". */
 @media (min-width: 640px) {

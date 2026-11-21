@@ -7,10 +7,10 @@
 //! (vidriera de moda, emprendimiento artesanal, tecnología en modo oscuro).
 
 use crate::{
-    BannerProps, BenefitItem, BenefitsProps, CardProps, CarouselProps, CategoryFilterProps, CountdownProps, FaqItem, FaqProps, FooterProps, ImageProps, LinkItem, Look,
-    NavbarProps, Node, PageDoc, Pos, ProductGridProps, Slide, StoreStyle, TabItem, TabsProps,
-    TagSearchProps, TagTabsProps, TestimonialsProps, TextProps, TextStyle, Typography, Widget,
-    GRID_COLS,
+    BannerProps, BenefitItem, BenefitsProps, CardProps, CarouselProps, CategoryFilterProps,
+    CountdownProps, FaqItem, FaqProps, FooterProps, ImageProps, LinkItem, Look, NavbarProps, Node,
+    PageDoc, Pos, ProductGridProps, Slide, StoreStyle, TabItem, TabsProps, TagSearchProps,
+    TagTabsProps, TestimonialsProps, TextProps, TextStyle, Typography, Widget, GRID_COLS,
 };
 
 /// Una plantilla que se puede elegir al crear la tienda.

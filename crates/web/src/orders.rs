@@ -196,7 +196,10 @@ impl BoardCtx {
                 && !domain::phone_digits(q).is_empty();
         let by_date = match self.days.get() {
             None => true,
-            Some(n) => o.created_at.get(..10).is_some_and(|d| d >= cutoff_day(n).as_str()),
+            Some(n) => o
+                .created_at
+                .get(..10)
+                .is_some_and(|d| d >= cutoff_day(n).as_str()),
         };
         by_text && by_date
     }
@@ -435,7 +438,9 @@ fn export_csv(ctx: BoardCtx) {
             .collect()
     });
     let cell = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
-    let mut csv = String::from("\u{feff}Pedido;Fecha;Estado;Cliente;Email;Teléfono;Entrega;Dirección;Productos;Total\r\n");
+    let mut csv = String::from(
+        "\u{feff}Pedido;Fecha;Estado;Cliente;Email;Teléfono;Entrega;Dirección;Productos;Total\r\n",
+    );
     for o in &rows {
         let items = o
             .items
@@ -493,9 +498,7 @@ fn move_effect(o: &Order, to: OrderStatus) -> Option<&'static str> {
     let unpaid = matches!(from, OrderStatus::New | OrderStatus::PendingPayment);
     match to {
         OrderStatus::Paid if unpaid => Some("Le avisamos por email que recibiste el pago."),
-        OrderStatus::Shipped
-            if from != OrderStatus::Delivered && from != OrderStatus::Shipped =>
-        {
+        OrderStatus::Shipped if from != OrderStatus::Delivered && from != OrderStatus::Shipped => {
             match o.delivery {
                 Delivery::Pickup => Some("Le avisamos por email que puede pasar a retirarlo."),
                 Delivery::Shipping => Some("Le avisamos por email que está en camino."),

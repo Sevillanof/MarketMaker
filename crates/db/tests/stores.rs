@@ -132,7 +132,10 @@ async fn a_store_can_be_paused_renamed_and_deleted(pool: PgPool) {
     assert!(get_tenant_by_slug(&pool, "ana").await.unwrap().is_none());
 
     delete_store(&pool, t.id).await.unwrap();
-    assert!(get_tenant_by_slug(&pool, "ana-deco").await.unwrap().is_none());
+    assert!(get_tenant_by_slug(&pool, "ana-deco")
+        .await
+        .unwrap()
+        .is_none());
     assert!(get_tenant_by_slug(&pool, "beto").await.unwrap().is_some());
 }
 
@@ -140,12 +143,16 @@ async fn a_store_can_be_paused_renamed_and_deleted(pool: PgPool) {
 async fn deleting_an_account_takes_only_the_stores_it_owns_alone(pool: PgPool) {
     let ana = user(&pool, "ana@correo.com").await;
     let beto = user(&pool, "beto@correo.com").await;
-    assert!(create_store(&pool, "Ana", "ana", ana, "demo", &starter("x"))
-        .await
-        .unwrap());
-    assert!(create_store(&pool, "Juntos", "juntos", ana, "demo", &starter("x"))
-        .await
-        .unwrap());
+    assert!(
+        create_store(&pool, "Ana", "ana", ana, "demo", &starter("x"))
+            .await
+            .unwrap()
+    );
+    assert!(
+        create_store(&pool, "Juntos", "juntos", ana, "demo", &starter("x"))
+            .await
+            .unwrap()
+    );
     let juntos = get_tenant_by_slug(&pool, "juntos").await.unwrap().unwrap();
     sqlx::query("INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'owner')")
         .bind(juntos.id)

@@ -229,7 +229,10 @@ mod http_routes {
         }
         let desc = desc.trim().chars().take(MAX_TEXT).collect::<String>();
         if desc.chars().count() < 5 {
-            return reply(StatusCode::BAD_REQUEST, "Contanos qué pasó para poder ayudarte.");
+            return reply(
+                StatusCode::BAD_REQUEST,
+                "Contanos qué pasó para poder ayudarte.",
+            );
         }
         let user = session(&pool, &headers).await;
         let quien = match &user {

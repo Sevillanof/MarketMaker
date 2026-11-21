@@ -484,7 +484,9 @@ pub async fn delete_my_account(typed: String) -> Result<Result<(), String>, Serv
         return Ok(Err("El email no coincide.".into()));
     }
     if is_admin(&user.email) {
-        return Ok(Err("La cuenta administradora no se puede borrar desde acá.".into()));
+        return Ok(Err(
+            "La cuenta administradora no se puede borrar desde acá.".into(),
+        ));
     }
     let pool = crate::server::pool()?;
     db::auth::delete_user(&pool, user.id)

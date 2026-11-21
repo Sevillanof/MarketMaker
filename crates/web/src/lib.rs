@@ -41,8 +41,8 @@ mod platform;
 mod products;
 mod regret;
 pub mod reports;
-pub mod seo;
 mod sales;
+pub mod seo;
 pub mod server;
 #[cfg(feature = "ssr")]
 pub mod shipments;
@@ -372,7 +372,11 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
     let icon = view! { <StoreIcon view=view.clone()/> };
     if let Some(p) = shared {
         let title = format!("{} · {name}", p.name);
-        let text = p.description.split_whitespace().collect::<Vec<_>>().join(" ");
+        let text = p
+            .description
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         let price = ui::format_price(p.price_cents);
         let description = if text.is_empty() {
             format!("{price} en {name}.")
@@ -654,7 +658,7 @@ impl leptos_router::LazyRoute for ProductEditRoute {
     }
 
     fn view(_this: Self) -> AnyView {
-        view! { <products::ProductEditPage/> }.into_any()
+        view! { <products::ProductsPage/> }.into_any()
     }
 }
 

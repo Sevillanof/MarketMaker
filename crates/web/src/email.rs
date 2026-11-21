@@ -82,8 +82,16 @@ fn base64(bytes: &[u8]) -> String {
             | u32::from(*c.get(2).unwrap_or(&0));
         out.push(T[(n >> 18) as usize & 63] as char);
         out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 1 {
+            T[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if c.len() > 2 {
+            T[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -165,12 +173,12 @@ pub async fn deliver_attached(email: &Email, files: &[Attachment]) -> Result<(),
 }
 
 /// Aviso al administrador de un reporte nuevo, con la captura adentro.
-pub fn bug_report(
-    to: Vec<String>,
-    r: &db::reports::Report,
-    has_image: bool,
-) -> Email {
-    let who = if r.quien.is_empty() { "Visitante sin cuenta" } else { r.quien.as_str() };
+pub fn bug_report(to: Vec<String>, r: &db::reports::Report, has_image: bool) -> Email {
+    let who = if r.quien.is_empty() {
+        "Visitante sin cuenta"
+    } else {
+        r.quien.as_str()
+    };
     let link = app_url();
     let img = if has_image {
         r#"<p style="margin:16px 0 0"><img src="cid:captura" alt="Captura del problema" style="max-width:100%;border:1px solid #e4e4e7;border-radius:8px"></p>"#
@@ -857,7 +865,12 @@ pub async fn tell_sold_without_stock(
 
 /// Al dueño: un pedido pagado con Mercado Pago se devolvió desde Mercado
 /// Pago (o el comprador desconoció el pago) y lo cancelamos.
-pub async fn tell_refunded(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid, chargeback: bool) {
+pub async fn tell_refunded(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+    order: uuid::Uuid,
+    chargeback: bool,
+) {
     let Ok(Some(o)) = db::orders::get(pool, tenant, order).await else {
         return;
     };
