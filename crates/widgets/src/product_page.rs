@@ -689,7 +689,7 @@ pub fn CleanCard(
                             <span class="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-sm">
                                 <b>{format_price(product.price_cents)}</b>
                                 {(product.compare_at_cents > product.price_cents).then(|| view! {
-                                    <s class="text-xs opacity-55"><span class="sr-only">"Antes "</span>{format_price(product.compare_at_cents)}</s>
+                                    <s class="text-xs opacity-70"><span class="sr-only">"Antes "</span>{format_price(product.compare_at_cents)}</s>
                                 })}
                             </span>
                         })}

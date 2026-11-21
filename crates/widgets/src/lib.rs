@@ -1034,7 +1034,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
                 </div>
             </div>
             <div class="card-body grow-0 shrink-0 gap-0">
-                <h3 class="mk-sub card-title text-sm truncate block">{product.name.clone()}</h3>
+                <h3 class="mk-sub mk-pcard-name card-title truncate block text-[0.8125rem] leading-snug sm:text-sm" title=product.name.clone()>{product.name.clone()}</h3>
                 {show_price.then(|| view! { <PriceWas cents=product.price_cents was=product.compare_at_cents/> })}
                 {look.card_colors.then(|| view! { <product_page::ColorDots product=dots_product.clone()/> })}
                 <CardCartButton product=cart_product/>

@@ -250,7 +250,7 @@ pub fn SalesPage() -> impl IntoView {
     let andreani = Resource::new(move || slug.get(), load_andreani);
     view! {
         <leptos_meta::Title text="Entregas · MarketMaker"/>
-            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 max-sm:py-5 max-sm:pb-28">
+            <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-5 max-sm:pb-28">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
                     {move || Suspend::new(async move {
                         match (data.await, andreani.await) {
@@ -717,7 +717,7 @@ fn AndreaniConnected(
     view! {
         <div class="flex flex-wrap items-center gap-3 rounded-box bg-success/10 px-4 py-3">
             <span class="grow text-sm">
-                <span class="font-semibold text-success">"✓ Conectado"</span>
+                <span class="mk-ok-text font-semibold">"✓ Conectado"</span>
                 " como " <span class="font-semibold">{holder}</span>
                 {cuit.map(|c| view! { <span class="text-base-content/70">" · " {c}</span> })}
             </span>

@@ -117,10 +117,10 @@ pub fn MyPhotosPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Mis fotos · MarketMaker"/>
         <crate::panel::StoreShell slug=store section=crate::panel::Section::Photos>
-            <div class="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10 max-sm:gap-4 max-sm:py-5 max-sm:pb-24">
+            <div class="flex w-full max-w-[1440px] flex-col gap-6 px-8 max-sm:px-4 py-8 max-sm:gap-4 max-sm:py-5 max-sm:pb-24">
                 <div class="flex flex-wrap items-center gap-3">
                     <h1 class="grow text-3xl font-bold max-sm:text-2xl">"Mis fotos"</h1>
-                    // En el teléfono es el botón flotante de abajo (ver `.mk-fab`).
+                    // En el teléfono va a todo el ancho, debajo del título (ver `.mk-fab`).
                     <label for="mis-fotos-subir" class="btn btn-primary mk-fab" class:btn-disabled=move || uploads.progress.get().is_some()>
                         "Subir fotos"
                     </label>

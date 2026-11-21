@@ -146,7 +146,7 @@ pub fn OrdersPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_orders);
     view! {
         <leptos_meta::Title text="Pedidos · MarketMaker"/>
-            <div class="mx-auto flex max-w-[1280px] flex-col gap-5 px-6 py-8 max-sm:gap-4 max-sm:px-4 max-sm:py-5">
+            <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 py-8 max-sm:gap-4 max-sm:px-4 max-sm:py-5">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Board/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -175,6 +175,8 @@ struct BoardCtx {
     slug: StoredValue<String>,
     /// Pedidos cuyo envío ya se preguntó a Andreani en esta visita.
     refreshed: StoredValue<Vec<String>>,
+    /// Movida que espera confirmación (arrastrar o "Mover a…").
+    asking: RwSignal<Option<(String, OrderStatus)>>,
 }
 
 impl BoardCtx {
@@ -190,6 +192,21 @@ impl BoardCtx {
     fn status_of(&self, id: &str) -> Option<OrderStatus> {
         self.orders
             .with_untracked(|os| os.iter().find(|o| o.id == id).map(|o| o.status))
+    }
+
+    /// Arrastrar o "Mover a…": antes pregunta, porque mover un pedido puede
+    /// mandarle un email al comprador (un arrastre por error no se deshace).
+    fn ask_status(self, id: String, status: OrderStatus) {
+        let Some(before) = self.status_of(&id) else {
+            return;
+        };
+        if before == status
+            || (OrderColumn::of(before).is_some()
+                && OrderColumn::of(before) == OrderColumn::of(status))
+        {
+            return;
+        }
+        self.asking.set(Some((id, status)));
     }
 
     /// Mueve el pedido enseguida en pantalla y lo guarda; si falla, vuelve.
@@ -252,6 +269,7 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         notice: RwSignal::new(String::new()),
         slug: StoredValue::new(slug.clone()),
         refreshed: StoredValue::new(Vec::new()),
+        asking: RwSignal::new(None),
     };
     let show_cancelled = RwSignal::new(false);
     // Teléfono: se ve una columna por vez, elegida arriba (por defecto, lo que
@@ -314,6 +332,87 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
             </div>
         })}
         <OrderDrawer ctx/>
+        <ConfirmMove ctx/>
+    }
+}
+
+/// Qué le pasa al comprador si el pedido pasa de `from` a `to` (lo mismo que
+/// decide `tell_buyer` en el servidor).
+fn move_effect(o: &Order, to: OrderStatus) -> Option<&'static str> {
+    let from = o.status;
+    let unpaid = matches!(from, OrderStatus::New | OrderStatus::PendingPayment);
+    match to {
+        OrderStatus::Paid if unpaid => Some("Le avisamos por email que recibiste el pago."),
+        OrderStatus::Shipped
+            if from != OrderStatus::Delivered && from != OrderStatus::Shipped =>
+        {
+            match o.delivery {
+                Delivery::Pickup => Some("Le avisamos por email que puede pasar a retirarlo."),
+                Delivery::Shipping => Some("Le avisamos por email que está en camino."),
+                Delivery::Andreani(_) => None,
+            }
+        }
+        OrderStatus::New if !unpaid => Some("Vuelve a figurar como no pagado."),
+        _ => None,
+    }
+}
+
+/// "¿Pasar #1004 a Enviados?": confirma una movida antes de guardarla.
+#[component]
+fn ConfirmMove(ctx: BoardCtx) -> impl IntoView {
+    let dialog = NodeRef::<leptos::html::Dialog>::new();
+    let info = Memo::new(move |_| {
+        let (id, to) = ctx.asking.get()?;
+        let o = ctx
+            .orders
+            .with_untracked(|os| os.iter().find(|o| o.id == id).cloned())?;
+        let place = OrderColumn::of(to).map_or("Cancelados", OrderColumn::title);
+        let first = o
+            .customer_name
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let effect = move_effect(&o, to).map(|e| {
+            if first.is_empty() || !e.starts_with("Le avisamos") {
+                e.to_string()
+            } else {
+                e.replacen("Le avisamos", &format!("Le avisamos a {first}"), 1)
+            }
+        });
+        Some((format!("¿Pasar #{} a {place}?", o.number), effect))
+    });
+    Effect::new(move |_| {
+        let Some(d) = dialog.get() else { return };
+        if info.with(Option::is_some) {
+            if !d.open() {
+                _ = d.show_modal();
+            }
+        } else if d.open() {
+            d.close();
+        }
+    });
+    let confirm = move |_| {
+        if let Some((id, to)) = ctx.asking.get_untracked() {
+            ctx.asking.set(None);
+            ctx.set_status(id, to);
+        }
+    };
+    view! {
+        <dialog node_ref=dialog class="modal" aria-labelledby="mover-titulo"
+            on:close=move |_| ctx.asking.set(None)>
+            <div class="modal-box max-w-sm">
+                {move || info.get().map(|(title, effect)| view! {
+                    <h2 id="mover-titulo" class="text-lg font-bold">{title}</h2>
+                    {effect.map(|e| view! { <p class="mt-1 text-sm text-base-content/70">{e}</p> })}
+                })}
+                <form method="dialog" class="mt-5 flex justify-end gap-2">
+                    <button class="btn btn-ghost" autofocus>"No"</button>
+                    <button type="button" class="btn btn-primary" on:click=confirm>"Sí, mover"</button>
+                </form>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button aria-label="Cerrar">"cerrar"</button></form>
+        </dialog>
     }
 }
 
@@ -347,7 +446,7 @@ fn Column(ctx: BoardCtx, column: OrderColumn, tab: RwSignal<OrderColumn>) -> imp
                 over.set(false);
                 if let Some(id) = ctx.dragging.get_untracked() {
                     ctx.dragging.set(None);
-                    ctx.set_status(id, column.status());
+                    ctx.ask_status(id, column.status());
                 }
             }>
             <h2 id=heading class="flex items-center justify-between px-1 font-semibold max-sm:sr-only">
@@ -461,7 +560,7 @@ fn MoveMenu(ctx: BoardCtx, id: String, number: i32, status: OrderStatus) -> impl
             <ul class="menu dropdown-content z-10 w-52 rounded-box bg-base-100 p-2 shadow-lg">
                 <li class="menu-title">"Mover a…"</li>
                 {OrderColumn::ALL.into_iter().filter(|c| Some(*c) != here).map(|c| view! {
-                    <li><button type="button" on:click=move |ev| { close(ev); ctx.set_status(id.get_value(), c.status()); }>{c.title()}</button></li>
+                    <li><button type="button" on:click=move |ev| { close(ev); ctx.ask_status(id.get_value(), c.status()); }>{c.title()}</button></li>
                 }).collect_view()}
                 {(status != OrderStatus::Cancelled).then(|| view! {
                     <li><button type="button" class="text-error" on:click=move |ev| { close(ev); ctx.open.set(Some(id.get_value())); }>"Cancelar…"</button></li>
@@ -612,7 +711,11 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                                     on:change=move |ev| {
                                         let v = event_target_value(&ev);
                                         if let Some(c) = OrderColumn::ALL.into_iter().find(|c| c.status().as_str() == v) {
-                                            ctx.set_status(id.get_value(), c.status());
+                                            ctx.ask_status(id.get_value(), c.status());
+                                        }
+                                        // Hasta que confirme, sigue mostrando dónde está.
+                                        if let (Some(here), Some(sel)) = (column, ev.target().and_then(|t| leptos::wasm_bindgen::JsCast::dyn_into::<leptos::web_sys::HtmlSelectElement>(t).ok())) {
+                                            sel.set_value(here.status().as_str());
                                         }
                                     }>
                                     {OrderColumn::ALL.into_iter().map(|o| view! {

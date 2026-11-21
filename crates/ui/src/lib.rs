@@ -98,11 +98,14 @@ pub fn Picture(
     eager: bool,
 ) -> impl IntoView {
     // Las fotos de Mis fotos vienen en tres anchos: el navegador elige.
-    let (avif, webp) = match srcsets(&src) {
+    let (avif, webp) = match srcsets(&src).or_else(|| library_srcsets(&src)) {
         Some((a, w)) => (Some(a), Some(w)),
         None => (avif_variant(&src), None),
     };
-    let sizes = webp.as_ref().map(|_| PHOTO_SIZES);
+    // La foto de arriba (banner, primera del carrusel) ocupa todo el ancho.
+    let sizes = webp
+        .as_ref()
+        .map(|_| if eager { "100vw" } else { PHOTO_SIZES });
     view! {
         <picture>
             {avif.map(|a| view! { <source type="image/avif" srcset=a sizes=sizes/> })}
@@ -164,6 +167,19 @@ pub fn avif_variant(src: &str) -> Option<String> {
     src.strip_prefix("/img/")
         .and_then(|rest| rest.strip_suffix(".webp"))
         .map(|name| format!("/img/{name}.avif"))
+}
+
+/// Fotos anchas de la biblioteca (1600 px) que también vienen en 800 px
+/// (`<nombre>-800.webp`), para el celular.
+const WIDE_LIBRARY: &[&str] = &["banner", "hero", "slide-1", "slide-2", "slide-3"];
+
+/// `srcset` AVIF y WebP (800 y 1600 px) de una foto ancha de la biblioteca.
+pub fn library_srcsets(src: &str) -> Option<(String, String)> {
+    let name = src.strip_prefix("/img/")?.strip_suffix(".webp")?;
+    WIDE_LIBRARY.contains(&name).then(|| {
+        let set = |ext: &str| format!("/img/{name}-800.{ext} 800w, /img/{name}.{ext} 1600w");
+        (set("avif"), set("webp"))
+    })
 }
 
 /// Qué ancho ocupa una foto en pantalla, para elegir entre los tres tamaños.
@@ -323,9 +339,12 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         .into_any(),
         PanelSkeletonKind::List => view! {
             // Teléfono: título, buscador, etiquetas y una tarjeta por producto
-            // (foto, dos líneas e interruptor), más el botón flotante.
+            // (foto, dos líneas e interruptor). Etiquetas, Categorías y
+            // "+ Nuevo producto" a todo el ancho, arriba de la lista.
             <div class="flex flex-col gap-4 sm:hidden">
                 <div class="flex flex-col gap-2"><Skeleton class="h-7 w-40"/>{sk_line("w-56 max-w-full")}</div>
+                <div class="flex gap-3"><Skeleton class="h-11 w-24"/><Skeleton class="h-11 w-28"/></div>
+                <Skeleton class="h-11 w-full"/>
                 <Skeleton class="h-12 w-full"/>
                 <div class="flex gap-2 overflow-hidden">
                     {(0..4).map(|_| view! { <Skeleton class="h-10 w-20 shrink-0 rounded-full"/> }).collect_view()}
@@ -337,7 +356,6 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                         <Skeleton class="h-6 w-10 rounded-full"/>
                     </div>
                 }).collect_view()}
-                <Skeleton class="fixed right-4 bottom-4 h-13 w-44 rounded-full"/>
             </div>
             <div class="flex flex-col gap-5 max-sm:hidden">
                 {sk_head(2)}
@@ -381,7 +399,7 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         .into_any(),
         PanelSkeletonKind::Form => view! {
             <div class="flex flex-col gap-2"><Skeleton class="h-8 w-52"/>{sk_line("w-96 max-w-full")}</div>
-            {sk_card("max-w-3xl gap-4", Box::new(|| view! {
+            {sk_card("gap-4", Box::new(|| view! {
                 {(0..2).map(|_| view! {
                     <div class="flex items-center gap-3">
                         <Skeleton class="size-11"/>
@@ -397,7 +415,7 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         .into_any(),
         PanelSkeletonKind::Product => view! {
             <div class="flex flex-col gap-2"><Skeleton class="h-8 w-56"/>{sk_line("w-72 max-w-full")}</div>
-            {sk_card("max-w-3xl gap-4 p-6", Box::new(|| view! {
+            {sk_card("gap-4 p-6", Box::new(|| view! {
                 {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
                 <div class="grid gap-4 sm:grid-cols-2">
                     {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-28")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
@@ -621,7 +639,7 @@ pub fn PriceWas(cents: i64, was: i64) -> impl IntoView {
         <span class="inline-flex flex-wrap items-baseline gap-x-2">
             <Price cents/>
             {(was > cents).then(|| view! {
-                <s class="mk-price-was text-[0.85em] opacity-55">
+                <s class="mk-price-was text-[max(0.85em,0.75rem)] opacity-70">
                     <span class="sr-only">"Antes "</span>{format_price(was)}
                 </s>
             })}
@@ -650,7 +668,24 @@ pub fn format_price(cents: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{avif_variant, format_price, srcsets};
+    use super::{avif_variant, format_price, library_srcsets, srcsets};
+
+    #[test]
+    fn wide_library_photos_come_in_two_widths() {
+        let (avif, webp) = library_srcsets("/img/hero.webp").unwrap();
+        assert_eq!(avif, "/img/hero-800.avif 800w, /img/hero.avif 1600w");
+        assert_eq!(webp, "/img/hero-800.webp 800w, /img/hero.webp 1600w");
+        assert_eq!(library_srcsets("/img/card.webp"), None);
+        for name in super::WIDE_LIBRARY {
+            for ext in ["webp", "avif"] {
+                let path = format!(
+                    "{}/../../public/img/{name}-800.{ext}",
+                    env!("CARGO_MANIFEST_DIR")
+                );
+                assert!(std::path::Path::new(&path).exists(), "falta {path}");
+            }
+        }
+    }
 
     #[test]
     fn library_photos_get_three_widths() {

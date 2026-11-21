@@ -628,7 +628,7 @@ pub fn StoreHomePage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), load_store_overview);
     view! {
         <leptos_meta::Title text="Inicio · MarketMaker"/>
-            <div class="mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8 max-sm:gap-4 max-sm:px-4 max-sm:py-5">
+            <div class="flex w-full max-w-[1440px] flex-col gap-6 px-8 py-8 max-sm:gap-4 max-sm:px-4 max-sm:py-5">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Home/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -942,7 +942,7 @@ fn Overview(o: StoreOverview) -> impl IntoView {
                                             <span class="min-w-0 grow truncate">{r.customer_name.clone()}</span>
                                             <span class="text-sm text-base-content/60 max-sm:hidden">{domain::order_time_ar(&r.created_at)}</span>
                                             {status_badge(r.status)}
-                                            <span class="w-28 text-right tabular-nums max-sm:w-auto">{ui::format_price(r.total_cents)}</span>
+                                            <span class="w-28 shrink-0 whitespace-nowrap text-right tabular-nums max-sm:w-auto">{ui::format_price(r.total_cents)}</span>
                                         </a>
                                     </li>
                                 }).collect_view()}

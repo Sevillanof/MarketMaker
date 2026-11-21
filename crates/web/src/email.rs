@@ -855,6 +855,65 @@ pub async fn tell_sold_without_stock(
     send(sold_without_stock_to_owner(owners, &name, &slug, &o, short));
 }
 
+/// Al dueño: un pedido pagado con Mercado Pago se devolvió desde Mercado
+/// Pago (o el comprador desconoció el pago) y lo cancelamos.
+pub async fn tell_refunded(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid, chargeback: bool) {
+    let Ok(Some(o)) = db::orders::get(pool, tenant, order).await else {
+        return;
+    };
+    let Ok(Some((name, slug))) = db::mp::name_and_slug(pool, tenant).await else {
+        return;
+    };
+    let owners = db::mp::owner_emails(pool, tenant).await.unwrap_or_default();
+    if owners.is_empty() {
+        return;
+    }
+    send(refunded_to_owner(owners, &name, &slug, &o, chargeback));
+}
+
+pub fn refunded_to_owner(
+    owners: Vec<String>,
+    store_name: &str,
+    slug: &str,
+    o: &Order,
+    chargeback: bool,
+) -> Email {
+    let url = format!("{}/tienda/{slug}/pedidos", app_url());
+    let (title, why) = if chargeback {
+        (
+            format!("El pago del pedido #{} se desconoció", o.number),
+            format!(
+                "{} desconoció el pago con su tarjeta y Mercado Pago le devolvió la plata. Cancelamos el pedido en {store_name} y las unidades volvieron al stock. Si ya lo enviaste, revisá el reclamo en tu cuenta de Mercado Pago.",
+                o.customer_name
+            ),
+        )
+    } else {
+        (
+            format!("El pedido #{} se devolvió", o.number),
+            format!(
+                "El pago de {} se devolvió desde Mercado Pago. Cancelamos el pedido en {store_name} y las unidades volvieron al stock.",
+                o.customer_name
+            ),
+        )
+    };
+    let html = frame(
+        "MarketMaker",
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">{}</h1>
+<p style="margin:0;color:#52525b">{}</p>{}"#,
+            esc(&title),
+            esc(&why),
+            button(&url, "Ver pedidos")
+        ),
+    );
+    Email {
+        to: owners,
+        subject: title.clone(),
+        html,
+        text: format!("{title}\n{why}\nVer pedidos: {url}\n"),
+    }
+}
+
 /// Al comprador: su pedido salió con Andreani, con el número de seguimiento.
 pub fn shipped_to_buyer(store_name: &str, slug: &str, o: &Order, tracking: &str) -> Email {
     let first = o.customer_name.split_whitespace().next().unwrap_or("");

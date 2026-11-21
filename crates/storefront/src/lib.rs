@@ -22,6 +22,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     provide_context(widgets::ActiveCoupons(
         coupons.into_iter().map(|c| c.code).collect(),
     ));
+    let store_name = store.name.clone();
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(store);
     let page = doc.page_index(&path);
@@ -135,12 +136,25 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     };
     let nodes = doc.layer(Layer::Page(page)).clone();
     let has_footer = nodes.iter().any(is_footer);
+    // Toda página necesita un título principal (lectores de pantalla y
+    // buscadores). Lo pone el banner; si la página no tiene, va uno oculto.
+    let has_h1 = nodes
+        .iter()
+        .any(|n| matches!(&n.widget, domain::Widget::Banner(b) if !b.title.trim().is_empty()));
+    let heading = (!has_h1).then(|| {
+        let text = match page {
+            0 => store_name.clone(),
+            i => format!("{} · {}", doc.pages[i - 1].name, store_name),
+        };
+        view! { <h1 class="sr-only">{text}</h1> }
+    });
     if has_footer {
         provide_context(widgets::LegalInFooter);
     }
 
     view! {
         <div data-theme=theme class="mk-store min-h-screen bg-base-200 text-base-content" style=style>
+            {heading}
             {grid(nodes)}
             {legal(has_footer)}
             <ProductDialog modal=doc.product_modal products open/>
