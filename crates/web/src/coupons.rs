@@ -117,7 +117,7 @@ pub fn CouponsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), store_coupons);
     view! {
         <leptos_meta::Title text="Cupones · MarketMaker"/>
-        <div class="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-10 max-sm:py-5">
+        <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-5">
             <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Coupons/> }>
                 {move || Suspend::new(async move {
                     match data.await {

@@ -412,6 +412,20 @@
 .mk-img picture {
   display: contents;
 }
+/* Banner y carrusel con texto blanco encima: mientras llega la foto (o si
+   no carga), fondo oscuro para que el texto se lea desde el primer momento. */
+:is(.mk-banner.mk-has-img .mk-banner-img, .mk-carousel .carousel-item) .mk-img:not([data-state="ok"]) {
+  background-color: #1f2937;
+  background-image: linear-gradient(90deg, #1f2937, #4b5563);
+}
+:is(.mk-banner.mk-has-img .mk-banner-img, .mk-carousel .carousel-item) .mk-img[data-state="error"]::after {
+  content: none;
+}
+/* Diseños donde el texto del banner va oscuro sobre fondo claro: sin cambio. */
+:is(.mk-d2, .mk-d3) .mk-banner.mk-has-img .mk-banner-img .mk-img:not([data-state="ok"]) {
+  background-color: var(--color-base-300);
+  background-image: none;
+}
 
 /* Asas de redimensionado del editor. */
 .mk-handle {
@@ -2138,8 +2152,10 @@ dialog.mk-cart::backdrop {
     padding: 0.75rem 0 1rem;
     background: var(--color-base-100);
     box-shadow: 0 -8px 16px -8px rgb(0 0 0 / 0.12);
+    /* Solo lo que ocupa la fila: con poca descripción no queda un hueco
+       blanco debajo del botón. */
     height: auto;
-    min-height: calc(var(--h) * 8px - 16px);
+    min-height: 0;
   }
   /* Con colores y talles pasa lo mismo: el bloque se «desarma» para que la
      fila de compra se pegue abajo de toda la ficha, no solo de su bloque. */
@@ -2211,16 +2227,25 @@ dialog.mk-cart::backdrop {
   body:has(.mk-savebar) .mk-help {
     display: none;
   }
-  /* Botón flotante de la acción principal (por ejemplo, + Nuevo producto). */
+  /* La acción principal (por ejemplo, + Nuevo producto) va arriba de la
+     lista a todo el ancho: flotando tapaba interruptores. */
   .mk-fab {
-    position: fixed;
-    right: 1rem;
-    bottom: max(1rem, env(safe-area-inset-bottom));
-    z-index: 25;
-    min-height: 3.25rem;
-    border-radius: 9999px;
-    padding-inline: 1.25rem;
-    box-shadow: 0 8px 22px -6px rgb(67 48 214 / 0.55);
+    flex-basis: 100%;
+    min-height: 2.75rem;
+  }
+  /* El botón de ayuda pasa a la barra de arriba, a la derecha: abajo tapaba
+     el contenido. */
+  .mk-help.mk-help {
+    top: 0.5rem;
+    right: 0.5rem;
+    left: auto;
+    bottom: auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: transparent;
+    border-color: transparent;
+    color: var(--color-base-content);
+    box-shadow: none;
   }
   /* Toques de al menos 44 px en el menú del panel. */
   .mk-panel-menu a,

@@ -339,9 +339,12 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         .into_any(),
         PanelSkeletonKind::List => view! {
             // Teléfono: título, buscador, etiquetas y una tarjeta por producto
-            // (foto, dos líneas e interruptor), más el botón flotante.
+            // (foto, dos líneas e interruptor). Etiquetas, Categorías y
+            // "+ Nuevo producto" a todo el ancho, arriba de la lista.
             <div class="flex flex-col gap-4 sm:hidden">
                 <div class="flex flex-col gap-2"><Skeleton class="h-7 w-40"/>{sk_line("w-56 max-w-full")}</div>
+                <div class="flex gap-3"><Skeleton class="h-11 w-24"/><Skeleton class="h-11 w-28"/></div>
+                <Skeleton class="h-11 w-full"/>
                 <Skeleton class="h-12 w-full"/>
                 <div class="flex gap-2 overflow-hidden">
                     {(0..4).map(|_| view! { <Skeleton class="h-10 w-20 shrink-0 rounded-full"/> }).collect_view()}
@@ -353,7 +356,6 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                         <Skeleton class="h-6 w-10 rounded-full"/>
                     </div>
                 }).collect_view()}
-                <Skeleton class="fixed right-4 bottom-4 h-13 w-44 rounded-full"/>
             </div>
             <div class="flex flex-col gap-5 max-sm:hidden">
                 {sk_head(2)}
@@ -397,7 +399,7 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         .into_any(),
         PanelSkeletonKind::Form => view! {
             <div class="flex flex-col gap-2"><Skeleton class="h-8 w-52"/>{sk_line("w-96 max-w-full")}</div>
-            {sk_card("max-w-3xl gap-4", Box::new(|| view! {
+            {sk_card("gap-4", Box::new(|| view! {
                 {(0..2).map(|_| view! {
                     <div class="flex items-center gap-3">
                         <Skeleton class="size-11"/>
@@ -413,7 +415,7 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         .into_any(),
         PanelSkeletonKind::Product => view! {
             <div class="flex flex-col gap-2"><Skeleton class="h-8 w-56"/>{sk_line("w-72 max-w-full")}</div>
-            {sk_card("max-w-3xl gap-4 p-6", Box::new(|| view! {
+            {sk_card("gap-4 p-6", Box::new(|| view! {
                 {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
                 <div class="grid gap-4 sm:grid-cols-2">
                     {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-28")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}

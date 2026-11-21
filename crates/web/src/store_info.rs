@@ -72,7 +72,7 @@ pub fn StoreInfoPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), load_store_info);
     view! {
         <leptos_meta::Title text="Datos de la tienda · MarketMaker"/>
-            <div class="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 max-sm:py-5 max-sm:pb-28">
+            <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-5 max-sm:pb-28">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::StoreInfo/> }>
                     {move || Suspend::new(async move {
                         match data.await {

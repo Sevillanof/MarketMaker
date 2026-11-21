@@ -356,7 +356,7 @@ pub fn ProductsPage() -> impl IntoView {
     let data = Resource::new(move || slug.get(), list_store_products);
     view! {
         <leptos_meta::Title text="Productos · MarketMaker"/>
-            <div class="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-8 max-sm:py-5 max-sm:pb-24">
+            <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-5 max-sm:pb-24">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::List/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -489,7 +489,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
             <button type="button" class="btn max-sm:min-h-11" on:click=move |_| {
                 if let Some(d) = manage_cats.get() { _ = d.show_modal(); }
             }>"Categorías"</button>
-            // En el teléfono es el botón flotante de abajo (ver `.mk-fab`).
+            // En el teléfono va a todo el ancho, debajo del título (ver `.mk-fab`).
             <a class="btn btn-primary mk-fab" href=new_href.clone()>"+ Nuevo producto"</a>
         </div>
         <dialog node_ref=manage class="modal" aria-labelledby="etiquetas-titulo">
@@ -1048,7 +1048,7 @@ pub fn ProductEditPage() -> impl IntoView {
     );
     view! {
         <leptos_meta::Title text="Producto · MarketMaker"/>
-            <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8 max-sm:py-4 max-sm:pb-28">
+            <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-4 max-sm:pb-28">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Product/> }>
                     {move || Suspend::new(async move {
                         let back = format!("/tienda/{}/productos", slug.get_untracked());

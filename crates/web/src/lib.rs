@@ -363,6 +363,7 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
         });
     // La tienda sin publicar no tiene que aparecer en Google.
     let hidden = view.published == 0;
+    let icon = view! { <StoreIcon view=view.clone()/> };
     if let Some(p) = shared {
         let title = format!("{} · {name}", p.name);
         let text = p.description.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -376,6 +377,7 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
         };
         let image = Some(p.image_url).filter(|u| !u.is_empty()).map(absolute);
         return view! {
+            {icon}
             <Title text=title.clone()/>
             {hidden.then(|| view! { <leptos_meta::Meta name="robots" content="noindex"/> })}
             <leptos_meta::Meta name="description" content=description.clone()/>
@@ -426,6 +428,7 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
         })
         .map(absolute);
     view! {
+        {icon}
         <Title text=name.clone()/>
         {hidden.then(|| view! { <leptos_meta::Meta name="robots" content="noindex"/> })}
         <leptos_meta::Meta name="description" content=description.clone()/>
@@ -435,6 +438,117 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
         {image.map(|i| view! { <leptos_meta::Meta property="og:image" content=i/> })}
     }
     .into_any()
+}
+
+/// Ícono de la pestaña de la tienda: su logo o, sin logo, la inicial sobre
+/// el color principal de la tienda (no el de MarketMaker).
+#[component]
+fn StoreIcon(view: domain::PageView) -> impl IntoView {
+    let logo = view.store.logo_url.trim().to_string();
+    if !logo.is_empty() {
+        return view! { <leptos_meta::Link rel="icon" href=logo/> }.into_any();
+    }
+    let letter = view
+        .store_name
+        .trim()
+        .chars()
+        .find(|c| c.is_alphanumeric())
+        .map_or("•".to_string(), |c| c.to_uppercase().collect());
+    // Un tema propio trae el color; uno de daisyUI se lee de la página ya
+    // pintada (abajo), y mientras tanto va un gris neutro.
+    let color = view
+        .doc
+        .style
+        .colors
+        .get("primary")
+        .filter(|c| c.starts_with('#') && c.len() <= 9)
+        .cloned()
+        .unwrap_or_else(|| "#52525b".to_string());
+    let fixed = view.doc.style.colors.contains_key("primary");
+    let href = initial_icon(&letter, &color, "#ffffff");
+    if !fixed {
+        Effect::new(move |_| painted_icon(&letter));
+    }
+    view! { <leptos_meta::Link id="mk-icon" rel="icon" href=href/> }.into_any()
+}
+
+/// Un cuadrado redondeado de `color` con `letter` en el medio, como SVG.
+fn initial_icon(letter: &str, color: &str, ink: &str) -> String {
+    let esc = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('"', "&quot;")
+    };
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="{}"/><text x="32" y="45" font-family="system-ui,sans-serif" font-size="38" font-weight="700" text-anchor="middle" fill="{}">{}</text></svg>"#,
+        esc(color),
+        esc(ink),
+        esc(letter)
+    );
+    let encoded: String = svg
+        .chars()
+        .map(|c| match c {
+            '"' => "'".to_string(),
+            '#' => "%23".to_string(),
+            '%' => "%25".to_string(),
+            '<' => "%3C".to_string(),
+            '>' => "%3E".to_string(),
+            c => c.to_string(),
+        })
+        .collect();
+    format!("data:image/svg+xml,{encoded}")
+}
+
+/// En el navegador: el color principal del tema de la tienda (y el de su
+/// texto), dibujados como PNG con la inicial, en el ícono `#mk-icon`.
+fn painted_icon(letter: &str) -> Option<()> {
+    #[cfg(feature = "hydrate")]
+    {
+        use leptos::wasm_bindgen::JsCast;
+        let doc = web_sys::window()?.document()?;
+        let store = doc.query_selector(".mk-store").ok()??;
+        let probe = doc.create_element("span").ok()?;
+        _ = probe.set_attribute(
+            "style",
+            "position:absolute;visibility:hidden;background:var(--color-primary);color:var(--color-primary-content)",
+        );
+        store.append_child(&probe).ok()?;
+        let cs = web_sys::window()?.get_computed_style(&probe).ok()??;
+        let bg = cs.get_property_value("background-color").ok()?;
+        let ink = cs.get_property_value("color").ok()?;
+        probe.remove();
+        let canvas = doc
+            .create_element("canvas")
+            .ok()?
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .ok()?;
+        canvas.set_width(64);
+        canvas.set_height(64);
+        let ctx = canvas
+            .get_context("2d")
+            .ok()??
+            .dyn_into::<web_sys::CanvasRenderingContext2d>()
+            .ok()?;
+        ctx.set_fill_style_str(&bg);
+        ctx.begin_path();
+        _ = ctx.round_rect_with_f64(0.0, 0.0, 64.0, 64.0, 14.0);
+        ctx.fill();
+        ctx.set_fill_style_str(&ink);
+        ctx.set_font("700 38px system-ui, sans-serif");
+        ctx.set_text_align("center");
+        ctx.set_text_baseline("middle");
+        _ = ctx.fill_text(letter, 32.0, 35.0);
+        let url = canvas.to_data_url().ok()?;
+        doc.get_element_by_id("mk-icon")?
+            .set_attribute("href", &url)
+            .ok()?;
+        return Some(());
+    }
+    #[cfg(not(feature = "hydrate"))]
+    {
+        let _ = letter;
+        None
+    }
 }
 
 /// Las pantallas que no usa quien compra (entrar, cuenta, fotos, panel y
