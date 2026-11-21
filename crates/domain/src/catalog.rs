@@ -78,6 +78,9 @@ pub struct StoreProducts {
     /// El orden de las categorías (ver [`order_categories`]).
     #[serde(default)]
     pub category_order: Vec<String>,
+    /// La dirección de la tienda, para «Ver en la tienda».
+    #[serde(default)]
+    pub store_url: String,
 }
 
 /// Resultado de guardar un producto.
@@ -995,11 +998,25 @@ mod size_word_tests {
     #[test]
     fn categories_follow_the_store_order() {
         use super::{order_categories, CategoryCount};
-        let c = |n: &str, k: usize| CategoryCount { name: n.into(), products: k, subs: Vec::new() };
+        let c = |n: &str, k: usize| CategoryCount {
+            name: n.into(),
+            products: k,
+            subs: Vec::new(),
+        };
         let cats = vec![c("Macetas", 8), c("Plantas", 3), c("Tierra", 1)];
-        let order = vec!["Plantas".to_string(), "Nueva".to_string(), "Macetas".to_string()];
+        let order = vec![
+            "Plantas".to_string(),
+            "Nueva".to_string(),
+            "Macetas".to_string(),
+        ];
         let names = |v: Vec<CategoryCount>| v.into_iter().map(|c| c.name).collect::<Vec<_>>();
-        assert_eq!(names(order_categories(cats.clone(), &order, false)), ["Plantas", "Macetas", "Tierra"]);
-        assert_eq!(names(order_categories(cats, &order, true)), ["Plantas", "Nueva", "Macetas", "Tierra"]);
+        assert_eq!(
+            names(order_categories(cats.clone(), &order, false)),
+            ["Plantas", "Macetas", "Tierra"]
+        );
+        assert_eq!(
+            names(order_categories(cats, &order, true)),
+            ["Plantas", "Nueva", "Macetas", "Tierra"]
+        );
     }
 }

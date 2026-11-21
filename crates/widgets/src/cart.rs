@@ -716,7 +716,8 @@ pub fn AddToCart(
     let qty = RwSignal::new(1u32);
     let cart = use_context::<Cart>().filter(|_| !editing);
     if let Some(p) = product.clone().filter(|p| p.has_variants()) {
-        return view! { <crate::product_page::VariantBuy product=p label cart stacked/> }.into_any();
+        return view! { <crate::product_page::VariantBuy product=p label cart stacked/> }
+            .into_any();
     }
     let Some((cart, product)) = cart.zip(product.filter(|p| !p.id.is_empty())) else {
         // En el editor: igual que en la tienda, pero quieto.

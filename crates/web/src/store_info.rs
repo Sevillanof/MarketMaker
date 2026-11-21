@@ -393,9 +393,17 @@ pub async fn change_store_slug(
 
 /// Borra la tienda. Hay que escribir su nombre tal cual.
 #[server]
-pub async fn delete_store(slug: String, typed: String) -> Result<Result<(), String>, ServerFnError> {
+pub async fn delete_store(
+    slug: String,
+    typed: String,
+) -> Result<Result<(), String>, ServerFnError> {
     let tenant = crate::products::server::require_store(&slug).await?;
-    let norm = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let norm = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
     if norm(&typed) != norm(&tenant.name) {
         return Ok(Err("El nombre no coincide.".into()));
     }

@@ -44,7 +44,10 @@ fn page_view(
 
 /// Los cupones de la tienda que sirven hoy (para el bloque Cupón).
 #[cfg(feature = "ssr")]
-async fn active_coupons(pool: &db::Pool, tenant: uuid::Uuid) -> Result<Vec<domain::CouponBrief>, ServerFnError> {
+async fn active_coupons(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+) -> Result<Vec<domain::CouponBrief>, ServerFnError> {
     let today = db::coupons::today(pool).await.map_err(internal)?;
     let list = db::coupons::list(pool, tenant).await.map_err(internal)?;
     Ok(list

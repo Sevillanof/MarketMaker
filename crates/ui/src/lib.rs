@@ -287,7 +287,8 @@ fn sk_head(buttons: usize) -> impl IntoView {
 pub enum PanelSkeletonKind {
     /// Inicio: encabezado, cuatro números, últimos pedidos y checklist.
     Home,
-    /// Productos: buscador y filas con foto.
+    /// Productos: la lista (buscador, filtros, filas con precio y stock) y
+    /// el panel rápido a la derecha.
     List,
     /// Pedidos: cuatro columnas con tarjetas.
     Board,
@@ -295,8 +296,8 @@ pub enum PanelSkeletonKind {
     Form,
     /// Mis fotos: grilla de fotos.
     Photos,
-    /// Un producto: nombre, precios, descripción, fotos, categoría y
-    /// subcategoría, etiquetas y stock.
+    /// La ficha completa de un producto, en su ventana: cabecera, campos con
+    /// la vista previa al costado y el pie con Guardar.
     Product,
     /// Cupones: la tabla de cupones y el formulario «Nuevo cupón» en dos
     /// columnas.
@@ -310,6 +311,12 @@ pub enum PanelSkeletonKind {
 
 #[component]
 pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
+    // La ficha va en su ventana, pegada a los bordes (cabecera y pie).
+    let gap = if matches!(kind, PanelSkeletonKind::Product) {
+        "flex min-h-0 grow flex-col"
+    } else {
+        "flex flex-col gap-5"
+    };
     let body = match kind {
         PanelSkeletonKind::Home => view! {
             {sk_head(2)}
@@ -340,39 +347,53 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         }
         .into_any(),
         PanelSkeletonKind::List => view! {
-            // Teléfono: título, buscador, etiquetas y una tarjeta por producto
-            // (foto, dos líneas e interruptor). Etiquetas, Categorías y
-            // "+ Nuevo producto" a todo el ancho, arriba de la lista.
-            <div class="flex flex-col gap-4 sm:hidden">
-                <div class="flex flex-col gap-2"><Skeleton class="h-7 w-40"/>{sk_line("w-56 max-w-full")}</div>
-                <div class="flex gap-3"><Skeleton class="h-11 w-24"/><Skeleton class="h-11 w-28"/></div>
-                <Skeleton class="h-11 w-full"/>
-                <Skeleton class="h-12 w-full"/>
-                <div class="flex gap-2 overflow-hidden">
-                    {(0..4).map(|_| view! { <Skeleton class="h-10 w-20 shrink-0 rounded-full"/> }).collect_view()}
-                </div>
-                {(0..5).map(|_| view! {
-                    <div class="flex items-center gap-3 rounded-box bg-base-100 p-2.5">
-                        <Skeleton class="size-16 shrink-0"/>
-                        <div class="flex grow flex-col gap-2">{sk_line("w-2/3")}{sk_line("w-1/3")}<Skeleton class="h-2.5 w-1/2"/></div>
-                        <Skeleton class="h-6 w-10 rounded-full"/>
-                    </div>
-                }).collect_view()}
+            // Título y cantidad; Etiquetas, Categorías y + Nuevo producto (en el
+            // teléfono, + Nuevo producto a todo el ancho arriba).
+            <div class="flex flex-wrap items-center gap-3">
+                <Skeleton class="h-11 w-full sm:hidden"/>
+                <div class="flex grow flex-col gap-2"><Skeleton class="h-8 w-40 max-sm:h-7"/>{sk_line("w-56 max-w-full")}</div>
+                <Skeleton class="h-10 w-24 max-sm:h-11 max-sm:flex-1"/><Skeleton class="h-10 w-28 max-sm:h-11 max-sm:flex-1"/>
+                <Skeleton class="h-10 w-40 max-sm:hidden"/>
             </div>
-            <div class="flex flex-col gap-5 max-sm:hidden">
-                {sk_head(2)}
-                <Skeleton class="h-10 w-80 max-w-full"/>
-                {sk_card("divide-y divide-base-300 !gap-0 !py-1", Box::new(|| view! {
-                    {(0..5).map(|_| view! {
-                        // Foto, nombre, precio, stock, interruptor, Editar y Borrar.
-                        <div class="grid grid-cols-[3.5rem_1fr_6rem_5rem_3rem_9rem] items-center gap-4 py-3">
-                            <Skeleton class="size-14"/>
-                            <div class="flex flex-col gap-2">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-1/3"/></div>
-                            {sk_line("w-full")}{sk_line("w-full")}<Skeleton class="h-5 w-10 rounded-full"/>
-                            <div class="flex gap-2"><Skeleton class="h-7 w-14"/><Skeleton class="h-7 w-16"/></div>
+            // La lista (buscador, filtros y filas con foto, precio y stock) y,
+            // en compu, el panel rápido a la derecha.
+            <div class="grid items-start gap-4 md:grid-cols-[320px_1fr] lg:grid-cols-[400px_1fr]">
+                <div class="card overflow-hidden bg-base-100 shadow-sm">
+                    <div class="flex flex-col gap-2 border-b border-base-200 p-3">
+                        <Skeleton class="h-10 w-full max-sm:h-12"/>
+                        <Skeleton class="h-8 w-full max-sm:h-10"/>
+                    </div>
+                    {(0..6).map(|_| view! {
+                        <div class="flex items-center gap-3 border-b border-base-200 px-3.5 py-2.5 last:border-0">
+                            <Skeleton class="size-11 shrink-0 max-sm:size-12"/>
+                            <div class="flex grow flex-col gap-2">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-1/3"/></div>
+                            <div class="flex flex-col items-end gap-1.5"><Skeleton class="h-3.5 w-14"/><Skeleton class="h-4 w-10 rounded-full"/></div>
                         </div>
                     }).collect_view()}
-                }.into_any()))}
+                </div>
+                <div class="card bg-base-100 shadow-sm max-md:hidden">
+                    <div class="card-body gap-4 p-5">
+                        <div class="flex items-center gap-2">{sk_line("w-14")}<Skeleton class="ml-auto h-8 w-24"/><Skeleton class="h-8 w-24"/></div>
+                        <div class="grid gap-5 lg:grid-cols-[minmax(0,15rem)_1fr]">
+                            <div class="flex flex-col gap-2">
+                                <Skeleton class="aspect-square w-full"/>
+                                <div class="grid grid-cols-4 gap-2">{(0..4).map(|_| view! { <Skeleton class="aspect-square"/> }).collect_view()}</div>
+                            </div>
+                            <div class="flex flex-col gap-3">
+                                <Skeleton class="h-8 w-3/4"/>
+                                <div class="flex gap-2"><Skeleton class="h-7 w-20 rounded-full"/><Skeleton class="h-7 w-24 rounded-full"/></div>
+                                <div class="grid grid-cols-2 gap-3">{(0..4).map(|_| view! { <div class="flex flex-col gap-1.5">{sk_line("w-1/2")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}</div>
+                                {sk_line("w-12")}<Skeleton class="h-16 w-full"/>
+                            </div>
+                        </div>
+                        {sk_line("w-24")}<Skeleton class="h-32 w-full"/>
+                        <Skeleton class="h-14 w-full"/>
+                        <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-base-200 pt-4">
+                            <Skeleton class="h-10 w-36"/><Skeleton class="h-8 w-16"/>
+                            <div class="flex justify-end gap-2"><Skeleton class="h-10 w-24"/><Skeleton class="h-10 w-24"/></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         }
         .into_any(),
@@ -418,21 +439,34 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         }
         .into_any(),
         PanelSkeletonKind::Product => view! {
-            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-56"/>{sk_line("w-72 max-w-full")}</div>
-            {sk_card("gap-4 p-6", Box::new(|| view! {
-                {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
-                <div class="grid gap-4 sm:grid-cols-2">
-                    {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-28")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
+            // La ficha completa en su ventana: cabecera (nombre, ‹ › y ✕), el
+            // formulario con la vista previa a la derecha y el pie con Guardar.
+            <div class="flex items-center gap-2 border-b border-base-200 px-5 py-3 max-sm:px-3">
+                <div class="flex grow flex-col gap-1.5"><Skeleton class="h-2.5 w-24 max-sm:hidden"/><Skeleton class="h-6 w-56 max-w-full"/></div>
+                <Skeleton class="size-8 max-sm:size-11"/><Skeleton class="size-8 max-sm:size-11"/><Skeleton class="size-8 max-sm:size-11"/>
+            </div>
+            <div class="grid min-h-0 grow items-start gap-6 overflow-hidden px-5 py-4 max-sm:px-4 lg:grid-cols-[1fr_340px]">
+                <div class="flex flex-col gap-4">
+                    {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-28")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
+                    </div>
+                    {sk_line("w-20")}
+                    <div class="flex gap-3">{(0..3).map(|_| view! { <Skeleton class="size-20 shrink-0"/> }).collect_view()}</div>
+                    {sk_line("w-28")}<Skeleton class="h-28 w-full"/>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-32")}<Skeleton class="h-10 w-full"/></div> }).collect_view()}
+                    </div>
                 </div>
-                {sk_line("w-28")}<Skeleton class="h-28 w-full"/>
-                {sk_line("w-20")}
-                <div class="flex gap-3">{(0..3).map(|_| view! { <Skeleton class="size-20 shrink-0"/> }).collect_view()}</div>
-                <div class="grid gap-4 sm:grid-cols-2">
-                    {(0..2).map(|_| view! { <div class="flex flex-col gap-2">{sk_line("w-32")}<Skeleton class="h-10 w-full"/>{sk_line("w-3/4")}</div> }).collect_view()}
+                <div class="flex flex-col gap-3 max-lg:hidden">{sk_line("w-40")}<Skeleton class="h-80 w-full"/>{sk_line("w-3/4")}</div>
+            </div>
+            <div class="flex flex-col gap-2 border-t border-base-200 px-5 py-3 max-sm:px-4">
+                <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3 max-sm:grid-cols-[1fr_auto]">
+                    <span></span><Skeleton class="h-8 w-16 max-sm:hidden"/>
+                    <div class="flex justify-end gap-2"><Skeleton class="h-10 w-24"/><Skeleton class="h-10 w-24 max-sm:hidden"/></div>
                 </div>
-                {sk_line("w-24")}<Skeleton class="h-10 w-full"/>
-                <Skeleton class="h-10 w-32"/>
-            }.into_any()))}
+                <Skeleton class="h-12 w-full sm:hidden"/>
+            </div>
         }
         .into_any(),
         PanelSkeletonKind::Coupons => view! {
@@ -531,7 +565,7 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         }
         .into_any(),
     };
-    view! { <div class="flex flex-col gap-5" aria-busy="true" aria-label="Cargando">{body}</div> }
+    view! { <div class=gap aria-busy="true" aria-label="Cargando">{body}</div> }
 }
 
 /// El editor mientras se baja y llega tu tienda: la misma barra, el riel de

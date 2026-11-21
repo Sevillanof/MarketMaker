@@ -35,7 +35,12 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     categories.sort();
     categories.dedup();
     // Primero las que la tienda ordenó en "Categorías".
-    categories.sort_by_key(|c| category_order.iter().position(|o| o == c).unwrap_or(usize::MAX));
+    categories.sort_by_key(|c| {
+        category_order
+            .iter()
+            .position(|o| o == c)
+            .unwrap_or(usize::MAX)
+    });
     provide_context(widgets::StoreLinks {
         pages: doc.pages.iter().map(|p| p.path.clone()).collect(),
         categories,

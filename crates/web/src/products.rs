@@ -62,6 +62,7 @@ pub async fn list_store_products(slug: String) -> Result<Option<StoreProducts>, 
         category_order: db::products::category_order(&pool, tenant.id)
             .await
             .map_err(internal)?,
+        store_url: crate::email::store_url(&slug),
     }))
 }
 
@@ -190,7 +191,10 @@ pub async fn save_category_order(
         if name.is_empty() {
             return Ok(Err("Escribí un nombre.".into()));
         }
-        if !clean.iter().any(|c| c.to_lowercase() == name.to_lowercase()) {
+        if !clean
+            .iter()
+            .any(|c| c.to_lowercase() == name.to_lowercase())
+        {
             clean.push(name);
         }
     }
@@ -390,69 +394,183 @@ fn is_phone() -> bool {
         .is_some_and(|w| w < 640.0)
 }
 
-fn photo_count(n: usize) -> String {
-    match n {
-        0 => "Sin fotos".into(),
-        1 => "1 foto".into(),
-        n => format!("{n} fotos"),
-    }
-}
-
 pub(crate) fn slug_param() -> Memo<String> {
     let params = use_params_map();
     Memo::new(move |_| params.read().get("slug").unwrap_or_default())
 }
 
-/// `/tienda/:slug/productos`.
+/// `/tienda/:slug/productos` y `/tienda/:slug/productos/:id`: la lista con
+/// el panel rápido y, con `:id` (o `nuevo`), la ficha completa abierta.
 #[component]
 pub fn ProductsPage() -> impl IntoView {
     if matches!(crate::site::current_site(), domain::Site::Store(_)) {
         return view! { <crate::Home/> }.into_any();
     }
     let slug = slug_param();
+    let params = use_params_map();
+    let first_ficha = params.read_untracked().get("id");
     let data = Resource::new(move || slug.get(), list_store_products);
     view! {
         <leptos_meta::Title text="Productos · MarketMaker"/>
             <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-5 max-sm:pb-24">
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::List/> }>
-                    {move || Suspend::new(async move {
-                        match data.await {
-                            Ok(Some(list)) => view! { <ProductList slug=slug.get_untracked() data=list/> }.into_any(),
-                            Ok(None) => view! { <SignInFirst back=format!("/tienda/{}/productos", slug.get_untracked())/> }.into_any(),
-                            Err(e) => view! { <div role="alert" class="alert alert-error">{error_text(&e)}</div> }.into_any(),
-                        }
-                    })}
+                    {move || {
+                        let first_ficha = first_ficha.clone();
+                        Suspend::new(async move {
+                            match data.await {
+                                Ok(Some(list)) => view! { <ProductList slug=slug.get_untracked() data=list first_ficha/> }.into_any(),
+                                Ok(None) => view! { <SignInFirst back=format!("/tienda/{}/productos", slug.get_untracked())/> }.into_any(),
+                                Err(e) => view! { <div role="alert" class="alert alert-error">{error_text(&e)}</div> }.into_any(),
+                            }
+                        })
+                    }}
                 </Suspense>
             </div>
     }
     .into_any()
 }
 
-#[component]
-fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
-    let products = RwSignal::new(data.products);
-    let category_order = RwSignal::new(data.category_order);
-    // Las etiquetas salen de los productos, así se actualizan al cambiarlas
-    // desde "Etiquetas". Las de los productos de ejemplo (audio, calzado…)
-    // no ensucian los filtros de la tienda.
-    let tags = Memo::new(move |_| {
-        products.with(|ps| {
-            let own: Vec<Product> = ps.iter().filter(|p| !p.example).cloned().collect();
-            let mut t: Vec<String> = domain::count_tags(&own)
-                .into_iter()
-                .map(|c| c.tag)
-                .collect();
-            t.sort();
-            t
+/// Los filtros de la lista.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Filter {
+    All,
+    Out,
+    Few,
+    Hidden,
+}
+
+impl Filter {
+    const ALL: [(Filter, &'static str); 4] = [
+        (Filter::All, "Todos"),
+        (Filter::Out, "Agotados"),
+        (Filter::Few, "Pocas"),
+        (Filter::Hidden, "Ocultos"),
+    ];
+
+    fn keeps(self, p: &Product) -> bool {
+        match self {
+            Filter::All => true,
+            Filter::Out => !p.in_stock,
+            Filter::Few => p.in_stock && p.stock.is_some_and(|n| (1..=3).contains(&n)),
+            Filter::Hidden => !p.visible,
+        }
+    }
+}
+
+/// Lo que comparten la lista, el panel rápido y la ficha completa.
+#[derive(Clone, Copy)]
+struct ListCtx {
+    slug: StoredValue<String>,
+    products: RwSignal<Vec<Product>>,
+    order: RwSignal<Vec<String>>,
+    /// Lo que se ve en la lista, con la búsqueda y el filtro.
+    shown: Memo<Vec<Product>>,
+    /// El producto del panel rápido.
+    selected: RwSignal<Option<String>>,
+    /// En el teléfono, el panel rápido abierto a pantalla completa.
+    phone_open: RwSignal<bool>,
+    /// La ficha completa abierta: `Some("")` para uno nuevo.
+    ficha: RwSignal<Option<String>>,
+    /// Lo que la ficha cargó (no cambia cuando se crea el producto nuevo,
+    /// para no volver a armar el formulario).
+    ficha_src: RwSignal<Option<String>>,
+    /// El panel rápido tiene cambios sin guardar.
+    panel_dirty: RwSignal<bool>,
+    /// La ficha completa tiene cambios sin guardar.
+    ficha_dirty: RwSignal<bool>,
+    /// Lo que se hace si la persona elige descartar los cambios.
+    pending: RwSignal<Option<Callback<()>>>,
+    /// Sube para volver a armar el panel o la ficha (Descartar).
+    nonce: RwSignal<u32>,
+    ask_delete: Callback<(String, String)>,
+    store_url: StoredValue<String>,
+}
+
+impl ListCtx {
+    /// Hace `then`, pero si hay cambios sin guardar pregunta antes.
+    fn guard(self, dirty: RwSignal<bool>, then: impl Fn() + Send + Sync + 'static) {
+        if dirty.get_untracked() {
+            self.pending.set(Some(Callback::new(move |()| then())));
+        } else {
+            then();
+        }
+    }
+
+    fn select(self, id: String) {
+        self.guard(self.panel_dirty, move || {
+            self.panel_dirty.set(false);
+            self.selected.set(Some(id.clone()));
+            self.phone_open.set(true);
+        });
+    }
+
+    /// Abre la ficha completa de `id` (vacío: un producto nuevo).
+    fn open_ficha(self, id: String) {
+        self.guard(self.panel_dirty, move || {
+            self.panel_dirty.set(false);
+            self.show_ficha(Some(id.clone()));
+        });
+    }
+
+    fn show_ficha(self, id: Option<String>) {
+        self.ficha_src.set(id.clone());
+        self.ficha.set(id);
+    }
+
+    /// El vecino de `id` en la lista (`step` -1 o 1).
+    fn neighbor(self, id: &str, step: i32) -> Option<String> {
+        self.shown.with_untracked(|ps| {
+            let i = ps.iter().position(|p| p.id == id)? as i32 + step;
+            usize::try_from(i)
+                .ok()
+                .and_then(|i| ps.get(i))
+                .map(|p| p.id.clone())
         })
-    });
+    }
+
+    /// Cambia la dirección sin recargar (para que el enlace abra lo mismo).
+    fn set_url(self, ficha: Option<&str>) {
+        let base = format!("/tienda/{}/productos", self.slug.get_value());
+        let url = match ficha {
+            Some("") => format!("{base}/nuevo"),
+            Some(id) => format!("{base}/{id}"),
+            None => base,
+        };
+        if let Ok(history) = window().history() {
+            _ = history.replace_state_with_url(
+                &leptos::wasm_bindgen::JsValue::NULL,
+                "",
+                Some(&url),
+            );
+        }
+    }
+}
+
+/// Lo que dice la pastilla de stock de un producto.
+fn stock_pill(p: &Product) -> (&'static str, String) {
+    if !p.in_stock {
+        ("mk-stock-out", "Agotado".into())
+    } else {
+        match p.stock {
+            Some(n) => ("", format!("{n} u.")),
+            None => ("", "Hay stock".into()),
+        }
+    }
+}
+
+#[component]
+fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -> impl IntoView {
+    let first_ficha = first_ficha.map(|id| if id == "nuevo" { String::new() } else { id });
+    let products = RwSignal::new(data.products);
+    let order = RwSignal::new(data.category_order);
+    // "Etiquetas" filtra con esto la lista de su ventana.
+    let tag = RwSignal::new(None::<String>);
     let _ = data.tags;
     let manage = NodeRef::<leptos::html::Dialog>::new();
     let manage_cats = NodeRef::<leptos::html::Dialog>::new();
     let query = RwSignal::new(String::new());
-    let tag = RwSignal::new(None::<String>);
+    let filter = RwSignal::new(Filter::All);
     let problem = RwSignal::new(None::<String>);
-    let base = format!("/tienda/{slug}/productos");
     let slug = StoredValue::new(slug);
 
     let summary = move || {
@@ -460,52 +578,70 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
             let visible = ps.iter().filter(|p| p.visible).count();
             match ps.len() {
                 1 => format!(
-                    "1 producto, {}",
-                    if visible == 1 { "visible" } else { "oculto" }
+                    "1 producto · {}",
+                    if visible == 1 {
+                        "en la tienda"
+                    } else {
+                        "oculto"
+                    }
                 ),
-                n => format!("{n} productos, {visible} visibles"),
+                n => format!("{n} productos · {visible} en la tienda"),
             }
         })
     };
     let shown = Memo::new(move |_| {
         let q = query.get();
-        let t = tag.get();
+        let f = filter.get();
         products.with(|ps| {
             ps.iter()
-                .filter(|p| domain::product_matches(p, &q))
-                .filter(|p| t.as_ref().is_none_or(|t| p.tags.contains(t)))
+                .filter(|p| domain::product_matches(p, &q) && f.keeps(p))
                 .cloned()
                 .collect::<Vec<_>>()
         })
     });
-    let toggle = Action::new(move |(id, on): &(String, bool)| {
-        let (id, on) = (id.clone(), *on);
-        async move {
-            let r = set_product_visible(slug.get_value(), id.clone(), on).await;
-            match r {
-                Ok(()) => {
-                    problem.set(None);
-                    products.update(|ps| {
-                        if let Some(p) = ps.iter_mut().find(|p| p.id == id) {
-                            p.visible = on;
-                        }
-                    });
-                }
-                Err(e) => problem.set(Some(error_text(&e))),
-            }
-        }
-    });
 
-    // Borrar desde la lista, preguntando antes.
+    // Borrar, preguntando antes.
     let confirm = NodeRef::<leptos::html::Dialog>::new();
     let doomed = RwSignal::new(None::<(String, String)>);
+    let ask_delete = Callback::new(move |(id, name): (String, String)| {
+        doomed.set(Some((id, name)));
+        if let Some(d) = confirm.get() {
+            _ = d.show_modal();
+        }
+    });
+    let ctx = ListCtx {
+        slug,
+        products,
+        order,
+        shown,
+        selected: RwSignal::new(None),
+        phone_open: RwSignal::new(false),
+        ficha: RwSignal::new(first_ficha.clone()),
+        ficha_src: RwSignal::new(first_ficha),
+        panel_dirty: RwSignal::new(false),
+        ficha_dirty: RwSignal::new(false),
+        pending: RwSignal::new(None),
+        nonce: RwSignal::new(0),
+        ask_delete,
+        store_url: StoredValue::new(data.store_url),
+    };
     let remove = Action::new(move |id: &String| {
         let id = id.clone();
         async move {
             match delete_product(slug.get_value(), id.clone()).await {
                 Ok(()) => {
                     problem.set(None);
+                    let next = ctx.neighbor(&id, 1).or_else(|| ctx.neighbor(&id, -1));
                     products.update(|ps| ps.retain(|p| p.id != id));
+                    if ctx.selected.get_untracked().as_deref() == Some(id.as_str()) {
+                        ctx.panel_dirty.set(false);
+                        ctx.selected.set(next);
+                        ctx.phone_open.set(false);
+                    }
+                    if ctx.ficha.get_untracked().as_deref() == Some(id.as_str()) {
+                        ctx.ficha_dirty.set(false);
+                        ctx.show_ficha(None);
+                    }
                     if let Some(d) = confirm.get_untracked() {
                         d.close();
                     }
@@ -514,12 +650,12 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
             }
         }
     });
-    let ask_delete = move |id: String, name: String| {
-        doomed.set(Some((id, name)));
-        if let Some(d) = confirm.get() {
-            _ = d.show_modal();
-        }
-    };
+    // El panel muestra el elegido o, si no hay, el primero de la lista.
+    let current = Memo::new(move |_| {
+        let sel = ctx.selected.get();
+        sel.filter(|id| products.with(|all| all.iter().any(|p| &p.id == id)))
+            .or_else(|| shown.with(|ps| ps.first().map(|p| p.id.clone())))
+    });
     // Los productos de ejemplo de la tienda nueva, con el botón para borrarlos.
     let examples = Memo::new(move |_| products.with(|ps| ps.iter().filter(|p| p.example).count()));
     let clear_examples = Action::new(move |_: &()| async move {
@@ -532,23 +668,35 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
         }
     });
 
-    let new_href = format!("{base}/nuevo");
-    let base_phone = base.clone();
-    let empty = products.with_untracked(Vec::is_empty);
+    // "¿Descartar los cambios?"
+    let leave = NodeRef::<leptos::html::Dialog>::new();
+    Effect::new(move |_| {
+        let open = ctx.pending.with(Option::is_some);
+        if let Some(d) = leave.get() {
+            if open && !d.open() {
+                _ = d.show_modal();
+            } else if !open && d.open() {
+                d.close();
+            }
+        }
+    });
+
+    let new_product = move |_| ctx.open_ficha(String::new());
+    let empty = move || products.with(Vec::is_empty);
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <div class="grow">
                 <h1 class="text-3xl font-bold max-sm:text-2xl">"Productos"</h1>
-                <p class="text-sm text-base-content/70">{data.store_name} " · " {summary}</p>
+                <p class="text-sm text-base-content/70">{summary}</p>
             </div>
-            <button type="button" class="btn max-sm:min-h-11" on:click=move |_| {
+            <button type="button" class="btn max-sm:min-h-11 max-sm:flex-1" on:click=move |_| {
                 if let Some(d) = manage.get() { _ = d.show_modal(); }
             }>"Etiquetas"</button>
-            <button type="button" class="btn max-sm:min-h-11" on:click=move |_| {
+            <button type="button" class="btn max-sm:min-h-11 max-sm:flex-1" on:click=move |_| {
                 if let Some(d) = manage_cats.get() { _ = d.show_modal(); }
             }>"Categorías"</button>
             // En el teléfono va a todo el ancho, debajo del título (ver `.mk-fab`).
-            <a class="btn btn-primary mk-fab" href=new_href.clone()>"+ Nuevo producto"</a>
+            <button type="button" class="btn btn-primary mk-fab max-sm:order-first" on:click=new_product>"+ Nuevo producto"</button>
         </div>
         <dialog node_ref=manage class="modal" aria-labelledby="etiquetas-titulo">
             <div class="modal-box max-w-3xl">
@@ -558,7 +706,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
         </dialog>
         <dialog node_ref=manage_cats class="modal" aria-labelledby="categorias-titulo">
             <div class="modal-box max-w-xl">
-                <CategoryManager slug=slug.get_value() products order=category_order dialog=manage_cats/>
+                <CategoryManager slug=slug.get_value() products order dialog=manage_cats/>
             </div>
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
         </dialog>
@@ -569,11 +717,29 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                 </h2>
                 <p class="mt-1 text-sm text-base-content/70">"Deja de verse en tu tienda y no se puede deshacer. Los pedidos que ya tenga no cambian y sus fotos siguen en Mis fotos."</p>
                 <div class="modal-action mt-4">
-                    <form method="dialog"><button class="btn btn-ghost">"No, dejarlo"</button></form>
+                    <form method="dialog"><button class="btn btn-ghost" autofocus>"No, dejarlo"</button></form>
                     <button type="button" class="btn btn-error" disabled=move || remove.pending().get()
                         on:click=move |_| { if let Some((id, _)) = doomed.get_untracked() { remove.dispatch(id); } }>
                         {move || if remove.pending().get() { "Borrando…" } else { "Sí, borrar" }}
                     </button>
+                </div>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
+        <dialog node_ref=leave class="modal" aria-labelledby="descartar-titulo"
+            on:close=move |_| ctx.pending.set(None)>
+            <div class="modal-box max-w-sm">
+                <h2 id="descartar-titulo" class="text-lg font-semibold">"¿Descartar los cambios?"</h2>
+                <p class="mt-1 text-sm text-base-content/70">"Hay cambios sin guardar en este producto."</p>
+                <div class="modal-action mt-4">
+                    <form method="dialog"><button class="btn btn-ghost" autofocus>"Seguir editando"</button></form>
+                    <button type="button" class="btn btn-error"
+                        on:click=move |_| {
+                            if let Some(then) = ctx.pending.get_untracked() {
+                                ctx.pending.set(None);
+                                then.run(());
+                            }
+                        }>"Descartar cambios"</button>
                 </div>
             </div>
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
@@ -590,185 +756,532 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
                 </button>
             </div>
         })}
-        {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
-        {if empty {
-            view! {
-                <div class="card bg-base-100 shadow-sm"><div class="card-body items-start">
-                    <h2 class="card-title">"Todavía no cargaste productos"</h2>
-                    <p>"Cargá el primero con su nombre, precio y fotos. Las grillas de tu tienda lo muestran solas."</p>
-                    <a class="btn btn-primary" href=new_href>"+ Nuevo producto"</a>
-                </div></div>
-            }.into_any()
-        } else {
-            view! {
-                <div class="flex flex-col gap-3">
-                    <label class="input w-full max-w-md max-sm:h-12 max-sm:max-w-none">
-                        <span class="text-base-content/50" aria-hidden="true">"⌕"</span>
-                        <input type="search" placeholder="Buscar por nombre, descripción o etiqueta"
-                            aria-label="Buscar productos"
-                            prop:value=move || query.get()
-                            on:input=move |ev| query.set(event_target_value(&ev))/>
-                    </label>
-                    {move || (!tags.with(Vec::is_empty)).then(|| view! {
-                        <div class="flex flex-wrap items-center gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0 max-sm:[&_.badge]:h-10 max-sm:[&_.badge]:px-4" role="group" aria-label="Filtrar por etiqueta">
-                            <span class="text-sm text-base-content/70 max-sm:hidden">"Etiquetas:"</span>
-                            <button type="button" class="badge badge-lg cursor-pointer"
-                                class:badge-primary=move || tag.get().is_none()
-                                class:badge-outline=move || tag.get().is_some()
-                                aria-pressed=move || tag.get().is_none().to_string()
-                                on:click=move |_| tag.set(None)>"Todas"</button>
-                            {tags.get().into_iter().map(|t| {
-                                let t2 = t.clone();
-                                let t3 = t.clone();
-                                let on = Memo::new(move |_| tag.get().as_deref() == Some(t2.as_str()));
-                                view! {
-                                    <button type="button" class="badge badge-lg cursor-pointer"
-                                        class:badge-primary=move || on.get()
-                                        class:badge-outline=move || !on.get()
-                                        aria-pressed=move || on.get().to_string()
-                                        on:click=move |_| tag.set((!on.get_untracked()).then(|| t3.clone()))>
-                                        {t}
-                                    </button>
-                                }
+        {move || problem.get().map(|e| view! { <p role="alert" class="text-sm text-error">{e}</p> })}
+        <Show when=move || !empty() fallback=move || view! {
+            <div class="card bg-base-100 shadow-sm"><div class="card-body items-start">
+                <h2 class="card-title">"Todavía no cargaste productos"</h2>
+                <p>"Cargá el primero con su nombre, precio y fotos. Las grillas de tu tienda lo muestran solas."</p>
+                <button type="button" class="btn btn-primary" on:click=new_product>"+ Nuevo producto"</button>
+            </div></div>
+        }>
+            <div class="grid items-start gap-4 md:grid-cols-[320px_1fr] lg:grid-cols-[400px_1fr]">
+                <section class="card overflow-hidden bg-base-100 shadow-sm md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)]" aria-label="Lista de productos">
+                    <div class="flex flex-col gap-2 border-b border-base-200 p-3">
+                        <label class="input w-full max-sm:h-12">
+                            <span class="text-base-content/50" aria-hidden="true">"⌕"</span>
+                            <input type="search" placeholder="Buscar producto"
+                                aria-label="Buscar por nombre, descripción o etiqueta"
+                                prop:value=move || query.get()
+                                on:input=move |ev| query.set(event_target_value(&ev))/>
+                        </label>
+                        <div class="tabs tabs-box tabs-sm grid grid-cols-4 max-sm:tabs-md" role="group" aria-label="Filtrar">
+                            {Filter::ALL.into_iter().map(|(f, label)| view! {
+                                <button type="button" class="tab px-1" class:tab-active=move || filter.get() == f
+                                    aria-pressed=move || (filter.get() == f).to_string()
+                                    on:click=move |_| filter.set(f)>{label}</button>
                             }).collect_view()}
                         </div>
-                    })}
-                </div>
-                // Teléfono: una tarjeta por producto, con foto grande y el interruptor
-                // para mostrarlo u ocultarlo sin abrirlo.
-                <ul class="flex flex-col gap-2.5 sm:hidden" aria-label="Productos">
-                    <For each=move || shown.get() key=|p| (p.id.clone(), p.visible) let:p>
-                        {
-                            let href = format!("{base_phone}/{}", p.id);
-                            let id = p.id.clone();
-                            let visible = p.visible;
-                            let label = format!("Mostrar {} en la tienda", p.name);
-                            view! {
-                                <li class="flex items-center gap-2 rounded-box bg-base-100 p-2.5 shadow-sm" class=("opacity-60", !visible)>
-                                    <a href=href class="flex min-w-0 grow items-center gap-3">
-                                        <div class="size-16 shrink-0 overflow-hidden rounded-field bg-base-200">
-                                            <ui::Image src=p.image_url.clone() alt="" fit=p.fit(&p.image_url)/>
-                                        </div>
-                                        <div class="min-w-0">
-                                            <div class="truncate font-semibold">{p.name.clone()}</div>
-                                            <div class="flex flex-wrap items-center gap-x-2 text-sm">
-                                                <span class="font-semibold">{ui::format_price(p.price_cents)}</span>
-                                                {(p.compare_at_cents > p.price_cents).then(|| view! {
-                                                    <s class="text-xs text-base-content/70">{ui::format_price(p.compare_at_cents)}</s>
-                                                })}
-                                                {if p.in_stock {
-                                                    view! { <span class="text-green-800">"· Hay stock"</span> }.into_any()
-                                                } else {
-                                                    view! { <span class="text-amber-800">"· Agotado"</span> }.into_any()
-                                                }}
-                                            </div>
-                                            <div class="truncate text-xs text-base-content/60">
-                                                {if p.example {
-                                                    "De ejemplo · tus clientes no lo ven".to_string()
-                                                } else if !visible {
-                                                    "Oculto · no aparece en la tienda".to_string()
-                                                } else {
-                                                    photo_count(p.all_photos().len())
-                                                }}
-                                            </div>
-                                        </div>
-                                    </a>
-                                    <label class="flex size-12 shrink-0 cursor-pointer items-center justify-center">
-                                        <input type="checkbox" class="toggle toggle-primary"
-                                            aria-label=label
-                                            prop:checked=visible
-                                            disabled=move || toggle.pending().get()
-                                            on:change=move |ev| { toggle.dispatch((id.clone(), event_target_checked(&ev))); }/>
-                                    </label>
-                                </li>
-                            }
-                        }
-                    </For>
-                </ul>
-                {move || shown.with(Vec::is_empty).then(|| view! {
-                    <p class="p-6 text-center text-base-content/70 sm:hidden">"Ningún producto coincide con la búsqueda."</p>
-                })}
-                <div class="card overflow-x-auto bg-base-100 shadow-sm max-sm:hidden">
-                    <table class="table">
-                        <thead><tr><th>"Producto"</th><th>"Precio"</th><th>"Stock"</th><th>"En la tienda"</th><th><span class="sr-only">"Acciones"</span></th></tr></thead>
-                        <tbody>
-                            <For each=move || shown.get() key=|p| (p.id.clone(), p.visible) let:p>
-                                {
-                                    let href = format!("{base}/{}", p.id);
-                                    let id = p.id.clone();
-                                    let (del_id, del_name) = (p.id.clone(), p.name.clone());
-                                    let del_label = format!("Borrar {}", p.name);
-                                    let visible = p.visible;
-                                    let label = format!("Mostrar {} en la tienda", p.name);
-                                    view! {
-                                        <tr class:opacity-60=!visible>
-                                            <td>
-                                                <a href=href.clone() class="flex items-center gap-3">
-                                                    <div class="h-11 w-14 shrink-0 overflow-hidden rounded-field bg-base-200">
-                                                        <ui::Image src=p.image_url.clone() alt="" fit=p.fit(&p.image_url)/>
-                                                    </div>
-                                                    <div class="min-w-0">
-                                                        <div class="font-medium">
-                                                            {p.name.clone()}
-                                                            {p.example.then(|| view! { <span class="badge badge-sm ml-2 border-0 bg-amber-100 font-semibold text-amber-800">"Ejemplo"</span> })}
-                                                        </div>
-                                                        <div class="text-xs text-base-content/60">
-                                                            {if p.example {
-                                                                "De ejemplo · tus clientes no lo ven".to_string()
-                                                            } else if visible {
-                                                                photo_count(p.all_photos().len())
-                                                            } else {
-                                                                "Oculto · no aparece en la tienda".into()
-                                                            }}
-                                                        </div>
-                                                        {(!p.tags.is_empty()).then(|| view! {
-                                                            <div class="mt-1 flex flex-wrap gap-1">
-                                                                {p.tags.iter().map(|t| view! { <span class="badge badge-ghost badge-sm">{t.clone()}</span> }).collect_view()}
-                                                            </div>
-                                                        })}
-                                                    </div>
-                                                </a>
-                                            </td>
-                                            <td>
-                                                <div class="font-semibold">{ui::format_price(p.price_cents)}</div>
-                                                {(p.compare_at_cents > p.price_cents).then(|| view! {
-                                                    <s class="text-xs text-base-content/70">{ui::format_price(p.compare_at_cents)}</s>
-                                                })}
-                                            </td>
-                                            <td>
-                                                {if p.in_stock {
-                                                    view! { <span class="badge badge-soft badge-success text-green-800">"Hay stock"</span> }.into_any()
-                                                } else {
-                                                    view! { <span class="badge badge-warning badge-soft">"Agotado"</span> }.into_any()
-                                                }}
-                                            </td>
-                                            <td>
-                                                <input type="checkbox" class="toggle toggle-sm toggle-primary"
-                                                    aria-label=label
-                                                    prop:checked=visible
-                                                    disabled=move || toggle.pending().get()
-                                                    on:change=move |ev| { toggle.dispatch((id.clone(), event_target_checked(&ev))); }/>
-                                            </td>
-                                            <td class="whitespace-nowrap text-right">
-                                                <a class="btn btn-ghost btn-sm" href=href>"Editar"</a>
-                                                <button type="button" class="btn btn-ghost btn-sm text-red-700" aria-label=del_label
-                                                    on:click=move |_| ask_delete(del_id.clone(), del_name.clone())>
-                                                    <ui::Icon class="size-4" name="trash"/>"Borrar"
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
+                    </div>
+                    <ul class="overflow-y-auto md:max-h-[calc(100dvh-10rem)]" aria-label="Productos">
+                        <For each=move || shown.get() key=|p| (p.id.clone(), p.name.clone(), p.price_cents, p.stock, p.in_stock, p.visible, p.image_url.clone(), p.category.clone()) let:p>
+                            {
+                                let id = p.id.clone();
+                                let id_sel = p.id.clone();
+                                let (pill_class, pill) = stock_pill(&p);
+                                let sub = [
+                                    (!p.category.is_empty()).then(|| p.category.clone()),
+                                    p.example.then(|| "De ejemplo".to_string()),
+                                    (!p.visible).then(|| "Oculto".to_string()),
+                                ].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+                                let on = Memo::new(move |_| current.with(|c| c.as_deref() == Some(id_sel.as_str())));
+                                view! {
+                                    <li class="border-b border-base-200 last:border-0">
+                                        <button type="button" class="mk-prow" class:mk-prow-on=move || on.get()
+                                            aria-current=move || on.get().then_some("true")
+                                            on:click=move |_| ctx.select(id.clone())>
+                                            <span class="size-11 shrink-0 overflow-hidden rounded-field bg-base-200 max-sm:size-12" class:opacity-60=!p.visible>
+                                                <ui::Image src=p.image_url.clone() alt="" fit=p.fit(&p.image_url)/>
+                                            </span>
+                                            <span class="min-w-0 grow text-left">
+                                                <span class="block truncate font-semibold">{p.name.clone()}</span>
+                                                <span class="block truncate text-xs text-base-content/60">{sub}</span>
+                                            </span>
+                                            <span class="shrink-0 text-right">
+                                                <span class="block text-sm font-semibold">{ui::format_price(p.price_cents)}</span>
+                                                <span class=format!("mk-stock {pill_class}")>{pill}</span>
+                                            </span>
+                                        </button>
+                                    </li>
                                 }
-                            </For>
-                        </tbody>
-                    </table>
-                    {move || shown.with(Vec::is_empty).then(|| view! {
-                        <p class="p-6 text-center text-base-content/70">"Ningún producto coincide con la búsqueda."</p>
-                    })}
-                </div>
-            }.into_any()
-        }}
+                            }
+                        </For>
+                        {move || shown.with(Vec::is_empty).then(|| view! {
+                            <li class="p-6 text-center text-sm text-base-content/70">"Ningún producto coincide."</li>
+                        })}
+                    </ul>
+                </section>
+                // El panel rápido no se arma mientras la ficha completa está
+                // abierta: los dos usan los mismos campos.
+                {move || {
+                    ctx.nonce.track();
+                    let open = ctx.ficha.with(Option::is_some);
+                    let p = (!open).then(|| current.get()).flatten().and_then(|id| {
+                        products.with_untracked(|ps| ps.iter().find(|p| p.id == id).cloned())
+                    });
+                    p.map(|p| view! { <QuickPanel ctx product=p/> })
+                }}
+            </div>
+        </Show>
+        <FichaDialog ctx/>
     }
+}
+
+/// Panel rápido: lo que más se cambia del producto, sin salir de la lista.
+#[component]
+fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
+    let form = Form::new(&product);
+    let id = StoredValue::new(product.id.clone());
+    let name_now = StoredValue::new(product.name.clone());
+    let errors = RwSignal::new(Vec::<String>::new());
+    let saved = RwSignal::new(false);
+    let store_tags = {
+        let own: Vec<Product> = ctx
+            .products
+            .with_untracked(|ps| ps.iter().filter(|p| !p.example).cloned().collect());
+        domain::count_tags(&own)
+    };
+    let store_categories = domain::order_categories(
+        ctx.products
+            .with_untracked(|ps| domain::count_categories(ps)),
+        &ctx.order.get_untracked(),
+        true,
+    );
+    ctx.panel_dirty.set(false);
+    Effect::new(move |first: Option<()>| {
+        form.name.track();
+        form.price.track();
+        form.was.track();
+        form.description.track();
+        form.tags.track();
+        form.category.track();
+        form.subcategory.track();
+        form.in_stock.track();
+        form.stock.track();
+        form.visible.track();
+        if first.is_some() {
+            ctx.panel_dirty.set(true);
+            saved.set(false);
+        }
+    });
+    let save = Action::new(move |p: &Product| {
+        let p = p.clone();
+        async move {
+            (
+                save_product(ctx.slug.get_value(), id.get_value(), p.clone()).await,
+                p,
+            )
+        }
+    });
+    Effect::new(move |_| match save.value().get() {
+        Some((
+            Ok(SaveResult {
+                outcome: ProductSave::Saved,
+                ..
+            }),
+            mut p,
+        )) => {
+            _ = domain::tidy_product(&mut p);
+            errors.set(Vec::new());
+            ctx.panel_dirty.set(false);
+            saved.set(true);
+            ctx.products.update(|ps| {
+                if let Some(old) = ps.iter_mut().find(|x| x.id == p.id) {
+                    *old = p;
+                }
+            });
+        }
+        Some((
+            Ok(SaveResult {
+                outcome: ProductSave::Invalid { errors: e },
+                ..
+            }),
+            _,
+        )) => errors.set(e),
+        Some((Err(e), _)) => errors.set(vec![error_text(&e)]),
+        None => {}
+    });
+    let on_save = move |_| match form.product(&id.get_value()) {
+        Ok(p) => {
+            errors.set(Vec::new());
+            save.dispatch(p);
+        }
+        Err(e) => errors.set(e),
+    };
+    let discard = move |_| {
+        ctx.panel_dirty.set(false);
+        ctx.nonce.update(|n| *n += 1);
+    };
+    let position = move || {
+        ctx.shown.with(|ps| {
+            ps.iter()
+                .position(|p| p.id == id.get_value())
+                .map(|i| format!("{} de {}", i + 1, ps.len()))
+                .unwrap_or_default()
+        })
+    };
+    let prev = move || ctx.neighbor(&id.get_value(), -1);
+    let next = move || ctx.neighbor(&id.get_value(), 1);
+    let go = move |to: Option<String>| {
+        if let Some(to) = to {
+            ctx.select(to);
+        }
+    };
+    let close_phone = move |_| {
+        ctx.guard(ctx.panel_dirty, move || {
+            ctx.panel_dirty.set(false);
+            ctx.nonce.update(|n| *n += 1);
+            ctx.phone_open.set(false);
+        })
+    };
+    let ficha = move |_| ctx.open_ficha(id.get_value());
+    let ask_delete = move |_| ctx.ask_delete.run((id.get_value(), name_now.get_value()));
+    let price_error = move |field: &'static str| {
+        move || {
+            errors.with(|es| {
+                es.iter()
+                    .filter(|e| error_field(e) == field)
+                    .map(|e| view! { <p class="mt-1 text-xs text-error">{e.clone()}</p> })
+                    .collect_view()
+            })
+        }
+    };
+    let other_errors = move || {
+        errors.with(|es| {
+            es.iter()
+                .filter(|e| !matches!(error_field(e), "price" | "was" | "stock"))
+                .map(|e| view! { <p>{e.clone()}</p> })
+                .collect_view()
+        })
+    };
+    let photos = product.all_photos();
+    let fit_of = StoredValue::new(product.clone());
+    let menu_id = format!("mk-pmenu-{}", product.id);
+    let store_href = format!("{}/?ver={}", ctx.store_url.get_value(), product.id);
+    view! {
+        <section class="mk-qpanel card bg-base-100 shadow-sm" class=("max-sm:hidden", move || !ctx.phone_open.get())
+            aria-label=format!("Editar {}", product.name)>
+            // Teléfono: volver, posición, anterior/siguiente y ⋯ (Borrar, lejos de Guardar).
+            <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-base-200 bg-base-100 px-3 py-2 sm:hidden">
+                <button type="button" class="btn btn-ghost btn-sm min-h-11 px-2" on:click=close_phone>"‹ Productos"</button>
+                <span class="ml-auto text-xs text-base-content/60">{position}</span>
+                <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11" aria-label="Anterior" disabled=move || prev().is_none() on:click=move |_| go(prev())>"‹"</button>
+                <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11" aria-label="Siguiente" disabled=move || next().is_none() on:click=move |_| go(next())>"›"</button>
+                <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11" aria-label="Más acciones" popovertarget=menu_id.clone()>"⋯"</button>
+                <div id=menu_id popover="auto" class="mk-pmenu">
+                    <a class="btn btn-ghost w-full justify-start" href=store_href.clone() target="_blank" rel="noopener">"Ver en la tienda"</a>
+                    <button type="button" class="btn btn-ghost w-full justify-start border-t border-base-200 text-error" on:click=ask_delete>"Borrar producto…"</button>
+                </div>
+            </div>
+            <div class="card-body gap-4 p-5 max-sm:p-4 max-sm:pb-40">
+                <div class="flex items-center gap-2 max-sm:hidden">
+                    <span class="text-sm text-base-content/60">{position}</span>
+                    <span class="ml-auto text-sm text-base-content/60" role="status" aria-live="polite">
+                        {move || if save.pending().get() { "Guardando…" } else if saved.get() { "Guardado ✓" } else { "" }}
+                    </span>
+                    <button type="button" class="btn btn-sm" disabled=move || prev().is_none() on:click=move |_| go(prev())>"‹ Anterior"</button>
+                    <button type="button" class="btn btn-sm" disabled=move || next().is_none() on:click=move |_| go(next())>"Siguiente ›"</button>
+                </div>
+                <div class="grid gap-5 sm:grid-cols-[minmax(0,15rem)_1fr]">
+                    // Fotos: tocarlas abre la ficha completa (ahí se suben y encuadran).
+                    <div class="flex flex-col gap-2 max-sm:flex-row max-sm:overflow-x-auto">
+                        <button type="button" class="aspect-square w-full overflow-hidden rounded-box bg-base-200 max-sm:w-32 max-sm:shrink-0"
+                            aria-label="Cambiar las fotos en la ficha completa" on:click=ficha>
+                            {photos.first().cloned().map(|u| view! { <ui::Image src=u.clone() alt="" fit=fit_of.with_value(|p| p.fit(&u))/> })}
+                        </button>
+                        <div class="grid grid-cols-4 gap-2 max-sm:flex">
+                            {photos.iter().skip(1).take(3).cloned().map(|u| view! {
+                                <button type="button" class="aspect-square overflow-hidden rounded-field bg-base-200 max-sm:size-32 max-sm:shrink-0" tabindex="-1" aria-hidden="true" on:click=ficha>
+                                    <ui::Image src=u.clone() alt="" fit=fit_of.with_value(|p| p.fit(&u))/>
+                                </button>
+                            }).collect_view()}
+                            <button type="button" class="grid aspect-square place-items-center rounded-field border border-dashed border-base-300 text-base-content/50 max-sm:size-32 max-sm:shrink-0"
+                                aria-label="Agregar fotos en la ficha completa" on:click=ficha>"+"</button>
+                        </div>
+                    </div>
+                    <div class="flex min-w-0 flex-col gap-3">
+                        <input class="input input-ghost w-full px-1 text-xl font-bold" aria-label="Nombre"
+                            maxlength=domain::PRODUCT_NAME_MAX
+                            prop:value=move || form.name.get()
+                            on:input=move |ev| form.name.set(event_target_value(&ev))/>
+                        <TagsField form store_tags/>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="flex flex-col gap-1 text-xs text-base-content/70">"Precio"
+                                <span class="input w-full"><span>"$"</span>
+                                    <input inputmode="decimal" aria-label="Precio en pesos"
+                                        prop:value=move || form.price.get()
+                                        on:input=move |ev| form.price.set(event_target_value(&ev))/>
+                                </span>
+                                {price_error("price")}
+                            </label>
+                            <label class="flex flex-col gap-1 text-xs text-base-content/70">"Precio anterior (tachado)"
+                                <span class="input w-full"><span>"$"</span>
+                                    <input inputmode="decimal" aria-label="Precio anterior en pesos" placeholder="Opcional"
+                                        prop:value=move || form.was.get()
+                                        on:input=move |ev| form.was.set(event_target_value(&ev))/>
+                                </span>
+                                {price_error("was")}
+                            </label>
+                        </div>
+                        <CategoryField form store_categories/>
+                        <StockStepper form/>
+                        {price_error("stock")}
+                    </div>
+                </div>
+                <label class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-base-content/70">"Descripción"
+                    <textarea class="textarea h-32 w-full text-sm font-normal normal-case tracking-normal text-base-content" maxlength=domain::PRODUCT_DESC_MAX
+                        prop:value=move || form.description.get()
+                        on:input=move |ev| form.description.set(event_target_value(&ev))></textarea>
+                </label>
+                <label class="flex cursor-pointer items-center justify-between gap-3 rounded-box border border-base-300 px-4 py-3">
+                    <span><span class="block font-semibold">"En la tienda"</span>
+                        <span class="block text-xs text-base-content/60">{move || if form.visible.get() { "Visible para los compradores" } else { "Oculto: no aparece en la tienda" }}</span></span>
+                    <input type="checkbox" class="toggle toggle-primary"
+                        prop:checked=move || form.visible.get()
+                        on:change=move |ev| form.visible.set(event_target_checked(&ev))/>
+                </label>
+                <div role="alert" class="text-sm text-error empty:hidden">{other_errors}</div>
+                // Compu: Ficha completa, Borrar al centro, Descartar y Guardar.
+                // Teléfono: barra fija abajo, sin Borrar (está en ⋯).
+                <div class="mk-qfoot">
+                    <span class="text-right text-xs text-base-content/60 max-sm:hidden" class:invisible=move || !ctx.panel_dirty.get()>"Cambios sin guardar"</span>
+                    <div class="mk-qfoot-row">
+                        <span><button type="button" class="btn max-sm:btn-ghost max-sm:px-1" on:click=ficha>"Ficha completa ›"</button></span>
+                        <span class="max-sm:hidden"><button type="button" class="btn btn-ghost btn-sm text-error" on:click=ask_delete>"Borrar"</button></span>
+                        <span class="text-xs text-base-content/60 sm:hidden" class:invisible=move || !ctx.panel_dirty.get()>"Cambios sin guardar"</span>
+                        <span class="flex justify-end gap-2">
+                            <button type="button" class="btn max-sm:btn-ghost" disabled=move || !ctx.panel_dirty.get() on:click=discard>"Descartar"</button>
+                            <button type="button" class="btn btn-primary max-sm:hidden" disabled=move || save.pending().get() on:click=on_save>"Guardar"</button>
+                        </span>
+                    </div>
+                    <button type="button" class="btn btn-primary w-full sm:hidden" disabled=move || save.pending().get() on:click=on_save>
+                        {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
+                    </button>
+                </div>
+            </div>
+        </section>
+    }
+}
+
+/// Stock del panel rápido: − número + (con «unidades» debajo). Con colores o
+/// talles, el total, que se cambia en la ficha completa.
+#[component]
+fn StockStepper(form: Form) -> impl IntoView {
+    let count = move || {
+        form.stock
+            .with(|s| s.trim().replace('.', "").parse::<u32>().ok())
+    };
+    let set = move |n: u32| {
+        form.stock.set(n.to_string());
+        form.in_stock.set(n > 0);
+    };
+    view! {
+        <div class="flex flex-col gap-1 text-xs text-base-content/70">
+            <span>"Stock"</span>
+            {move || if form.variants.active() {
+                view! {
+                    <p class="rounded-box border border-base-300 px-4 py-3 text-sm text-base-content">
+                        <b>{move || format!("{} unidades", form.variants.total())}</b>
+                        <span class="text-base-content/60">" · por color y talle, se cambian en Ficha completa"</span>
+                    </p>
+                }.into_any()
+            } else {
+                view! {
+                    <div class="flex items-center justify-center gap-4 rounded-box border border-base-300 px-3 py-2" role="group" aria-label="Stock">
+                        <button type="button" class="btn btn-circle btn-soft" aria-label="Una unidad menos"
+                            disabled=move || count().is_none_or(|n| n == 0)
+                            on:click=move |_| if let Some(n) = count() { set(n.saturating_sub(1)); }>"−"</button>
+                        <span class="flex min-w-16 flex-col items-center text-base-content">
+                            <input class="w-16 bg-transparent text-center text-xl font-bold outline-none" inputmode="numeric"
+                                aria-label="Unidades" placeholder="—"
+                                prop:value=move || form.stock.get()
+                                on:input=move |ev| {
+                                    let v = event_target_value(&ev);
+                                    if let Ok(n) = v.trim().parse::<u32>() { form.in_stock.set(n > 0); }
+                                    form.stock.set(v);
+                                }/>
+                            <span class="text-xs text-base-content/60">
+                                {move || match count() {
+                                    Some(1) => "unidad",
+                                    Some(_) => "unidades",
+                                    None if form.in_stock.get() => "sin contar",
+                                    None => "agotado",
+                                }}
+                            </span>
+                        </span>
+                        <button type="button" class="btn btn-circle btn-soft" aria-label="Una unidad más"
+                            on:click=move |_| set(count().map_or(1, |n| n + 1))>"+"</button>
+                    </div>
+                }.into_any()
+            }}
+        </div>
+    }
+}
+
+/// La ficha completa: todo el producto, en una ventana sobre la lista.
+#[component]
+fn FichaDialog(ctx: ListCtx) -> impl IntoView {
+    let dialog = NodeRef::<leptos::html::Dialog>::new();
+    // Solo en el navegador: la ficha se arma dentro de la lista, que ya
+    // está dentro de un Suspense.
+    let data = LocalResource::new(move || {
+        let id = ctx.ficha_src.get();
+        ctx.nonce.track();
+        async move {
+            match id {
+                Some(id) => {
+                    let key = if id.is_empty() {
+                        "nuevo".to_string()
+                    } else {
+                        id
+                    };
+                    product_to_edit(ctx.slug.get_value(), key).await.map(Some)
+                }
+                None => Ok(None),
+            }
+        }
+    });
+    Effect::new(move |_| {
+        let open = ctx.ficha.get();
+        ctx.set_url(open.as_deref());
+        if let Some(d) = dialog.get() {
+            if open.is_some() && !d.open() {
+                _ = d.show_modal();
+            } else if open.is_none() && d.open() {
+                d.close();
+            }
+        }
+    });
+    let close = move || {
+        ctx.guard(ctx.ficha_dirty, move || {
+            ctx.ficha_dirty.set(false);
+            ctx.show_ficha(None);
+        });
+    };
+    let step = move |dir: i32| {
+        let Some(id) = ctx.ficha.get_untracked().filter(|id| !id.is_empty()) else {
+            return;
+        };
+        if let Some(to) = ctx.neighbor(&id, dir) {
+            ctx.guard(ctx.ficha_dirty, move || {
+                ctx.ficha_dirty.set(false);
+                ctx.selected.set(Some(to.clone()));
+                ctx.show_ficha(Some(to.clone()));
+            });
+        }
+    };
+    let host = FichaHost {
+        dirty: ctx.ficha_dirty,
+        close: Callback::new(move |()| close()),
+        prev: Callback::new(move |()| step(-1)),
+        next: Callback::new(move |()| step(1)),
+        has_prev: Signal::derive(move || {
+            ctx.ficha
+                .get()
+                .filter(|i| !i.is_empty())
+                .and_then(|i| ctx.neighbor(&i, -1))
+                .is_some()
+        }),
+        has_next: Signal::derive(move || {
+            ctx.ficha
+                .get()
+                .filter(|i| !i.is_empty())
+                .and_then(|i| ctx.neighbor(&i, 1))
+                .is_some()
+        }),
+        position: Signal::derive(move || {
+            ctx.ficha
+                .get()
+                .filter(|i| !i.is_empty())
+                .and_then(|id| {
+                    ctx.shown.with(|ps| {
+                        ps.iter()
+                            .position(|p| p.id == id)
+                            .map(|i| format!("{} de {}", i + 1, ps.len()))
+                    })
+                })
+                .unwrap_or_default()
+        }),
+        saved: Callback::new(move |p: Product| {
+            let id = p.id.clone();
+            ctx.products
+                .update(|ps| match ps.iter_mut().find(|x| x.id == id) {
+                    Some(old) => *old = p,
+                    None => ps.insert(0, p),
+                });
+            ctx.selected.set(Some(id.clone()));
+            // El nuevo pasa a ser este (‹ ›, Borrar y la dirección), sin
+            // volver a cargar la ficha.
+            ctx.ficha.update(|f| {
+                if f.as_deref() == Some("") {
+                    *f = Some(id);
+                }
+            });
+        }),
+        delete: ctx.ask_delete,
+        again: Callback::new(move |()| {
+            ctx.ficha_dirty.set(false);
+            ctx.show_ficha(Some(String::new()));
+            ctx.nonce.update(|n| *n += 1);
+        }),
+        discard: Callback::new(move |()| {
+            ctx.ficha_dirty.set(false);
+            ctx.nonce.update(|n| *n += 1);
+        }),
+    };
+    view! {
+        <dialog node_ref=dialog class="modal mk-ficha" aria-label="Ficha completa del producto"
+            on:cancel=move |ev: leptos::ev::Event| { ev.prevent_default(); close(); }>
+            <div class="modal-box flex h-[calc(100dvh-2rem)] w-[min(72rem,calc(100vw-2rem))] max-w-none flex-col gap-0 p-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:rounded-none">
+                <Transition fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Product/> }>
+                    {move || Suspend::new(async move {
+                        match data.await {
+                            Ok(Some(Some(edit))) => {
+                                let id = ctx.ficha_src.get_untracked().unwrap_or_default();
+                                view! { <ProductForm slug=ctx.slug.get_value() id edit host/> }.into_any()
+                            }
+                            Ok(Some(None)) => view! { <SignInFirst back=format!("/tienda/{}/productos", ctx.slug.get_value())/> }.into_any(),
+                            Ok(None) => ().into_any(),
+                            Err(e) => view! {
+                                <div class="flex flex-col items-start gap-3 p-6">
+                                    <p role="alert" class="text-sm text-error">{error_text(&e)}</p>
+                                    <button type="button" class="btn" on:click=move |_| { ctx.ficha_dirty.set(false); ctx.show_ficha(None); }>"Cerrar"</button>
+                                </div>
+                            }.into_any(),
+                        }
+                    })}
+                </Transition>
+            </div>
+        </dialog>
+    }
+}
+
+/// Lo que la ficha completa le avisa a la lista (o le pide) cuando se abre
+/// en ventana.
+#[derive(Clone, Copy)]
+struct FichaHost {
+    dirty: RwSignal<bool>,
+    close: Callback<()>,
+    prev: Callback<()>,
+    next: Callback<()>,
+    has_prev: Signal<bool>,
+    has_next: Signal<bool>,
+    position: Signal<String>,
+    saved: Callback<Product>,
+    /// Borrar (id, nombre): pregunta la lista.
+    delete: Callback<(String, String)>,
+    /// «+ Cargar otro producto»: la ficha vacía.
+    again: Callback<()>,
+    discard: Callback<()>,
 }
 
 /// "Etiquetas": crear una etiqueta y elegir sus productos, cambiarle el
@@ -1015,7 +1528,11 @@ fn CategoryManager(
             // El servidor ya cambió el orden guardado; acá se hace lo mismo.
             if let Some((c, _)) = editing.get_untracked().filter(|(_, s)| s.is_empty()) {
                 let n = domain::clean_category(&name.get_untracked());
-                order.update(|o| o.iter_mut().filter(|x| **x == c).for_each(|x| x.clone_from(&n)));
+                order.update(|o| {
+                    o.iter_mut()
+                        .filter(|x| **x == c)
+                        .for_each(|x| x.clone_from(&n))
+                });
             }
             if let Some((c, _)) = doomed.get_untracked().filter(|(_, s)| s.is_empty()) {
                 order.update(|o| o.retain(|x| *x != c));
@@ -1064,7 +1581,8 @@ fn CategoryManager(
         }
     });
     let busy = move || rename.pending().get() || remove.pending().get() || save.pending().get();
-    let names_now = move || cats.with_untracked(|cs| cs.iter().map(|c| c.name.clone()).collect::<Vec<_>>());
+    let names_now =
+        move || cats.with_untracked(|cs| cs.iter().map(|c| c.name.clone()).collect::<Vec<_>>());
     let move_to = move |from: usize, to: usize| {
         let mut names = names_now();
         if from >= names.len() || to >= names.len() || from == to {
@@ -1226,44 +1744,6 @@ fn CategoryManager(
         })}
         {move || problem.get().map(|e| view! { <p role="alert" class="mt-3 text-sm text-error">{e}</p> })}
     }
-}
-
-/// `/tienda/:slug/productos/:id`.
-#[component]
-pub fn ProductEditPage() -> impl IntoView {
-    if matches!(crate::site::current_site(), domain::Site::Store(_)) {
-        return view! { <crate::Home/> }.into_any();
-    }
-    let slug = slug_param();
-    let params = use_params_map();
-    let id = Memo::new(move |_| params.read().get("id").unwrap_or_default());
-    let data = Resource::new(
-        move || (slug.get(), id.get()),
-        |(s, i)| product_to_edit(s, i),
-    );
-    view! {
-        <leptos_meta::Title text="Producto · MarketMaker"/>
-            <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-4 max-sm:pb-28">
-                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Product/> }>
-                    {move || Suspend::new(async move {
-                        let back = format!("/tienda/{}/productos", slug.get_untracked());
-                        match data.await {
-                            Ok(Some(edit)) => {
-                                let id = id.get_untracked();
-                                let id = if id == "nuevo" { String::new() } else { id };
-                                view! { <ProductForm slug=slug.get_untracked() id edit/> }.into_any()
-                            }
-                            Ok(None) => view! { <SignInFirst back/> }.into_any(),
-                            Err(e) => view! {
-                                <a href=back class="btn btn-ghost btn-sm self-start">"← Productos"</a>
-                                <div role="alert" class="alert alert-error">{error_text(&e)}</div>
-                            }.into_any(),
-                        }
-                    })}
-                </Suspense>
-            </div>
-    }
-    .into_any()
 }
 
 /// Lo que se está escribiendo en el formulario.
@@ -1491,10 +1971,9 @@ fn focus_first_error(errors: &[String]) {
 }
 
 #[component]
-fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
+fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> impl IntoView {
     let form = Form::new(&edit.product);
     let id = RwSignal::new(id);
-    let list_href = format!("/tienda/{slug}/productos");
     let slug = StoredValue::new(slug);
     let store_tags = StoredValue::new(edit.store_tags);
     let store_categories = StoredValue::new(edit.store_categories);
@@ -1502,7 +1981,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     let show_parcel = edit.andreani || edit.product.parcel.is_some();
     let errors = RwSignal::new(Vec::<String>::new());
     let saved = RwSignal::new(false);
-    let dirty = RwSignal::new(false);
+    let dirty = host.dirty;
+    dirty.set(false);
     // El nombre del producto recién creado: muestra qué hacer después.
     let created = RwSignal::new(None::<(String, bool)>);
     let store_url = edit.store_url.clone();
@@ -1547,13 +2027,21 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
 
     let save = Action::new(move |p: &Product| {
         let p = p.clone();
-        async move { save_product(slug.get_value(), id.get_untracked(), p).await }
+        async move {
+            (
+                save_product(slug.get_value(), id.get_untracked(), p.clone()).await,
+                p,
+            )
+        }
     });
     Effect::new(move |_| match save.value().get() {
-        Some(Ok(SaveResult {
-            id: new_id,
-            outcome: ProductSave::Saved,
-        })) => {
+        Some((
+            Ok(SaveResult {
+                id: new_id,
+                outcome: ProductSave::Saved,
+            }),
+            mut p,
+        )) => {
             errors.set(Vec::new());
             dirty.set(false);
             saved.set(true);
@@ -1563,25 +2051,22 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                     form.visible.get_untracked(),
                 )));
                 id.set(new_id.clone());
-                // Cambia la dirección sin volver a cargar el formulario.
-                if let Ok(history) = window().history() {
-                    let url = format!("/tienda/{}/productos/{new_id}", slug.get_value());
-                    _ = history.replace_state_with_url(
-                        &leptos::wasm_bindgen::JsValue::NULL,
-                        "",
-                        Some(&url),
-                    );
-                }
             }
+            _ = domain::tidy_product(&mut p);
+            p.id = new_id;
+            host.saved.run(p);
         }
-        Some(Ok(SaveResult {
-            outcome: ProductSave::Invalid { errors: e },
-            ..
-        })) => {
+        Some((
+            Ok(SaveResult {
+                outcome: ProductSave::Invalid { errors: e },
+                ..
+            }),
+            _,
+        )) => {
             focus_first_error(&e);
             errors.set(e);
         }
-        Some(Err(e)) => errors.set(vec![error_text(&e)]),
+        Some((Err(e), _)) => errors.set(vec![error_text(&e)]),
         None => {}
     });
     let on_save = move || match form.product(&id.get_untracked()) {
@@ -1627,26 +2112,20 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             es.extend(problem);
         });
     };
-    let save_button = move || {
-        view! {
-            <button type="button" class="btn btn-primary" disabled=move || save.pending().get()
-                on:click=move |_| on_save()>
-                {move || if id.get().is_empty() { "Crear producto" } else { "Guardar" }}
-            </button>
+    let save_label = move || {
+        if save.pending().get() {
+            "Guardando…"
+        } else if id.get().is_empty() {
+            "Crear producto"
+        } else {
+            "Guardar"
         }
     };
-
-    let confirm_delete = RwSignal::new(false);
-    let delete = Action::new(move |_: &()| async move {
-        delete_product(slug.get_value(), id.get_untracked()).await
-    });
-    let list_href2 = list_href.clone();
-    let navigate = leptos_router::hooks::use_navigate();
-    Effect::new(move |_| match delete.value().get() {
-        Some(Ok(())) => navigate(&list_href2, Default::default()),
-        Some(Err(e)) => errors.set(vec![error_text(&e)]),
-        None => {}
-    });
+    let ask_delete = move |_| {
+        host.delete
+            .run((id.get_untracked(), form.name.get_untracked()))
+    };
+    let menu_id = format!("mk-fmenu-{}", id.get_untracked());
 
     let title = move || {
         let n = form.name.get();
@@ -1673,44 +2152,45 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
     });
 
     view! {
-        <div class="flex flex-wrap items-center gap-3">
-            <a class="btn btn-ghost btn-sm max-sm:size-11 max-sm:p-0" href=list_href>
-                <span aria-hidden="true">"←"</span><span class="max-sm:sr-only">"Productos"</span>
-            </a>
-            <h1 class="min-w-0 grow truncate text-3xl font-bold max-sm:text-xl">{title}</h1>
-            <span class="text-sm text-base-content/60 max-sm:text-xs" role="status" aria-live="polite">
+        // Arriba: el nombre, la posición en la lista, ‹ › y cerrar.
+        <header class="flex items-center gap-2 border-b border-base-200 px-5 py-3 max-sm:px-3">
+            <button type="button" class="btn btn-ghost btn-sm btn-square min-h-11 min-w-11 sm:hidden" aria-label="Cerrar la ficha" on:click=move |_| host.close.run(())>"✕"</button>
+            <div class="min-w-0 grow">
+                <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60 max-sm:hidden">"Ficha completa"</p>
+                <h2 class="truncate text-xl font-bold max-sm:text-base">{title}</h2>
+            </div>
+            <span class="text-sm text-base-content/60 max-sm:hidden" role="status" aria-live="polite">
                 {move || if save.pending().get() { "Guardando…" } else if saved.get() && !dirty.get() { "Guardado ✓" } else { "" }}
             </span>
-            // En el teléfono, Borrar y Guardar están en la barra fija de abajo.
-            {move || (!id.get().is_empty()).then(|| view! {
-                <button type="button" class="btn btn-ghost max-sm:hidden" on:click=move |_| confirm_delete.set(true)>"Borrar"</button>
+            <span class="text-xs text-base-content/60">{move || host.position.get()}</span>
+            <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11 sm:min-h-8 sm:min-w-8" aria-label="Producto anterior" disabled=move || !host.has_prev.get() on:click=move |_| host.prev.run(())>"‹"</button>
+            <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11 sm:min-h-8 sm:min-w-8" aria-label="Producto siguiente" disabled=move || !host.has_next.get() on:click=move |_| host.next.run(())>"›"</button>
+            // En el teléfono Borrar va en ⋯, lejos de Guardar.
+            {move || (!id.get().is_empty()).then(|| {
+                let menu_id = menu_id.clone();
+                view! {
+                    <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11 sm:hidden" aria-label="Más acciones" popovertarget=menu_id.clone()>"⋯"</button>
+                    <div id=menu_id popover="auto" class="mk-pmenu">
+                        <button type="button" class="btn btn-ghost w-full justify-start text-error" on:click=ask_delete>"Borrar producto…"</button>
+                    </div>
+                }
             })}
-            <span class="contents max-sm:hidden">{save_button()}</span>
-        </div>
+            <button type="button" class="btn btn-ghost btn-sm btn-square max-sm:hidden" aria-label="Cerrar la ficha" on:click=move |_| host.close.run(())>"✕"</button>
+        </header>
+        <div class="flex min-h-0 grow flex-col gap-5 overflow-y-auto overscroll-contain px-5 py-4 max-sm:px-4">
         {move || created.get().filter(|_| !dirty.get()).map(|(name, shown)| {
-            let again = format!("/tienda/{}/productos/nuevo", slug.get_value());
-            let list = format!("/tienda/{}/productos", slug.get_value());
             let store = store_url.clone();
             view! {
                 <div role="status" class="flex flex-wrap items-center gap-3 rounded-box border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
                     <span class="grid size-7 shrink-0 place-items-center rounded-full bg-success text-success-content"><ui::Icon class="size-[18px]" name="check"/></span>
                     <p class="min-w-0 grow"><b>{format!("Creaste «{name}».")}</b>{if !shown { " Está oculto: tus clientes no lo ven hasta que lo muestres." } else if published { " Ya está en tu tienda." } else { " Se va a ver cuando publiques la tienda." }}</p>
-                    // Recarga entera: el formulario arranca vacío.
-                    <a class="btn btn-primary btn-sm" href=again rel="external">"+ Cargar otro producto"</a>
+                    <button type="button" class="btn btn-primary btn-sm" on:click=move |_| host.again.run(())>"+ Cargar otro producto"</button>
                     <a class="btn btn-outline btn-sm" href=store target="_blank" rel="noopener">
                         "Ver en mi tienda"<ui::Icon class="size-4" name="external"/><span class="sr-only">" (se abre en otra pestaña)"</span>
                     </a>
-                    <a class="btn btn-ghost btn-sm" href=list>"Volver a la lista"</a>
+                    <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| host.close.run(())>"Volver a la lista"</button>
                 </div>
             }
-        })}
-        {move || confirm_delete.get().then(|| view! {
-            <div role="alert" class="alert alert-warning flex flex-wrap max-sm:fixed max-sm:inset-x-3 max-sm:bottom-24 max-sm:z-40 max-sm:shadow-xl">
-                <span class="grow">"¿Borrar este producto? Deja de verse en la tienda y no se puede deshacer. Sus fotos siguen en Mis fotos."</span>
-                <button type="button" class="btn btn-sm" on:click=move |_| confirm_delete.set(false)>"No, dejarlo"</button>
-                <button type="button" class="btn btn-sm btn-error" disabled=move || delete.pending().get()
-                    on:click=move |_| { delete.dispatch(()); }>"Sí, borrar"</button>
-            </div>
         })}
         // Solo lo que no es de un campo (la conexión, por ejemplo); lo demás
         // va debajo de cada campo.
@@ -1718,7 +2198,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
             {move || errors.with(|es| es.iter().filter(|e| error_field(e) == "general").map(|e| view! { <p>{e.clone()}</p> }).collect_view())}
         </div>
         <div class="grid items-start gap-6 lg:grid-cols-[1fr_340px]">
-            <div class="card bg-base-100 shadow-sm"><div class="card-body gap-5">
+            <div><div class="flex flex-col gap-5">
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">"Nombre"</legend>
                     <input id="p-name" class="input w-full" class:input-error=move || has_error("name")
@@ -1826,32 +2306,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                     </div>
                     {field_error("parcel")}
                 </fieldset>
-                <div class="mk-savebar flex flex-wrap items-center justify-end gap-3 border-t border-base-200 pt-4"
-                    class:mk-unsaved=move || dirty.get() && !save.pending().get()>
-                    // Con cambios sin guardar, la barra queda fija abajo (ver `.mk-unsaved`).
-                    <p class="mk-unsaved-text mr-auto hidden text-sm font-medium">"Cambios sin guardar"</p>
-                    <button type="button" class="mk-unsaved-text btn btn-ghost hidden max-sm:!hidden"
-                        on:click=move |_| {
-                            if let Some(w) = leptos::web_sys::window() {
-                                _ = w.location().reload();
-                            }
-                        }>"Descartar"</button>
-                    {move || {
-                        let n = errors.with(Vec::len);
-                        (n > 0).then(|| view! {
-                            <p class="text-sm text-error max-sm:hidden">{if n == 1 { "Revisá el campo marcado.".to_string() } else { format!("Revisá los {n} campos marcados.") }}</p>
-                        })
-                    }}
-                    {move || (!id.get().is_empty()).then(|| view! {
-                        <button type="button" class="btn btn-outline size-12 shrink-0 p-0 sm:hidden" aria-label="Borrar este producto"
-                            on:click=move |_| confirm_delete.set(true)>
-                            <ui::Icon class="size-5" name="trash"/>
-                        </button>
-                    })}
-                    {save_button()}
-                </div>
             </div></div>
-            <aside class="flex flex-col gap-3 lg:sticky lg:top-4">
+            <aside class="flex flex-col gap-3 lg:sticky lg:top-0">
                 <span class="text-sm font-medium text-base-content/70">"Así se ve en tu tienda"</span>
                 {move || match adjusting_now.get() {
                     // En el teléfono el ajuste ocupa toda la pantalla; en las demás, `contents`
@@ -1889,6 +2345,32 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                 }}
             </aside>
         </div>
+        </div>
+        // Abajo: Cambios sin guardar | Borrar | Descartar y Guardar. En el
+        // teléfono, Guardar a todo el ancho y Borrar en ⋯ (arriba).
+        <footer class="mk-qfoot border-t border-base-200 px-5 py-3 max-sm:px-4">
+            <div class="mk-qfoot-row">
+                <span class="flex items-center gap-3 text-sm">
+                    <span class="text-base-content/60" class:invisible=move || !dirty.get()>"Cambios sin guardar"</span>
+                    {move || {
+                        let n = errors.with(Vec::len);
+                        (n > 0).then(|| view! {
+                            <span class="text-error max-sm:hidden">{if n == 1 { "Revisá el campo marcado.".to_string() } else { format!("Revisá los {n} campos marcados.") }}</span>
+                        })
+                    }}
+                </span>
+                <span class="max-sm:hidden">
+                    {move || (!id.get().is_empty()).then(|| view! {
+                        <button type="button" class="btn btn-ghost btn-sm text-error" on:click=ask_delete>"Borrar"</button>
+                    })}
+                </span>
+                <span class="flex justify-end gap-2">
+                    <button type="button" class="btn max-sm:btn-ghost" disabled=move || !dirty.get() on:click=move |_| host.discard.run(())>"Descartar"</button>
+                    <button type="button" class="btn btn-primary max-sm:hidden" disabled=move || save.pending().get() on:click=move |_| on_save()>{save_label}</button>
+                </span>
+            </div>
+            <button type="button" class="btn btn-primary w-full sm:hidden" disabled=move || save.pending().get() on:click=move |_| on_save()>{save_label}</button>
+        </footer>
     }
 }
 

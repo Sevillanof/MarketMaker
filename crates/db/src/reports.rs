@@ -87,13 +87,15 @@ pub async fn screenshot(pool: &PgPool, num: i64) -> sqlx::Result<Option<Vec<u8>>
 }
 
 pub async fn set_status(pool: &PgPool, num: i64, estado: &str) -> sqlx::Result<bool> {
-    Ok(sqlx::query("UPDATE reportes SET estado = $2 WHERE num = $1")
-        .bind(num)
-        .bind(estado)
-        .execute(pool)
-        .await?
-        .rows_affected()
-        > 0)
+    Ok(
+        sqlx::query("UPDATE reportes SET estado = $2 WHERE num = $1")
+            .bind(num)
+            .bind(estado)
+            .execute(pool)
+            .await?
+            .rows_affected()
+            > 0,
+    )
 }
 
 /// Cuántos hay de cada estado: (nuevos, en curso, resueltos).
