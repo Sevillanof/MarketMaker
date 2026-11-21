@@ -329,7 +329,10 @@ pub fn ProductDialog(
                 {move || product.get().map(|p| {
                     // Color y talle elegidos, compartidos por la foto y el botón.
                     provide_context(product_page::VariantPick::new());
-                    let shown = grow_for_variants(fit_description(fit_name(nodes.get_value(), &p), &p), &p);
+                    let offers = use_context::<domain::StoreInfo>().map(|s| s.offers).unwrap_or_default();
+                    let offers = if editing { offers.or_sample() } else { offers };
+                    let shown = fit_price(fit_name(nodes.get_value(), &p), &p, offers);
+                    let shown = grow_for_variants(fit_description(shown, &p), &p);
                     // Lugar para "Ver carrito y comprar / Seguir comprando" al agregar.
                     let shown = if editing { shown } else { grow_button(shown, 13) };
                     let shown = stretch_image(shown);
@@ -404,6 +407,42 @@ fn fit_description(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
             n.size.h = rows as u8;
         } else if i32::from(n.pos.y) >= bottom && n.pos.x < dx + dw && dx < n.pos.x + n.size.w {
             n.pos.y = (i32::from(n.pos.y) + delta).max(0) as u16;
+        }
+    }
+    nodes
+}
+
+/// El bloque del precio crece lo que ocupan sus renglones de cuotas y
+/// transferencia (según lo que la tienda ofrece y lo que el bloque muestra) y
+/// lo de abajo baja lo mismo: sin ofertas no queda un hueco, y con ofertas
+/// no se cortan.
+fn fit_price(mut nodes: Vec<Node>, p: &Product, offers: domain::PriceOffers) -> Vec<Node> {
+    let Some((n, props)) = nodes.iter().find_map(|n| match &n.widget {
+        Widget::ProductPrice(props) => Some((n.clone(), props.clone())),
+        _ => None,
+    }) else {
+        return nodes;
+    };
+    let per = props.show_installments && offers.installment_cents(p.price_cents).is_some();
+    let transfer = props.show_transfer && offers.transfer_cents(p.price_cents).is_some();
+    let extra: u8 = match props.variant.as_str() {
+        "e" => 4 * (u8::from(per) + u8::from(transfer)),
+        "b" => 4 * u8::from(per),
+        "c" => 5 * u8::from(transfer) + 4 * u8::from(per),
+        _ => 0,
+    };
+    let rows = 6 + extra;
+    if extra == 0 || n.size.h >= rows {
+        return nodes;
+    }
+    let delta = u16::from(rows - n.size.h);
+    let bottom = n.pos.y + u16::from(n.size.h);
+    let (nx, nw) = (n.pos.x, n.size.w);
+    for m in &mut nodes {
+        if m.id == n.id {
+            m.size.h = rows;
+        } else if m.pos.y >= bottom && m.pos.x < nx + nw && nx < m.pos.x + m.size.w {
+            m.pos.y += delta;
         }
     }
     nodes
@@ -616,7 +655,7 @@ fn grow_for_variants(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
         return nodes;
     }
     let extra: u16 = 4
-        + if p.variants.colors.is_empty() { 0 } else { 11 }
+        + if p.variants.colors.is_empty() { 0 } else { 14 }
         + if p.variants.sizes.is_empty() { 0 } else { 11 };
     let Some(b) = nodes
         .iter()

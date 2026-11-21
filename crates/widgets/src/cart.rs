@@ -13,6 +13,9 @@ use ui::{format_price, Image};
 
 /// Clave del carrito en `localStorage`.
 pub const STORAGE_KEY: &str = "mm_cart";
+/// Clave de lo que el comprador vio en su carrito (nombre y precio de cada
+/// renglón), para avisarle si algo cambió mientras no estaba.
+pub const SEEN_KEY: &str = "mm_cart_seen";
 /// Máximo de unidades de un mismo producto.
 pub const MAX_QTY: u32 = 99;
 
@@ -25,6 +28,9 @@ pub struct Cart {
     pub open: RwSignal<bool>,
     /// Lo último que se quitó, para poder deshacerlo un rato.
     removed: RwSignal<Option<Removed>>,
+    /// Lo que cambió desde su última visita (un producto que ya no está, un
+    /// precio distinto). Se muestra una vez, hasta que lo cierra.
+    pub changes: RwSignal<Vec<CartChange>>,
     /// Ya se leyó del navegador (antes de hidratar el carrito está vacío).
     pub ready: RwSignal<bool>,
     /// Hay un botón de carrito fijo en la página (el del encabezado). Si lo hay,
@@ -43,6 +49,71 @@ struct Removed {
     at: usize,
     /// Distingue un quitar de otro, para que el aviso viejo no borre el nuevo.
     token: u32,
+}
+
+/// Algo del carrito cambió mientras el comprador no estaba.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CartChange {
+    /// La tienda sacó el producto: se quitó del carrito.
+    Gone { name: String },
+    /// El precio es otro.
+    Price {
+        name: String,
+        image_url: String,
+        now_cents: i64,
+    },
+}
+
+/// Compara lo guardado con la tienda de hoy: devuelve los renglones que
+/// siguen (sin los productos que ya no están) y lo que cambió.
+pub fn reconcile(
+    saved: Vec<(String, u32)>,
+    seen: &[(String, i64, String)],
+    products: &[Product],
+) -> (Vec<(String, u32)>, Vec<CartChange>) {
+    let mut changes = Vec::new();
+    let mut kept = Vec::new();
+    for (id, qty) in saved {
+        let before = seen.iter().find(|(i, _, _)| *i == id);
+        match (products.iter().find(|p| p.id == id), before) {
+            (Some(p), Some((_, cents, _))) if *cents != p.price_cents => {
+                changes.push(CartChange::Price {
+                    name: p.name.clone(),
+                    image_url: p.image_url.clone(),
+                    now_cents: p.price_cents,
+                });
+                kept.push((id, qty));
+            }
+            (Some(_), _) => kept.push((id, qty)),
+            (None, Some((_, _, name))) => changes.push(CartChange::Gone { name: name.clone() }),
+            // Sin registro de qué era: no hay nombre para avisar.
+            (None, None) => {}
+        }
+    }
+    (kept, changes)
+}
+
+/// `id<TAB>precio<TAB>nombre`, un renglón por producto.
+pub fn parse_seen(s: &str) -> Vec<(String, i64, String)> {
+    s.lines()
+        .filter_map(|l| {
+            let mut parts = l.splitn(3, '\t');
+            let id = parts.next()?.to_string();
+            let cents = parts.next()?.parse().ok()?;
+            Some((id, cents, parts.next()?.to_string()))
+        })
+        .collect()
+}
+
+pub fn serialize_seen(items: &[CartItem]) -> String {
+    items
+        .iter()
+        .map(|i| {
+            let name = i.product.name.replace(['\t', '\n'], " ");
+            format!("{}\t{}\t{name}", i.product.id, i.product.price_cents)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Cuánto se ve la barra de abajo después de agregar un producto.
@@ -69,6 +140,7 @@ impl Cart {
             products: StoredValue::new(products),
             open: RwSignal::new(false),
             removed: RwSignal::new(None),
+            changes: RwSignal::new(Vec::new()),
             ready: RwSignal::new(false),
             nav: RwSignal::new(false),
             hook: use_context::<crate::UsageHook>(),
@@ -85,7 +157,14 @@ impl Cart {
                 if let Some(saved) = storage().and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
                 {
                     // Si ahora quedan menos unidades, se deja lo que hay.
-                    let mut saved = parse(&saved);
+                    let seen = storage()
+                        .and_then(|s| s.get_item(SEEN_KEY).ok().flatten())
+                        .map(|s| parse_seen(&s))
+                        .unwrap_or_default();
+                    let (mut saved, changes) = cart
+                        .products
+                        .with_value(|ps| reconcile(parse(&saved), &seen, ps));
+                    cart.changes.set(changes);
                     for (id, q) in &mut saved {
                         let max = cart.limit(id).max(1);
                         *q = (*q).min(max);
@@ -97,6 +176,7 @@ impl Cart {
             }
             if let Some(s) = storage() {
                 _ = s.set_item(STORAGE_KEY, &serialize(&current));
+                _ = s.set_item(SEEN_KEY, &serialize_seen(&cart.items()));
             }
         });
         provide_context(cart);
@@ -507,6 +587,61 @@ fn UndoToast(cart: Cart, in_drawer: bool) -> impl IntoView {
     }
 }
 
+/// «Tu carrito cambió»: un producto que la tienda sacó o un precio distinto
+/// desde la última visita. Flotante y oscuro como «Quitaste… · Deshacer»;
+/// se va con la X.
+#[component]
+pub fn CartChanges(cart: Cart, in_drawer: bool) -> impl IntoView {
+    let show = move || cart.changes.with(|c| !c.is_empty()) && cart.open.get() == in_drawer;
+    let class = if in_drawer {
+        "pointer-events-none absolute inset-x-4 bottom-64 z-10 flex justify-center"
+    } else {
+        "pointer-events-none fixed inset-x-4 bottom-24 z-50 flex justify-center"
+    };
+    view! {
+        <div class=class role="status" aria-live="polite">
+            {move || show().then(|| view! {
+                <div class="mk-changes pointer-events-auto flex w-full max-w-sm flex-col gap-3 rounded-box bg-neutral p-4 text-neutral-content shadow-lg">
+                    <div class="flex items-center">
+                        <p class="flex-1 font-bold">"Tu carrito cambió"</p>
+                        <button type="button" class="btn btn-xs btn-circle btn-ghost text-neutral-content hover:bg-white/10" aria-label="Cerrar el aviso"
+                            on:click=move |_| cart.changes.set(Vec::new())>
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                        </button>
+                    </div>
+                    <ul class="flex flex-col gap-3">
+                        {cart.changes.get().into_iter().map(|c| {
+                            let (thumb, name, what) = match c {
+                                CartChange::Gone { name } => (
+                                    view! {
+                                        <svg class="h-4 w-4 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                                    }.into_any(),
+                                    name,
+                                    "Ya no está disponible".to_string(),
+                                ),
+                                CartChange::Price { name, image_url, now_cents } => (
+                                    view! { <Image src=image_url alt=""/> }.into_any(),
+                                    name,
+                                    format!("Ahora cuesta {}", format_price(now_cents)),
+                                ),
+                            };
+                            view! {
+                                <li class="flex items-center gap-3">
+                                    <div class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-field bg-white/10">{thumb}</div>
+                                    <div class="min-w-0 flex-1 leading-snug">
+                                        <p class="truncate text-sm font-bold">{name}</p>
+                                        <p class="text-sm opacity-80">{what}</p>
+                                    </div>
+                                </li>
+                            }
+                        }).collect_view()}
+                    </ul>
+                </div>
+            })}
+        </div>
+    }
+}
+
 /// − cantidad + . Nunca baja de 1.
 #[component]
 pub fn QtyStepper(
@@ -715,6 +850,7 @@ pub fn CartBar() -> impl IntoView {
             </div>
         </Show>
         <UndoToast cart in_drawer=false/>
+        <CartChanges cart in_drawer=false/>
     }
     .into_any()
 }
@@ -804,6 +940,7 @@ pub fn CartDrawer(#[prop(optional)] in_checkout: bool) -> impl IntoView {
                 </Show>
             </div>
             <UndoToast cart in_drawer=true/>
+            <CartChanges cart in_drawer=true/>
         </dialog>
     }
     .into_any()
@@ -898,6 +1035,39 @@ fn CartRow(item: CartItem, cart: Cart) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tells_what_changed_since_last_visit() {
+        let p = |id: &str, name: &str, cents: i64| Product {
+            id: id.into(),
+            name: name.into(),
+            price_cents: cents,
+            ..Product::default()
+        };
+        let products = vec![p("a", "Mochila", 2_899_000), p("b", "Taza", 650_000)];
+        let seen = parse_seen("a\t2699000\tMochila\nb\t650000\tTaza\nc\t100\tAgenda 2027");
+        let saved = vec![
+            ("a".to_string(), 1),
+            ("b".to_string(), 2),
+            ("c".to_string(), 1),
+            ("d".to_string(), 1),
+        ];
+        let (kept, changes) = reconcile(saved, &seen, &products);
+        assert_eq!(kept, vec![("a".to_string(), 1), ("b".to_string(), 2)]);
+        assert_eq!(
+            changes,
+            vec![
+                CartChange::Price {
+                    name: "Mochila".into(),
+                    image_url: String::new(),
+                    now_cents: 2_899_000
+                },
+                CartChange::Gone {
+                    name: "Agenda 2027".into()
+                },
+            ]
+        );
+    }
 
     #[test]
     fn parses_and_merges_lines() {

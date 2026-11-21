@@ -71,7 +71,8 @@ pub struct ProductNameProps {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ProductPriceProps {
     /// `a` solo el precio, `b` con cuotas, `c` transferencia destacada,
-    /// `d` cajita con las formas de pago.
+    /// `d` cajita con las formas de pago, `e` etiquetas chicas una debajo de
+    /// la otra (la de una ficha nueva).
     #[serde(default = "variant_a")]
     pub variant: String,
     /// Las cuotas sin interés de Cobros (si la tienda las configuró).
@@ -1086,6 +1087,7 @@ pub const VARIANT_PRODUCT_PRICE: &[(&str, &str)] = &[
     ("b", "Con cuotas"),
     ("c", "Transferencia destacada"),
     ("d", "Cajita con formas de pago"),
+    ("e", "Etiquetas chicas"),
 ];
 const PRODUCT_PRICE_FIELDS: &[Field] = &[
     field(
@@ -1914,7 +1916,7 @@ impl Widget {
             }),
             "ProductName" => Widget::ProductName(ProductNameProps {}),
             "ProductPrice" => Widget::ProductPrice(ProductPriceProps {
-                variant: s("b"),
+                variant: s("e"),
                 show_installments: true,
                 show_transfer: true,
             }),

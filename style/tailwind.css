@@ -1174,6 +1174,17 @@ dialog.mk-cart::backdrop {
   background: color-mix(in oklab, var(--color-success) 22%, var(--color-base-100));
   color: color-mix(in oklab, var(--color-success) 55%, black);
 }
+/* Estilo «Etiquetas chicas»: una debajo de la otra. */
+.mk-pprice .mk-ptags:empty { display: none; }
+.mk-pprice .mk-ptag {
+  font-size: 0.75rem; line-height: 1rem; padding: 0.125rem 0.5rem; border-radius: 999px;
+  background: var(--color-base-200);
+}
+.mk-pprice .mk-ptag-save {
+  font-weight: 600;
+  background: color-mix(in oklab, var(--color-success) 16%, var(--color-base-100));
+  color: color-mix(in oklab, var(--color-success) 55%, black);
+}
 .mk-pprice .mk-paybox {
   display: grid; width: 100%; margin-top: 0.25rem;
   border: 1px solid var(--color-base-300); border-radius: var(--radius-box);
@@ -1614,6 +1625,11 @@ dialog.mk-cart::backdrop {
   outline-offset: -1px;
   background: var(--color-base-200);
   cursor: pointer;
+}
+.mk-pswatch-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; width: 3.5rem; }
+.mk-pswatch-name {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.72rem; line-height: 1rem; opacity: 0.8;
 }
 .mk-pswatch:has(:checked) { outline: 2px solid var(--color-base-content); outline-offset: 1px; }
 .mk-pswatch:focus-within, .mk-psize:focus-within { outline: 3px solid var(--color-primary); outline-offset: 2px; }

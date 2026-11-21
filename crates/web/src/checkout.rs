@@ -1294,6 +1294,8 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
             <StoreHeader name=info.store_name/>
             // «Cambiar productos» abre el carrito acá mismo, sin salir.
             <widgets::CartDrawer in_checkout=true/>
+            // Si algo del carrito cambió desde su última visita, se entera acá.
+            <widgets::cart::CartChanges cart in_drawer=false/>
             {move || if !cart.ready.get() {
                 view! { <ui::Skeleton class="h-96 w-full"/> }.into_any()
             } else if methods.with_value(|m| m.is_empty()) {
