@@ -18,7 +18,7 @@
     '@media (prefers-reduced-motion:reduce){#mkbug-fab,#mkbug-fab span{transition:none}}' +
     '#mkbug-fab:focus-visible{outline:3px solid #818cf8;outline-offset:2px}#mkbug-fab[disabled]{opacity:.7;cursor:progress}' +
     '#mkbug-fab svg{width:18px;height:18px;flex:none}' +
-    '@media (min-width:640px){body:has(.mk-help) #mkbug-fab{left:auto;right:16px;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 56px)}}' +
+    '@media (min-width:640px){body:has(.mk-help) #mkbug-fab{left:auto;right:16px;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 71px)}}' +
     '@media (max-width:639px){#mkbug-fab{bottom:max(84px,env(safe-area-inset-bottom))}}' +
     '@media print{#mkbug-fab,#mkbug-root{display:none!important}}' +
     '#mkbug-root{position:fixed;inset:0;z-index:2147483000;font:14px/1.45 system-ui,sans-serif;color:#1f2430;touch-action:none;overscroll-behavior:contain}' +

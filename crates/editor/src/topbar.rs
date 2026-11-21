@@ -97,18 +97,109 @@ pub(crate) fn PageSwitcher() -> impl IntoView {
                 </select>
             </label>
             <NewPageMenu/>
-            {move || (state.page.get() > 0).then(|| view! {
-                <button
-                    type="button"
-                    class="btn btn-ghost btn-sm btn-square text-red-700"
-                    aria-label="Borrar esta página"
-                    title="Borrar esta página"
-                    on:click=move |_| actions.delete_page(state.page.get_untracked())
-                >
-                    <Icon name="trash"/>
-                </button>
-            })}
+            {move || (state.page.get() > 0).then(|| view! { <PageMenu/> })}
         </div>
+    }
+}
+
+/// «⋯» de la página actual (nunca Inicio): cambiar su nombre y borrarla,
+/// preguntando antes de borrar.
+#[component]
+fn PageMenu() -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let actions = expect_context::<Actions>();
+    let menu = NodeRef::<leptos::html::Details>::new();
+    let name = RwSignal::new(String::new());
+    let confirm = RwSignal::new(false);
+    let tried = RwSignal::new(false);
+    let current = move || {
+        state
+            .doc
+            .with(|d| d.page_name(state.page.get()).to_string())
+    };
+    let problem = move || {
+        name.track();
+        actions.rename_page_problem(&name.get())
+    };
+    let outside = window_event_listener(leptos::ev::pointerdown, move |ev| {
+        use wasm_bindgen::JsCast;
+        let Some(d) = menu.get_untracked() else {
+            return;
+        };
+        let inside = ev
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::Node>().ok())
+            .is_some_and(|t| d.contains(Some(&t)));
+        if d.open() && !inside {
+            d.set_open(false);
+            confirm.set(false);
+        }
+    });
+    on_cleanup(move || outside.remove());
+    view! {
+        <details node_ref=menu class="dropdown"
+            on:toggle=move |_| {
+                if menu.get_untracked().is_some_and(|d| d.open()) {
+                    name.set(current());
+                    confirm.set(false);
+                    tried.set(false);
+                }
+            }>
+            <summary class="btn btn-ghost btn-sm btn-square" aria-label="Acciones de esta página" title="Acciones de esta página">
+                <span aria-hidden="true">"⋯"</span>
+            </summary>
+            <div class="dropdown-content z-50 mt-1 w-72 space-y-3 rounded-box border border-base-300 bg-base-100 p-4 shadow-lg">
+                <form on:submit=move |ev| {
+                    ev.prevent_default();
+                    tried.set(true);
+                    if actions.rename_page(&name.get_untracked()) {
+                        if let Some(d) = menu.get_untracked() {
+                            d.set_open(false);
+                        }
+                    }
+                }>
+                    <label class="mb-1 block text-sm font-medium" for="mk-rename-page">"Cambiar nombre"</label>
+                    <div class="flex gap-2">
+                        <input
+                            id="mk-rename-page"
+                            type="text"
+                            class="input input-sm w-full"
+                            maxlength="40"
+                            prop:value=move || name.get()
+                            on:input=move |ev| name.set(event_target_value(&ev))
+                        />
+                        <button type="submit" class="btn btn-primary btn-sm">"Guardar"</button>
+                    </div>
+                    {move || match problem() {
+                        Some(p) if tried.get() => view! { <p class="mt-1 text-xs text-error" role="alert">{p}</p> }.into_any(),
+                        _ => view! { <p class="mt-1 text-xs text-base-content/70">"La dirección de la página no cambia."</p> }.into_any(),
+                    }}
+                </form>
+                <div class="border-t border-base-300 pt-3">
+                    {move || if confirm.get() {
+                        view! {
+                            <p class="mb-2 text-sm" role="alert">"¿Borrar la página "<b>{current}</b>"? Se pierde todo lo que tiene."</p>
+                            <div class="flex gap-2">
+                                <button type="button" class="btn btn-sm" on:click=move |_| confirm.set(false)>"Cancelar"</button>
+                                <button type="button" class="btn btn-sm btn-error" on:click=move |_| {
+                                    if let Some(d) = menu.get_untracked() {
+                                        d.set_open(false);
+                                    }
+                                    confirm.set(false);
+                                    actions.delete_page(state.page.get_untracked());
+                                }>"Sí, borrar"</button>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <button type="button" class="btn btn-ghost btn-sm text-error" on:click=move |_| confirm.set(true)>
+                                <Icon name="trash"/>"Borrar página…"
+                            </button>
+                        }.into_any()
+                    }}
+                </div>
+            </div>
+        </details>
     }
 }
 

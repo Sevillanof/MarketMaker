@@ -149,6 +149,8 @@
   align-items: center;
   gap: 0.4rem;
   height: 1.75rem;
+  /* En bloques angostos el nombre se acorta en vez de salirse del bloque. */
+  max-width: 100%;
   padding-inline: 0.65rem;
   border-radius: 0 0 0.5rem 0.5rem;
   background: var(--color-primary);

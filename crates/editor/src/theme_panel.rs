@@ -96,9 +96,10 @@ fn Name() -> impl IntoView {
             />
         </div>
         <div class="mt-2 grid grid-cols-2 gap-2">
+            <div class="relative">
             <button
                 type="button"
-                class="btn btn-sm border-0 bg-base-200 font-semibold"
+                class="btn btn-sm w-full border-0 bg-base-200 font-semibold"
                 on:click=move |_| {
                     let r = || js_sys::Math::random();
                     let hue = r() * 360.0;
@@ -111,13 +112,18 @@ fn Name() -> impl IntoView {
                     });
                 }
             >"Colores al azar"</button>
+            <span class="absolute right-1 top-1/2 -translate-y-1/2"><ui::HelpTip id="tip-th-random" label="Colores al azar" text="Cambia los tres colores principales por otros combinados entre sí. Podés repetirlo hasta que te guste."/></span>
+            </div>
+            <div class="relative">
             <button
                 type="button"
-                class="btn btn-sm btn-neutral font-semibold"
+                class="btn btn-sm btn-neutral w-full font-semibold"
                 aria-expanded=move || css_open.get().to_string()
                 aria-controls="mk-theme-css"
                 on:click=move |_| css_open.update(|o| *o = !*o)
             >"CSS propio"</button>
+            <span class="absolute right-1 top-1/2 -translate-y-1/2"><ui::HelpTip id="tip-th-css" label="CSS propio" text="Para quien sabe de diseño web: muestra el código del estilo para copiarlo o pegar uno propio."/></span>
+            </div>
         </div>
         <pre
             id="mk-theme-css"
@@ -364,10 +370,10 @@ fn SwitchRow(
 ) -> impl IntoView {
     view! {
         <div class="flex items-center justify-between gap-3 py-1.5">
-            <label for=id class="min-w-0">
-                <span class="block text-[13px] font-semibold">{title}</span>
-                <span class="block text-[10.5px] text-base-content/55">{hint}</span>
-            </label>
+            <div class="relative flex min-w-0 items-center gap-1.5">
+                <label for=id class="text-[13px] font-semibold">{title}</label>
+                <ui::HelpTip id=format!("tip-{id}") label=title text=hint/>
+            </div>
             <input
                 id=id
                 type="checkbox"
@@ -389,7 +395,7 @@ fn Effects() -> impl IntoView {
             <SwitchRow
                 id="mk-th-depth"
                 title="Relieve"
-                hint="Profundidad en campos y selectores"
+                hint="Sombra suave que hace que los campos y selectores parezcan levantados."
                 checked=Signal::derive(move || state.doc.with(|d| d.style.depth.unwrap_or_else(|| theme_base(&d.theme).depth)))
                 on_change=Callback::new(move |on| {
                     state.apply(|d| d.style.depth = Some(on));
@@ -399,7 +405,7 @@ fn Effects() -> impl IntoView {
             <SwitchRow
                 id="mk-th-noise"
                 title="Textura"
-                hint="Grano en campos y selectores"
+                hint="Un grano fino sobre los campos y selectores, como papel."
                 checked=Signal::derive(move || state.doc.with(|d| d.style.noise.unwrap_or_else(|| theme_base(&d.theme).noise)))
                 on_change=Callback::new(move |on| {
                     state.apply(|d| d.style.noise = Some(on));
@@ -517,7 +523,7 @@ fn Borders() -> impl IntoView {
             .unwrap_or(1)
     };
     view! {
-        <Section title="Grosor de bordes" id="mk-th-border">
+        <Section title="Grosor de bordes" id="mk-th-border" help="Qué tan gruesas son las líneas alrededor de botones, campos y tarjetas.">
             <div class="relative rounded-box bg-base-200/70 px-3 pb-1.5 pt-6">
                 <span
                     class="pointer-events-none absolute top-1.5 -translate-x-1/2 rounded-full bg-neutral px-2 py-0.5 text-[10.5px] font-semibold text-neutral-content"
@@ -554,7 +560,7 @@ fn Options() -> impl IntoView {
             <SwitchRow
                 id="mk-th-dark"
                 title="Esquema de color oscuro"
-                hint="Formularios y barras del navegador en oscuro"
+                hint="Los formularios y las barras del navegador se ven en oscuro. Conviene si tu tienda tiene fondo oscuro."
                 checked=Signal::derive(move || state.doc.with(|d| d.style.dark))
                 on_change=Callback::new(move |on| state.apply(|d| d.style.dark = on))
             />

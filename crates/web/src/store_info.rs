@@ -140,7 +140,6 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
         }
     };
     let invalid = move |field: &'static str| move || errors.get().iter().any(|(f, _)| f == field);
-    let dirty = move || saved.set(false);
 
     let save =
         Action::new(move |form: &StoreInfoForm| save_store_info(slug.get_value(), form.clone()));
@@ -159,7 +158,7 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
         Some(Err(e)) => errors.set(vec![("form".into(), error_text(&e))]),
         None => {}
     });
-    let submit = move || {
+    let submit = move |tidy_fields: bool| {
         saved.set(false);
         errors.set(Vec::new());
         let mut info = StoreInfo {
@@ -174,25 +173,45 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
         };
         // Se ve como queda guardado (por ejemplo, Instagram sin la dirección).
         let _ = domain::tidy_store_info(&mut info);
-        name.set(info.name.clone());
-        whatsapp.set(info.whatsapp.clone());
-        instagram.set(info.instagram.clone());
-        email.set(info.email.clone());
-        tagline.set(info.tagline.clone());
-        hours.set(info.hours.clone());
+        // Al guardar solo mientras se escribe no se tocan los campos: el
+        // cursor saltaría.
+        if tidy_fields {
+            name.set(info.name.clone());
+            whatsapp.set(info.whatsapp.clone());
+            instagram.set(info.instagram.clone());
+            email.set(info.email.clone());
+            tagline.set(info.tagline.clone());
+            hours.set(info.hours.clone());
+        }
         save.dispatch(StoreInfoForm {
             info,
             logo_id: logo.get_untracked().map(|(id, _)| id),
         });
     };
     let busy = move || photos.progress.get().is_some();
+    // Cada cambio se guarda solo cuando se deja de tipear un momento (igual
+    // que Cobros y Entregas).
+    let tick = RwSignal::new(0u32);
+    let dirty = move || {
+        saved.set(false);
+        tick.update(|t| *t = t.wrapping_add(1));
+        let n = tick.get_untracked();
+        set_timeout(
+            move || {
+                if tick.get_untracked() == n && photos.progress.get_untracked().is_none() {
+                    submit(false);
+                }
+            },
+            std::time::Duration::from_millis(800),
+        );
+    };
 
     view! {
         <div>
             <h1 class="text-3xl font-bold max-sm:text-2xl">"Datos de la tienda"</h1>
             <p class="text-sm text-base-content/70">"El menú y el pie de tu tienda usan estos datos. Si los cambiás acá, se actualizan en todas tus páginas."</p>
         </div>
-        <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(); }>
+        <form class="card bg-base-100 shadow-sm" novalidate on:submit=move |ev| { ev.prevent_default(); submit(true); }>
             <div class="card-body gap-5">
                 <fieldset class="fieldset">
                     <label class="fieldset-legend" for="s-name">"Nombre de la tienda" {seen_in("menú, pie y pestaña")}</label>
@@ -332,10 +351,9 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                 </section>
 
                 <div class="mk-savebar flex flex-wrap items-center gap-3">
-                    <button type="submit" class="btn btn-primary" disabled=move || save.pending().get() || busy()>
-                        {move || if save.pending().get() { "Guardando…" } else { "Guardar" }}
-                    </button>
-                    {move || saved.get().then(|| view! { <FieldNote ok=true text="Guardamos los datos de tu tienda."/> })}
+                    <p class="text-sm text-base-content/70" role="status">
+                        {move || if save.pending().get() { "Guardando…" } else if saved.get() { "Guardado" } else { "Los cambios se guardan solos." }}
+                    </p>
                     {error_for("form")}
                 </div>
             </div>

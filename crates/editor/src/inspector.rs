@@ -153,7 +153,7 @@ fn ModalSettings() -> impl IntoView {
             <h3 id="mk-modal-settings" class="text-sm font-bold">"Toda la ficha"</h3>
             <crate::pictures::PicturePicker kind=crate::pictures::Pictures::ModalOpen
                 uid="mk-modal-open".to_string() legend="Cómo se abre" options=domain::MODAL_OPEN_OPTIONS
-                help="Se ve en la vista previa y en tu tienda."
+                help="Así se abre la ficha cuando tu cliente toca un producto."
                 value=Signal::derive(move || state.doc.with(|d| d.product_modal.open.clone()))
                 pick=Callback::new(move |v: String| state.apply(|d| d.product_modal.open = v.clone()))/>
             {select("mk-modal-share", "Botón Compartir", "Para que tus clientes manden el producto por WhatsApp o copien su enlace.",
