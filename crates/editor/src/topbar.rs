@@ -43,7 +43,7 @@ pub(crate) fn StoreMenu() -> impl IntoView {
             </span>
             <span class="flex flex-col items-start leading-tight">
                 <span class="text-[0.9375rem] font-bold">"Mi tienda"</span>
-                <span class="text-xs text-base-content/75 max-[1099px]:hidden">"Ajustes de toda la tienda"</span>
+                <span class="text-xs text-base-content/75 max-[1699px]:hidden">"Ajustes de toda la tienda"</span>
             </span>
             {move || if open() {
                 view! { <Icon name="close" class="h-3.5 w-3.5"/> }
@@ -77,7 +77,7 @@ pub(crate) fn PageSwitcher() -> impl IntoView {
 
     view! {
         <div class="flex items-center gap-1" role="group" aria-label="Páginas de la tienda">
-            <label class="select select-sm h-9 w-48 gap-2" title=hint>
+            <label class="select select-sm h-9 w-48 gap-2 max-[1399px]:w-36" title=hint>
                 <Icon name="page" class="h-4 w-4 text-base-content/70"/>
                 <span class="sr-only">"Página"</span>
                 <select
@@ -171,7 +171,7 @@ fn NewPageMenu() -> impl IntoView {
                 }
             }>
             <summary class="btn btn-ghost btn-sm gap-1" title="Crear una página nueva">
-                <Icon name="plus" class="h-4 w-4"/><span class="max-[1099px]:sr-only">"Nueva página"</span>
+                <Icon name="plus" class="h-4 w-4"/><span class="sr-only">"Nueva página"</span>
             </summary>
             <form
                 class="dropdown-content z-50 mt-1 w-80 space-y-3 rounded-box border border-base-300 bg-base-100 p-4 shadow-lg"

@@ -1338,17 +1338,19 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
 
     view! {
         <div data-theme="light" class="flex h-screen flex-col bg-base-200 text-base-content">
-            <header class="flex min-h-16 items-center gap-3 border-b border-base-300 bg-base-100 px-4 max-[1099px]:gap-1.5 max-[1099px]:px-2">
+            <header class="grid min-h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-base-300 bg-base-100 px-4 max-[1099px]:gap-1.5 max-[1099px]:px-2">
                 <h1 class="sr-only">"Editor de tu tienda"</h1>
+                <div class="flex min-w-0 items-center gap-3 max-[1099px]:gap-1.5">
                 {use_context::<PanelLink>().map(|PanelLink(href)| view! {
                     <a href=href class="btn btn-ghost h-11 gap-1.5 px-2.5" title="Volver al panel de tu tienda">
-                        <Icon name="arrow-left" class="h-5 w-5"/><span class="max-[1099px]:sr-only">"Panel"</span>
+                        <Icon name="arrow-left" class="h-5 w-5"/><span class="max-[1399px]:sr-only">"Panel"</span>
                     </a>
                 })}
                 <StoreMenu/>
                 <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
                 <PageSwitcher/>
-                <div class="flex flex-1 justify-center">
+                </div>
+                <div class="flex items-center">
                     <div class="flex gap-0.5 rounded-field bg-base-200 p-0.5" role="group" aria-label="Modo">
                         <button
                             type="button"
@@ -1381,7 +1383,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                             on:click=move |_| ui.phone.set(false)
                         >
                             <Icon name="desktop"/>
-                            <span class="max-[1099px]:sr-only">"Computadora"</span>
+                            <span class="sr-only">"Computadora"</span>
                         </button>
                         <button
                             type="button"
@@ -1390,38 +1392,11 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                             on:click=move |_| ui.phone.set(true)
                         >
                             <Icon name="phone"/>
-                            <span class="max-[1099px]:sr-only">"Celular"</span>
+                            <span class="sr-only">"Celular"</span>
                         </button>
                     </div>
                 </div>
-                <div class="flex gap-0.5" role="group" aria-label="Historial">
-                    <button
-                        type="button"
-                        class="btn btn-ghost btn-sm btn-square"
-                        aria-label="Deshacer"
-                        title="Deshacer (Ctrl+Z o ⌘Z)"
-                        aria-keyshortcuts="Control+Z Meta+Z"
-                        disabled=move || state.undo.with(Vec::is_empty)
-                        on:click=move |_| {
-                            state.undo();
-                            ui.drop_undo_toast();
-                        }
-                    >
-                        <Icon name="undo" class="h-5 w-5"/>
-                    </button>
-                    <button
-                        type="button"
-                        class="btn btn-ghost btn-sm btn-square"
-                        aria-label="Rehacer"
-                        title="Rehacer (Ctrl+Mayús+Z o ⇧⌘Z)"
-                        aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
-                        disabled=move || state.redo.with(Vec::is_empty)
-                        on:click=move |_| state.redo()
-                    >
-                        <Icon name="redo" class="h-5 w-5"/>
-                    </button>
-                </div>
-                <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
+                <div class="flex min-w-0 items-center justify-end gap-3 max-[1099px]:gap-1.5">
                 <span
                     class="flex items-center gap-1.5 whitespace-nowrap text-sm max-[1099px]:[&_span:not([aria-hidden])]:sr-only"
                     role="status"
@@ -1450,16 +1425,43 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                         }.into_any(),
                     }}
                 </span>
+                <div class="flex gap-0.5" role="group" aria-label="Historial">
+                    <button
+                        type="button"
+                        class="btn btn-ghost btn-sm btn-square"
+                        aria-label="Deshacer"
+                        title="Deshacer (Ctrl+Z o ⌘Z)"
+                        aria-keyshortcuts="Control+Z Meta+Z"
+                        disabled=move || state.undo.with(Vec::is_empty)
+                        on:click=move |_| {
+                            state.undo();
+                            ui.drop_undo_toast();
+                        }
+                    >
+                        <Icon name="undo" class="h-5 w-5"/>
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-ghost btn-sm btn-square"
+                        aria-label="Rehacer"
+                        title="Rehacer (Ctrl+Mayús+Z o ⇧⌘Z)"
+                        aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
+                        disabled=move || state.redo.with(Vec::is_empty)
+                        on:click=move |_| state.redo()
+                    >
+                        <Icon name="redo" class="h-5 w-5"/>
+                    </button>
+                </div>
                 <a
-                    class="btn btn-outline btn-sm max-w-44 gap-1.5 max-[1199px]:max-w-32 max-[1099px]:btn-ghost max-[1099px]:btn-square max-[1099px]:border-0"
+                    class="btn btn-outline btn-sm btn-square"
                     href=move || state.doc.with(|d| d.page_path(state.page.get()).to_string())
                     target="_blank"
                     rel="noopener"
                     aria-label=format!("{view_label} publicada (se abre en otra pestaña)")
                     title=view_label.clone()
                 >
-                    <Icon name="external" class="h-4 w-4 shrink-0 max-[1099px]:h-5 max-[1099px]:w-5"/>
-                    <span class="truncate max-[1099px]:sr-only">{view_label.clone()}</span>
+                    <Icon name="external" class="h-5 w-5 shrink-0"/>
+                    <span class="sr-only">{view_label.clone()}</span>
                 </a>
                 <button
                     type="button"
@@ -1471,6 +1473,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     <Icon name="up"/>
                     {move || if publish.pending().get() || publish_after.get() { "Publicando…" } else { "Publicar" }}
                 </button>
+                </div>
             </header>
             {move || first_live.get().then(|| view! { <FirstPublish open=first_live/> })}
             {move || publish_check.get().map(|items| view! {

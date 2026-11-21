@@ -9,7 +9,7 @@ use leptos::prelude::*;
 use leptos::tachys::reactive_graph::OwnedView;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use widgets::{render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx};
+use widgets::{render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx, ShareButton, SharePlace};
 
 use crate::icons::Icon;
 use crate::inline::{inline_at, InlineEdit, InlineEditor};
@@ -1322,6 +1322,9 @@ pub(crate) fn Canvas(
                             return OwnedView::new_with_owner(view, owner).into_any();
                         }
                         if state.layer.get() == Layer::ProductModal {
+                            // Compartir y barra de compra, según lo elegido en la ficha.
+                            let share_photo = Signal::derive(move || state.doc.with(|d| d.product_modal.share == "photo"));
+                            provide_context(SharePlace { on_photo: share_photo });
                             return view! {
                                 <div class="grid">
                                     <div class="mk-grid [grid-area:1/1]" inert=true aria-hidden="true">{static_page()}</div>
@@ -1341,6 +1344,7 @@ pub(crate) fn Canvas(
                                         >
                                             <Icon name="close"/>
                                         </button>
+                                        {move || (!share_photo.get()).then(|| view! { <ShareButton product=modal_product.get() on_photo=false/> })}
                                         {move || if modal_mode.get().stacked() { stacked_modal().into_any() } else { stage().into_any() }}
                                         {move || state.nodes().is_empty().then(|| view! {
                                             <div class="absolute inset-x-4 top-16 flex flex-col items-center gap-2 rounded-box border-2 border-dashed border-base-content/40 bg-base-100 p-8 text-center">

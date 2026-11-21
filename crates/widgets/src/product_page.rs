@@ -203,7 +203,7 @@ pub fn ProductImageWidget(
     };
     // Compartir sobre la foto, si la tienda lo eligió así.
     let share = whole
-        .filter(|_| use_context::<crate::SharePlace>().is_some_and(|s| s.on_photo))
+        .filter(|_| use_context::<crate::SharePlace>().is_some_and(|s| s.on_photo.get()))
         .map(|product| view! { <crate::ShareButton product on_photo=true/> });
     match heart {
         None => view! { {body}{zoom_dialog} }.into_any(),

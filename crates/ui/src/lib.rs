@@ -591,18 +591,20 @@ pub fn EditorSkeleton() -> impl IntoView {
 
     view! {
         <div data-theme="light" class="relative grid h-screen grid-cols-[176px_1fr_368px] grid-rows-[64px_1fr] bg-base-100 text-base-content" aria-busy="true" role="status" aria-label="Abriendo el editor">
-            <div class="col-span-3 flex items-center gap-3.5 border-b border-base-300 px-4">
-                // "← Panel".
-                <Skeleton class="h-7 w-20"/>
-                <div class="flex w-56 items-center gap-2.5 rounded-box border border-base-300 p-2">
-                    <Skeleton class="size-9"/>
-                    <div class="flex grow flex-col gap-1.5">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-full"/></div>
+            <div class="col-span-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3.5 border-b border-base-300 px-4">
+                // Izquierda: "← Panel", la tienda y la página.
+                <div class="flex items-center gap-3.5">
+                    <Skeleton class="h-7 w-20"/>
+                    <div class="flex w-56 items-center gap-2.5 rounded-box border border-base-300 p-2">
+                        <Skeleton class="size-9"/>
+                        <div class="flex grow flex-col gap-1.5">{sk_line("w-2/3")}<Skeleton class="h-2.5 w-full"/></div>
+                    </div>
+                    <Skeleton class="h-9 w-48"/>
                 </div>
-                <Skeleton class="h-9 w-48"/><Skeleton class="h-5 w-28"/>
-                <Skeleton class="ml-8 h-9 w-48"/>
-                <Skeleton class="ml-3 h-9 w-44"/>
-                <div class="grow"></div>
-                <Skeleton class="h-5 w-14"/><Skeleton class="h-5 w-28"/><Skeleton class="h-9 w-24"/>
+                // Centro: Editar / Vista previa y Computadora / Celular.
+                <div class="flex items-center gap-3"><Skeleton class="h-9 w-48"/><Skeleton class="h-9 w-20"/></div>
+                // Derecha: estado, deshacer / rehacer, ver tienda y Publicar.
+                <div class="flex items-center justify-end gap-3"><Skeleton class="h-5 w-28"/><Skeleton class="h-9 w-20"/><Skeleton class="size-9"/><Skeleton class="h-9 w-24"/></div>
             </div>
             // Bloques para agregar: la categoría y cada bloque con su dibujo,
             // su nombre y para qué sirve.
