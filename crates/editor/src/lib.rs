@@ -1373,6 +1373,26 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                             <span class="max-[1099px]:sr-only">"Vista previa"</span>
                         </button>
                     </div>
+                    <div class="ml-3 flex gap-0.5 rounded-field bg-base-200 p-0.5" role="group" aria-label="Ver en">
+                        <button
+                            type="button"
+                            class=move || mode_class(!ui.phone.get())
+                            aria-pressed=move || (!ui.phone.get()).to_string()
+                            on:click=move |_| ui.phone.set(false)
+                        >
+                            <Icon name="desktop"/>
+                            <span class="max-[1099px]:sr-only">"Computadora"</span>
+                        </button>
+                        <button
+                            type="button"
+                            class=move || mode_class(ui.phone.get())
+                            aria-pressed=move || ui.phone.get().to_string()
+                            on:click=move |_| ui.phone.set(true)
+                        >
+                            <Icon name="phone"/>
+                            <span class="max-[1099px]:sr-only">"Celular"</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="flex gap-0.5" role="group" aria-label="Historial">
                     <button

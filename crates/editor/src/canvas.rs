@@ -72,29 +72,6 @@ fn fit_scale(canvas_w: f64, total: f64) -> f64 {
     (canvas_w / total.max(1.0)).clamp(0.3, 1.0)
 }
 
-/// Arrastre de un borde de la página para cambiar su ancho.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct WidthDrag {
-    /// `-1` el borde izquierdo, `1` el derecho.
-    side: f64,
-    start_x: f64,
-    /// Ancho del contenido al empezar, en px de diseño.
-    start_w: f64,
-    /// Escala del lienzo al empezar: con ella se pasa lo que se mueve el
-    /// puntero a píxeles de diseño (la escala del dibujo cambia al arrastrar).
-    scale: f64,
-    /// Ancho que quedaría al soltar (con imán); `None` hasta que se mueve.
-    width: Option<u16>,
-    pointer_id: i32,
-}
-
-/// Nuevo ancho del contenido al llevar un borde `dx` píxeles de pantalla
-/// hacia afuera (`side` = 1 a la derecha, -1 a la izquierda). La página está
-/// centrada, así que el ancho cambia el doble de lo que se mueve el borde.
-pub(crate) fn dragged_width(start_w: f64, side: f64, dx: f64, scale: f64) -> u16 {
-    domain::snap_width(start_w + side * 2.0 * dx / scale.max(0.01))
-}
-
 /// Margen de cada bloque dentro de su celda: la mitad de la separación.
 const MARGIN_PX: f64 = grid::GAP_PX / 2.0;
 /// Alto mínimo del lienzo, en filas.
@@ -353,18 +330,16 @@ pub(crate) fn Canvas(
     let screen_w = RwSignal::new(1440.0_f64);
     // Escala de la ficha del producto (que tiene su propio ancho).
     let modal_scale = RwSignal::new(1.0_f64);
-    let width_drag = RwSignal::new(None::<WidthDrag>);
     // El texto que se está escribiendo directo en el lienzo.
     let inline_edit = RwSignal::new(None::<InlineEdit>);
     // La página: ancho del contenido y margen (px de diseño) y escala.
     let frame = Memo::new(move |_| {
-        let wd = width_drag.get();
-        // Siempre entra entera en el lienzo, también mientras se arrastra un
-        // borde: la página se achica o se agranda y la etiqueta dice el ancho.
+        // Siempre entra entera en el lienzo. El ancho se cambia desde
+        // Márgenes en Mi tienda.
         state.doc.with(|d| {
             page_frame(
                 &d.layout,
-                wd.and_then(|d| d.width),
+                None,
                 canvas_w.get(),
                 screen_w.get(),
             )
@@ -395,6 +370,17 @@ pub(crate) fn Canvas(
                 .or_else(|| ps.first().cloned())
                 .unwrap_or_else(sample_product)
         })
+    });
+    // Cómo se ve la ficha mientras se edita: sigue la opción «Cómo se abre» y
+    // el interruptor Computadora / Celular de la barra superior.
+    let modal_mode = Memo::new(move |_| {
+        let open = state.doc.with(|d| d.product_modal.open.clone());
+        match (ui.phone.get(), open.as_str()) {
+            (true, _) => ModalMode::Phone,
+            (false, "drawer" | "auto") => ModalMode::Drawer,
+            (false, "sheet") => ModalMode::Sheet,
+            _ => ModalMode::Center,
+        }
     });
 
     // El alto elegido es un mínimo: si el contenido de un bloque no entra
@@ -1107,6 +1093,35 @@ pub(crate) fn Canvas(
             </div>
         }
     };
+    // La ficha apilada en una columna, como la ve el cliente en el cajón y en
+    // el celular. No se arrastra: un clic elige el bloque para cambiarlo a la
+    // derecha (para moverlos, Computadora con «En el centro» o «Desde abajo»).
+    let stacked_modal = move || {
+        let ctx = RenderCtx {
+            products: products.get_value(),
+            editing: true,
+            product: Some(modal_product.get()),
+        };
+        let mut nodes = state.nodes();
+        grid::sort_by_position(&mut nodes);
+        let items = widgets::page_nodes(&nodes)
+            .into_iter()
+            .zip(nodes)
+            .map(|((class, style), node)| {
+                let id = node.id.clone();
+                let sel = node.id.clone();
+                view! {
+                    <div
+                        class=format!("{class} cursor-pointer")
+                        style=style
+                        class:mk-stacked-sel=move || state.selected.with(|s| s.as_deref() == Some(sel.as_str()))
+                        on:click=move |_| state.selected.set(Some(id.clone()))
+                    >{render_widget(&node, &ctx)}</div>
+                }
+            })
+            .collect_view();
+        view! { <div class="mk-grid mk-stacked">{items}</div> }
+    };
     // La página como la ve la tienda, sin edición: para la vista previa y
     // para el fondo oscurecido mientras se edita la ficha.
     let static_page = move || {
@@ -1126,127 +1141,6 @@ pub(crate) fn Canvas(
                 }
             })
             .collect_view()
-    };
-    // Bordes de la página: se arrastran (o se mueven con las flechas) para
-    // cambiar el ancho del contenido de toda la tienda.
-    let finish_width_drag = move |apply: bool| {
-        let Some(d) = width_drag.get_untracked() else {
-            return;
-        };
-        width_drag.set(None);
-        let Some(w) = d.width.filter(|_| apply) else {
-            return;
-        };
-        if state.doc.with_untracked(|doc| doc.layout.max_width != w) {
-            state.apply(|doc| doc.layout.max_width = w);
-            ui.announce(format!("Ancho de la tienda: {w} px."));
-        }
-    };
-    let width_handle = move |side: f64| {
-        let place = move || {
-            let f = frame.get();
-            let (edge, pad) = if side < 0.0 {
-                ("left", f.left)
-            } else {
-                ("right", f.right)
-            };
-            // Casi todo afuera del contenido: un clic cerca del borde de un
-            // bloque es para el bloque, no para el ancho de la tienda.
-            format!(
-                "{edge}:{:.1}px; top:{:.1}px; bottom:{:.1}px",
-                pad * f.k - 21.0,
-                f.top * f.k,
-                f.bottom * f.k
-            )
-        };
-        let dragging = move || width_drag.with(|d| d.is_some_and(|d| d.side == side));
-        let now = move || {
-            let w = frame.get().w;
-            let full = state.doc.with(|d| d.layout.is_full())
-                && width_drag.with(|d| d.and_then(|d| d.width).is_none());
-            if full {
-                "Ancho completo".to_string()
-            } else {
-                format!("{} px", w.round() as u32)
-            }
-        };
-        view! {
-            <div
-                class="mk-width-handle"
-                class:is-dragging=dragging
-                class:is-left=side < 0.0
-                style=place
-                role="separator"
-                aria-orientation="vertical"
-                tabindex="0"
-                aria-label=if side < 0.0 { "Borde izquierdo de la tienda" } else { "Borde derecho de la tienda" }
-                aria-valuemin=domain::MIN_WIDTH
-                aria-valuemax=domain::MAX_WIDTH
-                aria-valuenow=move || frame.get().w.round() as u32
-                aria-valuetext=now
-                title="Arrastrá para cambiar el ancho de toda la tienda"
-                on:pointerdown=move |ev: PointerEvent| {
-                    if ev.button() != 0 || width_drag.with_untracked(Option::is_some) {
-                        return;
-                    }
-                    ev.prevent_default();
-                    if let Some(el) = ev.current_target().and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok()) {
-                        _ = el.set_pointer_capture(ev.pointer_id());
-                        _ = el.focus();
-                    }
-                    let Frame { w, k, .. } = frame.get_untracked();
-                    width_drag.set(Some(WidthDrag {
-                        side,
-                        start_x: f64::from(ev.client_x()),
-                        start_w: w,
-                        scale: k,
-                        width: None,
-                        pointer_id: ev.pointer_id(),
-                    }));
-                }
-                on:pointermove=move |ev: PointerEvent| {
-                    let Some(d) = width_drag.get_untracked().filter(|d| d.pointer_id == ev.pointer_id()) else {
-                        return;
-                    };
-                    let dx = f64::from(ev.client_x()) - d.start_x;
-                    if d.width.is_none() && dx.abs() < NewDrag::THRESHOLD_PX {
-                        return;
-                    }
-                    let w = dragged_width(d.start_w, d.side, dx, d.scale);
-                    if d.width != Some(w) {
-                        width_drag.set(Some(WidthDrag { width: Some(w), ..d }));
-                    }
-                }
-                on:pointerup=move |ev: PointerEvent| {
-                    if width_drag.with_untracked(|d| d.is_some_and(|d| d.pointer_id == ev.pointer_id())) {
-                        finish_width_drag(true);
-                    }
-                }
-                on:lostpointercapture=move |_| finish_width_drag(false)
-                on:keydown=move |ev: KeyboardEvent| {
-                    let grow = match ev.key().as_str() {
-                        "Escape" if width_drag.with_untracked(Option::is_some) => {
-                            ev.prevent_default();
-                            finish_width_drag(false);
-                            ui.announce("Cambio de ancho cancelado.");
-                            return;
-                        }
-                        "ArrowRight" => side,
-                        "ArrowLeft" => -side,
-                        _ => return,
-                    };
-                    ev.prevent_default();
-                    let w = frame.get_untracked().w;
-                    let w = domain::snap_width(w + grow * f64::from(domain::WIDTH_STEP));
-                    state.apply_grouped(Some("layout-width"), |d| d.layout.max_width = w);
-                    ui.announce(format!("Ancho de la tienda: {w} px."));
-                }
-            >
-                <span class="mk-width-grip" aria-hidden="true">
-                    <span class="mk-width-label">{now}</span>
-                </span>
-            </div>
-        }
     };
     // Lo que mide la página en el lienzo: el ancho, el margen y la escala de
     // la tienda. Centrada, también mientras se arrastra un borde.
@@ -1302,16 +1196,6 @@ pub(crate) fn Canvas(
                 <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm">
                     <Icon name="eye" class="h-4 w-4"/>
                     <span class="flex-1">"Vista previa: así se va a ver tu tienda cuando publiques. Tocá un producto para ver su ficha."</span>
-                    <div class="join" role="group" aria-label="Ver en">
-                        <button type="button" class=move || device_class(!ui.phone.get()) aria-pressed=move || (!ui.phone.get()).to_string()
-                            on:click=move |_| ui.phone.set(false)>
-                            <Icon name="desktop" class="h-4 w-4"/>"Computadora"
-                        </button>
-                        <button type="button" class=move || device_class(ui.phone.get()) aria-pressed=move || ui.phone.get().to_string()
-                            on:click=move |_| ui.phone.set(true)>
-                            <Icon name="phone" class="h-4 w-4"/>"Celular"
-                        </button>
-                    </div>
                     <button type="button" class="btn btn-sm btn-primary" on:click=move |_| ui.preview.set(false)>"Volver a editar"</button>
                 </div>
             })}
@@ -1320,7 +1204,7 @@ pub(crate) fn Canvas(
                     <span class="rounded-field bg-primary/10 p-1.5 text-primary" aria-hidden="true"><Icon name="modal" class="h-4 w-4"/></span>
                     <div class="min-w-0 flex-1">
                         <h2 id="mk-modal-title" tabindex="-1" class="font-semibold focus:outline-none">"Ficha del producto"</h2>
-                        <p class="text-xs text-base-content/75">"Se abre al tocar un producto en tu tienda. Es la misma para todos tus productos."</p>
+                        <p class="text-xs text-base-content/75">{move || modal_mode.get().note()}</p>
                     </div>
                     {(!product_choices().is_empty()).then(|| view! {
                         <label class="flex items-center gap-2">
@@ -1362,7 +1246,6 @@ pub(crate) fn Canvas(
                 })}
                 <div
                     class="mk-page-frame relative"
-                    class:is-dragging=move || width_drag.with(|d| d.is_some_and(|d| d.width.is_some()))
                     style=frame_style
                 >
                     {move || (!ui.preview.get() && !state.in_modal()).then(|| view! {
@@ -1376,8 +1259,6 @@ pub(crate) fn Canvas(
                                 f.left * f.k
                             )
                         }></div>
-                        {width_handle(-1.0)}
-                        {width_handle(1.0)}
                     })}
                     {move || (welcome.get() && !ui.preview.get() && !state.in_modal()).then(|| view! {
                         <div data-theme="light" class="mb-4 rounded-box border border-primary/30 bg-base-100 p-4 text-base-content shadow-sm" role="region" aria-labelledby="mk-welcome-title">
@@ -1395,7 +1276,7 @@ pub(crate) fn Canvas(
                         </div>
                     })}
                     {move || {
-                        if ui.preview.get() && ui.phone.get() {
+                        if ui.phone.get() && (ui.preview.get() || !state.in_modal()) {
                             // En el celular la tienda cambia por el ancho de la pantalla:
                             // va en un marco del ancho de un teléfono, con lo último
                             // guardado. Se recarga sola cuando se guarda otra versión.
@@ -1415,7 +1296,7 @@ pub(crate) fn Canvas(
                                             src=src
                                         ></iframe>
                                     </div>
-                                    <p class="text-xs text-base-content/75">"Muestra lo último guardado. Tus cambios se guardan solos en unos segundos."</p>
+                                    <p class="text-xs text-base-content/75">{move || if ui.preview.get() { "Muestra lo último guardado. Tus cambios se guardan solos en unos segundos." } else { "Vista del celular con lo último guardado. Para editar, volvé a Computadora." }}</p>
                                 </div>
                             }
                             .into_any();
@@ -1446,7 +1327,8 @@ pub(crate) fn Canvas(
                                     <div class="mk-grid [grid-area:1/1]" inert=true aria-hidden="true">{static_page()}</div>
                                     // El cuadro usa el tema y las letras de la tienda, como en la tienda.
                                     <div
-                                        class="mk-modal-panel relative z-10 mx-auto mb-10 mt-6 self-start rounded-box bg-base-100 shadow-2xl [grid-area:1/1]"
+                                        class=move || modal_mode.get().panel_class()
+                                        style=move || modal_mode.get().panel_style()
                                         role="region"
                                         aria-label="Ficha del producto"
                                     >
@@ -1459,7 +1341,7 @@ pub(crate) fn Canvas(
                                         >
                                             <Icon name="close"/>
                                         </button>
-                                        {stage()}
+                                        {move || if modal_mode.get().stacked() { stacked_modal().into_any() } else { stage().into_any() }}
                                         {move || state.nodes().is_empty().then(|| view! {
                                             <div class="absolute inset-x-4 top-16 flex flex-col items-center gap-2 rounded-box border-2 border-dashed border-base-content/40 bg-base-100 p-8 text-center">
                                                 <Icon name="plus" class="h-8 w-8 text-primary"/>
@@ -1557,26 +1439,6 @@ mod tests {
         assert_eq!((f.w, f.left, f.right, f.k), (1944.0, 48.0, 8.0, 1.0));
         assert!((fit_scale(576.0, 1152.0) - 0.5).abs() < 1e-9);
     }
-
-    #[test]
-    fn dragging_an_edge_changes_the_width_twice_and_snaps() {
-        // El borde derecho 50 px afuera, sin escala: 100 px más, con imán de 40.
-        assert_eq!(dragged_width(1120.0, 1.0, 50.0, 1.0), 1240);
-        // El izquierdo hacia la derecha achica.
-        assert_eq!(dragged_width(1120.0, -1.0, 80.0, 1.0), 960);
-        // Con el lienzo a la mitad, cada px de pantalla vale dos de diseño.
-        assert_eq!(dragged_width(1120.0, 1.0, 40.0, 0.5), 1280);
-        assert_eq!(dragged_width(1120.0, 1.0, -5000.0, 1.0), domain::MIN_WIDTH);
-    }
-}
-
-/// Clase de un botón del interruptor Computadora / Celular.
-fn device_class(on: bool) -> &'static str {
-    if on {
-        "btn btn-sm join-item btn-active gap-1.5"
-    } else {
-        "btn btn-sm join-item btn-ghost gap-1.5"
-    }
 }
 
 /// Bloques que crecen cuando su contenido no entra: los de texto y listas.
@@ -1636,4 +1498,50 @@ fn fit_contents(state: EditorState, drag: RwSignal<Option<Drag>>) {
             }
         }
     });
+}
+
+/// Cómo se dibuja la ficha en el lienzo según «Cómo se abre» y el
+/// interruptor Computadora / Celular.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ModalMode {
+    /// Ventana al centro (la de siempre).
+    Center,
+    /// Cajón a la derecha, con los bloques apilados.
+    Drawer,
+    /// Hoja desde abajo, con la grilla de siempre.
+    Sheet,
+    /// Celular: hoja apilada de ancho de teléfono.
+    Phone,
+}
+
+impl ModalMode {
+    fn stacked(self) -> bool {
+        matches!(self, Self::Drawer | Self::Phone)
+    }
+
+    fn note(self) -> &'static str {
+        match self {
+            Self::Center => "Se abre en el centro al tocar un producto. Es la misma para todos tus productos.",
+            Self::Drawer => "Se abre como cajón al costado. Los bloques se apilan en una columna, como los ve tu cliente.",
+            Self::Sheet => "Se abre desde abajo al tocar un producto. Es la misma para todos tus productos.",
+            Self::Phone => "Así se ve en el celular: una hoja con los bloques apilados. Elegí Computadora para moverlos.",
+        }
+    }
+
+    fn panel_class(self) -> &'static str {
+        match self {
+            Self::Center => "mk-modal-panel relative z-10 mx-auto mb-10 mt-6 self-start rounded-box bg-base-100 shadow-2xl [grid-area:1/1]",
+            Self::Drawer => "mk-modal-panel relative z-10 ml-auto self-stretch rounded-none bg-base-100 shadow-2xl [grid-area:1/1]",
+            Self::Sheet => "mk-modal-panel relative z-10 mx-auto mt-6 self-end rounded-t-box bg-base-100 shadow-2xl [grid-area:1/1]",
+            Self::Phone => "mk-modal-panel relative z-10 mx-auto mt-6 self-end rounded-t-box bg-base-100 shadow-2xl [grid-area:1/1]",
+        }
+    }
+
+    fn panel_style(self) -> &'static str {
+        match self {
+            Self::Drawer => "width:min(520px,100%);max-width:none",
+            Self::Phone => "width:min(390px,100%);max-width:none",
+            _ => "",
+        }
+    }
 }
