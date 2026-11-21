@@ -2675,3 +2675,48 @@ dialog.mk-pzoom::backdrop {
 }
 @keyframes mk-pzoom-in { from { transform: scale(0.6); opacity: 0; } }
 @keyframes mk-pzoom-fade { from { opacity: 0; } }
+
+/* Botón tocado antes de que la página esté viva (ver `KEEP_TAPS` en
+   `web::shell`): un circulito mientras espera; el toque se repite solo. Va
+   en un pseudo-elemento porque agregar un nodo rompería la hidratación; el
+   aviso para lectores de pantalla es `aria-busy`. */
+[data-mk-wait] {
+  cursor: progress;
+}
+[data-mk-wait]::before {
+  content: "";
+  flex: none;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.5em;
+  vertical-align: -0.125em;
+  border: 2px solid color-mix(in oklab, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: mk-wait-spin 0.7s linear infinite;
+}
+/* Los de agregar al carrito además dicen lo que están haciendo. */
+[data-mk-wait][data-wait] {
+  gap: 0;
+  font-size: 0;
+}
+[data-mk-wait][data-wait]::before,
+[data-mk-wait][data-wait]::after {
+  font-size: var(--fontsize, 0.875rem);
+}
+[data-mk-wait][data-wait]::after {
+  content: attr(data-wait);
+}
+[data-mk-wait][data-wait] svg {
+  display: none;
+}
+@keyframes mk-wait-spin {
+  to { rotate: 1turn; }
+}
+/* Con movimiento reducido gira despacio en vez de frenarse: quieto parecería trabado. */
+@media (prefers-reduced-motion: reduce) {
+  [data-mk-wait]::before {
+    animation-duration: 3s;
+  }
+}

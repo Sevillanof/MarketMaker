@@ -55,6 +55,32 @@ pub use auth::*;
 pub use server::*;
 pub use stores::*;
 
+/// Guarda los toques hechos antes de que la página esté viva. Con conexión
+/// lenta la tienda se ve varios segundos antes de que sus botones funcionen;
+/// sin esto, lo que se toca en ese rato se pierde. El botón tocado queda
+/// marcado (`data-mk-wait`, ver `tailwind.css`) y, apenas tiene quien lo
+/// atienda, se le repite el toque una sola vez.
+///
+/// Solo cambia atributos: agregar un nodo rompería la hidratación. Para saber
+/// si un botón ya está vivo anota a quién se le pone un manejador de `click`
+/// (envuelve `addEventListener` hasta que `App` avisa con `__mkReady`). Los
+/// botones que envían un formulario o abren algo sin programa (popover,
+/// `commandfor`) ya funcionan solos y no se tocan.
+const KEEP_TAPS: &str = r#"(function(){var q=[],hot=new WeakSet,t0=0,n=0,P=EventTarget.prototype,add=P.addEventListener;
+P.addEventListener=function(t){if(window.__mkReady&&!q.length)P.addEventListener=add;else if(t=='click'&&this.nodeType==1)hot.add(this);return add.apply(this,arguments)};
+function free(e){e.removeAttribute('data-mk-wait');e.removeAttribute('aria-busy')}
+function tick(){var late=window.__mkReady&&++n>25;
+q=q.filter(function(e){if(!e.isConnected)return 0;if(hot.has(e)||late){free(e);e.click();return 0}return 1});
+if(window.__mkReady&&!q.length)P.addEventListener=add;
+if(!q.length)return;
+if(Date.now()-t0>60000){q.forEach(free);q=[];return}
+setTimeout(tick,200)}
+document.addEventListener('click',function(ev){if(window.__mkReady||!ev.isTrusted||!ev.target.closest)return;
+var e=ev.target.closest('button');
+if(!e||e.disabled||(e.form&&e.type=='submit')||e.hasAttribute('popovertarget')||e.hasAttribute('commandfor')||hot.has(e)||q.indexOf(e)>=0)return;
+e.setAttribute('data-mk-wait','');e.setAttribute('aria-busy','true');q.push(e);
+if(q.length==1){t0=Date.now();n=0;tick()}},true)})()"#;
+
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
@@ -64,6 +90,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <AutoReload options=options.clone()/>
                 <leptos_meta::HashedStylesheet options=options.clone() id="leptos"/>
+                <script inner_html=KEEP_TAPS></script>
                 <HydrationScripts options=options.clone()/>
                 {editor_preload(&options)}
                 <MetaTags/>
@@ -87,6 +114,12 @@ pub fn App() -> impl IntoView {
     provide_context(panel::NavCache(RwSignal::new(None)));
     // Una sola lista de fotos y una sola bandeja de subidas para toda la app.
     editor::provide_photos();
+    // La página ya atiende sus botones: `KEEP_TAPS` deja de guardar toques.
+    Effect::new(|| {
+        if let Some(w) = web_sys::window() {
+            _ = js_sys::Reflect::set(&w, &"__mkReady".into(), &true.into());
+        }
+    });
 
     view! {
         <Title text="Marketplace"/>

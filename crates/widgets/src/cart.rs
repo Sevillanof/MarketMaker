@@ -492,6 +492,7 @@ pub fn CardCartButton(product: Product) -> impl IntoView {
         <Show when=move || in_cart.get() fallback=move || view! {
             <button type="button" class="btn btn-sm btn-block btn-soft btn-primary mk-cart-add relative z-10 mt-2"
                 aria-label=label.clone()
+                data-wait="Agregando…"
                 on:click=move |_| id.with_value(|id| cart.add(id, 1))>"Agregar al carrito"</button>
         }>
             <CartQty id name=name.clone() cart card=true/>
@@ -739,6 +740,7 @@ pub fn AddToCart(
         <div class="flex flex-nowrap items-start gap-2">
             {move || view! { <QtyStepper value=qty label=qty_label.clone() max=room.get().max(1)/> }}
             <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
+                data-wait="Agregando…"
                 disabled=move || room.get() == 0 && !added.get()
                 on:click=move |_| {
                     if room.get_untracked() == 0 {
