@@ -9,11 +9,16 @@
   var MIN = 14; // lado mínimo del área, en px
 
   var css =
-    '#mkbug-fab{position:fixed;left:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:2147482000;display:flex;gap:8px;align-items:center;' +
-    'border:0;border-radius:999px;background:#1f2430;color:#fff;font:500 13px/1 system-ui,sans-serif;padding:10px 16px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.28)}' +
-    '#mkbug-fab:hover{background:#2c3342}#mkbug-fab:focus-visible{outline:3px solid #818cf8;outline-offset:2px}#mkbug-fab[disabled]{opacity:.7;cursor:progress}' +
-    '#mkbug-fab svg{width:16px;height:16px;flex:none}' +
-    '@media (max-width:639px){#mkbug-fab{padding:11px;bottom:max(84px,env(safe-area-inset-bottom))}#mkbug-fab span{display:none}}' +
+    '#mkbug-fab{position:fixed;left:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:2147482000;display:flex;align-items:center;' +
+    'border:0;border-radius:999px;background:#1f2430;color:#fff;font:500 13px/1 system-ui,sans-serif;padding:11px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.28);' +
+    'transition:padding .2s ease,background .2s ease}' +
+    '#mkbug-fab span{max-width:0;opacity:0;overflow:hidden;white-space:nowrap;margin-left:0;transition:max-width .25s ease,opacity .2s ease,margin .25s ease}' +
+    '#mkbug-fab:hover,#mkbug-fab:focus-visible{background:#2c3342;padding-right:16px}' +
+    '#mkbug-fab:hover span,#mkbug-fab:focus-visible span{max-width:160px;opacity:1;margin-left:8px}' +
+    '@media (prefers-reduced-motion:reduce){#mkbug-fab,#mkbug-fab span{transition:none}}' +
+    '#mkbug-fab:focus-visible{outline:3px solid #818cf8;outline-offset:2px}#mkbug-fab[disabled]{opacity:.7;cursor:progress}' +
+    '#mkbug-fab svg{width:18px;height:18px;flex:none}' +
+    '@media (max-width:639px){#mkbug-fab{bottom:max(84px,env(safe-area-inset-bottom))}}' +
     '@media print{#mkbug-fab,#mkbug-root{display:none!important}}' +
     '#mkbug-root{position:fixed;inset:0;z-index:2147483000;font:14px/1.45 system-ui,sans-serif;color:#1f2430;touch-action:none;overscroll-behavior:contain}' +
     '#mkbug-dim{position:absolute;inset:0;background:rgba(15,20,35,.55);cursor:crosshair}' +
@@ -43,7 +48,7 @@
   fab.type = 'button';
   fab.setAttribute('aria-label', 'Reportar un problema');
   fab.innerHTML =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Reportar un problema</span>';
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span>Reportar problema</span>';
   document.body.appendChild(fab);
 
   var shot = null; // { canvas, w, h } de la pantalla congelada

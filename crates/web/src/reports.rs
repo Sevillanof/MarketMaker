@@ -2,10 +2,10 @@
 //! qué pasó y lo manda desde ahí (el botón y la selección viven en
 //! `public/js/reportar.js`). Llegan a `/admin/reportes` y por email a las
 //! cuentas de `ADMIN_EMAILS`, con la captura. Solo la cuenta administradora
-//! los ve: las capturas pueden mostrar datos personales.
+//! los ve: las capturas pueden mostrar datos personales. Se ven en una
+//! ventana (modal) que se abre desde el menú de la cuenta, como la Whitelist.
 
 use leptos::prelude::*;
-use leptos_router::hooks::use_query_map;
 use serde::{Deserialize, Serialize};
 
 /// Lo que se muestra de un reporte en la bandeja.
@@ -25,7 +25,10 @@ pub struct ReportItem {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ReportsData {
     pub items: Vec<ReportItem>,
+    /// Cuántos hay: nuevos, en curso y resueltos.
     pub nuevos: i64,
+    pub en_curso: i64,
+    pub resueltos: i64,
 }
 
 #[cfg(feature = "ssr")]
@@ -77,8 +80,21 @@ pub async fn bug_reports(estado: String) -> Result<ReportsData, ServerFnError> {
             hace: hace(r.hace),
         })
         .collect();
-    let nuevos = db::reports::count_new(&pool).await.map_err(internal)?;
-    Ok(ReportsData { items, nuevos })
+    let (nuevos, en_curso, resueltos) = db::reports::counts(&pool).await.map_err(internal)?;
+    Ok(ReportsData {
+        items,
+        nuevos,
+        en_curso,
+        resueltos,
+    })
+}
+
+/// Cuántos reportes siguen sin atender (el número del menú).
+#[server]
+pub async fn bug_report_new() -> Result<i64, ServerFnError> {
+    use crate::server::{internal, pool};
+    require_admin().await?;
+    db::reports::count_new(&pool()?).await.map_err(internal)
 }
 
 /// Cambia el estado de un reporte.
@@ -301,31 +317,48 @@ fn state_badge(estado: &str) -> (&'static str, &'static str) {
     }
 }
 
-/// `/admin/reportes`: los reportes que mandó la gente. Solo el administrador.
-#[component]
-pub fn ReportsPage() -> impl IntoView {
-    if !matches!(crate::site::current_site(), domain::Site::Platform) {
-        return view! { <crate::platform::NotAStore/> }.into_any();
+const CONNECTION: &str =
+    "No pudimos comunicarnos con el servidor. Revisá tu conexión y probá de nuevo.";
+
+/// Abre la ventana y pide la lista de nuevo.
+pub fn open_reports(dialog: NodeRef<leptos::html::Dialog>, version: RwSignal<u32>) {
+    version.update(|v| *v += 1);
+    if let Some(d) = dialog.get() {
+        _ = d.show_modal();
     }
-    let q = use_query_map();
-    let get = move |k: &str| q.with(|m| m.get(k).unwrap_or_default());
-    let filter = move || match get("estado").as_str() {
-        s @ ("nuevo" | "en_curso" | "resuelto") => s.to_string(),
-        _ => String::new(),
-    };
-    let selected = move || get("r").parse::<i64>().ok();
-    let change = ServerAction::<SetBugStatus>::new();
-    let data = Resource::new(
-        move || (filter(), change.version().get()),
-        |(f, _)| bug_reports(f),
-    );
-    let href = move |estado: &str, r: Option<i64>| {
-        let mut u = format!("/admin/reportes?estado={estado}");
-        if let Some(r) = r {
-            u.push_str(&format!("&r={r}"));
+}
+
+/// La ventana de Reportes: lista a la izquierda, el detalle con la captura a
+/// la derecha y, abajo, los botones para cambiar el estado.
+#[component]
+pub fn ReportsDialog(
+    dialog: NodeRef<leptos::html::Dialog>,
+    version: RwSignal<u32>,
+) -> impl IntoView {
+    let filter = RwSignal::new(String::new());
+    let selected = RwSignal::new(None::<i64>);
+    let problem = RwSignal::new(None::<String>);
+    // Solo en el navegador: se pide al abrir la ventana, no al armar la página.
+    let data = LocalResource::new(move || {
+        let v = version.get();
+        let f = filter.get();
+        async move {
+            if v == 0 {
+                Ok(ReportsData::default())
+            } else {
+                bug_reports(f).await
+            }
         }
-        u
-    };
+    });
+    let change = Action::new(|(n, e): &(i64, String)| set_bug_status(*n, e.clone()));
+    Effect::new(move |_| match change.value().get() {
+        Some(Ok(())) => {
+            problem.set(None);
+            version.update(|v| *v += 1);
+        }
+        Some(Err(_)) => problem.set(Some(CONNECTION.into())),
+        None => {}
+    });
     let pill = |active: bool| {
         if active {
             "btn btn-sm btn-primary"
@@ -334,95 +367,110 @@ pub fn ReportsPage() -> impl IntoView {
         }
     };
     view! {
-        <leptos_meta::Title text="Reportes · MarketMaker"/>
-        <div data-theme="light" class="min-h-screen bg-base-200 text-base-content">
-            <header class="flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-3">
-                <a href="/" class="text-lg"><crate::account::Logo/></a>
-                <span class="text-sm text-base-content/60">"Administración"</span>
-            </header>
-            <main class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-8">
-                <div>
-                    <h1 class="text-2xl font-bold">"Reportes"</h1>
-                    <p class="text-sm text-base-content/70">"Lo que la gente marcó como problema, con su captura. Solo lo ves vos."</p>
+        <dialog node_ref=dialog class="modal" aria-labelledby="reportes-titulo"
+            on:close=move |_| { problem.set(None); selected.set(None); filter.set(String::new()); }>
+            <div class="modal-box flex max-h-[92vh] max-w-4xl flex-col p-0">
+                <div class="flex flex-col gap-3 p-6 pb-3">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 id="reportes-titulo" class="text-xl font-extrabold">"Reportes"</h2>
+                            <p class="text-sm text-base-content/70">"Lo que la gente marcó como problema, con su captura. Solo lo ves vos."</p>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar"
+                            on:click=move |_| { if let Some(d) = dialog.get() { d.close(); } }>"✕"</button>
+                    </div>
+                    <nav class="flex flex-wrap gap-2" aria-label="Estado">
+                        {move || {
+                            let d = data.get().and_then(|r| r.ok()).unwrap_or_default();
+                            let n = |c: i64| if c > 0 { format!(" · {c}") } else { String::new() };
+                            [
+                                ("", "Todos".to_string()),
+                                ("nuevo", format!("Nuevos{}", n(d.nuevos))),
+                                ("en_curso", format!("En curso{}", n(d.en_curso))),
+                                ("resuelto", format!("Resueltos{}", n(d.resueltos))),
+                            ].map(|(v, l)| view! {
+                                <button type="button" class=move || pill(filter.get() == v)
+                                    aria-pressed=move || (filter.get() == v).to_string()
+                                    on:click=move |_| { selected.set(None); filter.set(v.to_string()); }>{l}</button>
+                            })
+                        }}
+                    </nav>
                 </div>
-                <nav class="flex flex-wrap gap-2" aria-label="Estado">
-                    {[("", "Todos"), ("nuevo", "Nuevos"), ("en_curso", "En curso"), ("resuelto", "Resueltos")].map(|(v, l)| view! {
-                        <a class=move || pill(filter() == v) href=move || href(v, None)
-                            aria-current=move || (filter() == v).then_some("true")>{l}</a>
-                    })}
-                </nav>
-                <Suspense fallback=|| view! { <ui::ReportsSkeleton/> }>
-                    {move || Suspend::new(async move {
-                        match data.await {
-                            Err(_) => view! {
-                                <p class="text-sm text-base-content/70">"Esta página es solo para la cuenta administradora."</p>
-                            }.into_any(),
-                            Ok(d) if d.items.is_empty() => view! {
-                                <p class="py-8 text-center text-sm text-base-content/60">"Todavía no hay reportes en esta lista."</p>
-                            }.into_any(),
-                            Ok(d) => {
-                                let items = d.items;
-                                let current = selected()
-                                    .and_then(|n| items.iter().find(|i| i.num == n).cloned())
-                                    .unwrap_or_else(|| items[0].clone());
-                                let list = items.into_iter().map(|i| {
-                                    let (cls, label) = state_badge(&i.estado);
-                                    let on = i.num == current.num;
-                                    let target = href(&filter(), Some(i.num));
-                                    view! {
-                                        <li><a href=target aria-current=on.then_some("true")
-                                            class=move || if on { "flex flex-col gap-1 bg-base-200 px-3 py-2.5" } else { "flex flex-col gap-1 px-3 py-2.5 hover:bg-base-200/60" }>
-                                            <span class="flex items-center gap-2 text-sm">
-                                                <b>{format!("#{}", i.num)}</b>
-                                                <span class=cls>{label}</span>
-                                                <span class="ml-auto text-xs text-base-content/60">{i.hace}</span>
-                                            </span>
-                                            <span class="line-clamp-2 text-sm">{i.descripcion}</span>
-                                        </a></li>
-                                    }
-                                }).collect_view();
-                                let num = current.num;
-                                let (cls, label) = state_badge(&current.estado);
-                                let who = if current.quien.is_empty() { "Visitante sin cuenta".to_string() } else { current.quien.clone() };
-                                let buttons = [("nuevo", "Nuevo"), ("en_curso", "En curso"), ("resuelto", "Resuelto")].map(|(v, l)| {
-                                    let active = current.estado == v;
-                                    view! {
-                                        <button type="button" class=if active { "btn btn-sm btn-primary" } else { "btn btn-sm btn-outline" }
-                                            disabled=active
-                                            on:click=move |_| { change.dispatch(SetBugStatus { num, estado: v.to_string() }); }>{l}</button>
-                                    }
-                                });
-                                view! {
-                                    <div class="grid items-start gap-4 lg:grid-cols-[2fr_3fr]">
-                                        <ul class="divide-y divide-base-300 overflow-hidden rounded-box border border-base-300 bg-base-100">{list}</ul>
-                                        <section class="card border border-base-300 bg-base-100"><div class="card-body gap-3 p-4">
-                                            <div class="flex items-center gap-2">
-                                                <h2 class="text-lg font-semibold">{format!("Reporte #{num}")}</h2>
-                                                <span class=cls>{label}</span>
-                                                <span class="ml-auto text-xs text-base-content/60">{current.hace.clone()}</span>
-                                            </div>
-                                            {current.captura.then(|| view! {
-                                                <a href=format!("/api/reportes/{num}/captura") target="_blank" rel="noopener" class="block overflow-hidden rounded-lg border border-base-300">
-                                                    <img src=format!("/api/reportes/{num}/captura") alt="Captura del problema" loading="lazy" class="max-h-96 w-full bg-base-200 object-contain"/>
-                                                </a>
-                                            })}
-                                            <p class="whitespace-pre-wrap text-sm">{current.descripcion.clone()}</p>
-                                            <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-base-content/70">
-                                                <dt class="font-semibold">"Página"</dt><dd class="break-all">{current.pagina.clone()}</dd>
-                                                <dt class="font-semibold">"De"</dt><dd class="break-all">{who}</dd>
-                                                <dt class="font-semibold">"Pantalla"</dt><dd>{current.pantalla.clone()}</dd>
-                                                <dt class="font-semibold">"Navegador"</dt><dd class="break-all">{current.navegador.clone()}</dd>
-                                            </dl>
-                                            <div class="flex flex-wrap gap-2" role="group" aria-label="Cambiar estado">{buttons}</div>
-                                        </div></section>
-                                    </div>
-                                }.into_any()
+                {move || match data.get() {
+                    None => view! { <ui::ReportsSkeleton/> }.into_any(),
+                    Some(Err(_)) => view! { <p class="border-t border-base-300 p-6"><crate::account::FieldNote ok=false text=CONNECTION/></p> }.into_any(),
+                    Some(Ok(_)) if version.get() == 0 => ().into_any(),
+                    Some(Ok(d)) if d.items.is_empty() => view! {
+                        <p class="border-t border-base-300 py-10 text-center text-sm text-base-content/60">"Todavía no hay reportes en esta lista."</p>
+                    }.into_any(),
+                    Some(Ok(d)) => {
+                        let items = d.items;
+                        let current = selected.get()
+                            .and_then(|n| items.iter().find(|i| i.num == n).cloned())
+                            .unwrap_or_else(|| items[0].clone());
+                        let cur = current.num;
+                        let list = items.into_iter().map(|i| {
+                            let (cls, label) = state_badge(&i.estado);
+                            let on = i.num == cur;
+                            let num = i.num;
+                            view! {
+                                <li><button type="button" aria-current=on.then_some("true")
+                                    class=if on { "flex w-full flex-col gap-1 bg-base-200 px-6 py-2.5 text-left" } else { "flex w-full flex-col gap-1 px-6 py-2.5 text-left hover:bg-base-200/60" }
+                                    on:click=move |_| selected.set(Some(num))>
+                                    <span class="flex items-center gap-2 text-sm">
+                                        <b>{format!("#{}", i.num)}</b>
+                                        <span class=cls>{label}</span>
+                                        <span class="ml-auto text-xs text-base-content/60">{i.hace}</span>
+                                    </span>
+                                    <span class="line-clamp-2 text-sm">{i.descripcion}</span>
+                                </button></li>
                             }
-                        }
-                    })}
-                </Suspense>
-            </main>
-        </div>
+                        }).collect_view();
+                        let (cls, label) = state_badge(&current.estado);
+                        let who = if current.quien.is_empty() { "Visitante sin cuenta".to_string() } else { current.quien.clone() };
+                        let estado = current.estado.clone();
+                        let buttons = [("nuevo", "Nuevo"), ("en_curso", "En curso"), ("resuelto", "Resuelto")].map(|(v, l)| {
+                            let active = estado == v;
+                            view! {
+                                <button type="button" class=if active { "btn btn-sm btn-primary" } else { "btn btn-sm btn-outline" }
+                                    aria-pressed=active.to_string()
+                                    disabled=move || active || change.pending().get()
+                                    on:click=move |_| { change.dispatch((cur, v.to_string())); }>{l}</button>
+                            }
+                        });
+                        view! {
+                            <div class="grid min-h-0 grow overflow-hidden border-t border-base-300 md:grid-cols-[2fr_3fr]">
+                                <ul class="max-h-52 divide-y divide-base-300 overflow-y-auto md:max-h-none">{list}</ul>
+                                <section class="flex min-h-0 flex-col gap-3 overflow-y-auto border-base-300 p-5 max-md:border-t md:border-l">
+                                    <div class="flex items-center gap-2">
+                                        <h3 class="font-semibold">{format!("Reporte #{cur}")}</h3>
+                                        <span class=cls>{label}</span>
+                                    </div>
+                                    {current.captura.then(|| view! {
+                                        <a href=format!("/api/reportes/{cur}/captura") target="_blank" rel="noopener" class="block overflow-hidden rounded-lg border border-base-300">
+                                            <img src=format!("/api/reportes/{cur}/captura") alt="Captura del problema" loading="lazy" class="max-h-72 w-full bg-base-200 object-contain"/>
+                                        </a>
+                                    })}
+                                    <p class="whitespace-pre-wrap text-sm">{current.descripcion.clone()}</p>
+                                    <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-base-content/70">
+                                        <dt class="font-semibold">"Página"</dt><dd class="break-all">{current.pagina.clone()}</dd>
+                                        <dt class="font-semibold">"De"</dt><dd class="break-all">{who}</dd>
+                                        <dt class="font-semibold">"Pantalla"</dt><dd>{current.pantalla.clone()}</dd>
+                                        <dt class="font-semibold">"Navegador"</dt><dd class="break-all">{current.navegador.clone()}</dd>
+                                        <dt class="font-semibold">"Recibido"</dt><dd>{current.hace.clone()}</dd>
+                                    </dl>
+                                </section>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 border-t border-base-300 p-4" role="group" aria-label="Cambiar el estado del reporte">
+                                <span class="mr-1 text-sm text-base-content/70">"Estado"</span>
+                                {buttons}
+                                {move || problem.get().map(|p| view! { <crate::account::FieldNote ok=false text=p/> })}
+                            </div>
+                        }.into_any()
+                    }
+                }}
+            </div>
+            <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
+        </dialog>
     }
-    .into_any()
 }

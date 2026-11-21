@@ -99,7 +99,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <body>
                 <App/>
                 // Reportar un problema: botón, selección de área y envío (ver `reports`).
-                <script src="/js/reportar.js?v=1" defer></script>
+                <script src="/js/reportar.js?v=2" defer></script>
             </body>
         </html>
     }
@@ -151,7 +151,6 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("datos") view={leptos_router::Lazy::<StoreInfoRoute>::new()} ssr=SsrMode::Async/>
                     </ParentRoute>
                     <Route path=path!("/admin/uso") view={leptos_router::Lazy::<UsageRoute>::new()} ssr=SsrMode::Async/>
-                    <Route path=path!("/admin/reportes") view={leptos_router::Lazy::<ReportsRoute>::new()} ssr=SsrMode::Async/>
                     <Route path=path!("/comprar") view=checkout::CheckoutPage ssr=SsrMode::Async/>
                     <Route path=path!("/terminos") view=legal::TermsPage/>
                     <Route path=path!("/privacidad") view=legal::PrivacyPage/>
@@ -546,20 +545,6 @@ impl leptos_router::LazyRoute for StoreInfoRoute {
 
     fn view(_this: Self) -> AnyView {
         view! { <store_info::StoreInfoPage/> }.into_any()
-    }
-}
-
-#[derive(Debug)]
-struct ReportsRoute;
-
-#[leptos_router::lazy_route]
-impl leptos_router::LazyRoute for ReportsRoute {
-    fn data() -> Self {
-        ReportsRoute
-    }
-
-    fn view(_this: Self) -> AnyView {
-        view! { <reports::ReportsPage/> }.into_any()
     }
 }
 

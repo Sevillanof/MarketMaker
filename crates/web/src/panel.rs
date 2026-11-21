@@ -317,6 +317,9 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
     // del cajón del costado: ahí adentro quedaba apretada al ancho del menú.
     let whitelist = NodeRef::<leptos::html::Dialog>::new();
     let whitelist_version = RwSignal::new(0u32);
+    // Reportes: otra ventana del administrador, con el número de los nuevos.
+    let reports = NodeRef::<leptos::html::Dialog>::new();
+    let reports_version = RwSignal::new(0u32);
     // La ventana existe solo en el navegador: se arma después de cargar la
     // página y solo para el administrador.
     let on_client = RwSignal::new(false);
@@ -329,6 +332,17 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
                 .flatten()
                 .is_some_and(|n| n.is_admin)
     };
+    let reports_new = LocalResource::new(move || {
+        let _ = reports_version.get();
+        async move {
+            if is_admin() {
+                crate::reports::bug_report_new().await.unwrap_or(0)
+            } else {
+                0
+            }
+        }
+    });
+    let reports_new = Signal::derive(move || reports_new.get().unwrap_or(0));
     view! {
         // En pantallas chicas el menú se esconde y se abre con el botón de
         // arriba (cajón de daisyUI: funciona aunque la página no cargó el JS).
@@ -361,12 +375,12 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
                 <aside class="sticky top-0 flex h-screen w-64 shrink-0 flex-col gap-3 border-r border-base-300 bg-base-100 p-3 max-sm:w-[min(20rem,86vw)]">
                     <a href="/" class="px-2 pt-1 text-lg font-bold">"MarketMaker"</a>
                     <Transition fallback=move || match last.and_then(|l| l.get_untracked()) {
-                            Some(nav) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version/> }.into_any(),
+                            Some(nav) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version reports reports_version reports_new/> }.into_any(),
                             None => view! { <ui::Skeleton class="h-12 w-full"/> }.into_any(),
                         }>
                         {move || Suspend::new(async move {
                             match nav.await {
-                                Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version/> }.into_any(),
+                                Ok(Some(nav)) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version reports reports_version reports_new/> }.into_any(),
                                 _ => ().into_any(),
                             }
                         })}
@@ -381,6 +395,7 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
             </Show>
             {move || is_admin().then(|| view! {
                 <crate::whitelist::WhitelistDialog dialog=whitelist version=whitelist_version/>
+                <crate::reports::ReportsDialog dialog=reports version=reports_version/>
             })}
             <crate::help::HelpButton section/>
             <crate::welcome::WelcomeTour section/>
@@ -395,6 +410,9 @@ fn SideNav(
     section: Signal<Section>,
     whitelist: NodeRef<leptos::html::Dialog>,
     whitelist_version: RwSignal<u32>,
+    reports: NodeRef<leptos::html::Dialog>,
+    reports_version: RwSignal<u32>,
+    reports_new: Signal<i64>,
 ) -> impl IntoView {
     let current = nav
         .stores
@@ -557,9 +575,20 @@ fn SideNav(
                         </a></li>
                     })}
                     {is_admin.then(|| view! {
-                        <li><a href="/admin/reportes">
+                        <li><button type="button" on:click=move |_| {
+                            if let Some(m) = account_menu.get() { m.set_open(false); }
+                            // daisyUI mantiene abierto el menú mientras tiene el foco.
+                            if let Some(el) = document().active_element() {
+                                use leptos::wasm_bindgen::JsCast;
+                                if let Ok(el) = el.dyn_into::<leptos::web_sys::HtmlElement>() { _ = el.blur(); }
+                            }
+                            crate::reports::open_reports(reports, reports_version);
+                        }>
                             <ui::Icon class="size-[18px] text-base-content/60" name="flag"/>"Reportes"
-                        </a></li>
+                            {move || (reports_new.get() > 0).then(|| view! {
+                                <span class="badge badge-error badge-soft badge-sm">{reports_new.get()}</span>
+                            })}
+                        </button></li>
                     })}
                     {is_admin.then(|| view! {
                         <li><button type="button" on:click=move |_| {

@@ -157,6 +157,9 @@ async fn main() {
     // una semana más mientras revisa en segundo plano.
     for (dir, cache) in [
         ("fonts", "public, max-age=2592000"),
+        // Reportar un problema (`reportar.js` y la librería de capturas): el
+        // navegador los reusa una hora; al cambiar el código se sube el `?v=`.
+        ("js", "public, max-age=3600, stale-while-revalidate=86400"),
         (
             "img",
             "public, max-age=86400, stale-while-revalidate=604800",
