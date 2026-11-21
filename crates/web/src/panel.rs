@@ -557,6 +557,11 @@ fn SideNav(
                         </a></li>
                     })}
                     {is_admin.then(|| view! {
+                        <li><a href="/admin/reportes">
+                            <ui::Icon class="size-[18px] text-base-content/60" name="flag"/>"Reportes"
+                        </a></li>
+                    })}
+                    {is_admin.then(|| view! {
                         <li><button type="button" on:click=move |_| {
                             if let Some(m) = account_menu.get() { m.set_open(false); }
                             // daisyUI mantiene abierto el menú mientras tiene el foco.

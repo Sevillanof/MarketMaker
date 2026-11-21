@@ -210,6 +210,33 @@ pub fn PageSkeleton() -> impl IntoView {
     }
 }
 
+/// Skeleton de `/admin/reportes`: la lista de reportes a la izquierda (número,
+/// estado y dos líneas) y el detalle a la derecha (captura, texto, datos y
+/// botones de estado), con las mismas medidas que la pantalla real.
+#[component]
+pub fn ReportsSkeleton() -> impl IntoView {
+    view! {
+        <div class="grid items-start gap-4 lg:grid-cols-[2fr_3fr]" aria-busy="true" aria-label="Cargando">
+            <ul class="divide-y divide-base-300 overflow-hidden rounded-box border border-base-300 bg-base-100">
+                {(0..5).map(|_| view! {
+                    <li class="flex flex-col gap-2 px-3 py-2.5">
+                        <div class="flex items-center gap-2">
+                            <Skeleton class="h-4 w-8"/><Skeleton class="h-4 w-14 rounded-full"/><Skeleton class="ml-auto h-3 w-16"/>
+                        </div>
+                        <Skeleton class="h-3.5 w-full"/><Skeleton class="h-3.5 w-2/3"/>
+                    </li>
+                }).collect_view()}
+            </ul>
+            <section class="card border border-base-300 bg-base-100"><div class="card-body gap-3 p-4">
+                <div class="flex items-center gap-2"><Skeleton class="h-6 w-40"/><Skeleton class="h-4 w-14 rounded-full"/></div>
+                <Skeleton class="h-72 w-full"/>
+                <Skeleton class="h-3.5 w-full"/><Skeleton class="h-3.5 w-4/5"/>
+                <div class="flex gap-2"><Skeleton class="h-8 w-20"/><Skeleton class="h-8 w-24"/><Skeleton class="h-8 w-24"/></div>
+            </div></section>
+        </div>
+    }
+}
+
 /// Una línea de texto de skeleton: `w` es la clase de ancho (`w-1/3`…).
 fn sk_line(w: &'static str) -> impl IntoView {
     view! { <Skeleton class=format!("h-3.5 {w}")/> }
@@ -527,6 +554,7 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "menu" => "M4 6h16M4 12h16M4 18h16",
         "store" => "M4 10v10h16V10M3 4h18l-1.5 6h-15zM9.5 20v-5h5v5",
         "chart" => "M4 20V10M10 20V4M16 20v-7M22 20H2",
+        "flag" => "M5 21V4M5 4h11l-2 4 2 4H5",
         "shield" => "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6zM9 12l2 2 4-4",
         "refresh" => "M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5",
         "card" => "M3 6h18v12H3zM3 10h18M7 15h4",

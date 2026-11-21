@@ -65,8 +65,48 @@ pub fn send(email: Email) {
     });
 }
 
+/// Un archivo adjunto. Con `inline`, el HTML lo muestra con `<img src="cid:…">`.
+pub struct Attachment {
+    pub filename: String,
+    pub content_id: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+/// Base64 para los adjuntos (Resend los pide así).
+fn base64(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (u32::from(c[0]) << 16)
+            | (u32::from(*c.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*c.get(2).unwrap_or(&0));
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
 /// Lo manda y espera (para los códigos de entrar: hay que saber si salió).
 pub async fn deliver(email: &Email) -> Result<(), String> {
+    deliver_attached(email, &[]).await
+}
+
+/// Como [`send`], con adjuntos.
+pub fn send_attached(email: Email, files: Vec<Attachment>) {
+    tokio::spawn(async move {
+        if let Err(e) = deliver_attached(&email, &files).await {
+            leptos::logging::log!(
+                "Email \"{}\" a {}: no se pudo mandar: {e}",
+                email.subject,
+                email.to.join(", ")
+            );
+        }
+    });
+}
+
+pub async fn deliver_attached(email: &Email, files: &[Attachment]) -> Result<(), String> {
     if email.to.is_empty() {
         return Ok(());
     }
@@ -80,13 +120,29 @@ pub async fn deliver(email: &Email) -> Result<(), String> {
         return Ok(());
     };
     let from = env("EMAIL_FROM").unwrap_or_else(|| "MarketMaker <onboarding@resend.dev>".into());
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "from": from,
         "to": email.to,
         "subject": email.subject,
         "html": email.html,
         "text": email.text,
     });
+    if !files.is_empty() {
+        body["attachments"] = files
+            .iter()
+            .map(|f| {
+                let mut a = serde_json::json!({
+                    "filename": f.filename,
+                    "content": base64(&f.bytes),
+                });
+                if let Some(id) = &f.content_id {
+                    a["content_id"] = id.clone().into();
+                }
+                a
+            })
+            .collect::<Vec<_>>()
+            .into();
+    }
     let url = env("RESEND_API_URL").unwrap_or_else(|| "https://api.resend.com".into());
     let res = http()
         .post(format!("{url}/emails"))
@@ -105,6 +161,40 @@ pub async fn deliver(email: &Email) -> Result<(), String> {
             "{status} {}",
             text.chars().take(300).collect::<String>()
         ))
+    }
+}
+
+/// Aviso al administrador de un reporte nuevo, con la captura adentro.
+pub fn bug_report(
+    to: Vec<String>,
+    r: &db::reports::Report,
+    has_image: bool,
+) -> Email {
+    let who = if r.quien.is_empty() { "Visitante sin cuenta" } else { r.quien.as_str() };
+    let link = format!("{}/admin/reportes?r={}", app_url(), r.num);
+    let img = if has_image {
+        r#"<p style="margin:16px 0 0"><img src="cid:captura" alt="Captura del problema" style="max-width:100%;border:1px solid #e4e4e7;border-radius:8px"></p>"#
+    } else {
+        ""
+    };
+    let body = format!(
+        r#"<p style="margin:0 0 12px;font-size:16px;line-height:1.5;white-space:pre-wrap">{}</p>
+<p style="margin:0;color:#52525b;font-size:13px;line-height:1.6">Página: {}<br>De: {}<br>Pantalla: {} · {}</p>{img}{}"#,
+        esc(&r.descripcion),
+        esc(&r.pagina),
+        esc(who),
+        esc(&r.pantalla),
+        esc(&r.navegador),
+        button(&link, "Abrir en reportes"),
+    );
+    Email {
+        to,
+        subject: format!("Reporte #{} · {}", r.num, r.descripcion.chars().take(60).collect::<String>().replace('\n', " ")),
+        html: frame(&format!("Reporte #{}", r.num), &body),
+        text: format!(
+            "Reporte #{}\n\n{}\n\nPágina: {}\nDe: {}\nPantalla: {} · {}\n\nAbrir: {link}\n",
+            r.num, r.descripcion, r.pagina, who, r.pantalla, r.navegador
+        ),
     }
 }
 
