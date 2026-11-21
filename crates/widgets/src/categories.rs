@@ -51,6 +51,28 @@ fn no_cats(editing: bool) -> AnyView {
     }
 }
 
+/// Tarjetas sin categorías todavía: en el editor se ve la forma del bloque con
+/// «Tu categoría» (sin fotos de muestra de otro rubro); en la tienda, nada.
+fn no_cat_cards(title: &str, editing: bool) -> AnyView {
+    if !editing {
+        return ().into_any();
+    }
+    view! {
+        <div class="mk-box mk-pad mk-catcards @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
+            <h2 class="mk-title text-lg font-bold truncate">{label_or(title, "Categorías")}</h2>
+            <div class="grid min-h-0 flex-1 auto-rows-max content-start grid-cols-2 gap-3 @lg:grid-cols-3">
+                {(0..3).map(|_| view! {
+                    <div class="flex aspect-[4/3] items-center justify-center rounded-box border border-dashed border-base-content/25 bg-base-200 text-sm font-semibold opacity-70">
+                        "Tu categoría"
+                    </div>
+                }).collect_view()}
+            </div>
+            <p class="text-xs opacity-60">"Elegí la categoría de cada producto en Productos y aparecen acá con su foto."</p>
+        </div>
+    }
+    .into_any()
+}
+
 impl ProductFilter {
     /// ¿Está elegida justo esta categoría y subcategoría? (Vacías: ninguna.)
     fn is_cat(self, cat: &str, sub: &str) -> bool {
@@ -183,9 +205,12 @@ fn CategoryCards(
     products: Vec<Product>,
     editing: bool,
 ) -> impl IntoView {
-    let cats = store_categories(&products);
+    // Solo las categorías de los productos propios: las de los productos de
+    // ejemplo son de otro rubro (en la tienda esos ni se ven).
+    let own: Vec<Product> = products.iter().filter(|p| !p.example).cloned().collect();
+    let cats = store_categories(&own);
     if cats.is_empty() {
-        return no_cats(editing);
+        return no_cat_cards(&props.title, editing);
     }
     let filter = use_context::<ProductFilter>();
     let counts = props.show_counts;

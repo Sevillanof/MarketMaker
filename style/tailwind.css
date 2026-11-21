@@ -2123,7 +2123,7 @@ dialog.mk-cart::backdrop {
   }
   /* El selector de cantidad de la tarjeta reparte el ancho: 3 botones de
      44 px no entran en una tarjeta de 360 px de pantalla. */
-  .mk-qty .btn-square {
+  .mk-qty.mk-cart-add .btn-square {
     width: auto;
     flex: 1 1 0;
     min-width: 0;
@@ -2137,6 +2137,40 @@ dialog.mk-cart::backdrop {
   .mk-legal a {
     display: inline-block;
     padding-block: 0.75rem;
+  }
+}
+
+/* Cantidad en el celular (ficha y carrito): − y + redondos de 44 px, del
+   tamaño de un dedo. Con «Cantidad arriba» (`.mk-buy-b`) la cantidad ocupa
+   todo el ancho y el botón queda abajo. */
+@media (max-width: 767px) {
+  .mk-qty.join {
+    gap: 0.375rem;
+    border: 0;
+  }
+  .mk-qty.join > .btn {
+    flex: none;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+    font-size: 1.25rem;
+  }
+  .mk-qty.join > output {
+    min-width: 2rem;
+    border: 0;
+    font-size: 1.0625rem;
+  }
+  .mk-buy-b {
+    flex-wrap: wrap;
+  }
+  .mk-buy-b > .mk-qty {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .mk-buy-b > .mk-btn {
+    flex-basis: 100%;
   }
 }
 

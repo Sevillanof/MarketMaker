@@ -91,6 +91,10 @@ pub struct ProductButtonProps {
     pub label: String,
     #[serde(default)]
     pub href: String,
+    /// Cantidad en el celular: `a` botones redondos al lado del botón, `b`
+    /// la cantidad arriba y el botón abajo, a todo el ancho.
+    #[serde(default = "variant_a")]
+    pub qty: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1110,7 +1114,22 @@ const PRODUCT_PRICE_FIELDS: &[Field] = &[
 ];
 /// El botón de la ficha agrega al carrito: ya no lleva enlace (`href`
 /// queda solo para leer fichas viejas).
-const PRODUCT_BUTTON_FIELDS: &[Field] = &[field("label", "Texto del botón", text(30))];
+/// Cómo se ve la cantidad en el celular (ver [`ProductButtonProps::qty`]).
+pub const QTY_STYLES: &[(&str, &str)] = &[
+    ("a", "Botones redondos al lado"),
+    ("b", "Cantidad arriba, botón abajo"),
+];
+
+const PRODUCT_BUTTON_FIELDS: &[Field] = &[
+    field("label", "Texto del botón", text(30)),
+    field(
+        "qty",
+        "Cantidad en el celular",
+        FieldKind::Select {
+            options: QTY_STYLES,
+        },
+    ),
+];
 
 const CONTACT_FIELDS: &[Field] = &[
     field("title", "Título", text(60)),
@@ -1924,6 +1943,7 @@ impl Widget {
             "ProductButton" => Widget::ProductButton(ProductButtonProps {
                 label: s("Agregar al carrito"),
                 href: String::new(),
+                qty: s("a"),
             }),
             _ => return None,
         };
