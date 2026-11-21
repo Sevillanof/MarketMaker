@@ -38,6 +38,7 @@ fn page_view(
         store,
         test_store: false,
         coupons: Vec::new(),
+        paused: false,
     })
 }
 
@@ -73,6 +74,9 @@ pub async fn load_page(slug: String) -> Result<PageView, ServerFnError> {
     let mut view = page_view(page, products, store)?;
     view.test_store = crate::mp::is_test_store(&tenant.slug);
     view.coupons = active_coupons(&pool, tenant.id).await?;
+    view.paused = db::auth::store_paused(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
     Ok(view)
 }
 

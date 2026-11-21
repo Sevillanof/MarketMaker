@@ -709,16 +709,19 @@ pub fn AddToCart(
     product: Option<Product>,
     #[prop(into)] label: String,
     editing: bool,
+    /// En el celular, la cantidad arriba y el botón abajo (si no, al lado).
+    #[prop(optional)]
+    stacked: bool,
 ) -> impl IntoView {
     let qty = RwSignal::new(1u32);
     let cart = use_context::<Cart>().filter(|_| !editing);
     if let Some(p) = product.clone().filter(|p| p.has_variants()) {
-        return view! { <crate::product_page::VariantBuy product=p label cart/> }.into_any();
+        return view! { <crate::product_page::VariantBuy product=p label cart stacked/> }.into_any();
     }
     let Some((cart, product)) = cart.zip(product.filter(|p| !p.id.is_empty())) else {
         // En el editor: igual que en la tienda, pero quieto.
         return view! {
-            <div class="mk-pbtn flex h-full flex-wrap items-start gap-2">
+            <div class="mk-pbtn flex h-full flex-wrap items-start gap-2" class:mk-buy-b=stacked>
                 <QtyStepper value=qty label="Cantidad" disabled=true/>
                 <span class="btn btn-primary mk-btn flex-1">{label}</span>
             </div>
@@ -737,7 +740,7 @@ pub fn AddToCart(
     // La cantidad y el botón en una línea; debajo, lo que sigue al agregar.
     view! {
         <div class="mk-pbtn flex h-full flex-col gap-2">
-        <div class="flex flex-nowrap items-start gap-2">
+        <div class="flex flex-nowrap items-start gap-2" class:mk-buy-b=stacked>
             {move || view! { <QtyStepper value=qty label=qty_label.clone() max=room.get().max(1)/> }}
             <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
                 data-wait="Agregando…"

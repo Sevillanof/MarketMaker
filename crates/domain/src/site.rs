@@ -388,6 +388,9 @@ pub struct StoreInfo {
     /// Cómo entrega la tienda, en corto: para decir el envío en el carrito.
     #[serde(default)]
     pub delivery: DeliveryBrief,
+    /// El orden de las categorías que eligió (ver `order_categories`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub category_order: Vec<String>,
 }
 
 /// Lo justo de Entregas para el carrito (ver [`DeliveryBrief::cart_hint`]).

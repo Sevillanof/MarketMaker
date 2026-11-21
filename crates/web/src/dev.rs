@@ -24,6 +24,7 @@ fn provide_sample_store() {
             coordinate: true,
         },
         delivery: domain::DeliveryBrief::default(),
+        category_order: Vec::new(),
     });
 }
 

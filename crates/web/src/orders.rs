@@ -177,9 +177,30 @@ struct BoardCtx {
     refreshed: StoredValue<Vec<String>>,
     /// Movida que espera confirmación (arrastrar o "Mover a…").
     asking: RwSignal<Option<(String, OrderStatus)>>,
+    /// Buscador: número, nombre, email o teléfono.
+    query: RwSignal<String>,
+    /// Solo los de los últimos N días (`None`: todos).
+    days: RwSignal<Option<u32>>,
 }
 
 impl BoardCtx {
+    /// ¿El pedido pasa el buscador y las fechas? (Lee las dos señales.)
+    fn shown(&self, o: &Order) -> bool {
+        let q = self.query.with(|q| q.trim().to_lowercase());
+        let q = q.trim_start_matches('#');
+        let by_text = q.is_empty()
+            || o.number.to_string().starts_with(q)
+            || o.customer_name.to_lowercase().contains(q)
+            || o.email.to_lowercase().contains(q)
+            || domain::phone_digits(&o.phone).contains(&domain::phone_digits(q))
+                && !domain::phone_digits(q).is_empty();
+        let by_date = match self.days.get() {
+            None => true,
+            Some(n) => o.created_at.get(..10).is_some_and(|d| d >= cutoff_day(n).as_str()),
+        };
+        by_text && by_date
+    }
+
     /// Reemplaza un pedido por cómo quedó en el servidor.
     fn replace(self, o: Order) {
         self.orders.update(|os| {
@@ -270,6 +291,8 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         slug: StoredValue::new(slug.clone()),
         refreshed: StoredValue::new(Vec::new()),
         asking: RwSignal::new(None),
+        query: RwSignal::new(String::new()),
+        days: RwSignal::new(None),
     };
     let show_cancelled = RwSignal::new(false);
     // Teléfono: se ve una columna por vez, elegida arriba (por defecto, lo que
@@ -278,7 +301,7 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
     let cancelled = Memo::new(move |_| {
         ctx.orders.with(|os| {
             os.iter()
-                .filter(|o| o.status == OrderStatus::Cancelled)
+                .filter(|o| o.status == OrderStatus::Cancelled && ctx.shown(o))
                 .cloned()
                 .collect::<Vec<_>>()
         })
@@ -292,6 +315,7 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
                 <p class="text-sm text-base-content/70 sm:hidden">"Tocá un pedido para ver el detalle."</p>
             </div>
         </div>
+        {(!empty).then(|| view! { <BoardTools ctx/> })}
         {move || ctx.problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
         <p class="sr-only" role="status">{move || ctx.notice.get()}</p>
         {empty.then(|| view! {
@@ -334,6 +358,132 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         <OrderDrawer ctx/>
         <ConfirmMove ctx/>
     }
+}
+
+/// `AAAA-MM-DD` de hace `days` días (en UTC, como `created_at`).
+fn cutoff_day(days: u32) -> String {
+    #[cfg(feature = "hydrate")]
+    {
+        let ms = js_sys::Date::now() - f64::from(days) * 86_400_000.0;
+        let iso: String = js_sys::Date::new(&ms.into()).to_iso_string().into();
+        iso.get(..10).unwrap_or("").to_string()
+    }
+    #[cfg(not(feature = "hydrate"))]
+    {
+        let _ = days;
+        String::new()
+    }
+}
+
+/// Buscador y menú ⋯ (fechas y exportar) arriba del tablero.
+#[component]
+fn BoardTools(ctx: BoardCtx) -> impl IntoView {
+    let close = move |ev: leptos::ev::MouseEvent| {
+        use leptos::wasm_bindgen::JsCast;
+        if let Some(d) = ev
+            .target()
+            .and_then(|t| t.dyn_into::<leptos::web_sys::Element>().ok())
+            .and_then(|e| e.closest("details").ok().flatten())
+        {
+            _ = d.remove_attribute("open");
+        }
+    };
+    let ranges: [(Option<u32>, &'static str); 4] = [
+        (None, "Todas las fechas"),
+        (Some(7), "Últimos 7 días"),
+        (Some(30), "Últimos 30 días"),
+        (Some(90), "Últimos 3 meses"),
+    ];
+    view! {
+        <div class="flex items-center gap-2">
+            <label class="input grow sm:max-w-md max-sm:h-12">
+                <span class="text-base-content/50" aria-hidden="true">"⌕"</span>
+                <input type="search" placeholder="Buscar por número, nombre o email" aria-label="Buscar pedido"
+                    prop:value=move || ctx.query.get()
+                    on:input=move |ev| ctx.query.set(event_target_value(&ev))/>
+            </label>
+            {move || ctx.days.get().map(|n| view! {
+                <button type="button" class="badge badge-soft badge-primary gap-1 max-sm:hidden" on:click=move |_| ctx.days.set(None)
+                    aria-label="Quitar el filtro de fechas">
+                    {format!("Últimos {n} días")}" ✕"
+                </button>
+            })}
+            <details class="dropdown dropdown-end">
+                <summary class="btn btn-square list-none max-sm:size-12" aria-label="Fechas y exportar">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                </summary>
+                <ul class="menu dropdown-content z-20 w-56 rounded-box bg-base-100 p-2 shadow-lg">
+                    <li class="menu-title">"Fechas"</li>
+                    {ranges.into_iter().map(|(n, label)| view! {
+                        <li><button type="button" class:menu-active=move || ctx.days.get() == n
+                            on:click=move |ev| { close(ev); ctx.days.set(n); }>{label}</button></li>
+                    }).collect_view()}
+                    <li class="mt-1 border-t border-base-200 pt-1"><button type="button"
+                        on:click=move |ev| { close(ev); export_csv(ctx); }>"Exportar planilla"</button></li>
+                </ul>
+            </details>
+        </div>
+    }
+}
+
+/// Baja una planilla (CSV que abre Excel) con los pedidos que se ven.
+fn export_csv(ctx: BoardCtx) {
+    let rows: Vec<Order> = ctx.orders.with_untracked(|os| {
+        os.iter()
+            .filter(|o| untrack(|| ctx.shown(o)))
+            .cloned()
+            .collect()
+    });
+    let cell = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
+    let mut csv = String::from("\u{feff}Pedido;Fecha;Estado;Cliente;Email;Teléfono;Entrega;Dirección;Productos;Total\r\n");
+    for o in &rows {
+        let items = o
+            .items
+            .iter()
+            .map(|i| format!("{} × {}", i.qty, i.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let place = OrderColumn::of(o.status).map_or("Cancelado", OrderColumn::title);
+        let total = format!("{},{:02}", o.total_cents / 100, o.total_cents % 100);
+        csv.push_str(
+            &[
+                o.number.to_string(),
+                domain::order_time_ar(&o.created_at),
+                place.to_string(),
+                o.customer_name.clone(),
+                o.email.clone(),
+                o.phone.clone(),
+                where_short(o),
+                o.destination().unwrap_or_default(),
+                items,
+                total,
+            ]
+            .iter()
+            .map(|c| cell(c))
+            .collect::<Vec<_>>()
+            .join(";"),
+        );
+        csv.push_str("\r\n");
+    }
+    #[cfg(feature = "hydrate")]
+    {
+        use leptos::wasm_bindgen::JsCast;
+        let href = format!(
+            "data:text/csv;charset=utf-8,{}",
+            String::from(js_sys::encode_uri_component(&csv))
+        );
+        if let Some(a) = leptos::web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.create_element("a").ok())
+            .and_then(|a| a.dyn_into::<leptos::web_sys::HtmlElement>().ok())
+        {
+            _ = a.set_attribute("href", &href);
+            _ = a.set_attribute("download", "pedidos.csv");
+            a.click();
+        }
+    }
+    #[cfg(not(feature = "hydrate"))]
+    let _ = csv;
 }
 
 /// Qué le pasa al comprador si el pedido pasa de `from` a `to` (lo mismo que
@@ -422,7 +572,7 @@ fn Column(ctx: BoardCtx, column: OrderColumn, tab: RwSignal<OrderColumn>) -> imp
     let mine = Memo::new(move |_| {
         ctx.orders.with(|os| {
             os.iter()
-                .filter(|o| OrderColumn::of(o.status) == Some(column))
+                .filter(|o| OrderColumn::of(o.status) == Some(column) && ctx.shown(o))
                 .cloned()
                 .collect::<Vec<_>>()
         })

@@ -59,6 +59,9 @@ pub async fn list_store_products(slug: String) -> Result<Option<StoreProducts>, 
         tags: db::products::tags(&pool, tenant.id)
             .await
             .map_err(internal)?,
+        category_order: db::products::category_order(&pool, tenant.id)
+            .await
+            .map_err(internal)?,
     }))
 }
 
@@ -126,6 +129,18 @@ pub async fn rename_category(
     db::products::rename_category(&pool, tenant.id, &cat, &sub, &new)
         .await
         .map_err(internal)?;
+    if sub.is_empty() {
+        let mut order = db::products::category_order(&pool, tenant.id)
+            .await
+            .map_err(internal)?;
+        for o in order.iter_mut().filter(|o| **o == cat) {
+            o.clone_from(&new);
+        }
+        order.dedup();
+        db::products::set_category_order(&pool, tenant.id, &order)
+            .await
+            .map_err(internal)?;
+    }
     let products = db::products::list_all(&pool, tenant.id)
         .await
         .map_err(internal)?;
@@ -146,10 +161,46 @@ pub async fn delete_category(
     db::products::delete_category(&pool, tenant.id, &cat, &sub)
         .await
         .map_err(internal)?;
+    if sub.is_empty() {
+        let mut order = db::products::category_order(&pool, tenant.id)
+            .await
+            .map_err(internal)?;
+        order.retain(|o| *o != cat);
+        db::products::set_category_order(&pool, tenant.id, &order)
+            .await
+            .map_err(internal)?;
+    }
     let products = db::products::list_all(&pool, tenant.id)
         .await
         .map_err(internal)?;
     Ok(domain::TagSave::Saved { products })
+}
+
+/// Guarda el orden de las categorías (las de arriba van primero en la
+/// tienda). Una categoría nueva, sin productos todavía, se crea sumándola acá.
+#[server(input = leptos::server_fn::codec::Json)]
+pub async fn save_category_order(
+    slug: String,
+    order: Vec<String>,
+) -> Result<Result<Vec<String>, String>, ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = server::require_store(&slug).await?;
+    let mut clean: Vec<String> = Vec::new();
+    for name in order.iter().map(|n| domain::clean_category(n)) {
+        if name.is_empty() {
+            return Ok(Err("Escribí un nombre.".into()));
+        }
+        if !clean.iter().any(|c| c.to_lowercase() == name.to_lowercase()) {
+            clean.push(name);
+        }
+    }
+    if clean.len() > 200 {
+        return Ok(Err("Son demasiadas categorías.".into()));
+    }
+    db::products::set_category_order(&pool()?, tenant.id, &clean)
+        .await
+        .map_err(internal)?;
+    Ok(Ok(clean))
 }
 
 /// Aplica `change` (las etiquetas nuevas de cada producto, o un problema)
@@ -210,10 +261,16 @@ pub async fn product_to_edit(
         store_tags: db::products::tag_counts(&pool, tenant.id)
             .await
             .map_err(internal)?,
-        store_categories: domain::categories_from_pairs(
-            &db::products::category_pairs(&pool, tenant.id)
+        store_categories: domain::order_categories(
+            domain::categories_from_pairs(
+                &db::products::category_pairs(&pool, tenant.id)
+                    .await
+                    .map_err(internal)?,
+            ),
+            &db::products::category_order(&pool, tenant.id)
                 .await
                 .map_err(internal)?,
+            true,
         ),
         andreani: db::andreani::account(&pool, tenant.id)
             .await
@@ -374,6 +431,7 @@ pub fn ProductsPage() -> impl IntoView {
 #[component]
 fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
     let products = RwSignal::new(data.products);
+    let category_order = RwSignal::new(data.category_order);
     // Las etiquetas salen de los productos, así se actualizan al cambiarlas
     // desde "Etiquetas". Las de los productos de ejemplo (audio, calzado…)
     // no ensucian los filtros de la tienda.
@@ -500,7 +558,7 @@ fn ProductList(slug: String, data: StoreProducts) -> impl IntoView {
         </dialog>
         <dialog node_ref=manage_cats class="modal" aria-labelledby="categorias-titulo">
             <div class="modal-box max-w-xl">
-                <CategoryManager slug=slug.get_value() products dialog=manage_cats/>
+                <CategoryManager slug=slug.get_value() products order=category_order dialog=manage_cats/>
             </div>
             <form method="dialog" class="modal-backdrop"><button>"Cerrar"</button></form>
         </dialog>
@@ -934,17 +992,34 @@ fn TagManager(
 fn CategoryManager(
     slug: String,
     products: RwSignal<Vec<Product>>,
+    /// Orden elegido por el dueño (y las categorías nuevas aún sin productos).
+    order: RwSignal<Vec<String>>,
     dialog: NodeRef<leptos::html::Dialog>,
 ) -> impl IntoView {
     let slug = StoredValue::new(slug);
-    let cats = Memo::new(move |_| products.with(|ps| domain::count_categories(ps)));
+    let cats = Memo::new(move |_| {
+        let counted = products.with(|ps| domain::count_categories(ps));
+        order.with(|o| domain::order_categories(counted, o, true))
+    });
     // La que se está renombrando o por borrar: (categoría, subcategoría).
     let editing = RwSignal::new(None::<(String, String)>);
     let doomed = RwSignal::new(None::<(String, String)>);
     let name = RwSignal::new(String::new());
+    let fresh = RwSignal::new(String::new());
     let problem = RwSignal::new(None::<String>);
+    let add_problem = RwSignal::new(None::<String>);
+    // Índice de la categoría que se está arrastrando.
+    let dragging = RwSignal::new(None::<usize>);
     let done = move |r: Result<domain::TagSave, ServerFnError>| match r {
         Ok(domain::TagSave::Saved { products: ps }) => {
+            // El servidor ya cambió el orden guardado; acá se hace lo mismo.
+            if let Some((c, _)) = editing.get_untracked().filter(|(_, s)| s.is_empty()) {
+                let n = domain::clean_category(&name.get_untracked());
+                order.update(|o| o.iter_mut().filter(|x| **x == c).for_each(|x| x.clone_from(&n)));
+            }
+            if let Some((c, _)) = doomed.get_untracked().filter(|(_, s)| s.is_empty()) {
+                order.update(|o| o.retain(|x| *x != c));
+            }
             products.set(ps);
             problem.set(None);
             editing.set(None);
@@ -962,20 +1037,71 @@ fn CategoryManager(
         let (c, s) = doomed.get_untracked().unwrap_or_default();
         async move { done(delete_category(slug.get_value(), c, s).await) }
     });
-    let busy = move || rename.pending().get() || remove.pending().get();
+    // Guarda el orden; `adding` dice si el error va bajo el campo de nueva.
+    let save = Action::new(move |(names, adding): &(Vec<String>, bool)| {
+        let (names, adding) = (names.clone(), *adding);
+        let before = order.get_untracked();
+        order.set(names.clone());
+        async move {
+            let shown = if adding { add_problem } else { problem };
+            match save_category_order(slug.get_value(), names).await {
+                Ok(Ok(clean)) => {
+                    order.set(clean);
+                    shown.set(None);
+                    if adding {
+                        fresh.set(String::new());
+                    }
+                }
+                Ok(Err(e)) => {
+                    order.set(before);
+                    shown.set(Some(e));
+                }
+                Err(e) => {
+                    order.set(before);
+                    shown.set(Some(error_text(&e)));
+                }
+            }
+        }
+    });
+    let busy = move || rename.pending().get() || remove.pending().get() || save.pending().get();
+    let names_now = move || cats.with_untracked(|cs| cs.iter().map(|c| c.name.clone()).collect::<Vec<_>>());
+    let move_to = move |from: usize, to: usize| {
+        let mut names = names_now();
+        if from >= names.len() || to >= names.len() || from == to {
+            return;
+        }
+        let n = names.remove(from);
+        names.insert(to, n);
+        save.dispatch((names, false));
+    };
+    let add = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let n = domain::clean_category(&fresh.get_untracked());
+        if n.is_empty() {
+            add_problem.set(Some("Escribí un nombre.".into()));
+            return;
+        }
+        let mut names = names_now();
+        if names.iter().any(|c| c.to_lowercase() == n.to_lowercase()) {
+            add_problem.set(Some("Ya hay una categoría con ese nombre.".into()));
+            return;
+        }
+        names.push(n);
+        save.dispatch((names, true));
+    };
     let close = move |_| {
         if let Some(d) = dialog.get() {
             d.close();
         }
     };
-    let row = move |label: String, cat: String, sub: String, n: usize| {
+    let row = move |label: String, cat: String, sub: String, n: usize, at: Option<usize>| {
         let key = (cat, sub);
         let (k_edit, k_doom, k_start, k_ask) = (key.clone(), key.clone(), key.clone(), key.clone());
         let is_sub = !key.1.is_empty();
         let label2 = label.clone();
         let label3 = label.clone();
         view! {
-            <li class=if is_sub { "ml-6 border-b border-base-200 py-1.5 last:border-0" } else { "border-b border-base-200 py-2 last:border-0" }>
+            <li class=if is_sub { "ml-12 border-b border-base-200 py-1.5 last:border-0" } else { "border-b border-base-200 py-2 last:border-0" }>
                 {move || if editing.get().as_ref() == Some(&k_edit) {
                     view! {
                         <form class="flex flex-wrap items-center gap-2" on:submit=move |ev| { ev.prevent_default(); rename.dispatch(()); }>
@@ -990,7 +1116,11 @@ fn CategoryManager(
                 } else if doomed.get().as_ref() == Some(&k_doom) {
                     view! {
                         <div role="alert" class="alert alert-warning flex flex-wrap text-sm">
-                            <span class="grow">{format!("¿Sacar «{}»? Los productos no se borran: quedan {}.", label2, if is_sub { "sin subcategoría" } else { "sin categoría" })}</span>
+                            <span class="grow">{if n == 0 {
+                                format!("¿Sacar «{label2}»?")
+                            } else {
+                                format!("¿Sacar «{}»? Los productos no se borran: quedan {}.", label2, if is_sub { "sin subcategoría" } else { "sin categoría" })
+                            }}</span>
                             <button type="button" class="btn btn-sm" on:click=move |_| doomed.set(None)>"Cancelar"</button>
                             <button type="button" class="btn btn-error btn-sm" disabled=busy on:click=move |_| { remove.dispatch(()); }>"Sacar"</button>
                         </div>
@@ -998,8 +1128,38 @@ fn CategoryManager(
                 } else {
                     let (ks, ka) = (k_start.clone(), k_ask.clone());
                     let l = label3.clone();
+                    let l2 = label3.clone();
                     view! {
                         <div class="flex items-center gap-2">
+                            {at.map(|i| view! {
+                                <button type="button" draggable="true"
+                                    class="btn btn-ghost btn-xs btn-square cursor-grab text-base-content/50 active:cursor-grabbing"
+                                    aria-label=format!("Mover {l2}. Usá las flechas arriba y abajo")
+                                    title="Arrastrá para ordenar"
+                                    disabled=busy
+                                    on:keydown=move |ev| match ev.key().as_str() {
+                                        "ArrowUp" if i > 0 => { ev.prevent_default(); move_to(i, i - 1); }
+                                        "ArrowDown" => { ev.prevent_default(); move_to(i, i + 1); }
+                                        _ => {}
+                                    }
+                                    on:dragstart=move |ev| {
+                                        use leptos::wasm_bindgen::JsCast;
+                                        if let Some(dt) = ev.data_transfer() {
+                                            _ = dt.set_data("text/plain", &i.to_string());
+                                            dt.set_effect_allowed("move");
+                                            if let Some(li) = ev.target()
+                                                .and_then(|t| t.dyn_into::<leptos::web_sys::Element>().ok())
+                                                .and_then(|e| e.closest("li").ok().flatten())
+                                            {
+                                                dt.set_drag_image(&li, 16, 16);
+                                            }
+                                        }
+                                        dragging.set(Some(i));
+                                    }
+                                    on:dragend=move |_| dragging.set(None)>
+                                    "⠿"
+                                </button>
+                            })}
                             <span class="grow truncate">{label3.clone()}</span>
                             <span class="text-sm text-base-content/60">{n}</span>
                             <button type="button" class="btn btn-ghost btn-xs" aria-label=format!("Cambiar el nombre de {l}")
@@ -1016,20 +1176,55 @@ fn CategoryManager(
         <div class="flex items-start gap-3">
             <div class="grow">
                 <h2 id="categorias-titulo" class="text-xl font-bold">"Categorías"</h2>
-                <p class="text-sm text-base-content/70">"Cada producto tiene una categoría (y, si querés, una subcategoría). Se crean al elegirlas en el producto. Si sumás a tu tienda uno de los bloques de categorías, tus clientes las tocan para ver solo esos productos."</p>
+                <p class="text-sm text-base-content/70">"Arrastrá ⠿ para elegir en qué orden las ven tus clientes. Cada producto tiene una categoría y, si querés, una subcategoría."</p>
             </div>
             <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Cerrar" on:click=close>"✕"</button>
         </div>
-        <ul class="mt-4 max-h-96 overflow-y-auto" aria-label="Categorías de la tienda">
-            {move || cats.get().into_iter().map(|c| view! {
-                {row(c.name.clone(), c.name.clone(), String::new(), c.products)}
-                {c.subs.iter().map(|(s, n)| row(s.clone(), c.name.clone(), s.clone(), *n)).collect_view()}
+        <form class="mt-4 flex items-start gap-2" on:submit=add>
+            <div class="grow">
+                <input class="input input-sm w-full" maxlength=domain::CATEGORY_MAX
+                    placeholder="Nueva categoría" aria-label="Nombre de la categoría nueva"
+                    aria-invalid=move || add_problem.with(Option::is_some).then_some("true")
+                    prop:value=move || fresh.get()
+                    on:input=move |ev| { fresh.set(event_target_value(&ev)); add_problem.set(None); }/>
+                {move || add_problem.get().map(|e| view! { <p class="mt-1 text-sm text-error">{e}</p> })}
+            </div>
+            <button type="submit" class="btn btn-sm" disabled=busy>"+ Agregar"</button>
+        </form>
+        <ul class="mt-3 max-h-96 overflow-y-auto" aria-label="Categorías de la tienda">
+            {move || cats.get().into_iter().enumerate().map(|(i, c)| {
+                let over = RwSignal::new(false);
+                view! {
+                    <li class="rounded-field transition-colors"
+                        class:bg-base-200=move || over.get()
+                        class:opacity-40=move || dragging.get() == Some(i)
+                        on:dragover=move |ev| {
+                            if dragging.get_untracked().is_some() {
+                                ev.prevent_default();
+                                over.set(true);
+                            }
+                        }
+                        on:dragleave=move |_| over.set(false)
+                        on:drop=move |ev| {
+                            ev.prevent_default();
+                            over.set(false);
+                            if let Some(from) = dragging.get_untracked() {
+                                dragging.set(None);
+                                move_to(from, i);
+                            }
+                        }>
+                        <ul>
+                            {row(c.name.clone(), c.name.clone(), String::new(), c.products, Some(i))}
+                            {c.subs.iter().map(|(s, n)| row(s.clone(), c.name.clone(), s.clone(), *n, None)).collect_view()}
+                        </ul>
+                    </li>
+                }
             }).collect_view()}
         </ul>
         {move || cats.with(Vec::is_empty).then(|| view! {
-            <p class="mt-2 text-sm text-base-content/60">"Todavía no hay categorías. Elegí una al cargar o editar un producto."</p>
+            <p class="mt-2 text-sm text-base-content/60">"Todavía no hay categorías. Agregá una arriba o elegila al cargar un producto."</p>
         })}
-        {move || problem.get().map(|e| view! { <div role="alert" class="alert alert-error mt-3 text-sm">{e}</div> })}
+        {move || problem.get().map(|e| view! { <p role="alert" class="mt-3 text-sm text-error">{e}</p> })}
     }
 }
 
@@ -1338,6 +1533,18 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
         }
     });
 
+    // Cerrar la pestaña o recargar con cambios sin guardar: el navegador avisa.
+    #[cfg(feature = "hydrate")]
+    {
+        let handle = window_event_listener(leptos::ev::beforeunload, move |ev| {
+            if dirty.get_untracked() {
+                ev.prevent_default();
+                ev.set_return_value("");
+            }
+        });
+        on_cleanup(move || handle.remove());
+    }
+
     let save = Action::new(move |p: &Product| {
         let p = p.clone();
         async move { save_product(slug.get_value(), id.get_untracked(), p).await }
@@ -1619,7 +1826,16 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit) -> impl IntoView {
                     </div>
                     {field_error("parcel")}
                 </fieldset>
-                <div class="mk-savebar flex flex-wrap items-center justify-end gap-3 border-t border-base-200 pt-4">
+                <div class="mk-savebar flex flex-wrap items-center justify-end gap-3 border-t border-base-200 pt-4"
+                    class:mk-unsaved=move || dirty.get() && !save.pending().get()>
+                    // Con cambios sin guardar, la barra queda fija abajo (ver `.mk-unsaved`).
+                    <p class="mk-unsaved-text mr-auto hidden text-sm font-medium">"Cambios sin guardar"</p>
+                    <button type="button" class="mk-unsaved-text btn btn-ghost hidden max-sm:!hidden"
+                        on:click=move |_| {
+                            if let Some(w) = leptos::web_sys::window() {
+                                _ = w.location().reload();
+                            }
+                        }>"Descartar"</button>
                     {move || {
                         let n = errors.with(Vec::len);
                         (n > 0).then(|| view! {

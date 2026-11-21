@@ -291,7 +291,7 @@ pub enum PanelSkeletonKind {
     List,
     /// Pedidos: cuatro columnas con tarjetas.
     Board,
-    /// Cobros, Entregas y Mi cuenta: formulario en una tarjeta.
+    /// Cobros y Entregas: formulario en una tarjeta.
     Form,
     /// Mis fotos: grilla de fotos.
     Photos,
@@ -302,8 +302,10 @@ pub enum PanelSkeletonKind {
     /// columnas.
     Coupons,
     /// Datos de la tienda: nombre, logo, contacto en dos columnas,
-    /// descripción y horarios, y la vista previa del pie.
+    /// descripción y horarios, la vista previa del pie y "Tu tienda".
     StoreInfo,
+    /// Mi cuenta: filas de datos y, aparte, Salir y Borrar mi cuenta.
+    Account,
 }
 
 #[component]
@@ -376,6 +378,8 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         .into_any(),
         PanelSkeletonKind::Board => view! {
             <div class="flex flex-col gap-2"><Skeleton class="h-8 w-40 max-sm:h-7"/>{sk_line("w-80 max-w-full")}</div>
+            // Buscador y botón ⋯ (fechas y exportar).
+            <div class="flex gap-2"><Skeleton class="h-10 w-full max-w-md max-sm:h-12"/><Skeleton class="size-10 shrink-0 max-sm:size-12"/></div>
             // Teléfono: las pestañas de estado y los pedidos de una columna.
             <div class="flex flex-col gap-3 sm:hidden">
                 <div class="flex gap-2 overflow-hidden">
@@ -481,6 +485,34 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                 </div>
                 <Skeleton class="h-10 w-28"/>
             }.into_any()))}
+            // "Tu tienda": dirección, pausar y borrar.
+            {sk_card("!gap-0", Box::new(|| view! {
+                <Skeleton class="mb-3 h-5 w-28"/>
+                {(0..3).map(|_| view! {
+                    <div class="flex items-center gap-3 border-b border-base-200 py-3 last:border-0">
+                        <div class="flex grow flex-col gap-2">{sk_line("w-32")}<Skeleton class="h-2.5 w-64 max-w-full"/></div>
+                        <Skeleton class="h-8 w-20"/>
+                    </div>
+                }).collect_view()}
+            }.into_any()))}
+        }
+        .into_any(),
+        PanelSkeletonKind::Account => view! {
+            // Mi cuenta: foto, nombre, email, contraseña y acceso rápido; abajo
+            // Salir y Borrar mi cuenta.
+            <div class="flex flex-col gap-2"><Skeleton class="h-8 w-40"/>{sk_line("w-96 max-w-full")}</div>
+            {[5, 2].into_iter().map(|n| view! {
+                <div class="rounded-2xl border border-base-300 bg-base-100">
+                    {(0..n).map(|_| view! {
+                        <div class="flex items-center gap-4 border-t border-base-300 px-6 py-4 first:border-0 max-sm:px-4">
+                            <Skeleton class="size-[18px] shrink-0 max-sm:hidden"/>
+                            <Skeleton class="h-3.5 w-28 shrink-0"/>
+                            <div class="grow">{sk_line("w-1/2")}</div>
+                            <Skeleton class="h-8 w-20"/>
+                        </div>
+                    }).collect_view()}
+                </div>
+            }).collect_view()}
         }
         .into_any(),
         PanelSkeletonKind::Photos => view! {

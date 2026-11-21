@@ -411,3 +411,21 @@ pub async fn out_of_stock(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
     .fetch_one(pool)
     .await
 }
+
+/// El orden de las categorías de la tienda (ver `domain::order_categories`).
+pub async fn category_order(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar("SELECT category_order FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .fetch_optional(pool)
+        .await
+        .map(Option::unwrap_or_default)
+}
+
+pub async fn set_category_order(pool: &PgPool, tenant: Uuid, order: &[String]) -> sqlx::Result<()> {
+    sqlx::query("UPDATE tenants SET category_order = $2 WHERE id = $1")
+        .bind(tenant)
+        .bind(order)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

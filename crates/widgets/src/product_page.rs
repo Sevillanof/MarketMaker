@@ -721,6 +721,9 @@ pub fn VariantBuy(
     product: Product,
     #[prop(into)] label: String,
     cart: Option<crate::Cart>,
+    /// En el celular, la cantidad arriba y el botón abajo.
+    #[prop(optional)]
+    stacked: bool,
 ) -> impl IntoView {
     let pick = use_context::<VariantPick>().unwrap_or_default();
     let v = product.variants.clone();
@@ -890,7 +893,7 @@ pub fn VariantBuy(
             {color_set}
             {size_set}
             <div aria-live="polite" class="min-h-4 empty:hidden">{note}</div>
-            <div class="mk-pvar-buy flex flex-nowrap items-start gap-2">
+            <div class="mk-pvar-buy flex flex-nowrap items-start gap-2" class:mk-buy-b=stacked>
                 {move || view! { <crate::cart::QtyStepper value=qty label="Cantidad" max=max.get() disabled=cart.is_none()/> }}
                 <button type="button" class="btn btn-primary mk-btn min-w-0 flex-1"
                     disabled=move || room() == Some(0) && !added.get()

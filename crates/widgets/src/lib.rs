@@ -237,7 +237,8 @@ pub fn ProductButtonWidget(
         }
         .into_any();
     }
-    view! { <AddToCart product label=product_button_label(&props.label) editing/> }.into_any()
+    let stacked = props.qty == "b";
+    view! { <AddToCart product label=product_button_label(&props.label) editing stacked/> }.into_any()
 }
 
 /// Ficha del producto en la tienda: un `<dialog>` modal con el diseño de

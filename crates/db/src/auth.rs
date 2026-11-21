@@ -709,6 +709,7 @@ pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::Sto
             shipping_cents,
             carrier,
         },
+        category_order: crate::products::category_order(pool, tenant).await?,
     })
 }
 
@@ -884,4 +885,96 @@ pub async fn allowlist_members(
             email: r.email,
         })
         .collect())
+}
+
+/// ¿La tienda está pausada (los compradores ven "Volvemos pronto")?
+pub async fn store_paused(pool: &PgPool, tenant: Uuid) -> sqlx::Result<bool> {
+    sqlx::query_scalar("SELECT paused FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .fetch_optional(pool)
+        .await
+        .map(|p| p.unwrap_or(false))
+}
+
+pub async fn set_store_paused(pool: &PgPool, tenant: Uuid, paused: bool) -> sqlx::Result<()> {
+    sqlx::query("UPDATE tenants SET paused = $2 WHERE id = $1")
+        .bind(tenant)
+        .bind(paused)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Cambia la dirección de la tienda. `false` si otra tienda ya la usa.
+pub async fn rename_store(pool: &PgPool, tenant: Uuid, slug: &str) -> sqlx::Result<bool> {
+    let r = sqlx::query(
+        "UPDATE tenants SET slug = $2 WHERE id = $1
+         AND NOT EXISTS (SELECT 1 FROM tenants WHERE slug = $2)",
+    )
+    .bind(tenant)
+    .bind(slug)
+    .execute(pool)
+    .await;
+    match r {
+        Ok(r) => Ok(r.rows_affected() == 1),
+        // Dos al mismo tiempo: la segunda choca con el índice único.
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// Borra la tienda con todo lo suyo: diseño, productos, pedidos, cupones,
+/// compradores. Las fotos son de la cuenta (Mis fotos) y quedan.
+pub async fn delete_store(pool: &PgPool, tenant: Uuid) -> sqlx::Result<()> {
+    let mut tx = pool.begin().await?;
+    delete_store_in(&mut tx, tenant).await?;
+    tx.commit().await
+}
+
+async fn delete_store_in(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant: Uuid,
+) -> sqlx::Result<()> {
+    // Las tablas del principio no borran en cascada: van a mano.
+    sqlx::query("UPDATE pages SET current_version_id = NULL WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&mut **tx)
+        .await?;
+    for sql in [
+        "DELETE FROM page_versions WHERE tenant_id = $1",
+        "DELETE FROM pages WHERE tenant_id = $1",
+        "DELETE FROM products WHERE tenant_id = $1",
+    ] {
+        sqlx::query(sql).bind(tenant).execute(&mut **tx).await?;
+    }
+    sqlx::query("DELETE FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+/// Borra la cuenta y las tiendas de las que es la única dueña. Devuelve las
+/// direcciones de las tiendas borradas.
+pub async fn delete_user(pool: &PgPool, user: Uuid) -> sqlx::Result<Vec<String>> {
+    let mut tx = pool.begin().await?;
+    let alone: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT t.id, t.slug FROM tenants t
+         JOIN memberships m ON m.tenant_id = t.id AND m.user_id = $1 AND m.role = 'owner'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM memberships o
+           WHERE o.tenant_id = t.id AND o.role = 'owner' AND o.user_id <> $1)",
+    )
+    .bind(user)
+    .fetch_all(&mut *tx)
+    .await?;
+    for (id, _) in &alone {
+        delete_store_in(&mut tx, *id).await?;
+    }
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(user)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(alone.into_iter().map(|(_, s)| s).collect())
 }

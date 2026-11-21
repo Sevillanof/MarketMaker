@@ -383,7 +383,10 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
     let open = db::get_published_page(&pool, tenant.id, "home")
         .await
         .map_err(internal)?
-        .is_some_and(|p| p.published > 0);
+        .is_some_and(|p| p.published > 0)
+        && !db::auth::store_paused(&pool, tenant.id)
+            .await
+            .map_err(internal)?;
     let offered = methods(&pool, tenant.id).await?;
     if !open || offered.is_empty() {
         return Ok(PlaceOrder::CartChanged {

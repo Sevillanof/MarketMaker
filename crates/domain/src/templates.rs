@@ -7,8 +7,7 @@
 //! (vidriera de moda, emprendimiento artesanal, tecnología en modo oscuro).
 
 use crate::{
-    BannerProps, BenefitItem, BenefitsProps, CardProps, CarouselProps, CategoriesProps,
-    CategoryItem, CountdownProps, FaqItem, FaqProps, FooterProps, ImageProps, LinkItem, Look,
+    BannerProps, BenefitItem, BenefitsProps, CardProps, CarouselProps, CategoryFilterProps, CountdownProps, FaqItem, FaqProps, FooterProps, ImageProps, LinkItem, Look,
     NavbarProps, Node, PageDoc, Pos, ProductGridProps, Slide, StoreStyle, TabItem, TabsProps,
     TagSearchProps, TagTabsProps, TestimonialsProps, TextProps, TextStyle, Typography, Widget,
     GRID_COLS,
@@ -260,23 +259,13 @@ fn testimonials(title: &str) -> Widget {
         .expect("Testimonials tiene valores por defecto")
 }
 
+/// Tarjetas con las categorías de los productos de la tienda (con la foto de
+/// uno de cada una): así sirve para cualquier rubro.
 fn categories(title: &str) -> Widget {
-    Widget::Categories(CategoriesProps {
+    Widget::CategoryCards(CategoryFilterProps {
         title: s(title),
-        items: [
-            ("Moda", "moda", "accesorios"),
-            ("Hogar", "hogar", "hogar"),
-            ("Tecnología", "tecnologia", "tecnología"),
-            ("Deportes", "deportes", "deporte"),
-        ]
-        .iter()
-        // Cada cuadro muestra los productos de ejemplo con esa etiqueta.
-        .map(|(label, slug, tag)| CategoryItem {
-            label: s(label),
-            image_url: format!("/img/category-{slug}.webp"),
-            href: crate::tag_href(tag),
-        })
-        .collect(),
+        all_label: s("Ver todo"),
+        show_counts: false,
     })
 }
 
@@ -359,7 +348,7 @@ fn vidriera(name: &str) -> PageDoc {
                 limit: 8,
                 all_label: s("Todo"),
             }))],
-            vec![block(categories("Comprá por categoría")).look(5, "")],
+            vec![block(categories("Comprá por categoría"))],
             vec![block(Widget::Countdown(CountdownProps {
                 title: s("Ofertas de fin de temporada"),
                 subtitle: s("Contá acá qué está en oferta y hasta cuándo"),
