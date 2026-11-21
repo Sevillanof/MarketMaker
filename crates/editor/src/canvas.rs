@@ -1266,7 +1266,7 @@ pub(crate) fn Canvas(
                                 <div class="flex-1">
                                     <h2 id="mk-welcome-title" class="font-semibold">"Primeros pasos"</h2>
                                     <ol class="mt-2 list-decimal space-y-1 pl-5 text-sm">
-                                        <li>"Elegí un bloque de la izquierda: con un clic se agrega al final, o arrastralo hasta donde lo quieras."</li>
+                                        <li>"Elegí un bloque de la izquierda: con un clic se agrega arriba de todo, o arrastralo hasta donde lo quieras."</li>
                                         <li>"Hacé clic en un bloque para cambiar sus textos e imágenes a la derecha. Arrastralo para moverlo, o usá los botones Subir y Bajar."</li>
                                         <li>"Tocá Publicar para que tu tienda muestre los cambios. Si te equivocás, Deshacer vuelve atrás."</li>
                                     </ol>

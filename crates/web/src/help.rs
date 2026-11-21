@@ -362,7 +362,7 @@ pub fn HelpButton(
 
     view! {
         <button type="button" aria-label="Ayuda" on:click=start
-            class="mk-help group btn max-sm:right-auto max-sm:left-4 btn-primary fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 h-11 min-h-0 w-11 gap-0 overflow-hidden rounded-full p-0 shadow-lg transition-all duration-300 hover:h-12 hover:w-28 focus-visible:h-12 focus-visible:w-28 motion-reduce:transition-none">
+            class="mk-help group btn max-sm:right-auto max-sm:left-4 btn-primary fixed right-4 bottom-[calc(max(1rem,env(safe-area-inset-bottom))+15px)] z-40 h-11 min-h-0 w-11 gap-0 overflow-hidden rounded-full p-0 shadow-lg transition-all duration-300 hover:h-12 hover:w-28 focus-visible:h-12 focus-visible:w-28 motion-reduce:transition-none">
             <span aria-hidden="true" class="text-xl font-bold transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0">"?"</span>
             <span aria-hidden="true" class="absolute inset-0 grid place-items-center text-base font-semibold opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">"Ayuda"</span>
         </button>

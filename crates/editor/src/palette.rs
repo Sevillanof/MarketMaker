@@ -2,7 +2,7 @@
 //! bloques (sin textos). Arriba, un selector con el nombre de la categoría.
 //! Al pasar el mouse (o enfocar con el teclado) una miniatura se abre una
 //! lupa a su costado con el bloque grande, dibujado de verdad en el tema y las
-//! letras de la tienda. Clic lo suma al final; arrastrarlo lo ubica donde se
+//! letras de la tienda. Clic lo suma arriba de todo; arrastrarlo lo ubica donde se
 //! suelte.
 
 use domain::{allowed_in, Layer, Node, Product, Widget, WIDGET_TYPES};

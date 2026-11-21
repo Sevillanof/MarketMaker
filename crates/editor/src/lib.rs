@@ -52,6 +52,8 @@ const AUTOSAVE_DELAY: Duration = Duration::from_millis(1500);
 
 /// Clave del borrador guardado en el navegador.
 const DRAFT_KEY: &str = "mk-editor-borrador:home";
+/// Latido de la pestaña que tiene abierto el editor: `<id>|<hora en ms>`.
+const OPEN_KEY: &str = "mk-editor-abierto:home";
 /// Clave que recuerda que ya se cerró la guía de primeros pasos.
 pub(crate) const WELCOME_KEY: &str = "mk-editor-bienvenida";
 
@@ -431,38 +433,13 @@ impl Actions {
         let id = new_node_id(&self.state.doc.get_untracked());
         let is_footer = matches!(widget, domain::Widget::Footer(_));
         let node = Node::new(id.clone(), widget);
-        // Si entra, va al lado del último bloque (sin contar el pie); si no,
-        // "al final", que es antes del pie de página: si no, el bloque nuevo
-        // quedaba debajo del pie y se publicaba así.
-        let is_footer_node = |n: &Node| matches!(n.widget, domain::Widget::Footer(_));
-        let mut beside: Option<String> = None;
+        // Los bloques nuevos van primero, arriba de todo; el pie de página
+        // es el único que se agrega al final.
         self.state.apply_nodes(|nodes| {
-            let node = if is_footer {
-                node
+            if is_footer {
+                grid::add_node(nodes, node);
             } else {
-                match grid::add_beside_last(nodes, node, is_footer_node) {
-                    Ok(other) => {
-                        beside = nodes
-                            .iter()
-                            .find(|n| n.id == other)
-                            .map(|n| n.widget.label().to_string());
-                        return;
-                    }
-                    Err(node) => node,
-                }
-            };
-            let footer_y = (!is_footer)
-                .then(|| {
-                    nodes
-                        .iter()
-                        .filter(|n| is_footer_node(n))
-                        .map(|n| n.pos.y)
-                        .max()
-                })
-                .flatten();
-            match footer_y {
-                Some(y) => grid::insert_at(nodes, node, 0, i32::from(y)),
-                None => grid::add_node(nodes, node),
+                grid::insert_at(nodes, node, 0, 0);
             }
         });
         self.state.selected.set(Some(id.clone()));
@@ -471,9 +448,10 @@ impl Actions {
         } else {
             "de la página"
         };
-        self.ui.announce(match beside {
-            Some(o) => format!("Agregaste {label} al lado de {o}."),
-            None => format!("Agregaste {label} al final {place}."),
+        self.ui.announce(if is_footer {
+            format!("Agregaste {label} al final {place}.")
+        } else {
+            format!("Agregaste {label} al principio {place}.")
         });
         reveal_node(&id, true);
     }
@@ -766,6 +744,39 @@ impl Actions {
             format!("Creaste la página {name}.{start} Sumale bloques desde la izquierda."),
             true,
         );
+    }
+
+    /// Qué le falta o le sobra a un nombre nuevo para la página actual.
+    pub fn rename_page_problem(&self, name: &str) -> Option<String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Some("Escribí un nombre para la página.".into());
+        }
+        if name.chars().count() > domain::MAX_PAGE_NAME {
+            return Some(format!("Usá {} letras o menos.", domain::MAX_PAGE_NAME));
+        }
+        let me = self.state.page.get_untracked();
+        let taken = self.state.doc.with_untracked(|d| {
+            (0..d.page_count())
+                .any(|i| i != me && d.page_name(i).to_lowercase() == name.to_lowercase())
+        });
+        taken.then(|| "Ya hay otra página con ese nombre.".to_string())
+    }
+
+    /// Cambia el nombre de la página actual (nunca Inicio); la dirección queda.
+    pub fn rename_page(&self, name: &str) -> bool {
+        let me = self.state.page.get_untracked();
+        if me == 0 || self.rename_page_problem(name).is_some() {
+            return false;
+        }
+        let name = name.trim().to_string();
+        self.state.apply(|d| {
+            if let Some(p) = d.pages.get_mut(me - 1) {
+                p.name = name.clone();
+            }
+        });
+        self.ui.toast(format!("La página ahora se llama {name}."), true);
+        true
     }
 
     /// Borra la página `i` (nunca Inicio) y vuelve a Inicio.
@@ -1061,6 +1072,85 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     let sent = RwSignal::new(None::<PageDoc>);
     // Borrador de una sesión anterior que se puede recuperar.
     let recover = RwSignal::new(None::<PageDoc>);
+    // ¿Hay otro editor de esta tienda abierto en otra pestaña? Cada pestaña
+    // late cada 2 s; si el último latido ajeno es de hace menos de 6 s, avisa.
+    let other_tab = RwSignal::new(false);
+    let tab_id = format!("{:x}", (js_sys::Math::random() * 1e12) as u64);
+    let tab_id_claim = StoredValue::new(tab_id.clone());
+    {
+        let tab_id = tab_id.clone();
+        Effect::new(move |_| {
+            let Some(st) = storage() else {
+                return;
+            };
+            let beat = {
+                let tab_id = tab_id.clone();
+                move |claim: bool| {
+                    let Some(st) = storage() else {
+                        return;
+                    };
+                    let now = js_sys::Date::now();
+                    let mine = st
+                        .get_item(OPEN_KEY)
+                        .ok()
+                        .flatten()
+                        .map(|v| {
+                            let mut it = v.splitn(2, '|');
+                            let id = it.next().unwrap_or_default().to_string();
+                            let at = it.next().and_then(|t| t.parse::<f64>().ok()).unwrap_or(0.0);
+                            (id, at)
+                        });
+                    let foreign = matches!(&mine, Some((id, at)) if *id != tab_id && now - *at < 6000.0);
+                    if foreign && !claim {
+                        other_tab.set(true);
+                        return;
+                    }
+                    other_tab.set(false);
+                    _ = st.set_item(OPEN_KEY, &format!("{tab_id}|{now}"));
+                }
+            };
+            beat(false);
+            drop(st);
+            // Al cerrar o recargar, esta pestaña suelta el lugar para que la
+            // próxima no crea que hay otra abierta.
+            let leave_id = tab_id.clone();
+            let leave = window_event_listener(leptos::ev::pagehide, move |_| {
+                if let Some(st) = storage() {
+                    let mine = st
+                        .get_item(OPEN_KEY)
+                        .ok()
+                        .flatten()
+                        .is_some_and(|v| v.starts_with(&format!("{leave_id}|")));
+                    if mine {
+                        _ = st.remove_item(OPEN_KEY);
+                    }
+                }
+            });
+            on_cleanup(move || leave.remove());
+            let handle = set_interval_with_handle(
+                {
+                    let beat = beat.clone();
+                    move || {
+                        // Si el aviso sigue abierto, no se pisa el latido ajeno.
+                        beat(false)
+                    }
+                },
+                std::time::Duration::from_secs(2),
+            );
+            if let Ok(h) = handle {
+                on_cleanup(move || h.clear());
+            }
+            // «Seguir acá»: esta pestaña toma el lugar.
+            let claim = beat.clone();
+            Effect::new(move |prev: Option<bool>| {
+                let now_flag = other_tab.get();
+                if prev == Some(true) && !now_flag {
+                    claim(true);
+                }
+                now_flag
+            });
+        });
+    }
     let welcome = RwSignal::new(false);
     // Se tocó Publicar: en cuanto termine de guardarse, se publica.
     let publish_after = RwSignal::new(false);
@@ -1480,7 +1570,22 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                 <PublishCheck items examples photos=sample_photos.get_untracked() check=publish_check
                     publish=Callback::new(move |_| { publish_check.set(None); publish_now(); })/>
             })}
-            {move || recover.get().map(|doc| {
+            {move || other_tab.get().then(|| view! {
+                <div class="flex items-center gap-3 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm" role="region" aria-label="Tienda abierta en otra pestaña">
+                    <Icon name="info" class="h-5 w-5"/>
+                    <span class="flex-1">"Esta tienda ya está abierta en otra pestaña. Si editás acá, podés pisar los cambios de allá."</span>
+                    <button type="button" class="btn btn-sm btn-primary" on:click=move |_| {
+                        if let Some(st) = storage() {
+                            _ = st.set_item(OPEN_KEY, &format!("{}|{}", tab_id_claim.get_value(), js_sys::Date::now()));
+                        }
+                        other_tab.set(false);
+                    }>"Seguir acá"</button>
+                    {use_context::<PanelLink>().map(|PanelLink(href)| view! {
+                        <a class="btn btn-sm" href=href>"Ir al panel"</a>
+                    })}
+                </div>
+            })}
+            {move || (!other_tab.get()).then(|| recover.get()).flatten().map(|doc| {
                 let doc = StoredValue::new(doc);
                 view! {
                     <div class="flex items-center gap-3 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm" role="region" aria-label="Cambios recuperados">
