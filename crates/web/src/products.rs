@@ -685,7 +685,7 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
     let empty = move || products.with(Vec::is_empty);
     view! {
         <div class="flex flex-wrap items-center gap-3">
-            <div class="grow">
+            <div class="grow max-sm:basis-full">
                 <h1 class="text-3xl font-bold max-sm:text-2xl">"Productos"</h1>
                 <p class="text-sm text-base-content/70">{summary}</p>
             </div>
@@ -2168,7 +2168,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
             <span class="text-sm text-base-content/60 max-sm:hidden" role="status" aria-live="polite">
                 {move || if save.pending().get() { "Guardando…" } else if saved.get() && !dirty.get() { "Guardado ✓" } else { "" }}
             </span>
-            <span class="text-xs text-base-content/60">{move || host.position.get()}</span>
+            <span class="text-xs text-base-content/60 max-sm:hidden">{move || host.position.get()}</span>
             <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11 sm:min-h-8 sm:min-w-8" aria-label="Producto anterior" disabled=move || !host.has_prev.get() on:click=move |_| host.prev.run(())>"‹"</button>
             <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11 sm:min-h-8 sm:min-w-8" aria-label="Producto siguiente" disabled=move || !host.has_next.get() on:click=move |_| host.next.run(())>"›"</button>
             // En el teléfono Borrar va en ⋯, lejos de Guardar.
