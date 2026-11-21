@@ -264,35 +264,7 @@ pub fn ProductDialog(
         "auto" => "mk-open-auto",
         _ => "mk-open-center",
     };
-    let buybar = modal.buybar.clone();
     let share_on_photo = modal.share == "photo";
-    // La barra de compra aparece cuando el botón de la ficha quedó arriba,
-    // fuera de la vista (o siempre, si la ficha no tiene botón).
-    let has_button = modal
-        .nodes
-        .iter()
-        .any(|n| matches!(n.widget, domain::Widget::ProductButton(_)));
-    let bar_on = RwSignal::new(!has_button);
-    let bar_closed = RwSignal::new(false);
-    let check_bar = move || {
-        if !has_button {
-            return;
-        }
-        let Some(b) = box_ref.get_untracked() else {
-            return;
-        };
-        let below = b
-            .query_selector(".mk-pbtn")
-            .ok()
-            .flatten()
-            .map(|btn| {
-                btn.get_bounding_client_rect().bottom() < b.get_bounding_client_rect().top() + 48.0
-            })
-            .unwrap_or(false);
-        if bar_on.get_untracked() != below {
-            bar_on.set(below);
-        }
-    };
     let mut nodes = modal.nodes;
     nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
     let nodes = StoredValue::new(nodes);
@@ -306,8 +278,6 @@ pub fn ProductDialog(
             return;
         };
         if product.get().is_some() {
-            bar_closed.set(false);
-            bar_on.set(!has_button);
             if !dialog.open() {
                 _ = dialog.show_modal();
             }
@@ -323,7 +293,7 @@ pub fn ProductDialog(
             aria-label=move || product.get().map(|p| p.name).unwrap_or_default()
             on:close=move |_| open.set(None)
         >
-            <div class="modal-box mk-dialog-box" node_ref=box_ref on:scroll=move |_| check_bar()>
+            <div class="modal-box mk-dialog-box" node_ref=box_ref>
                 <form method="dialog" class="absolute right-2 top-2 z-10">
                     <button class="btn btn-sm btn-circle btn-ghost" aria-label="Cerrar">
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -356,15 +326,6 @@ pub fn ProductDialog(
                                 })
                                 .collect_view()}
                         </div>
-                    }
-                })}
-                {(!buybar.is_empty()).then(|| {
-                    let style = buybar.clone();
-                    move || {
-                        let p = product.get()?;
-                        (bar_on.get() && !bar_closed.get()).then(|| {
-                            view! { <BuyBar product=p style=style.clone() editing on_close=Callback::new(move |_| bar_closed.set(true))/> }
-                        })
                     }
                 })}
             </div>
@@ -715,76 +676,6 @@ fn grow_for_variants(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
         }
     }
     nodes
-}
-
-/// Barra de compra de la ficha: foto, nombre, precio y "Agregar". Aparece
-/// cuando el botón de la ficha quedó fuera de la vista y se puede cerrar.
-#[component]
-pub fn BuyBar(product: Product, style: String, editing: bool, on_close: Callback<()>) -> impl IntoView {
-    let offers = use_context::<domain::StoreInfo>()
-        .map(|s| s.offers)
-        .unwrap_or_default();
-    let mut detail = ui::format_price(product.price_cents);
-    if style == "color" {
-        if let Some(c) = offers.installment_cents(product.price_cents) {
-            detail = format!(
-                "{detail} · {} cuotas de {}",
-                offers.installments,
-                ui::format_price(c)
-            );
-        }
-    }
-    let cart = use_context::<Cart>().filter(|_| !editing);
-    let id = StoredValue::new(product.id.clone());
-    let added = RwSignal::new(false);
-    let label = if style == "color" {
-        "Agregar al carrito"
-    } else {
-        "Agregar"
-    };
-    let in_stock = product.in_stock;
-    let variants = product.has_variants();
-    view! {
-        <div class=format!("mk-buybar mk-buybar-{style}") role="region" aria-label="Comprar">
-            <div class="mk-buybar-img"><Image src=product.image_url.clone() alt=""/></div>
-            <div class="min-w-0 flex-1 text-sm leading-tight">
-                <b class="block truncate">{product.name.clone()}</b>
-                <span class="opacity-75">{detail}</span>
-            </div>
-            {if in_stock {
-                view! {
-                    <button type="button" class="btn btn-sm mk-buybar-btn"
-                        on:click=move |_| {
-                            if variants {
-                                // Lleva a los colores y talles para elegir.
-                                if let Some(el) = document().query_selector(".mk-dialog .mk-pvar").ok().flatten() {
-                                    let opts = web_sys::ScrollIntoViewOptions::new();
-                                    opts.set_block(web_sys::ScrollLogicalPosition::Center);
-                                    el.scroll_into_view_with_scroll_into_view_options(&opts);
-                                }
-                                return;
-                            }
-                            if let Some(cart) = cart {
-                                id.with_value(|id| cart.add(id, 1));
-                                added.set(true);
-                                set_timeout(move || added.set(false), std::time::Duration::from_millis(2000));
-                            }
-                        }>
-                        {move || if added.get() { "Agregado ✓" } else if variants { "Elegir" } else { label }}
-                    </button>
-                }.into_any()
-            } else {
-                view! { <button type="button" class="btn btn-sm mk-buybar-btn" disabled>"Agotado"</button> }.into_any()
-            }}
-            {(style != "color").then(|| view! {
-                <button type="button" class="btn btn-ghost btn-xs btn-circle opacity-70" aria-label="Cerrar la barra"
-                    on:click=move |_| on_close.run(())>
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
-            })}
-            <span class="sr-only" aria-live="polite">{move || added.get().then_some("Agregado al carrito.")}</span>
-        </div>
-    }
 }
 
 /// «Redes y WhatsApp» con el botón flotante con texto: en la tienda solo se

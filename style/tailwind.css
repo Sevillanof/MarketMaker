@@ -2422,33 +2422,6 @@ dialog.mk-open-sheet .mk-dialog-box::before {
 @keyframes mk-drawer-in { from { transform: translateX(40px); opacity: 0; } }
 @keyframes mk-sheet-in { from { transform: translateY(40px); opacity: 0; } }
 
-/* Barra de compra de la ficha: aparece al bajar, cuando el botón quedó
-   arriba. En el celular no hace falta: ahí el botón ya queda pegado abajo. */
-.mk-buybar {
-  position: sticky; bottom: 0; z-index: 20;
-  display: flex; align-items: center; gap: 0.75rem;
-  margin-top: 1rem; padding: 0.5rem;
-  border-radius: calc(var(--radius-box) * 1.5);
-  box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
-}
-.mk-buybar-img { width: 2.75rem; height: 2.75rem; flex: none; overflow: hidden; border-radius: var(--radius-field); }
-.mk-buybar-light { background: var(--color-base-100); color: var(--color-base-content); border: 1px solid var(--color-base-300); }
-.mk-buybar-light .mk-buybar-btn { --btn-color: var(--color-primary); --btn-fg: var(--color-primary-content); }
-.mk-buybar-dark { background: #18181b; color: #fff; }
-.mk-buybar-dark .mk-buybar-btn { --btn-color: #fff; --btn-fg: #18181b; }
-.mk-buybar-color {
-  bottom: -1rem; margin: 1rem -1rem -1rem; padding: 0.6rem 1rem;
-  border-radius: 0; background: var(--color-primary); color: var(--color-primary-content);
-  box-shadow: 0 -4px 18px rgb(0 0 0 / 0.1);
-}
-.mk-buybar-color .mk-buybar-btn { --btn-color: var(--color-primary-content); --btn-fg: var(--color-primary); }
-@media (prefers-reduced-motion: no-preference) {
-  .mk-buybar { animation: mk-sheet-in 0.2s ease-out; }
-}
-@media (max-width: 767px) {
-  .mk-buybar { display: none; }
-}
-
 /* Tarjeta de producto «Completa» (ver `widgets::product_page::FullCard`):
    sin borde, foto redondeada y renglones de precio, transferencia y cuotas. */
 /* Una tarjeta sin colores ni talles guarda ese renglón cuando otra del mismo
