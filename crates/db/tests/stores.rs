@@ -113,3 +113,48 @@ async fn a_handoff_works_once_and_only_for_its_store(pool: PgPool) {
         "un solo uso"
     );
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_store_can_be_paused_renamed_and_deleted(pool: PgPool) {
+    let ana = user(&pool, "ana@correo.com").await;
+    for (name, slug) in [("Ana", "ana"), ("Beto", "beto")] {
+        assert!(create_store(&pool, name, slug, ana, "demo", &starter("x"))
+            .await
+            .unwrap());
+    }
+    let t = get_tenant_by_slug(&pool, "ana").await.unwrap().unwrap();
+    assert!(!store_paused(&pool, t.id).await.unwrap());
+    set_store_paused(&pool, t.id, true).await.unwrap();
+    assert!(store_paused(&pool, t.id).await.unwrap());
+
+    assert!(!rename_store(&pool, t.id, "beto").await.unwrap(), "tomada");
+    assert!(rename_store(&pool, t.id, "ana-deco").await.unwrap());
+    assert!(get_tenant_by_slug(&pool, "ana").await.unwrap().is_none());
+
+    delete_store(&pool, t.id).await.unwrap();
+    assert!(get_tenant_by_slug(&pool, "ana-deco").await.unwrap().is_none());
+    assert!(get_tenant_by_slug(&pool, "beto").await.unwrap().is_some());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn deleting_an_account_takes_only_the_stores_it_owns_alone(pool: PgPool) {
+    let ana = user(&pool, "ana@correo.com").await;
+    let beto = user(&pool, "beto@correo.com").await;
+    assert!(create_store(&pool, "Ana", "ana", ana, "demo", &starter("x"))
+        .await
+        .unwrap());
+    assert!(create_store(&pool, "Juntos", "juntos", ana, "demo", &starter("x"))
+        .await
+        .unwrap());
+    let juntos = get_tenant_by_slug(&pool, "juntos").await.unwrap().unwrap();
+    sqlx::query("INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'owner')")
+        .bind(juntos.id)
+        .bind(beto)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let gone = delete_user(&pool, ana).await.unwrap();
+    assert_eq!(gone, vec!["ana".to_string()]);
+    assert!(get_tenant_by_slug(&pool, "ana").await.unwrap().is_none());
+    assert!(get_tenant_by_slug(&pool, "juntos").await.unwrap().is_some());
+}

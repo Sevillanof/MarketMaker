@@ -615,12 +615,12 @@ pub fn AccountPage() -> impl IntoView {
     view! {
         <leptos_meta::Title text="Mi cuenta · MarketMaker"/>
         <crate::panel::StoreShell slug=store section=crate::panel::Section::Account>
-            <div class="mx-auto flex max-w-3xl flex-col gap-4 px-8 py-10 max-sm:px-4 max-sm:py-5">
+            <div class="flex w-full max-w-[1440px] flex-col gap-4 px-8 py-8 max-sm:px-4 max-sm:py-5">
                 <div>
                     <h1 class="text-3xl font-extrabold tracking-tight max-sm:text-2xl">"Mi cuenta"</h1>
                     <p class="mt-1 text-base-content/70">"Tus datos para entrar a MarketMaker. Valen para todas tus tiendas."</p>
                 </div>
-                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Form/> }>
+                <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Account/> }>
                     {move || Suspend::new(async move {
                         match account.await {
                             Ok(Some(a)) => view! { <AccountRows account=a/> }.into_any(),
@@ -671,6 +671,8 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
     let notice = RwSignal::new(None::<String>);
     let name_dialog = NodeRef::<leptos::html::Dialog>::new();
     let pw_dialog = NodeRef::<leptos::html::Dialog>::new();
+    let delete_dialog = NodeRef::<leptos::html::Dialog>::new();
+    let account_email = account.email.clone();
     let out = Action::new(|_: &()| sign_out());
     Effect::new(move |_| {
         if let Some(Ok(())) = out.value().get() {
@@ -746,9 +748,51 @@ fn AccountRows(account: domain::AccountInfo) -> impl IntoView {
                 }.into_any()>
                 "Cerrar sesión en este dispositivo"
             </AccountRow>
+            <AccountRow icon="trash" label="Borrar mi cuenta"
+                action=view! {
+                    <button type="button" class="btn btn-outline btn-sm border-red-200 bg-base-100 text-red-700 hover:border-red-300 hover:bg-red-50"
+                        on:click=move |_| open_modal(delete_dialog)>"Borrar…"</button>
+                }.into_any()>
+                <span class="text-sm text-base-content/70">"Se borran tu cuenta, tus fotos y las tiendas que son solo tuyas."</span>
+            </AccountRow>
         </section>
+        <DeleteAccountDialog dialog=delete_dialog email=account_email/>
         <NameDialog dialog=name_dialog saved_name/>
         <PasswordDialog dialog=pw_dialog has_password notice/>
+    }
+}
+
+/// "¿Borrar tu cuenta?": hay que escribir el email para confirmar.
+#[component]
+fn DeleteAccountDialog(dialog: NodeRef<leptos::html::Dialog>, email: String) -> impl IntoView {
+    let typed = RwSignal::new(String::new());
+    let problem = RwSignal::new(None::<String>);
+    let delete = Action::new(|t: &String| crate::auth::delete_my_account(t.clone()));
+    Effect::new(move |_| match delete.value().get() {
+        Some(Ok(Ok(()))) => go("/"),
+        Some(Ok(Err(p))) => problem.set(Some(p)),
+        Some(Err(_)) => problem.set(Some(CONNECTION.to_string())),
+        None => {}
+    });
+    view! {
+        <dialog node_ref=dialog class="modal" aria-labelledby="borrar-cuenta">
+            <div class="modal-box max-w-md">
+                <h2 id="borrar-cuenta" class="text-lg font-bold">"¿Borrar tu cuenta?"</h2>
+                <p class="mt-1 text-sm text-base-content/70">"No se puede deshacer. Escribí "<b>{email}</b>" para confirmar."</p>
+                <form class="mt-4 flex flex-col gap-3"
+                    on:submit=move |ev| { ev.prevent_default(); problem.set(None); delete.dispatch(typed.get_untracked()); }>
+                    <input class="input w-full" type="email" aria-label="Tu email" autocomplete="off"
+                        prop:value=move || typed.get()
+                        on:input=move |ev| typed.set(event_target_value(&ev))/>
+                    {move || problem.get().map(|p| view! { <FieldNote ok=false text=p/> })}
+                    <div class="flex justify-end gap-2">
+                        <button type="button" class="btn btn-ghost" autofocus on:click=move |_| close_modal(dialog)>"Cancelar"</button>
+                        <button class="btn btn-error" disabled=move || delete.pending().get() || typed.with(|t| t.trim().is_empty())>"Borrar mi cuenta"</button>
+                    </div>
+                </form>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button aria-label="Cerrar">"cerrar"</button></form>
+        </dialog>
     }
 }
 

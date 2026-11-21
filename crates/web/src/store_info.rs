@@ -76,7 +76,13 @@ pub fn StoreInfoPage() -> impl IntoView {
                 <Suspense fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::StoreInfo/> }>
                     {move || Suspend::new(async move {
                         match data.await {
-                            Ok(Some(form)) => view! { <StoreInfoEditor slug=slug.get_untracked() form/> }.into_any(),
+                            Ok(Some(form)) => {
+                                let name = form.info.name.clone();
+                                view! {
+                                    <StoreInfoEditor slug=slug.get_untracked() form/>
+                                    <StoreAdmin slug=slug.get_untracked() name/>
+                                }.into_any()
+                            }
                             Ok(None) => view! { <SignInFirst back=format!("/tienda/{}/datos", slug.get_untracked())/> }.into_any(),
                             Err(e) => view! { <p role="alert" class="text-sm text-red-700">{error_text(&e)}</p> }.into_any(),
                         }
@@ -328,5 +334,207 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
                 </div>
             </div>
         </form>
+    }
+}
+
+/// Dirección y pausa de la tienda `slug`, para la sección "Tu tienda".
+#[server]
+pub async fn store_admin(slug: String) -> Result<Option<(String, bool)>, ServerFnError> {
+    use crate::server::{internal, pool};
+    let Some(tenant) = crate::products::server::owned_store(&slug).await? else {
+        return Ok(None);
+    };
+    let paused = db::auth::store_paused(&pool()?, tenant.id)
+        .await
+        .map_err(internal)?;
+    let url = crate::email::store_url(&tenant.slug);
+    let host = url.split_once("://").map_or(url.as_str(), |(_, h)| h);
+    let rest = host.split_once('.').map_or("", |(_, r)| r).to_string();
+    Ok(Some((rest, paused)))
+}
+
+#[server]
+pub async fn pause_store(slug: String, paused: bool) -> Result<(), ServerFnError> {
+    let tenant = crate::products::server::require_store(&slug).await?;
+    db::auth::set_store_paused(&crate::server::pool()?, tenant.id, paused)
+        .await
+        .map_err(crate::server::internal)
+}
+
+/// Cambia la dirección. `Ok(Err(problema))` si no se puede usar.
+#[server]
+pub async fn change_store_slug(
+    slug: String,
+    new_slug: String,
+) -> Result<Result<String, String>, ServerFnError> {
+    let tenant = crate::products::server::require_store(&slug).await?;
+    let new_slug = new_slug.trim().to_lowercase();
+    if new_slug == tenant.slug {
+        return Ok(Ok(new_slug));
+    }
+    if let Some(problem) = domain::store_slug_problem(&new_slug) {
+        return Ok(Err(problem.to_string()));
+    }
+    let pool = crate::server::pool()?;
+    if !db::auth::rename_store(&pool, tenant.id, &new_slug)
+        .await
+        .map_err(crate::server::internal)?
+    {
+        return Ok(Err("Esa dirección ya la usa otra tienda.".into()));
+    }
+    Ok(Ok(new_slug))
+}
+
+/// Borra la tienda. Hay que escribir su nombre tal cual.
+#[server]
+pub async fn delete_store(slug: String, typed: String) -> Result<Result<(), String>, ServerFnError> {
+    let tenant = crate::products::server::require_store(&slug).await?;
+    let norm = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    if norm(&typed) != norm(&tenant.name) {
+        return Ok(Err("El nombre no coincide.".into()));
+    }
+    db::auth::delete_store(&crate::server::pool()?, tenant.id)
+        .await
+        .map_err(crate::server::internal)?;
+    Ok(Ok(()))
+}
+
+/// "Tu tienda", al final de Datos de la tienda: cambiar la dirección,
+/// pausarla y borrarla.
+#[component]
+pub fn StoreAdmin(slug: String, name: String) -> impl IntoView {
+    let slug = StoredValue::new(slug);
+    let name = StoredValue::new(name);
+    let data = Resource::new(|| (), move |_| store_admin(slug.get_value()));
+    view! {
+        <Suspense fallback=|| ()>
+            {move || Suspend::new(async move {
+                data.await.ok().flatten().map(|(rest, paused)| view! {
+                    <StoreAdminCard slug=slug.get_value() name=name.get_value() rest paused/>
+                })
+            })}
+        </Suspense>
+    }
+}
+
+#[component]
+fn StoreAdminCard(slug: String, name: String, rest: String, paused: bool) -> impl IntoView {
+    let slug = StoredValue::new(slug);
+    let name = StoredValue::new(name);
+    let rest = StoredValue::new(rest);
+    let paused = RwSignal::new(paused);
+    let editing = RwSignal::new(false);
+    let new_slug = RwSignal::new(slug.get_value());
+    let slug_error = RwSignal::new(None::<String>);
+    let pause_error = RwSignal::new(None::<String>);
+    let rename = Action::new(move |s: &String| {
+        let s = s.clone();
+        async move { change_store_slug(slug.get_value(), s).await }
+    });
+    Effect::new(move |_| match rename.value().get() {
+        Some(Ok(Ok(s))) => {
+            if let Some(w) = leptos::web_sys::window() {
+                _ = w.location().set_href(&format!("/tienda/{s}/datos"));
+            }
+        }
+        Some(Ok(Err(p))) => slug_error.set(Some(p)),
+        Some(Err(e)) => slug_error.set(Some(error_text(&e))),
+        None => {}
+    });
+    let toggle = move |on: bool| {
+        paused.set(on);
+        pause_error.set(None);
+        leptos::task::spawn_local(async move {
+            if let Err(e) = pause_store(slug.get_value(), on).await {
+                paused.set(!on);
+                pause_error.set(Some(error_text(&e)));
+            }
+        });
+    };
+    let dialog = NodeRef::<leptos::html::Dialog>::new();
+    let typed = RwSignal::new(String::new());
+    let delete_error = RwSignal::new(None::<String>);
+    let delete = Action::new(move |t: &String| {
+        let t = t.clone();
+        async move { delete_store(slug.get_value(), t).await }
+    });
+    Effect::new(move |_| match delete.value().get() {
+        Some(Ok(Ok(()))) => {
+            if let Some(w) = leptos::web_sys::window() {
+                _ = w.location().set_href("/");
+            }
+        }
+        Some(Ok(Err(p))) => delete_error.set(Some(p)),
+        Some(Err(e)) => delete_error.set(Some(error_text(&e))),
+        None => {}
+    });
+    view! {
+        <section class="card border border-base-300 bg-base-100" aria-labelledby="tu-tienda">
+            <div class="card-body gap-0 p-5">
+                <h2 id="tu-tienda" class="mb-2 text-lg font-semibold">"Tu tienda"</h2>
+                <div class="flex flex-wrap items-center gap-3 border-b border-base-200 py-3">
+                    <div class="min-w-0 grow">
+                        <p class="font-medium">"Dirección"</p>
+                        <Show when=move || !editing.get() fallback=move || view! {
+                            <form class="mt-2 flex flex-wrap items-center gap-2"
+                                on:submit=move |ev| { ev.prevent_default(); slug_error.set(None); rename.dispatch(new_slug.get_untracked()); }>
+                                <label class="input w-auto">
+                                    <input aria-label="Nueva dirección" class="w-40" autocomplete="off" spellcheck="false"
+                                        prop:value=move || new_slug.get()
+                                        on:input=move |ev| new_slug.set(event_target_value(&ev))/>
+                                    <span class="text-base-content/60">{format!(".{}", rest.get_value())}</span>
+                                </label>
+                                <button class="btn btn-primary btn-sm" disabled=move || rename.pending().get()>"Guardar"</button>
+                                <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| { editing.set(false); slug_error.set(None); new_slug.set(slug.get_value()); }>"Cancelar"</button>
+                                <p class="basis-full text-xs text-base-content/60">"El enlace anterior deja de funcionar."</p>
+                                {move || slug_error.get().map(|e| view! { <p class="basis-full text-sm text-red-700" role="alert">{e}</p> })}
+                            </form>
+                        }>
+                            <p class="truncate text-sm text-base-content/70"><b class="text-base-content">{slug.get_value()}</b>{format!(".{}", rest.get_value())}</p>
+                        </Show>
+                    </div>
+                    <Show when=move || !editing.get()>
+                        <button type="button" class="btn btn-sm" on:click=move |_| editing.set(true)>"Cambiar"</button>
+                    </Show>
+                </div>
+                <label class="flex cursor-pointer items-center gap-3 border-b border-base-200 py-3">
+                    <span class="min-w-0 grow">
+                        <span class="block font-medium">"Pausar la tienda"</span>
+                        <span class="block text-sm text-base-content/70">"Quien entra ve «Volvemos pronto» y no puede comprar. Vos la seguís viendo."</span>
+                        {move || pause_error.get().map(|e| view! { <span class="block text-sm text-red-700" role="alert">{e}</span> })}
+                    </span>
+                    <input type="checkbox" class="toggle toggle-primary"
+                        prop:checked=move || paused.get()
+                        on:change=move |ev| toggle(event_target_checked(&ev))/>
+                </label>
+                <div class="flex flex-wrap items-center gap-3 pt-3">
+                    <div class="min-w-0 grow">
+                        <p class="font-medium">"Borrar la tienda"</p>
+                        <p class="text-sm text-base-content/70">"Se borran el diseño, los productos y los pedidos. Tus fotos quedan en Mis fotos."</p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline btn-error"
+                        on:click=move |_| { typed.set(String::new()); delete_error.set(None); if let Some(d) = dialog.get() { _ = d.show_modal(); } }>"Borrar…"</button>
+                </div>
+            </div>
+        </section>
+        <dialog node_ref=dialog class="modal" aria-labelledby="borrar-tienda">
+            <div class="modal-box max-w-md">
+                <h2 id="borrar-tienda" class="text-lg font-bold">"¿Borrar la tienda?"</h2>
+                <p class="mt-1 text-sm text-base-content/70">"No se puede deshacer. Escribí "<b>{name.get_value()}</b>" para confirmar."</p>
+                <form class="mt-4 flex flex-col gap-3"
+                    on:submit=move |ev| { ev.prevent_default(); delete_error.set(None); delete.dispatch(typed.get_untracked()); }>
+                    <input class="input w-full" aria-label="Nombre de la tienda" autocomplete="off"
+                        prop:value=move || typed.get()
+                        on:input=move |ev| typed.set(event_target_value(&ev))/>
+                    {move || delete_error.get().map(|e| view! { <p class="text-sm text-red-700" role="alert">{e}</p> })}
+                    <div class="flex justify-end gap-2">
+                        <button type="button" class="btn btn-ghost" autofocus
+                            on:click=move |_| if let Some(d) = dialog.get() { d.close(); }>"Cancelar"</button>
+                        <button class="btn btn-error" disabled=move || delete.pending().get() || typed.with(|t| t.trim().is_empty())>"Borrar la tienda"</button>
+                    </div>
+                </form>
+            </div>
+            <form method="dialog" class="modal-backdrop"><button aria-label="Cerrar">"cerrar"</button></form>
+        </dialog>
     }
 }

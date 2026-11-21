@@ -223,6 +223,12 @@ fn HomePage() -> impl IntoView {
                         }
                     }
                     .into_any(),
+                    // Pausada: quien compra ve el aviso; quien la edita, la tienda.
+                    Ok(view) if view.paused && !me.as_ref().is_some_and(|m| m.can_edit) => view! {
+                        <StoreMeta view=view.clone()/>
+                        <StoreSoon name=view.store_name.clone() owner=false/>
+                    }
+                    .into_any(),
                     Ok(view) => {
                         if view.doc.page_index(&location.pathname.get_untracked()).is_none() {
                             not_found_status();

@@ -742,6 +742,9 @@ pub struct PageView {
     /// Los cupones que sirven hoy (para el bloque Cupón).
     #[serde(default)]
     pub coupons: Vec<CouponBrief>,
+    /// La pausó su dueño: los compradores ven "Volvemos pronto".
+    #[serde(default)]
+    pub paused: bool,
 }
 
 /// Resultado de intentar guardar un documento.

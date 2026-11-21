@@ -472,6 +472,28 @@ pub async fn sign_out() -> Result<(), ServerFnError> {
     Ok(())
 }
 
+/// Borra la cuenta de quien entró y las tiendas de las que es la única
+/// dueña. Hay que escribir el email de la cuenta tal cual.
+#[server]
+pub async fn delete_my_account(typed: String) -> Result<Result<(), String>, ServerFnError> {
+    use crate::server::internal;
+    let Some(user) = current_user().await? else {
+        return Err(ServerFnError::new("Tenés que entrar con tu cuenta."));
+    };
+    if typed.trim().to_lowercase() != user.email.trim().to_lowercase() {
+        return Ok(Err("El email no coincide.".into()));
+    }
+    if is_admin(&user.email) {
+        return Ok(Err("La cuenta administradora no se puede borrar desde acá.".into()));
+    }
+    let pool = crate::server::pool()?;
+    db::auth::delete_user(&pool, user.id)
+        .await
+        .map_err(internal)?;
+    clear_session_cookie();
+    Ok(Ok(()))
+}
+
 /// Contraseñas equivocadas seguidas, desde una misma conexión y para un
 /// mismo email, antes de esperar [`db::auth::LOCK_MINUTES`].
 #[cfg(feature = "ssr")]

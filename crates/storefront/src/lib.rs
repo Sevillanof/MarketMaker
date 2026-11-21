@@ -23,6 +23,7 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         coupons.into_iter().map(|c| c.code).collect(),
     ));
     let store_name = store.name.clone();
+    let category_order = store.category_order.clone();
     // Nombre, logo y contacto: el menú y el pie los usan si quedan vacíos.
     provide_context(store);
     let page = doc.page_index(&path);
@@ -33,6 +34,8 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
         .collect();
     categories.sort();
     categories.dedup();
+    // Primero las que la tienda ordenó en "Categorías".
+    categories.sort_by_key(|c| category_order.iter().position(|o| o == c).unwrap_or(usize::MAX));
     provide_context(widgets::StoreLinks {
         pages: doc.pages.iter().map(|p| p.path.clone()).collect(),
         categories,

@@ -75,6 +75,9 @@ pub struct StoreProducts {
     pub products: Vec<Product>,
     /// Todas las etiquetas que usa la tienda, para sugerir y filtrar.
     pub tags: Vec<String>,
+    /// El orden de las categorías (ver [`order_categories`]).
+    #[serde(default)]
+    pub category_order: Vec<String>,
 }
 
 /// Resultado de guardar un producto.
@@ -160,6 +163,35 @@ pub fn count_categories(products: &[Product]) -> Vec<CategoryCount> {
             .cmp(&a.products)
             .then_with(|| a.name.cmp(&b.name))
     });
+    out
+}
+
+/// Pone `cats` en el orden que eligió la tienda (`order`, de "Categorías").
+/// Las que no están en `order` van al final, como venían. Con
+/// `include_empty`, también las de `order` que todavía no tienen productos
+/// (recién creadas con "+ Nueva categoría"): el panel las muestra, la
+/// tienda no.
+pub fn order_categories(
+    mut cats: Vec<CategoryCount>,
+    order: &[String],
+    include_empty: bool,
+) -> Vec<CategoryCount> {
+    let mut out = Vec::with_capacity(cats.len() + order.len());
+    for name in order {
+        if out.iter().any(|c: &CategoryCount| &c.name == name) {
+            continue;
+        }
+        match cats.iter().position(|c| &c.name == name) {
+            Some(i) => out.push(cats.remove(i)),
+            None if include_empty => out.push(CategoryCount {
+                name: name.clone(),
+                products: 0,
+                subs: Vec::new(),
+            }),
+            None => {}
+        }
+    }
+    out.extend(cats);
     out
 }
 
@@ -958,5 +990,16 @@ mod size_word_tests {
         assert_eq!(super::size_word(&v(&["38", "40", "42.5"])), "Talle");
         assert_eq!(super::size_word(&v(&["Chica", "Grande"])), "Tamaño");
         assert_eq!(super::size_word(&v(&["20 cm", "30 cm"])), "Tamaño");
+    }
+
+    #[test]
+    fn categories_follow_the_store_order() {
+        use super::{order_categories, CategoryCount};
+        let c = |n: &str, k: usize| CategoryCount { name: n.into(), products: k, subs: Vec::new() };
+        let cats = vec![c("Macetas", 8), c("Plantas", 3), c("Tierra", 1)];
+        let order = vec!["Plantas".to_string(), "Nueva".to_string(), "Macetas".to_string()];
+        let names = |v: Vec<CategoryCount>| v.into_iter().map(|c| c.name).collect::<Vec<_>>();
+        assert_eq!(names(order_categories(cats.clone(), &order, false)), ["Plantas", "Macetas", "Tierra"]);
+        assert_eq!(names(order_categories(cats, &order, true)), ["Plantas", "Nueva", "Macetas", "Tierra"]);
     }
 }

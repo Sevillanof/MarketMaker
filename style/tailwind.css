@@ -2202,6 +2202,26 @@ dialog.mk-cart::backdrop {
   .mk-load-msg-n:first-child { opacity: 1; }
 }
 
+/* Ficha de un producto con cambios sin guardar (ver `products::ProductForm`):
+   la barra de Guardar queda fija abajo, oscura, con "Descartar". */
+@media (min-width: 640px) {
+  .mk-savebar.mk-unsaved {
+    position: sticky;
+    bottom: 1rem;
+    z-index: 25;
+    border: 0;
+    border-radius: var(--radius-box);
+    padding: 0.625rem 0.75rem 0.625rem 1.25rem;
+    background: #111827;
+    color: #fff;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.2);
+  }
+  .mk-savebar.mk-unsaved .mk-unsaved-text { display: block; }
+  .mk-savebar.mk-unsaved .btn-ghost { display: inline-flex; color: #fff; }
+  .mk-savebar.mk-unsaved .btn-ghost:hover { background: rgb(255 255 255 / 0.1); }
+  .mk-savebar.mk-unsaved .text-error { color: #fca5a5; }
+}
+
 /* Panel en el teléfono (menos de 640 px). En pantallas más grandes nada de esto
    se aplica: el panel se ve como siempre. */
 @media (max-width: 639px) {

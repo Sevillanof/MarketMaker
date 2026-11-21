@@ -84,7 +84,7 @@ fn CategoryTabs(
     products: Vec<Product>,
     editing: bool,
 ) -> impl IntoView {
-    let cats = domain::count_categories(&products);
+    let cats = store_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
     }
@@ -133,7 +133,7 @@ fn CategorySide(
     products: Vec<Product>,
     editing: bool,
 ) -> impl IntoView {
-    let cats = domain::count_categories(&products);
+    let cats = store_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
     }
@@ -183,7 +183,7 @@ fn CategoryCards(
     products: Vec<Product>,
     editing: bool,
 ) -> impl IntoView {
-    let cats = domain::count_categories(&products);
+    let cats = store_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
     }
@@ -233,7 +233,7 @@ fn CategoryDrop(
     products: Vec<Product>,
     editing: bool,
 ) -> impl IntoView {
-    let cats = domain::count_categories(&products);
+    let cats = store_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
     }
@@ -324,7 +324,7 @@ fn CategoryPage(
     products: Vec<Product>,
     editing: bool,
 ) -> impl IntoView {
-    let cats = domain::count_categories(&products);
+    let cats = store_categories(&products);
     if cats.is_empty() {
         return no_cats(editing);
     }
@@ -444,4 +444,12 @@ fn CategoryPage(
         </div>
     }
     .into_any()
+}
+
+/// Las categorías de los productos en el orden que eligió la tienda.
+fn store_categories(products: &[domain::Product]) -> Vec<domain::CategoryCount> {
+    let order = use_context::<domain::StoreInfo>()
+        .map(|s| s.category_order)
+        .unwrap_or_default();
+    domain::order_categories(domain::count_categories(products), &order, false)
 }
