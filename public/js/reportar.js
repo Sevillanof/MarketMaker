@@ -36,7 +36,10 @@
     '#mkbug-dlg textarea{min-height:84px;resize:vertical}#mkbug-dlg textarea:focus,#mkbug-dlg input:focus{outline:2px solid #6366f1;outline-offset:1px;border-color:#6366f1}' +
     '#mkbug-prev{display:block;max-width:100%;max-height:110px;border:1px solid #cfd3dc;border-radius:8px;margin:0 0 2px;object-fit:contain;background:#f1f3f7}' +
     '#mkbug-dlg .mkbug-err{color:#b91c1c;font-size:12px;margin:4px 0 0;min-height:0}#mkbug-dlg .mkbug-note{color:#667;font-size:11.5px;margin:10px 0 0}' +
-    '#mkbug-dlg .mkbug-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}' +
+    '#mkbug-dlg .mkbug-row{display:flex;margin-top:14px}#mkbug-dlg .mkbug-row button{width:100%;padding:10px 14px}' +
+    '#mkbug-dlg .mkbug-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}#mkbug-dlg .mkbug-head h2{margin:0 0 10px}' +
+    '#mkbug-dlg button.mkbug-x{flex:none;width:28px;height:28px;padding:0;border-radius:999px;background:#f1f3f7;color:#445;font-size:13px;line-height:1}' +
+    '#mkbug-dlg button.mkbug-link{background:none;color:#4f46e5;padding:2px 0;margin-top:6px;font-size:12px;text-decoration:underline}' +
     '#mkbug-dlg button{border:0;border-radius:8px;padding:8px 14px;font:600 13px system-ui,sans-serif;cursor:pointer;background:#eceef3;color:#334}' +
     '#mkbug-dlg button.mkbug-go{background:#4f46e5;color:#fff}#mkbug-dlg button:disabled{opacity:.6;cursor:progress}#mkbug-dlg button:focus-visible{outline:3px solid #818cf8;outline-offset:2px}';
   var st = document.createElement('style');
@@ -212,6 +215,9 @@
     dlg.setAttribute('aria-labelledby', 'mkbug-title');
     dlg.setAttribute('closedby', 'closerequest');
     var title = el('h2', { id: 'mkbug-title', textContent: 'Contanos qué pasó' });
+    var x = el('button', { type: 'button', className: 'mkbug-x', textContent: '✕' });
+    x.setAttribute('aria-label', 'Cerrar');
+    var head = el('div', { className: 'mkbug-head' }, [title, x]);
     var prev = null;
     if (shot && rect) {
       prev = el('img', { id: 'mkbug-prev', alt: 'Área marcada en la página' });
@@ -229,18 +235,19 @@
     mail.setAttribute('aria-describedby', 'mkbug-e2');
     var note = el('p', { className: 'mkbug-note', textContent: 'Enviamos la captura y la dirección de esta página. Solo las ve el equipo de MarketMaker.' });
     var go = el('button', { type: 'submit', className: 'mkbug-go', textContent: 'Enviar reporte' });
-    var again = el('button', { type: 'button', textContent: 'Volver a marcar' });
-    var no = el('button', { type: 'button', textContent: 'Cancelar' });
-    var row = el('div', { className: 'mkbug-row' }, shot ? [go, again, no] : [go, no]);
-    var form = el('form', {}, [title, prev || '', l1, desc, e1, l2, mail, e2, note, row]);
+    var again = el('button', { type: 'button', className: 'mkbug-link', textContent: 'Volver a marcar el área' });
+    var row = el('div', { className: 'mkbug-row' }, [go]);
+    var form = el('form', {}, [head, prev || '', shot ? again : '', l1, desc, e1, l2, mail, e2, note, row]);
     form.noValidate = true;
     dlg.appendChild(form);
     root.appendChild(dlg);
+    var hb = document.getElementById('mkbug-hint');
+    if (hb) hb.style.display = 'none';
     placeDialog();
     dlg.showModal();
     desc.focus();
 
-    no.onclick = function () { closeAll(); };
+    x.onclick = function () { closeAll(); };
     again.onclick = function () { openOverlay(); };
     dlg.addEventListener('close', function () { if (root && !sending) closeAll(); });
     var sending = false;
@@ -252,7 +259,7 @@
       var m = mail.value.trim();
       if (m && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) { e2.textContent = 'El email no es válido.'; mail.focus(); return; }
       sending = true;
-      go.disabled = again.disabled = no.disabled = true;
+      go.disabled = again.disabled = true;
       go.textContent = 'Enviando…';
       cropBlob().then(function (blob) {
         var fd = new FormData();
@@ -267,7 +274,7 @@
         return r.text().then(function (t) { throw new Error(t); });
       }).catch(function (err) {
         sending = false;
-        go.disabled = again.disabled = no.disabled = false;
+        go.disabled = again.disabled = false;
         go.textContent = 'Enviar reporte';
         e1.textContent = (err && err.message && err.message.length < 200 && !/^TypeError|Failed to fetch/.test(err.message))
           ? err.message : 'No pudimos enviar el reporte. Revisá tu conexión y probá de nuevo.';

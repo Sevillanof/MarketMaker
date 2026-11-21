@@ -99,7 +99,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <body>
                 <App/>
                 // Reportar un problema: botón, selección de área y envío (ver `reports`).
-                <script src="/js/reportar.js?v=2" defer></script>
+                <script src="/js/reportar.js?v=3" defer></script>
             </body>
         </html>
     }
