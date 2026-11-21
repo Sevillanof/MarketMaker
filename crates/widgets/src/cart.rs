@@ -534,7 +534,7 @@ fn CartQty(
     let minus_label = {
         let name = name.clone();
         move || {
-            if qty() <= 1 {
+            if card && qty() <= 1 {
                 format!("Quitar {name} del carrito")
             } else {
                 "Uno menos".to_string()
@@ -544,13 +544,15 @@ fn CartQty(
     view! {
         <div class=wrap role="group" aria-label=format!("Cantidad de {name} en el carrito")>
             <button type="button" class=btn aria-label=minus_label
+                // En el carrito ya está «Quitar» al lado: acá solo se baja.
+                disabled=move || !card && qty() <= 1
                 on:click=move |_| id.with_value(|id| {
                     match cart.qty_of(id) {
                         0 | 1 => cart.remove(id),
                         q => cart.set(id, q - 1),
                     }
                 })>
-                {move || if qty() <= 1 { trash_icon().into_any() } else { view! { "−" }.into_any() }}
+                {move || if card && qty() <= 1 { trash_icon().into_any() } else { view! { "−" }.into_any() }}
             </button>
             <output class=out aria-live="polite">
                 {move || qty().to_string()}
@@ -562,16 +564,6 @@ fn CartQty(
                 title=move || at_stock().map(|max| format!("Quedan {max}, no podés agregar más"))
                 on:click=move |_| id.with_value(|id| cart.add(id, 1))>"+"</button>
         </div>
-        // En el carrito hay lugar para decirlo; en la tarjeta, solo el título.
-        {(!card).then(|| view! {
-            <p class="mk-stock-note order-last basis-full text-xs opacity-75 empty:hidden" aria-live="polite">
-                {move || at_stock().map(|max| if max == 1 {
-                    "Queda 1, no podés agregar más.".to_string()
-                } else {
-                    format!("Quedan {max}, no podés agregar más.")
-                })}
-            </p>
-        })}
     }
 }
 

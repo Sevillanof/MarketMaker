@@ -161,7 +161,8 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::Contact(p) => view! { <ContactWidget props=p.clone() editing/> }.into_any(),
         Widget::Footer(p) => view! { <FooterWidget props=p.clone() editing/> }.into_any(),
         Widget::ProductImage(p) => {
-            view! { <ProductImageWidget props=p.clone() product=ctx.product.clone()/> }.into_any()
+            view! { <ProductImageWidget props=p.clone() product=ctx.product.clone() editing/> }
+                .into_any()
         }
         Widget::ProductName(_) => {
             let name = ctx
