@@ -509,3 +509,48 @@ async fn a_coupon_counts_its_uses_stops_at_the_limit_and_gives_the_use_back(pool
         Created::Saved { .. }
     ));
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn two_payments_for_the_last_unit_are_noted(pool: PgPool) {
+    let t = tenant(&pool, "ana").await;
+    let last = Product {
+        name: "Taza".into(),
+        stock: Some(1),
+        ..Product::default()
+    };
+    let id = products::create(&pool, t, &last).await.unwrap();
+    let items = [item(id, 1)];
+    let attempt = NewOrder {
+        status: OrderStatus::PendingPayment,
+        pay: domain::PayMethod::MercadoPago,
+        ..order(&items)
+    };
+    // Dos personas llegan a pagar la última: el intento no reserva.
+    let Created::Saved { id: first, .. } = orders::create(&pool, t, &attempt).await.unwrap() else {
+        panic!("alcanza el stock");
+    };
+    let Created::Saved { id: second, .. } = orders::create(&pool, t, &attempt).await.unwrap()
+    else {
+        panic!("alcanza el stock");
+    };
+    // El primer pago entra limpio.
+    let short = orders::mark_paid_noting(&pool, t, first, "1", 1000)
+        .await
+        .unwrap();
+    assert_eq!(short, Some(vec![]));
+    // El segundo también entra (ya está cobrado), pero queda anotado qué faltó.
+    let short = orders::mark_paid_noting(&pool, t, second, "2", 1000)
+        .await
+        .unwrap()
+        .expect("el pago entra igual");
+    assert_eq!(short.len(), 1);
+    assert_eq!((short[0].sold, short[0].had), (1, 0));
+    assert_eq!(stock(&pool, t, id).await, Some(0));
+    // Repetido: no marca nada.
+    assert_eq!(
+        orders::mark_paid_noting(&pool, t, second, "2", 1000)
+            .await
+            .unwrap(),
+        None
+    );
+}

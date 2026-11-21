@@ -347,6 +347,18 @@ async fn next_number(tx: &mut sqlx::PgConnection, tenant: Uuid) -> sqlx::Result<
     .await
 }
 
+/// Un producto que se cobró sin que alcanzara el stock: mientras alguien paga
+/// en Mercado Pago el producto no queda reservado, así que dos personas
+/// pueden pagar la última unidad.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShortItem {
+    pub name: String,
+    /// Cuántas unidades se vendieron en este pedido.
+    pub sold: u32,
+    /// Cuántas había al entrar el pago.
+    pub had: u32,
+}
+
 /// Se aprobó el pago online del pedido: entra al proceso. Recibe su número,
 /// descuenta el stock (sin bajar de 0: el pago ya está hecho) y queda
 /// pagado. `false` si ya estaba pagado, no existe o se pagó menos.
@@ -357,6 +369,22 @@ pub async fn mark_paid(
     payment_id: &str,
     paid_cents: i64,
 ) -> sqlx::Result<bool> {
+    Ok(
+        mark_paid_noting(pool, tenant, order, payment_id, paid_cents)
+            .await?
+            .is_some(),
+    )
+}
+
+/// Como [`mark_paid`], pero devuelve además qué productos se cobraron sin
+/// stock suficiente (vacío si alcanzó todo). `None` si no marcó nada.
+pub async fn mark_paid_noting(
+    pool: &PgPool,
+    tenant: Uuid,
+    order: Uuid,
+    payment_id: &str,
+    paid_cents: i64,
+) -> sqlx::Result<Option<Vec<ShortItem>>> {
     let mut tx = pool.begin().await?;
     let row: Option<(Option<i32>, serde_json::Value)> = sqlx::query_as(
         "SELECT number, items FROM orders
@@ -370,8 +398,9 @@ pub async fn mark_paid(
     .fetch_optional(&mut *tx)
     .await?;
     let Some((number, items)) = row else {
-        return Ok(false);
+        return Ok(None);
     };
+    let mut short = Vec::new();
     // Los pedidos con número ya descontaron su stock al crearse.
     if number.is_none() {
         let items: Vec<OrderItem> = serde_json::from_value(items).unwrap_or_default();
@@ -380,6 +409,24 @@ pub async fn mark_paid(
                 continue;
             };
             if item.is_variant() {
+                // Primero mira si alcanza (sin tocar nada) y después descuenta.
+                if let Err(left) = move_variant(
+                    &mut tx,
+                    tenant,
+                    product,
+                    &item,
+                    -i64::from(item.qty),
+                    true,
+                    true,
+                )
+                .await?
+                {
+                    short.push(ShortItem {
+                        name: item.name.clone(),
+                        sold: item.qty,
+                        had: left,
+                    });
+                }
                 _ = move_variant(
                     &mut tx,
                     tenant,
@@ -391,6 +438,23 @@ pub async fn mark_paid(
                 )
                 .await?;
                 continue;
+            }
+            let had: Option<Option<i32>> = sqlx::query_scalar(
+                "SELECT stock FROM products WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+            )
+            .bind(tenant)
+            .bind(product)
+            .fetch_optional(&mut *tx)
+            .await?;
+            if let Some(Some(had)) = had {
+                let had = had.max(0) as u32;
+                if had < item.qty {
+                    short.push(ShortItem {
+                        name: item.name.clone(),
+                        sold: item.qty,
+                        had,
+                    });
+                }
             }
             sqlx::query(
                 "UPDATE products SET stock = GREATEST(stock - $3, 0)
@@ -429,7 +493,7 @@ pub async fn mark_paid(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(true)
+    Ok(Some(short))
 }
 
 #[derive(FromRow)]

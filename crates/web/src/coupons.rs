@@ -211,7 +211,9 @@ fn Coupons(slug: String, info: CouponsInfo) -> impl IntoView {
     let save = Action::new(move |f: &CouponForm| save_coupon(slug.get_value(), f.clone()));
     Effect::new(move |_| match save.value().get() {
         Some(Ok(r)) if r.errors.is_empty() => {
-            let was_editing = editing();
+            // Sin seguir a `id`: `clear()` lo vuelve a escribir y, si este
+            // efecto dependiera de él, se dispararía a sí mismo sin parar.
+            let was_editing = !id.with_untracked(|i| i.is_empty());
             coupons.set(r.coupons);
             clear();
             saved_note.set(Some(

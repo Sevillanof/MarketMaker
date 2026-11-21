@@ -187,9 +187,14 @@ pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> usize {
             continue;
         }
         changed += 1;
-        let moving = !new.tracking.is_empty()
-            && !new.status.is_empty()
-            && new.status != "pendiente de ingreso";
+        // "En camino" es cuando Andreani ya lo tiene: con el número de
+        // seguimiento recién creado ("pendiente de ingreso") el paquete sigue
+        // en la tienda.
+        let in_transit = |s: &domain::Shipment| {
+            !s.tracking.is_empty() && !s.status.is_empty() && s.status != "pendiente de ingreso"
+        };
+        let moving = in_transit(&new);
+        let was_moving = in_transit(sh);
         let delivered = domain::tracking_is_delivered(&new.status);
         // Solo hacia adelante: un pedido que el dueño movió a mano no vuelve atrás.
         if delivered && matches!(o.status, OrderStatus::Paid | OrderStatus::Shipped) {
@@ -197,8 +202,10 @@ pub async fn refresh(pool: &db::Pool, tenant: Uuid, orders: &[Order]) -> usize {
         } else if moving && o.status == OrderStatus::Paid {
             let _ = db::orders::set_status(pool, tenant, id, OrderStatus::Shipped).await;
         }
-        // El seguimiento le llega al comprador una vez: cuando aparece.
-        if sh.tracking.is_empty() && !new.tracking.is_empty() {
+        // El comprador recibe el seguimiento una vez: cuando Andreani ya
+        // tiene el paquete (antes le llegaba "está en camino" con la etiqueta
+        // recién generada y el paquete todavía en la tienda).
+        if moving && !was_moving && !delivered {
             if let Ok(Some((name, slug))) = db::mp::name_and_slug(pool, tenant).await {
                 let mut o = o.clone();
                 o.shipment = Some(new.clone());
