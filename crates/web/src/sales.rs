@@ -398,12 +398,15 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                 <div class="rounded-box border border-base-300 p-4">
                     <label class="flex cursor-pointer items-center gap-3">
                         <input type="checkbox" class="toggle toggle-primary" id="d-pickup"
+                            // Sin dirección el retiro no aparecería en la compra:
+                            // primero se carga la dirección y recién ahí se prende.
+                            disabled=move || !pickup.get() && address.with(|a| a.trim().is_empty())
                             prop:checked=move || pickup.get()
                             on:change=move |ev| { pickup.set(event_target_checked(&ev)); toggled(); }/>
                         <span><span class="block font-semibold">"Retiro en el local"</span>
                         <span class="block text-sm text-base-content/70">"El comprador pasa a buscar su pedido, sin costo."</span></span>
                     </label>
-                    {move || pickup.get().then(|| view! {
+                    {move || (true).then(|| view! {
                         <div class="mt-3 grid gap-x-4 sm:grid-cols-2">
                             <fieldset class="fieldset">
                                 <label class="fieldset-legend" for="d-address">"Dirección"</label>
@@ -415,7 +418,7 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                                 {move || match problem("address") {
                                     Some(m) => view! { <p id="d-address-error" class="label whitespace-normal text-error">{m}</p> }.into_any(),
                                     None => address.with(|a| a.trim().is_empty()).then(|| view! {
-                                        <p class="label whitespace-normal">"Escribí la dirección para que el retiro aparezca en tu tienda."</p>
+                                        <p class="label whitespace-normal">"Cargá la dirección primero: después podés prender el retiro."</p>
                                     }).into_any(),
                                 }}
                             </fieldset>

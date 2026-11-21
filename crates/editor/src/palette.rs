@@ -674,6 +674,7 @@ fn Thumb(
             data-theme=theme
             class="mk-store relative block overflow-hidden rounded-sm shadow-sm ring-1 ring-black/10"
             style=outer
+            aria-hidden="true"
         >
             <span class="pointer-events-none block select-none" style=inner inert>
                 {render_widget(&node, &ctx)}

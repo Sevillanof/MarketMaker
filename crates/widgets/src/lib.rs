@@ -1761,6 +1761,16 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
                     })}
                 })}
             </div>
+            // En el editor, el estilo que muestra un solo mensaje avisa cuántos más
+            // hay y los lista al pasar el mouse.
+            {(editing && !rotating && count > 1).then(|| {
+                let all = items.with_value(|v| v.iter().map(|m| m.text.clone()).collect::<Vec<_>>().join("\n"));
+                view! {
+                    <span class="badge badge-sm shrink-0 border-0 bg-primary-content/20 text-primary-content" title=all>
+                        {format!("+{} más", count - 1)}
+                    </span>
+                }
+            })}
             {rotating.then(|| view! {
                 <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Mensaje siguiente" on:click=move |_| step(1)>
                     <Icon name="chevron-right" class="h-4 w-4"/>

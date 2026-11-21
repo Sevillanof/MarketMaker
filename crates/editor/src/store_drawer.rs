@@ -28,10 +28,20 @@ pub(crate) fn tile(active: bool) -> &'static str {
 
 /// Título de una sección.
 #[component]
-pub(crate) fn Section(title: &'static str, id: &'static str, children: Children) -> impl IntoView {
+pub(crate) fn Section(
+    title: &'static str,
+    id: &'static str,
+    /// Ayuda en un ⓘ al lado del título, si el título no se entiende solo.
+    #[prop(optional)]
+    help: &'static str,
+    children: Children,
+) -> impl IntoView {
     view! {
         <section class="mt-3" aria-labelledby=id>
-            <h3 id=id class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">{title}</h3>
+            <h3 id=id class="relative mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">
+                {title}
+                {(!help.is_empty()).then(|| view! { <ui::HelpTip id=format!("tip-{id}") label=title text=help/> })}
+            </h3>
             {children()}
         </section>
     }

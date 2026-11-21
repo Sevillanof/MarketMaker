@@ -194,7 +194,8 @@ pub fn WelcomeTour(section: Signal<Section>) -> impl IntoView {
             let last = i + 1 == STEPS.len();
             view! {
                 // Tapa la pantalla para que no se toque nada por detrás mientras dura.
-                <div class="fixed inset-0 z-[70]" aria-hidden="true"></div>
+                // Tocar afuera lo cierra, y no vuelve.
+                <div class="fixed inset-0 z-[70]" aria-hidden="true" on:click=move |_| finish()></div>
                 <div class="pointer-events-none fixed z-[71] rounded-box outline outline-[3px] outline-primary transition-all duration-500 motion-reduce:transition-none"
                     style=format!("left:{}px;top:{}px;width:{}px;height:{}px;box-shadow:0 0 0 100vmax rgb(15 17 30 / .55)", x - 6.0, y - 4.0, w + 12.0, h + 8.0)
                     aria-hidden="true"></div>

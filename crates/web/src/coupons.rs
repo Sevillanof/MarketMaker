@@ -285,10 +285,14 @@ fn Coupons(slug: String, info: CouponsInfo) -> impl IntoView {
             <div class="card-body gap-3 p-6 max-sm:p-4">
                 <div class="flex items-center gap-3">
                     <h2 id="cp-list" class="grow text-lg font-bold">"Tus cupones"</h2>
-                    <button type="button" class="btn btn-primary btn-sm"
-                        on:click=move |_| { clear(); saved_note.set(None); crate::checkout::focus_id("cp-code".into()); }>
-                        "+ Nuevo cupón"
-                    </button>
+                    // Con el formulario siempre abajo, el botón solo sirve para
+                    // volver a «Nuevo cupón» mientras se edita uno.
+                    {move || editing().then(|| view! {
+                        <button type="button" class="btn btn-primary btn-sm"
+                            on:click=move |_| { clear(); saved_note.set(None); crate::checkout::focus_id("cp-code".into()); }>
+                            "+ Nuevo cupón"
+                        </button>
+                    })}
                 </div>
                 {move || coupons.with(|c| c.is_empty()).then(|| view! {
                     <p class="py-6 text-center text-base-content/70">

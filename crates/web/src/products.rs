@@ -727,7 +727,7 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
     view! {
         <div class="flex flex-wrap items-center gap-3">
             <div class="grow max-sm:basis-full">
-                <h1 class="text-3xl font-bold max-sm:text-2xl">"Productos"</h1>
+                <h1 class="text-3xl font-bold max-sm:sr-only">"Productos"</h1>
                 <p class="text-sm text-base-content/70">{summary}</p>
             </div>
             <button type="button" class="btn max-sm:min-h-11 max-sm:flex-1" on:click=move |_| {

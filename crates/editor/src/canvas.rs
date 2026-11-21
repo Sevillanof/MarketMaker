@@ -915,7 +915,7 @@ pub(crate) fn Canvas(
                                 }
                             }
                         >
-                            <span class="max-w-40 truncate">{label}</span>
+                            <span class="min-w-0 max-w-40 truncate">{label}</span>
                             <span class="opacity-50" aria-hidden="true">"|"</span>
                             "Opciones"<Icon name="chevron-down" class="h-3.5 w-3.5"/>
                         </button>
