@@ -600,6 +600,7 @@ pub fn EditorSkeleton() -> impl IntoView {
                 </div>
                 <Skeleton class="h-9 w-48"/><Skeleton class="h-5 w-28"/>
                 <Skeleton class="ml-8 h-9 w-48"/>
+                <Skeleton class="ml-3 h-9 w-44"/>
                 <div class="grow"></div>
                 <Skeleton class="h-5 w-14"/><Skeleton class="h-5 w-28"/><Skeleton class="h-9 w-24"/>
             </div>

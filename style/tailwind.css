@@ -2902,3 +2902,10 @@ dialog.mk-pzoom::backdrop {
     animation-duration: 3s;
   }
 }
+
+/* Ficha apilada en el lienzo del editor (cajón y celular), igual que
+   `dialog.mk-open-drawer` en la tienda; un clic elige el bloque. */
+.mk-stacked { display: flex; flex-direction: column; }
+.mk-stacked > .mk-node { height: calc(var(--h) * 8px - 16px); flex: none; }
+.mk-stacked > .mk-node:has(.mk-added) { height: auto; min-height: calc(var(--h) * 8px - 16px); }
+.mk-stacked > .mk-stacked-sel { outline: 2px solid var(--color-primary); outline-offset: 2px; }
