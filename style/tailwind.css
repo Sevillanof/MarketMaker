@@ -2268,6 +2268,48 @@ dialog.mk-cart::backdrop {
     box-shadow: 0 -8px 16px -12px rgb(0 0 0 / 0.18);
   }
 }
+/* Ayuda de un campo (ⓘ): el globo va debajo del título, como mucho de su ancho. */
+.mk-tip-btn {
+  display: inline-grid; place-items: center; flex: none;
+  width: 1.125rem; height: 1.125rem; border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 35%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  font: italic 600 0.6875rem/1 Georgia, "Times New Roman", serif;
+  text-transform: none; letter-spacing: 0; cursor: help;
+  /* Área de toque cómoda sin agrandar el círculo. */
+  position: relative;
+}
+.mk-tip-btn::after { content: ""; position: absolute; inset: -0.6rem; }
+.mk-tip-btn:hover, .mk-tip-btn[aria-expanded="true"] {
+  color: var(--color-primary); border-color: var(--color-primary);
+}
+.mk-tip-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.mk-tip {
+  position: absolute; top: calc(100% + 0.25rem); left: 0; z-index: 40;
+  width: max-content; max-width: min(100%, 20rem);
+  padding: 0.5rem 0.75rem; border-radius: var(--radius-field);
+  background: var(--color-neutral); color: var(--color-neutral-content);
+  font-size: 0.8125rem; font-weight: 400; line-height: 1.35;
+  text-transform: none; letter-spacing: 0; white-space: normal; text-align: left;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.mk-tip[hidden] { display: none; }
+/* Título con ayuda: ocupa el ancho del campo para ubicar el globo. */
+.mk-tip-legend { position: relative; width: 100%; justify-content: flex-start; gap: 0.375rem; }
+/* «Ver en la tienda» de la ficha: la ficha real, achicada, sobre el formulario. */
+.mk-sheetpop {
+  position: fixed; inset: auto; margin: 0; padding: 0;
+  width: min(34rem, calc(100vw - 2rem)); overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--color-base-300); border-radius: var(--radius-box);
+  background: var(--color-base-100); color: var(--color-base-content);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.22);
+}
+.mk-sheetpop > div:first-child { position: sticky; top: 0; z-index: 2; background: var(--color-base-100); }
+.mk-sheetpop .mk-sheet { width: 832px; max-width: none; padding: 1.5rem; zoom: 0.64; }
+@media (max-width: 639px) {
+  .mk-sheetpop { inset: auto 0 0 0; width: 100%; max-height: 85dvh; border-radius: var(--radius-box) var(--radius-box) 0 0; }
+  .mk-sheetpop .mk-sheet { width: 100%; zoom: 1; padding: 1rem; }
+}
 /* Menú ⋯ del teléfono (popover). */
 .mk-pmenu {
   position: fixed; inset: auto; top: 3.5rem; right: 0.75rem; margin: 0;

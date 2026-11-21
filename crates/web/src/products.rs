@@ -66,6 +66,47 @@ pub async fn list_store_products(slug: String) -> Result<Option<StoreProducts>, 
     }))
 }
 
+/// Cómo se ve la ficha del producto en la tienda `slug`: su tema, letras,
+/// estilo y diseño de la ficha (lo publicado; si nunca publicó, el borrador).
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct SheetLook {
+    pub theme: String,
+    pub style: String,
+    pub modal: domain::ProductModal,
+    pub store: domain::StoreInfo,
+}
+
+#[server]
+pub async fn store_sheet_look(slug: String) -> Result<SheetLook, ServerFnError> {
+    use crate::server::{internal, pool};
+    let tenant = server::require_store(&slug).await?;
+    let pool = pool()?;
+    let published = db::get_published_page(&pool, tenant.id, "home")
+        .await
+        .map_err(internal)?
+        .and_then(|p| p.doc);
+    let doc = match published {
+        Some(d) => Some(d),
+        None => db::get_current_page(&pool, tenant.id, "home")
+            .await
+            .map_err(internal)?
+            .and_then(|p| p.doc),
+    };
+    let doc = match doc {
+        Some(v) => domain::parse_doc(v).map_err(internal)?,
+        None => domain::PageDoc::default(),
+    };
+    let store = db::auth::store_info(&pool, tenant.id)
+        .await
+        .map_err(internal)?;
+    Ok(SheetLook {
+        style: format!("{}; {}", doc.typography.css_vars(), doc.style.css_vars()),
+        theme: doc.theme,
+        modal: doc.product_modal,
+        store,
+    })
+}
+
 /// Guarda una etiqueta desde "Etiquetas": la crea (`old` vacío) o la
 /// renombra, y queda puesta justo en los productos `ids`.
 #[server]
@@ -963,6 +1004,15 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                 .collect_view()
         })
     };
+    let visible_toggle = move || view! {
+        <label class="flex cursor-pointer items-center justify-between gap-3 rounded-box border border-base-300 px-4 py-3">
+            <span><span class="block font-semibold">"En la tienda"</span>
+                <span class="block text-xs text-base-content/60">{move || if form.visible.get() { "Visible para los compradores" } else { "Oculto: no aparece en la tienda" }}</span></span>
+            <input type="checkbox" class="toggle toggle-primary"
+                prop:checked=move || form.visible.get()
+                on:change=move |ev| form.visible.set(event_target_checked(&ev))/>
+        </label>
+    };
     let photos = product.all_photos();
     let fit_of = StoredValue::new(product.clone());
     let menu_id = format!("mk-pmenu-{}", product.id);
@@ -973,8 +1023,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
             // Teléfono: volver, posición, anterior/siguiente y ⋯ (Borrar, lejos de Guardar).
             <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-base-200 bg-base-100 px-3 py-2 sm:hidden">
                 <button type="button" class="btn btn-ghost btn-sm min-h-11 px-2" on:click=close_phone>"‹ Productos"</button>
-                <span class="ml-auto text-xs text-base-content/60">{position}</span>
-                <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11" aria-label="Anterior" disabled=move || prev().is_none() on:click=move |_| go(prev())>"‹"</button>
+                <button type="button" class="btn btn-sm btn-square ml-auto min-h-11 min-w-11" aria-label="Anterior" disabled=move || prev().is_none() on:click=move |_| go(prev())>"‹"</button>
                 <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11" aria-label="Siguiente" disabled=move || next().is_none() on:click=move |_| go(next())>"›"</button>
                 <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11" aria-label="Más acciones" popovertarget=menu_id.clone()>"⋯"</button>
                 <div id=menu_id popover="auto" class="mk-pmenu">
@@ -992,6 +1041,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                     <button type="button" class="btn btn-sm" disabled=move || next().is_none() on:click=move |_| go(next())>"Siguiente ›"</button>
                 </div>
                 <div class="grid gap-5 sm:grid-cols-[minmax(0,15rem)_1fr]">
+                    <div class="flex min-w-0 flex-col gap-4">
                     // Fotos: tocarlas abre la ficha completa (ahí se suben y encuadran).
                     <div class="flex flex-col gap-2 max-sm:flex-row max-sm:overflow-x-auto">
                         <button type="button" class="aspect-square w-full overflow-hidden rounded-box bg-base-200 max-sm:w-32 max-sm:shrink-0"
@@ -1008,6 +1058,9 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                                 aria-label="Agregar fotos en la ficha completa" on:click=ficha>"+"</button>
                         </div>
                     </div>
+                    // Compu: debajo de las fotos. Teléfono: al final, antes de los botones.
+                    <div class="max-sm:hidden">{visible_toggle()}</div>
+                    </div>
                     <div class="flex min-w-0 flex-col gap-3">
                         <input class="input input-ghost w-full px-1 text-xl font-bold" aria-label="Nombre"
                             maxlength=domain::PRODUCT_NAME_MAX
@@ -1023,7 +1076,8 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                                 </span>
                                 {price_error("price")}
                             </label>
-                            <label class="flex flex-col gap-1 text-xs text-base-content/70">"Precio anterior (tachado)"
+                            <label class="flex flex-col gap-1 text-xs text-base-content/70"><span class="mk-tip-legend flex items-center">"Precio anterior"
+                                <ui::HelpTip id="tip-q-was" label="Precio anterior" text="Opcional. Si está en oferta, se muestra tachado al lado del precio."/></span>
                                 <span class="input w-full"><span>"$"</span>
                                     <input inputmode="decimal" aria-label="Precio anterior en pesos" placeholder="Opcional"
                                         prop:value=move || form.was.get()
@@ -1042,13 +1096,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                         prop:value=move || form.description.get()
                         on:input=move |ev| form.description.set(event_target_value(&ev))></textarea>
                 </label>
-                <label class="flex cursor-pointer items-center justify-between gap-3 rounded-box border border-base-300 px-4 py-3">
-                    <span><span class="block font-semibold">"En la tienda"</span>
-                        <span class="block text-xs text-base-content/60">{move || if form.visible.get() { "Visible para los compradores" } else { "Oculto: no aparece en la tienda" }}</span></span>
-                    <input type="checkbox" class="toggle toggle-primary"
-                        prop:checked=move || form.visible.get()
-                        on:change=move |ev| form.visible.set(event_target_checked(&ev))/>
-                </label>
+                <div class="sm:hidden">{visible_toggle()}</div>
                 <div role="alert" class="text-sm text-error empty:hidden">{other_errors}</div>
                 // Compu: Ficha completa, Borrar al centro, Descartar y Guardar.
                 // Teléfono: barra fija abajo, sin Borrar (está en ⋯).
@@ -1086,12 +1134,15 @@ fn StockStepper(form: Form) -> impl IntoView {
     };
     view! {
         <div class="flex flex-col gap-1 text-xs text-base-content/70">
-            <span>"Stock"</span>
+            <span class="mk-tip-legend flex items-center">"Stock"
+                {move || form.variants.active().then(|| view! {
+                    <ui::HelpTip id="tip-q-stock" label="Stock" text="Se cuenta por color y talle. Se cambia en Ficha completa."/>
+                })}</span>
             {move || if form.variants.active() {
                 view! {
                     <p class="rounded-box border border-base-300 px-4 py-3 text-sm text-base-content">
                         <b>{move || format!("{} unidades", form.variants.total())}</b>
-                        <span class="text-base-content/60">" · por color y talle, se cambian en Ficha completa"</span>
+                        <span class="text-base-content/60">" · por color y talle"</span>
                     </p>
                 }.into_any()
             } else {
@@ -2227,7 +2278,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
                         {field_error("price")}
                     </fieldset>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">"Precio anterior " <span class="font-normal text-base-content/60">"(opcional, se muestra tachado)"</span></legend>
+                        <legend class="fieldset-legend mk-tip-legend">"Precio anterior " <span class="font-normal text-base-content/60">"(opcional)"</span>
+                            <ui::HelpTip id="tip-was" label="Precio anterior" text="Si está en oferta, se muestra tachado al lado del precio. Vacío si no."/></legend>
                         <label class="input w-full" class:input-error=move || has_error("was")><span>"$"</span>
                             <input id="p-was" inputmode="decimal" placeholder="Vacío si no está en oferta" aria-label="Precio anterior en pesos"
                                 aria-invalid=move || has_error("was").to_string()
@@ -2241,7 +2293,8 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
                 <PhotosField photos=form.photos fits=form.fits adjusting/>
                 {field_error("photos")}
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">"Descripción"</legend>
+                    <legend class="fieldset-legend w-full">"Descripción"
+                        <SheetPreview slug=slug.get_value() product=Signal::derive(preview)/></legend>
                     <textarea id="p-description" class="textarea h-28 w-full" maxlength=domain::PRODUCT_DESC_MAX
                         placeholder="Qué es, de qué está hecho, medidas, cómo se usa…"
                         prop:value=move || form.description.get()
@@ -2255,14 +2308,19 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
                 <div class="grid gap-4 sm:grid-cols-2">
                     {move || form.variants.active().then(|| view! {
                         <fieldset class="fieldset">
-                            <legend class="fieldset-legend">"Stock"</legend>
+                            <legend class="fieldset-legend mk-tip-legend">"Stock"
+                                <ui::HelpTip id="tip-stock-variants" label="Stock" text="Se cuenta por color y talle. Cada venta descuenta de la combinación elegida."/></legend>
                             <p class="text-sm">{move || format!("{} unidades en total", form.variants.total())}</p>
-                            <p class="label whitespace-normal">"Se cuenta por color y talle. Cada venta descuenta de la combinación elegida."</p>
                             {field_error("stock")}
                         </fieldset>
                     })}
                     <fieldset class="fieldset" class:hidden=move || form.variants.active()>
-                        <legend class="fieldset-legend">"Stock"</legend>
+                        <legend class="fieldset-legend mk-tip-legend">"Stock"
+                            <ui::HelpTip id="p-stock-hint" label="Stock" text=Signal::derive(move || if form.stock.with(|s| s.trim().is_empty()) {
+                                "Dejala vacía si no querés llevar la cuenta. Sin stock se ve \"Agotado\".".to_string()
+                            } else {
+                                "Cada venta descuenta. En 0 se ve \"Agotado\"; con 3 o menos, \"Quedan N\".".to_string()
+                            })/></legend>
                         <label class="fieldset-label" for="p-stock">"Cantidad disponible " <span class="text-base-content/60">"(opcional)"</span></label>
                         <input id="p-stock" class="input w-40" class:input-error=move || has_error("stock") inputmode="numeric" placeholder="Sin contar"
                             aria-invalid=move || has_error("stock").to_string()
@@ -2279,31 +2337,22 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
                                     on:click=move |_| form.in_stock.set(false)>"Sin stock"</button>
                             </div>
                         })}
-                        <p id="p-stock-hint" class="label whitespace-normal">
-                            {move || if form.stock.with(|s| s.trim().is_empty()) {
-                                "Dejala vacía si no querés llevar la cuenta. Sin stock se ve \"Agotado\"."
-                            } else {
-                                "Cada venta descuenta. En 0 se ve \"Agotado\"; con 3 o menos, \"Quedan N\"."
-                            }}
-                        </p>
                         {field_error("stock")}
                     </fieldset>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">"En la tienda"</legend>
+                        <legend class="fieldset-legend mk-tip-legend">"En la tienda"
+                            <ui::HelpTip id="tip-visible" label="En la tienda" text="Apagalo para prepararlo sin que lo vean."/></legend>
                         <label class="flex items-center gap-3">
                             <input type="checkbox" class="toggle toggle-primary"
                                 prop:checked=move || form.visible.get()
                                 on:change=move |ev| form.visible.set(event_target_checked(&ev))/>
                             {move || if form.visible.get() { "Visible" } else { "Oculto" }}
                         </label>
-                        <p class="label">"Apagalo para prepararlo sin que lo vean."</p>
                     </fieldset>
                 </div>
                 <fieldset class="fieldset" aria-describedby="p-parcel-hint" class:hidden=!show_parcel>
-                    <legend class="fieldset-legend">"Envío " <span class="font-normal text-base-content/60">"(opcional)"</span></legend>
-                    <p id="p-parcel-hint" class="label whitespace-normal">
-                        "Peso y medidas del producto ya empaquetado, para cotizar con Andreani. Vacío: se usa el paquete de tu tienda (en Entregas)."
-                    </p>
+                    <legend class="fieldset-legend mk-tip-legend">"Envío " <span class="font-normal text-base-content/60">"(opcional)"</span>
+                        <ui::HelpTip id="p-parcel-hint" label="Envío" text="Peso y medidas del producto ya empaquetado, para cotizar con Andreani. Vacío: se usa el paquete de tu tienda (en Entregas)."/></legend>
                     <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                         <crate::sales::ParcelInput id="p-weight" label="Peso" unit="kg" value=form.weight invalid=Signal::derive(move || has_error("parcel"))/>
                         <crate::sales::ParcelInput id="p-length" label="Largo" unit="cm" value=form.length invalid=Signal::derive(move || has_error("parcel"))/>
@@ -2380,6 +2429,87 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
     }
 }
 
+/// «Ver en la tienda» junto a Descripción: abre, sobre la ficha, la ficha
+/// del producto como la ven los compradores (con el diseño y los colores de
+/// la tienda), al día con lo que se está escribiendo. Se cierra tocando
+/// afuera o con Esc.
+#[component]
+fn SheetPreview(slug: String, product: Signal<Option<Product>>) -> impl IntoView {
+    let wanted = RwSignal::new(false);
+    let pos = RwSignal::new(String::new());
+    let btn = NodeRef::<leptos::html::Button>::new();
+    let slug = StoredValue::new(slug);
+    let look = LocalResource::new(move || {
+        let go = wanted.get();
+        async move {
+            if go {
+                Some(store_sheet_look(slug.get_value()).await)
+            } else {
+                None
+            }
+        }
+    });
+    // Debajo del botón, alineada a su derecha y sin salirse de la pantalla.
+    let place = move |_| {
+        wanted.set(true);
+        let Some(b) = btn.get_untracked() else { return };
+        let r = b.get_bounding_client_rect();
+        let w = leptos::web_sys::window();
+        let vw = w.as_ref().and_then(|w| w.inner_width().ok()).and_then(|v| v.as_f64()).unwrap_or(1024.0);
+        let vh = w.as_ref().and_then(|w| w.inner_height().ok()).and_then(|v| v.as_f64()).unwrap_or(768.0);
+        if vw < 640.0 {
+            pos.set(String::new());
+            return;
+        }
+        let right = (vw - r.right()).max(16.0);
+        let below = vh - r.bottom() - 16.0;
+        pos.set(if below >= 360.0 {
+            format!("top:{}px;right:{right}px;max-height:{}px", r.bottom() + 8.0, below - 8.0)
+        } else {
+            format!("bottom:{}px;right:{right}px;max-height:{}px", vh - r.top() + 8.0, r.top() - 24.0)
+        });
+    };
+    view! {
+        <button type="button" node_ref=btn class="btn btn-ghost btn-xs ml-auto gap-1 font-normal text-primary"
+            popovertarget="mk-sheetpop" on:click=place>
+            <ui::Icon name="eye" class="size-4"/>"Ver en la tienda"
+        </button>
+        <div id="mk-sheetpop" popover="auto" class="mk-sheetpop" style=move || pos.get()
+            role="dialog" aria-label="Así se ve la ficha en tu tienda">
+            <div class="flex items-center gap-2 border-b border-base-200 px-4 py-2 text-sm">
+                <span class="grow font-medium">"Así se ve en tu tienda"</span>
+                <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar"
+                    popovertarget="mk-sheetpop" popovertargetaction="hide">"✕"</button>
+            </div>
+            {move || match look.get() {
+                Some(Some(Ok(l))) => {
+                    let SheetLook { theme, style, modal, store } = l;
+                    provide_context(store);
+                    view! {
+                        <div data-theme=theme class="mk-store bg-base-100 text-base-content" style=style>
+                            <div class="mk-dialog-box mk-sheet">
+                                {move || match product.get() {
+                                    Some(_) => view! { <widgets::ProductSheetPreview modal=modal.clone() product/> }.into_any(),
+                                    None => view! { <p class="p-6 text-center text-sm text-base-content/60">"Poné un precio para ver cómo queda."</p> }.into_any(),
+                                }}
+                            </div>
+                        </div>
+                    }.into_any()
+                }
+                Some(Some(Err(e))) => view! { <p class="p-4 text-sm text-error">{error_text(&e)}</p> }.into_any(),
+                _ => view! {
+                    <div class="flex flex-col gap-3 p-4" aria-busy="true">
+                        <div class="grid grid-cols-2 gap-4">
+                            <ui::Skeleton class="aspect-square w-full"/>
+                            <div class="flex flex-col gap-3"><ui::Skeleton class="h-6 w-3/4"/><ui::Skeleton class="h-5 w-1/3"/><ui::Skeleton class="h-20 w-full"/><ui::Skeleton class="h-10 w-full"/></div>
+                        </div>
+                    </div>
+                }.into_any(),
+            }}
+        </div>
+    }
+}
+
 /// Las fotos del producto: elegir de Mis fotos o subir, ordenar y sacar.
 #[component]
 fn PhotosField(
@@ -2416,8 +2546,8 @@ fn PhotosField(
     });
     view! {
         <fieldset class="fieldset">
-            <legend class="fieldset-legend">"Fotos"</legend>
-            <p class="label -mt-1 whitespace-normal">"La primera es la principal. Tocá una foto para encuadrarla."</p>
+            <legend class="fieldset-legend mk-tip-legend">"Fotos"
+                <ui::HelpTip id="tip-photos" label="Fotos" text="La primera es la principal. Tocá una foto para encuadrarla."/></legend>
             <ul class="flex flex-wrap gap-3 max-sm:grid max-sm:grid-cols-3 max-sm:gap-2" aria-label="Fotos del producto">
                 {move || {
                     let list = photos.get();
@@ -2596,7 +2726,8 @@ fn CategoryField(form: Form, store_categories: Vec<domain::CategoryCount>) -> im
     view! {
         <div class="grid gap-4 sm:grid-cols-2">
             <fieldset class="fieldset">
-                <legend class="fieldset-legend">"Categoría"</legend>
+                <legend class="fieldset-legend mk-tip-legend">"Categoría"
+                    <ui::HelpTip id="tip-category" label="Categoría" text="Elegí una de tu tienda o escribí una nueva. Es una sola por producto."/></legend>
                 <input id="p-category" type="text" class="input w-full" list="p-category-list"
                     maxlength=domain::CATEGORY_MAX autocomplete="off"
                     placeholder="Ej.: Remeras"
@@ -2605,10 +2736,10 @@ fn CategoryField(form: Form, store_categories: Vec<domain::CategoryCount>) -> im
                 <datalist id="p-category-list">
                     {cats.with_value(|all| all.iter().map(|c| view! { <option value=c.name.clone()></option> }).collect_view())}
                 </datalist>
-                <p class="label whitespace-normal">"Elegí una de tu tienda o escribí una nueva. Es una sola por producto."</p>
             </fieldset>
             <fieldset class="fieldset">
-                <legend class="fieldset-legend">"Subcategoría (opcional)"</legend>
+                <legend class="fieldset-legend mk-tip-legend">"Subcategoría " <span class="font-normal text-base-content/60">"(opcional)"</span>
+                    <ui::HelpTip id="tip-subcategory" label="Subcategoría" text="Va dentro de la categoría."/></legend>
                 <input id="p-subcategory" type="text" class="input w-full" list="p-subcategory-list"
                     maxlength=domain::CATEGORY_MAX autocomplete="off"
                     placeholder="Ej.: Manga larga"
@@ -2618,7 +2749,6 @@ fn CategoryField(form: Form, store_categories: Vec<domain::CategoryCount>) -> im
                 <datalist id="p-subcategory-list">
                     {move || subs().into_iter().map(|s| view! { <option value=s></option> }).collect_view()}
                 </datalist>
-                <p class="label whitespace-normal">"Va dentro de la categoría."</p>
             </fieldset>
         </div>
     }
@@ -2661,8 +2791,8 @@ fn TagsField(form: Form, store_tags: Vec<domain::TagCount>) -> impl IntoView {
     let input_ref = NodeRef::<leptos::html::Input>::new();
     view! {
         <fieldset class="fieldset">
-            <legend class="fieldset-legend">"Etiquetas"</legend>
-            <p class="label -mt-1 whitespace-normal">"Para encontrar y agrupar productos (por ejemplo: regalo, cocina, verano)."</p>
+            <legend class="fieldset-legend mk-tip-legend">"Etiquetas"
+                <ui::HelpTip id="tip-tags" label="Etiquetas" text="Para encontrar y agrupar productos (por ejemplo: regalo, cocina, verano)."/></legend>
             <div class="relative">
                 <div class="flex min-h-10 w-full cursor-text flex-wrap items-center gap-1.5 rounded-field border border-base-content/20 bg-base-100 px-3 py-1.5 focus-within:border-primary focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-primary"
                     on:click=move |_| { if let Some(i) = input_ref.get() { _ = i.focus(); } }>
