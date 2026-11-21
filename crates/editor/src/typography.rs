@@ -1,4 +1,4 @@
-//! Letras: la sección "Letras de este bloque" del inspector (las de toda la
+//! Letras: la sección "Letras" del inspector (las de toda la
 //! tienda están en el cajón "Mi tienda", ver `store_drawer`).
 //!
 //! Pocas opciones y con muestra: se elige una combinación de fuentes de un
@@ -64,7 +64,8 @@ fn sizes_small_to_large() -> Vec<&'static (&'static str, &'static str, f32)> {
     sizes
 }
 
-/// Sección "Letras de este bloque" del inspector.
+/// Contenido de la sección "Letras" del inspector (el título y la ayuda
+/// los pone la sección plegable).
 #[component]
 pub(crate) fn BlockTypography(id: String) -> impl IntoView {
     let state = expect_context::<EditorState>();
@@ -87,11 +88,7 @@ pub(crate) fn BlockTypography(id: String) -> impl IntoView {
     let changed = move || style.with(|s| !s.is_default());
 
     view! {
-        <section class="flex flex-col gap-4" aria-labelledby="mk-block-type-title">
-            <div>
-                <h3 id="mk-block-type-title" class="text-sm font-semibold">"Letras de este bloque"</h3>
-                <p class="text-xs text-base-content/75">"Lo que no cambies sigue a las letras de toda la tienda."</p>
-            </div>
+        <section class="flex flex-col gap-4">
             <FontSelect
                 label="Fuente"
                 value=Signal::derive(move || style.with(|s| s.font.clone()))

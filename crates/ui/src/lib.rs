@@ -623,8 +623,16 @@ pub fn EditorSkeleton() -> impl IntoView {
                     </div>
                 </div>
             </div>
-            <div class="flex flex-col gap-3 border-l border-base-300 p-5">
-                <Skeleton class="h-6 w-3/4"/>{sk_line("w-full")}{sk_line("w-2/3")}<Skeleton class="mt-1.5 h-16 w-full"/>
+            // Panel del bloque: cabecera con ícono, Duplicar / Borrar, la sección
+            // Contenido abierta (tres campos) y las otras cuatro plegadas.
+            <div class="flex flex-col gap-3 overflow-hidden border-l border-base-300 p-4">
+                <div class="flex items-start gap-3"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-5 w-3/4"/>{sk_line("w-full")}</div></div>
+                <div class="flex gap-2"><Skeleton class="h-8 w-24"/><Skeleton class="h-8 w-20"/></div>
+                <div class="flex flex-col gap-3 rounded-box border border-base-300 p-3">
+                    <Skeleton class="h-5 w-24"/>
+                    {(0..3).map(|_| view! { <div class="flex flex-col gap-1.5">{sk_line("w-1/4")}<Skeleton class="h-8 w-full"/></div> }).collect_view()}
+                </div>
+                {(0..3).map(|_| view! { <Skeleton class="h-11 w-full"/> }).collect_view()}
             </div>
             <div class="pointer-events-none absolute inset-0 grid place-items-center">
                 <div class="mk-load-msg relative h-11 w-72 rounded-box border border-base-300 bg-base-100 font-semibold shadow-lg">
