@@ -1982,10 +1982,10 @@ fn Totals(
         {coupon_id.map(|id| view! { <CouponBox cart f id/> })}
         <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span class="tabular-nums">{move || format_price(subtotal())}</span></div>
         {move || (coupon_cents(f, subtotal()) > 0).then(|| view! {
-            <div class="mt-1 flex justify-between text-sm text-success"><span>{move || format!("Cupón {}", f.coupon.with(|c| c.as_ref().map(|c| c.code.clone()).unwrap_or_default()))}</span><span class="tabular-nums">{move || format!("−{}", format_price(coupon_cents(f, subtotal())))}</span></div>
+            <div class="mt-1 flex justify-between gap-3 text-sm text-success"><span class="min-w-0">{move || format!("Cupón {}", f.coupon.with(|c| c.as_ref().map(|c| c.code.clone()).unwrap_or_default()))}</span><span class="shrink-0 whitespace-nowrap tabular-nums">{move || format!("−{}", format_price(coupon_cents(f, subtotal())))}</span></div>
         })}
         {move || (discount_cents(f, subtotal()) > 0).then(|| view! {
-            <div class="mt-1 flex justify-between text-sm text-success"><span>{format!("Descuento por transferencia ({} %)", f.transfer_off)}</span><span class="tabular-nums">{move || format!("−{}", format_price(discount_cents(f, subtotal())))}</span></div>
+            <div class="mt-1 flex justify-between gap-3 text-sm text-success"><span class="min-w-0">{format!("Descuento por transferencia ({} %)", f.transfer_off)}</span><span class="shrink-0 whitespace-nowrap tabular-nums">{move || format!("−{}", format_price(discount_cents(f, subtotal())))}</span></div>
         })}
         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
         <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span class="tabular-nums">{move || format_price(subtotal() - coupon_cents(f, subtotal()) - discount_cents(f, subtotal()) + shipping())}</span></div>
@@ -2218,10 +2218,10 @@ fn ReceiptHead(
             // Lo que dice tiene que seguir al pedido: antes repetía "lo está
             // preparando" aunque ya estuviera enviado.
             <p class="text-base-content/75">{match status {
-                S::Shipped if pickup => format!("Pedido #{number} · ya está listo para que lo retires. Si hace falta algo, la tienda te escribe al {phone}."),
-                S::Shipped => format!("Pedido #{number} · la tienda ya lo envió. Si hace falta algo, te escribe al {phone}."),
-                S::Delivered => format!("Pedido #{number} · tu pedido ya fue entregado. ¡Que lo disfrutes!"),
-                _ => format!("Pedido #{number} · la tienda ya lo está preparando. Si hace falta algo, te escribe al {phone}."),
+                S::Shipped if pickup => format!("Pedido #{number} · Ya está listo para que lo retires. Si hace falta algo, la tienda te escribe al {phone}."),
+                S::Shipped => format!("Pedido #{number} · La tienda ya lo envió. Si hace falta algo, te escribe al {phone}."),
+                S::Delivered => format!("Pedido #{number} · Tu pedido ya fue entregado. ¡Que lo disfrutes!"),
+                _ => format!("Pedido #{number} · La tienda ya lo está preparando. Si hace falta algo, te escribe al {phone}."),
             }}</p>
             <a class="btn btn-primary mt-3" href="/">"Seguir comprando"</a>
         }.into_any(),
@@ -2278,7 +2278,7 @@ fn ReceiptHead(
         _ => view! {
             {check}
             <h1 class="mk-h text-2xl font-bold">{format!("¡Gracias, {first_name}! Recibimos tu pedido")}</h1>
-            <p class="text-base-content/75">{format!("Pedido #{number} · la tienda te va a escribir al {phone} para coordinar el pago. Cuando lo reciba, empieza a prepararlo.")}</p>
+            <p class="text-base-content/75">{format!("Pedido #{number} · La tienda te va a escribir al {phone} para coordinar el pago. Cuando lo reciba, empieza a prepararlo.")}</p>
             {write_to_store.clone()}
             <a class="btn btn-primary mt-3" href="/">"Seguir comprando"</a>
         }.into_any(),

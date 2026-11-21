@@ -1174,6 +1174,11 @@ dialog.mk-cart::backdrop {
   background: color-mix(in oklab, var(--color-success) 22%, var(--color-base-100));
   color: color-mix(in oklab, var(--color-success) 55%, black);
 }
+/* Etiquetas suaves de la tienda («Esperando pago», «10 % de descuento»): el
+   texto en el color puro casi no se leía sobre el fondo claro. */
+.mk-store .badge-soft.badge-warning { color: color-mix(in oklab, var(--color-warning) 45%, black); }
+.mk-store .badge-soft.badge-success { color: color-mix(in oklab, var(--color-success) 50%, black); }
+
 /* Estilo «Etiquetas chicas»: una debajo de la otra. */
 .mk-pprice .mk-ptags:empty { display: none; }
 .mk-pprice .mk-ptag {
@@ -1650,7 +1655,7 @@ dialog.mk-cart::backdrop {
 .mk-psize:has(:checked) { border: 2px solid var(--color-base-content); font-weight: 700; }
 /* Agotado: tachado en diagonal, apagado y sin poder elegirse. */
 .mk-pswatch.mk-out, .mk-psize.mk-out { cursor: not-allowed; }
-.mk-psize.mk-out { color: color-mix(in oklab, var(--color-base-content) 40%, transparent); background: var(--color-base-200); }
+.mk-psize.mk-out { color: color-mix(in oklab, var(--color-base-content) 62%, transparent); background: var(--color-base-200); }
 .mk-pswatch.mk-out > :not(input) { opacity: 0.55; }
 .mk-pswatch.mk-out::after, .mk-psize.mk-out::after {
   content: "";

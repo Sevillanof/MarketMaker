@@ -31,6 +31,9 @@ pub struct Cart {
     /// Lo que cambió desde su última visita (un producto que ya no está, un
     /// precio distinto). Se muestra una vez, hasta que lo cierra.
     pub changes: RwSignal<Vec<CartChange>>,
+    /// El aviso de `changes` sigue flotando sobre la página: se va solo a
+    /// los [`CHANGES_MS`]. En el cajón del carrito queda hasta que lo cierra.
+    changes_float: RwSignal<bool>,
     /// Ya se leyó del navegador (antes de hidratar el carrito está vacío).
     pub ready: RwSignal<bool>,
     /// Hay un botón de carrito fijo en la página (el del encabezado). Si lo hay,
@@ -119,6 +122,9 @@ pub fn serialize_seen(items: &[CartItem]) -> String {
 /// Cuánto se ve la barra de abajo después de agregar un producto.
 const BAR_MS: u64 = 5000;
 
+/// Cuánto flota sobre la página el aviso «Tu carrito cambió».
+const CHANGES_MS: u64 = 8000;
+
 /// Cuánto dura el aviso "Quitaste … · Deshacer".
 const UNDO_MS: u64 = 6000;
 
@@ -141,6 +147,7 @@ impl Cart {
             open: RwSignal::new(false),
             removed: RwSignal::new(None),
             changes: RwSignal::new(Vec::new()),
+            changes_float: RwSignal::new(true),
             ready: RwSignal::new(false),
             nav: RwSignal::new(false),
             hook: use_context::<crate::UsageHook>(),
@@ -164,6 +171,13 @@ impl Cart {
                     let (mut saved, changes) = cart
                         .products
                         .with_value(|ps| reconcile(parse(&saved), &seen, ps));
+                    if !changes.is_empty() {
+                        let float = cart.changes_float;
+                        set_timeout(
+                            move || _ = float.try_set(false),
+                            std::time::Duration::from_millis(CHANGES_MS),
+                        );
+                    }
                     cart.changes.set(changes);
                     for (id, q) in &mut saved {
                         let max = cart.limit(id).max(1);
@@ -588,11 +602,16 @@ fn UndoToast(cart: Cart, in_drawer: bool) -> impl IntoView {
 }
 
 /// «Tu carrito cambió»: un producto que la tienda sacó o un precio distinto
-/// desde la última visita. Flotante y oscuro como «Quitaste… · Deshacer»;
-/// se va con la X.
+/// desde la última visita. Flotante y oscuro como «Quitaste… · Deshacer».
+/// Sobre la página se va solo a los pocos segundos; en el cajón del carrito
+/// queda hasta que lo cierra con la X.
 #[component]
 pub fn CartChanges(cart: Cart, in_drawer: bool) -> impl IntoView {
-    let show = move || cart.changes.with(|c| !c.is_empty()) && cart.open.get() == in_drawer;
+    let show = move || {
+        cart.changes.with(|c| !c.is_empty())
+            && cart.open.get() == in_drawer
+            && (in_drawer || cart.changes_float.get())
+    };
     let class = if in_drawer {
         "pointer-events-none absolute inset-x-4 bottom-64 z-10 flex justify-center"
     } else {
@@ -639,6 +658,28 @@ pub fn CartChanges(cart: Cart, in_drawer: bool) -> impl IntoView {
                 </div>
             })}
         </div>
+    }
+}
+
+/// Lo que el carrito dice del envío: el costo si es fijo y se conoce.
+fn shipping_hint() -> String {
+    use domain::ShippingHint as H;
+    let hint = use_context::<domain::StoreInfo>().map_or(H::Later, |s| s.delivery.cart_hint());
+    match hint {
+        H::Fixed {
+            cents: 0,
+            pickup: _,
+        } => "Gratis".to_string(),
+        H::Fixed {
+            cents,
+            pickup: true,
+        } => format!("{} o retiro gratis", short_price(cents)),
+        H::Fixed {
+            cents,
+            pickup: false,
+        } => short_price(cents),
+        H::PickupOnly => "Retiro gratis en el local".to_string(),
+        H::Later => "Se calcula en el próximo paso".to_string(),
     }
 }
 
@@ -923,7 +964,7 @@ pub fn CartDrawer(#[prop(optional)] in_checkout: bool) -> impl IntoView {
                     </ul>
                     <footer class="border-t border-base-300 px-6 pt-5 pb-6">
                         <div class="flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{move || format_price(cart.total_cents())}</span></div>
-                        <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>"Se calcula después"</span></div>
+                        <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_hint()}</span></div>
                         <div class="mt-3 mb-4 flex justify-between text-lg font-bold"><span>"Total"</span><span>{move || format_price(cart.total_cents())}</span></div>
                         {if in_checkout {
                             view! {

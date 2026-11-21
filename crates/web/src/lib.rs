@@ -195,7 +195,17 @@ fn HomePage() -> impl IntoView {
                         <buyer_ui::BuyerScope store_name=view.store_name.clone()>
                             {move || {
                                 let path = location.pathname.get();
-                                view! { <StorefrontPage view=view.clone() path/> }
+                                // Cada página con su nombre en la pestaña y
+                                // en el historial: «Contacto · Casa Alma».
+                                let title = match view.doc.page_index(&path) {
+                                    Some(0) => view.store_name.clone(),
+                                    Some(i) => format!("{} · {}", view.doc.pages[i - 1].name, view.store_name),
+                                    None => format!("Página no encontrada · {}", view.store_name),
+                                };
+                                view! {
+                                    <Title text=title/>
+                                    <StorefrontPage view=view.clone() path/>
+                                }
                             }}
                         </buyer_ui::BuyerScope>
                     }
@@ -217,14 +227,22 @@ fn DraftPreviewPage() -> impl IntoView {
     // (las demás páginas no se pueden enmarcar, ver `server::main`).
     #[cfg(feature = "ssr")]
     if let Some(r) = use_context::<leptos_axum::ResponseOptions>() {
-        r.insert_header(http::header::X_FRAME_OPTIONS, http::HeaderValue::from_static("SAMEORIGIN"));
+        r.insert_header(
+            http::header::X_FRAME_OPTIONS,
+            http::HeaderValue::from_static("SAMEORIGIN"),
+        );
         r.insert_header(
             http::header::CONTENT_SECURITY_POLICY,
-            http::HeaderValue::from_static("frame-ancestors 'self'; base-uri 'self'; object-src 'none'"),
+            http::HeaderValue::from_static(
+                "frame-ancestors 'self'; base-uri 'self'; object-src 'none'",
+            ),
         );
     }
     let query = leptos_router::hooks::use_query_map();
-    let path = query.with_untracked(|q| q.get("ruta")).filter(|r| r.starts_with('/')).unwrap_or_else(|| "/".to_string());
+    let path = query
+        .with_untracked(|q| q.get("ruta"))
+        .filter(|r| r.starts_with('/'))
+        .unwrap_or_else(|| "/".to_string());
     let page = Resource::new(|| (), |_| server::load_preview("home".to_string()));
     view! {
         <leptos_meta::Meta name="robots" content="noindex"/>

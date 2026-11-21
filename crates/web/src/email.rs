@@ -211,9 +211,37 @@ pub fn to_buyer(
     pickup_address: &str,
     transfer_info: &str,
     paid: bool,
+    // Enlace de WhatsApp de la tienda, para mandar el comprobante.
+    whatsapp_url: Option<&str>,
 ) -> Email {
     let first = o.customer_name.split_whitespace().next().unwrap_or("");
     let url = format!("{}/pedido/{}", store_url(slug), o.id);
+    // Con transferencia todavía falta pagar: lo dice el título, como la
+    // página del pedido, y suma el enlace para mandar el comprobante.
+    let owes_transfer = !paid && o.pay == domain::PayMethod::Transfer;
+    let title = if owes_transfer {
+        format!("{first}, ya casi está: falta la transferencia")
+    } else {
+        format!("¡Gracias por tu compra, {first}!")
+    };
+    let wa = whatsapp_url.filter(|_| owes_transfer).map(|u| {
+        format!(
+            "{u}?text={}",
+            domain::encode_query(&format!(
+                "Hola, te mando el comprobante de la transferencia del pedido #{}.",
+                o.number
+            ))
+        )
+    });
+    let wa_html = wa.as_ref().map_or_else(String::new, |u| {
+        format!(
+            r#"<p style="margin:4px 0 0"><a href="{}" style="display:inline-block;color:#4f46e5;text-decoration:none;font-weight:600;padding:10px 0">Mandar comprobante por WhatsApp</a></p>"#,
+            esc(u)
+        )
+    });
+    let wa_text = wa.as_ref().map_or_else(String::new, |u| {
+        format!("Mandar comprobante por WhatsApp: {u}\n")
+    });
     let (lines_html, lines_text) = order_lines(o);
     let next = if paid {
         "Tu pago está aprobado. La tienda ya está preparando tu pedido.".to_string()
@@ -245,10 +273,10 @@ pub fn to_buyer(
     let html = frame(
         store_name,
         &format!(
-            r#"<h1 style="font-size:20px;margin:0 0 8px">¡Gracias por tu compra, {}!</h1>
+            r#"<h1 style="font-size:20px;margin:0 0 8px">{}</h1>
 <p style="margin:0;color:#52525b">Pedido #{} · {}</p>{lines_html}
-<p style="margin:16px 0 0;color:#52525b">{}</p>{note_html}{}"#,
-            esc(first),
+<p style="margin:16px 0 0;color:#52525b">{}</p>{note_html}{}{wa_html}"#,
+            esc(&title),
             o.number,
             esc(&next),
             esc(&place),
@@ -256,7 +284,7 @@ pub fn to_buyer(
         ),
     );
     let text = format!(
-        "¡Gracias por tu compra, {first}!\nPedido #{} · {next}\n\n{lines_text}\n{place}\n{note_text}\nTu pedido: {url}\n",
+        "{title}\nPedido #{} · {next}\n\n{lines_text}\n{place}\n{note_text}\nTu pedido: {url}\n{wa_text}",
         o.number
     );
     Email {
@@ -373,6 +401,10 @@ pub async fn order_emails(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid
             .await
             .map_err(|e| e.to_string())?
             .transfer_text();
+        let whatsapp = db::auth::store_info(pool, tenant)
+            .await
+            .ok()
+            .and_then(|i| i.whatsapp_url());
         send(to_buyer(
             &name,
             &slug,
@@ -380,6 +412,7 @@ pub async fn order_emails(pool: &db::Pool, tenant: uuid::Uuid, order: uuid::Uuid
             &d.pickup_address,
             &transfer,
             paid,
+            whatsapp.as_deref(),
         ));
         send(to_owner(owners, &name, &slug, &o, paid));
         Ok::<_, String>(())

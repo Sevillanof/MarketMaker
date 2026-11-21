@@ -655,7 +655,7 @@ pub async fn set_avatar(
 /// Nombre, logo y contacto de la tienda.
 pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::StoreInfo> {
     #[allow(clippy::type_complexity)]
-    let (name, logo, whatsapp, instagram, email, tagline, hours, mp, transfer, installments, discount, coordinate): (
+    let (name, logo, whatsapp, instagram, email, tagline, hours, mp, transfer, installments, discount, coordinate, pickup, shipping, shipping_cents, carrier): (
         String,
         Option<Uuid>,
         String,
@@ -668,10 +668,15 @@ pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::Sto
         i16,
         i16,
         bool,
+        bool,
+        bool,
+        Option<i64>,
+        bool,
     ) = sqlx::query_as(
         "SELECT name, logo_id, whatsapp, instagram, contact_email, tagline, hours, mp_user_id IS NOT NULL,
                 pay_transfer AND transfer_alias <> '', installments, transfer_discount,
-                pay_coordinate
+                pay_coordinate, pickup_enabled, shipping_enabled, shipping_cents,
+                EXISTS (SELECT 1 FROM andreani_accounts a WHERE a.tenant_id = tenants.id)
          FROM tenants WHERE id = $1",
     )
     .bind(tenant)
@@ -697,6 +702,12 @@ pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::Sto
                 0
             },
             coordinate,
+        },
+        delivery: domain::DeliveryBrief {
+            pickup,
+            shipping,
+            shipping_cents,
+            carrier,
         },
     })
 }

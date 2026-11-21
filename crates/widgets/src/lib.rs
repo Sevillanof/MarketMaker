@@ -1688,11 +1688,13 @@ fn CouponWidget(props: CouponProps, editing: bool) -> impl IntoView {
             let mine = generation.get_value();
             state.set(None);
             copy_text(&code, move |ok| {
-                state.set(Some(ok));
+                // Si cambió de página mientras tanto, el bloque ya no existe:
+                // sin `try_` esto rompía por dentro.
+                state.try_set(Some(ok));
                 set_timeout(
                     move || {
-                        if generation.get_value() == mine {
-                            state.set(None);
+                        if generation.try_get_value() == Some(mine) {
+                            state.try_set(None);
                         }
                     },
                     std::time::Duration::from_secs(2),

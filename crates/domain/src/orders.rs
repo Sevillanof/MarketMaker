@@ -105,7 +105,7 @@ impl PayMethod {
         match self {
             PayMethod::MercadoPago => "Mercado Pago",
             PayMethod::Transfer => "Transferencia",
-            PayMethod::Coordinate => "Coordinar con la tienda",
+            PayMethod::Coordinate => "Acordar con la tienda",
         }
     }
 }
