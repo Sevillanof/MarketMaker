@@ -763,8 +763,14 @@ pub fn LinkImport(
     let input_id = format!("{uid}-enlace");
     let help_id = format!("{uid}-enlace-ayuda");
     let busy = move || photos.progress.get().is_some();
+    // Pegó algo que no es un enlace: se avisa acá mismo, bajo el campo.
+    let bad = RwSignal::new(false);
     let go = move || {
         let t = text.get_untracked();
+        if !t.split_whitespace().any(|l| l.contains('.')) {
+            bad.set(true);
+            return;
+        }
         let done = Callback::new(move |item: MediaItem| {
             done.run(item);
             open.set(false);
@@ -810,6 +816,7 @@ pub fn LinkImport(
                     prop:value=move || text.get()
                     on:input=move |ev| {
                         text.set(event_target_value(&ev));
+                        bad.set(false);
                         // El aviso de antes se va al corregir el enlace.
                         if photos.upload_errors.with_untracked(|e| !e.is_empty()) {
                             photos.upload_errors.set(Vec::new());
@@ -827,6 +834,9 @@ pub fn LinkImport(
                     disabled=move || busy() || text.with(|t| t.trim().is_empty())
                     on:click=move |_| go()>"Traer"</button>
             </div>
+            {move || bad.get().then(|| view! {
+                <p class="text-xs text-error">"Eso no es un enlace. Copiá la dirección de la foto (empieza con https://)."</p>
+            })}
             <p id=help_id class="text-xs text-base-content/60">
                 "La copiamos a Mis fotos. Podés pegar varios enlaces juntos. Google Fotos, Instagram y Facebook no dejan: bajá la foto y subila."
             </p>
@@ -861,10 +871,11 @@ pub fn UploadTray() -> impl IntoView {
                     if active == 1 { "foto" } else { "fotos" }
                 )
             } else if failed > 0 {
-                format!(
-                    "{failed} {} no se pudo subir",
-                    if failed == 1 { "foto" } else { "fotos" }
-                )
+                if failed == 1 {
+                    "1 foto no se pudo subir".to_string()
+                } else {
+                    format!("{failed} fotos no se pudieron subir")
+                }
             } else if new > 0 {
                 format!(
                     "Listo: {new} {} en Mis fotos",
@@ -874,6 +885,16 @@ pub fn UploadTray() -> impl IntoView {
                         "fotos nuevas"
                     }
                 )
+            } else if q
+                .iter()
+                .any(|e| matches!(e.state, UploadState::Duplicate(_)))
+            {
+                // Nada nuevo: todas ya estaban.
+                if q.len() == 1 {
+                    "Esa foto ya estaba en Mis fotos".to_string()
+                } else {
+                    "Esas fotos ya estaban en Mis fotos".to_string()
+                }
             } else {
                 "Listo".to_string()
             }

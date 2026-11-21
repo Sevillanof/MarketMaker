@@ -400,3 +400,98 @@ mod tests {
         assert_eq!(p.for_variant("", "M").unwrap().id, "p2~~M");
     }
 }
+
+/// El color de un nombre conocido («Terracota», «verde agua», «Negro»…),
+/// para que el punto nazca del color que dice. `None` si no lo conoce.
+pub fn color_hex_for_name(name: &str) -> Option<&'static str> {
+    const NAMES: &[(&str, &str)] = &[
+        ("negro", "#111827"),
+        ("blanco", "#ffffff"),
+        ("gris", "#9ca3af"),
+        ("gris oscuro", "#4b5563"),
+        ("gris claro", "#d1d5db"),
+        ("plata", "#c0c0c0"),
+        ("plateado", "#c0c0c0"),
+        ("dorado", "#d4af37"),
+        ("oro", "#d4af37"),
+        ("rojo", "#dc2626"),
+        ("bordo", "#7f1d1d"),
+        ("bordó", "#7f1d1d"),
+        ("vino", "#7f1d1d"),
+        ("rosa", "#f472b6"),
+        ("rosado", "#f9a8d4"),
+        ("fucsia", "#d946ef"),
+        ("naranja", "#f97316"),
+        ("coral", "#fb7185"),
+        ("salmon", "#fa8072"),
+        ("salmón", "#fa8072"),
+        ("amarillo", "#facc15"),
+        ("mostaza", "#ca8a04"),
+        ("verde", "#16a34a"),
+        ("verde oscuro", "#14532d"),
+        ("verde claro", "#86efac"),
+        ("verde agua", "#5eead4"),
+        ("verde oliva", "#6b7d2e"),
+        ("oliva", "#6b7d2e"),
+        ("verde militar", "#4b5320"),
+        ("menta", "#a7f3d0"),
+        ("turquesa", "#14b8a6"),
+        ("celeste", "#7dd3fc"),
+        ("azul", "#2563eb"),
+        ("azul marino", "#1e3a8a"),
+        ("azul francia", "#1d4ed8"),
+        ("marino", "#1e3a8a"),
+        ("violeta", "#7c3aed"),
+        ("lila", "#c4b5fd"),
+        ("morado", "#6b21a8"),
+        ("lavanda", "#c4b5fd"),
+        ("marron", "#78350f"),
+        ("marrón", "#78350f"),
+        ("chocolate", "#4a2c17"),
+        ("cafe", "#6f4e37"),
+        ("café", "#6f4e37"),
+        ("camel", "#c19a6b"),
+        ("suela", "#a0522d"),
+        ("terracota", "#c2663f"),
+        ("ladrillo", "#b4442c"),
+        ("arena", "#d6c4a3"),
+        ("beige", "#e7dcc4"),
+        ("crudo", "#f3ecd9"),
+        ("hueso", "#efe9dc"),
+        ("natural", "#e8dcc2"),
+        ("nude", "#e3c0a8"),
+        ("tostado", "#b08250"),
+        ("cobre", "#b87333"),
+        ("bronce", "#a97142"),
+        ("jean", "#4a6fa5"),
+        ("denim", "#4a6fa5"),
+    ];
+    let key = name.trim().to_lowercase();
+    if key.is_empty() {
+        return None;
+    }
+    NAMES
+        .iter()
+        .find(|(n, _)| *n == key)
+        .or_else(|| {
+            NAMES
+                .iter()
+                .filter(|(n, _)| key.starts_with(n))
+                .max_by_key(|(n, _)| n.len())
+        })
+        .map(|(_, h)| *h)
+}
+
+#[cfg(test)]
+mod color_name_tests {
+    #[test]
+    fn knows_common_names() {
+        assert_eq!(super::color_hex_for_name("Terracota"), Some("#c2663f"));
+        assert_eq!(super::color_hex_for_name("verde agua"), Some("#5eead4"));
+        assert_eq!(
+            super::color_hex_for_name("Azul marino oscuro"),
+            Some("#1e3a8a")
+        );
+        assert_eq!(super::color_hex_for_name("Unicornio"), None);
+    }
+}

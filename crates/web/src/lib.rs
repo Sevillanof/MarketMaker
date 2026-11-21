@@ -156,6 +156,8 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/privacidad") view=legal::PrivacyPage/>
                     <Route path=path!("/arrepentimiento") view=regret::RegretPage ssr=SsrMode::Async/>
                     <Route path=path!("/pedido/:id") view=checkout::OrderPage ssr=SsrMode::Async/>
+                    // La cuenta a secas abre los pedidos.
+                    <Route path=path!("/mi-cuenta") view=|| view! { <Redirect path="/mi-cuenta/pedidos"/> } ssr=SsrMode::Async/>
                     <Route path=path!("/mi-cuenta/entrar") view=buyer_ui::BuyerEnterPage ssr=SsrMode::Async/>
                     <Route path=path!("/mi-cuenta/pedidos") view=buyer_ui::BuyerOrdersPage ssr=SsrMode::Async/>
                     <Route path=path!("/mi-cuenta/pedidos/:id") view=buyer_ui::BuyerOrderPage ssr=SsrMode::Async/>

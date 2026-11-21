@@ -526,12 +526,37 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
         .unwrap_or_else(|| "Lo retira en el local".to_string());
     let shipping_text = order.shipping_text(format_price);
     let delivery = order.delivery;
+    // Qué pasa al cancelar: lo justo para no sorprender al dueño.
+    let paid = matches!(
+        order.status,
+        OrderStatus::Paid | OrderStatus::Shipped | OrderStatus::Delivered
+    );
+    let cancel_note = {
+        let mut t = "Las unidades vuelven a tu stock y al comprador le llega un email avisando que se canceló.".to_string();
+        if paid {
+            t.push_str(if order.pay == domain::PayMethod::MercadoPago {
+                " Ya pagó: la devolución la hacés vos desde Mercado Pago."
+            } else {
+                " Ya pagó: acordá la devolución con el comprador."
+            });
+        }
+        if order
+            .shipment
+            .as_ref()
+            .is_some_and(|s| !s.pedido_id.is_empty() || !s.tracking.is_empty())
+        {
+            t.push_str(
+                " El envío de Andreani sigue creado: cancelalo desde tu cuenta de Andreani.",
+            );
+        }
+        t
+    };
     view! {
         <div class="flex h-full flex-col">
             <header class="flex items-start gap-3 border-b border-base-200 p-6">
                 <div class="grow">
                     <h2 id="order-title" class="text-2xl font-bold">{format!("Pedido #{}", order.number)}</h2>
-                    <p class="text-sm text-base-content/70">{format!("{} · {} · {}", order.status.label(), order.pay.label(), domain::order_time_ar(&order.created_at))}</p>
+                    <p class="text-sm text-base-content/70">{format!("{} · {} · {}", order.status.label_for(order.delivery), order.pay.label(), domain::order_time_ar(&order.created_at))}</p>
                     {(!order.regret_code.is_empty()).then(|| view! {
                         <p class="mt-1 text-sm text-red-700">{format!(
                             "Usó el botón de arrepentimiento (código {}). Comunicate para coordinar la devolución y el reintegro.",
@@ -597,7 +622,7 @@ fn OrderDetail(ctx: BoardCtx, order: Order, confirm_cancel: RwSignal<bool>) -> i
                             </label>
                             {move || if confirm_cancel.get() {
                                 view! {
-                                    <p class="w-full text-sm text-base-content/75">"Las unidades vuelven a tu stock. Al comprador no le llega ningún aviso: escribile para contarle."</p>
+                                    <p class="w-full text-sm text-base-content/75">{cancel_note.clone()}</p>
                                     <button type="button" class="btn btn-error btn-sm"
                                         on:click=move |_| ctx.set_status(id.get_value(), OrderStatus::Cancelled)>"Sí, cancelar el pedido"</button>
                                     <button type="button" class="btn btn-ghost btn-sm" on:click=move |_| confirm_cancel.set(false)>"No, dejarlo"</button>

@@ -102,6 +102,9 @@ pub struct ProductEdit {
     /// La dirección de la tienda, para "Ver en mi tienda" al crear.
     #[serde(default)]
     pub store_url: String,
+    /// La tienda está publicada: si no, un producto nuevo todavía no se ve.
+    #[serde(default)]
+    pub published: bool,
 }
 
 /// Largo máximo del nombre de una categoría o subcategoría.
@@ -477,6 +480,8 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     }
     if !(0..=PRICE_MAX_CENTS).contains(&p.price_cents) {
         errors.push("Revisá el precio: tiene que ser un número de pesos.".to_string());
+    } else if p.price_cents == 0 {
+        errors.push("Poné el precio del producto.".to_string());
     }
     if p.compare_at_cents != 0 && p.compare_at_cents <= p.price_cents {
         errors.push(
@@ -753,6 +758,7 @@ mod tests {
         let fit = |x, y, zoom| PhotoFit { x, y, zoom };
         let mut p = Product {
             name: "Taza".into(),
+            price_cents: 150_000,
             photos: vec!["/media/a/960.webp".into(), "/media/b/960.webp".into()],
             photo_fits: [
                 ("/media/a/960.webp".to_string(), fit(80, 120, 900)),
@@ -908,5 +914,49 @@ mod category_tests {
         let c = categories_from_pairs(&rows);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].products, 3);
+    }
+}
+
+/// Cómo se llaman las medidas de un producto: «Talle» para ropa y calzado
+/// (S, M, XL, 38, Único…), «Tamaño» para lo demás (Chica, 20 cm…).
+pub fn size_word(sizes: &[String]) -> &'static str {
+    let clothing = |s: &str| {
+        let t = s.trim().to_uppercase();
+        matches!(
+            t.as_str(),
+            "XXS"
+                | "XS"
+                | "S"
+                | "M"
+                | "L"
+                | "XL"
+                | "XXL"
+                | "XXXL"
+                | "2XL"
+                | "3XL"
+                | "4XL"
+                | "U"
+                | "ÚNICO"
+                | "UNICO"
+                | "TALLE ÚNICO"
+                | "TALLE UNICO"
+        ) || t.parse::<f32>().is_ok_and(|n| (1.0..=60.0).contains(&n))
+    };
+    if !sizes.is_empty() && sizes.iter().all(|s| clothing(s)) {
+        "Talle"
+    } else {
+        "Tamaño"
+    }
+}
+
+#[cfg(test)]
+mod size_word_tests {
+    #[test]
+    fn names_sizes() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(super::size_word(&v(&["S", "M", "XL"])), "Talle");
+        assert_eq!(super::size_word(&v(&["38", "40", "42.5"])), "Talle");
+        assert_eq!(super::size_word(&v(&["Chica", "Grande"])), "Tamaño");
+        assert_eq!(super::size_word(&v(&["20 cm", "30 cm"])), "Tamaño");
     }
 }

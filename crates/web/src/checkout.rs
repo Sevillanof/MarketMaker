@@ -400,13 +400,15 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         });
     }
     // Frena los pedidos falsos en serie: los de transferencia guardan stock
-    // y mandan emails. 5 cada 10 minutos por conexión y tienda alcanza.
+    // y mandan emails. 5 cada 10 minutos por comprador (email) y tienda; por
+    // conexión el tope es más alto, porque en el celular muchos comparten la
+    // misma dirección de internet.
     let ip = crate::limits::client_ip();
-    if !crate::limits::allow(
-        &format!("order|{}|{ip}", tenant.id),
-        5,
-        std::time::Duration::from_secs(10 * 60),
-    ) {
+    let who = form.email.trim().to_lowercase();
+    let window = std::time::Duration::from_secs(10 * 60);
+    if !crate::limits::allow(&format!("order|{}|{ip}", tenant.id), 20, window)
+        || !crate::limits::allow(&format!("order-email|{}|{who}", tenant.id), 5, window)
+    {
         return Ok(PlaceOrder::CartChanged {
             remove: Vec::new(),
             message: "Recibimos varios pedidos seguidos desde tu conexión. Esperá unos minutos y probá de nuevo.".into(),
@@ -969,6 +971,14 @@ struct Progress {
     notes: String,
     #[serde(default)]
     step: u8,
+    /// La entrega y la forma de pago elegidas: en el celular la página se
+    /// recarga sola al volver de la app del banco o de WhatsApp.
+    #[serde(default)]
+    delivery: String,
+    #[serde(default)]
+    branch: String,
+    #[serde(default)]
+    pay: Option<domain::PayMethod>,
 }
 
 /// El paso que guarda la entrada actual del historial (ver [`remember_progress`]).
@@ -983,6 +993,7 @@ fn step_in_history() -> Option<u8> {
 /// anterior en lugar de salir de la compra.
 fn remember_progress(f: &Fields, step: RwSignal<u8>) {
     let (coupon, coupon_text, notes) = (f.coupon, f.coupon_text, f.notes);
+    let (delivery, branch, pay) = (f.delivery, f.branch, f.pay);
     // El paso cambió por Atrás o Adelante (o al recuperarlo): no suma entrada.
     let quiet = StoredValue::new(false);
     Effect::new(move |_| {
@@ -996,6 +1007,15 @@ fn remember_progress(f: &Fields, step: RwSignal<u8>) {
             }
             if notes.get_untracked().is_empty() {
                 notes.set(p.notes);
+            }
+            if !p.delivery.is_empty() {
+                delivery.set(Delivery::from_str(&p.delivery));
+            }
+            if !p.branch.is_empty() && branch.get_untracked().is_empty() {
+                branch.set(p.branch);
+            }
+            if let Some(m) = p.pay {
+                pay.set(m);
             }
             if (2..=3).contains(&p.step) {
                 quiet.set_value(true);
@@ -1029,6 +1049,9 @@ fn remember_progress(f: &Fields, step: RwSignal<u8>) {
             coupon: coupon.get(),
             notes: notes.get(),
             step: step.get(),
+            delivery: delivery.get().as_str().to_string(),
+            branch: branch.get(),
+            pay: Some(pay.get()),
         };
         // La primera vez corre antes de recuperar: no pisa lo guardado.
         if prev.is_some() {
@@ -1384,7 +1407,7 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
                                             } else if let Some(p) = f.quote.with(|q| q.as_ref().and_then(|q| q.problem.clone())) {
                                                 p
                                             } else if f.quote.with(Option::is_none) {
-                                                "Escribilo para ver el costo del envío con Andreani.".to_string()
+                                                "Escribilo para ver las opciones de envío.".to_string()
                                             } else {
                                                 String::new()
                                             }}
@@ -1703,7 +1726,9 @@ fn DeliveryChoice(
                                 errors.update(|e| e.retain(|e| e.field != "delivery"));
                             }/>
                         <span class="min-w-0 flex-1">
-                            <span class="block font-semibold">{kind.label()}</span>
+                            // Con Andreani al lado, «Envío a domicilio» se confundiría con
+                            // «Andreani a domicilio»: el propio dice de quién es.
+                            <span class="block font-semibold">{move || if kind == Delivery::Shipping && f.quote.with(|q| q.as_ref().is_some_and(|q| !q.rates.is_empty())) { "Envío de la tienda" } else { kind.label() }}</span>
                             <span class="block truncate text-sm" class:text-success=free class:text-base-content=move || !free class:opacity-70=!free>{detail}</span>
                             {(kind == Delivery::Shipping && note.with_value(|n| !n.is_empty())).then(|| view! {
                                 <span class="block text-sm text-base-content/70">{note.get_value()}</span>
@@ -1925,9 +1950,11 @@ fn OrderLines(cart: Cart) -> impl IntoView {
 #[component]
 fn CouponBox(cart: Cart, f: Fields, id: &'static str) -> impl IntoView {
     let check = Action::new(|code: &String| check_coupon(code.clone()));
+    // Solo cuando llega una respuesta: si siguiera al carrito, un cupón que
+    // el comprador quitó volvería solo al tocar + o −.
     Effect::new(move |_| match check.value().get() {
         Some(Ok(c)) => match c.offer {
-            Some(o) => match o.min_problem(cart.total_cents()) {
+            Some(o) => match o.min_problem(untrack(|| cart.total_cents())) {
                 Some(p) => f.coupon_msg.set(Some(p)),
                 None => {
                     f.coupon.set(Some(o));

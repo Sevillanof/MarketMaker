@@ -37,13 +37,10 @@ const MONTHS: [&str; 12] = [
     "diciembre",
 ];
 
-/// `2026-11-14T10:00:00Z` → (14, 11, 2026).
+/// `2026-11-14T10:00:00Z` → (14, 11, 2026), en hora de Argentina (la misma
+/// fecha que ve el dueño).
 fn parse_date(iso: &str) -> Option<(u32, usize, u32)> {
-    let mut p = iso.get(..10)?.split('-');
-    let y = p.next()?.parse().ok()?;
-    let m: usize = p.next()?.parse().ok()?;
-    let d = p.next()?.parse().ok()?;
-    (1..=12).contains(&m).then_some((d, m, y))
+    domain::order_day_ar(iso)
 }
 
 /// "14 nov".
@@ -641,7 +638,7 @@ fn OrderCard(order: Order) -> impl IntoView {
             <div class="card-body gap-3 p-5">
                 <div class="flex items-center gap-2.5">
                     <h2 class="font-bold">{format!("Pedido #{}", order.number)}</h2>
-                    <span class=badge_class(order.status)>{order.status.label()}</span>
+                    <span class=badge_class(order.status)>{order.status.label_for(order.delivery)}</span>
                     <span class="ml-auto text-sm text-base-content/70">{short_date(&order.created_at)}</span>
                 </div>
                 <div class="flex items-center gap-2">
@@ -734,7 +731,7 @@ fn OrderDetail(view: domain::PageView, order: Order) -> impl IntoView {
             <div class="card bg-base-100 shadow-sm"><div class="card-body gap-4 p-6">
                 <div class="flex flex-wrap items-center gap-3">
                     <h1 class="mk-h text-2xl font-bold">{format!("Pedido #{}", order.number)}</h1>
-                    <span class=badge_class(order.status)>{order.status.label()}</span>
+                    <span class=badge_class(order.status)>{order.status.label_for(order.delivery)}</span>
                 </div>
                 <p class="text-sm text-base-content/70">{format!("Hecho el {}", long_date(&order.created_at))}</p>
                 {if cancelled {

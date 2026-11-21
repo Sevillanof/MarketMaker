@@ -637,6 +637,9 @@ pub async fn save_name(name: String) -> Result<String, ServerFnError> {
         .await?
         .ok_or_else(|| ServerFnError::new("Tenés que entrar con tu cuenta."))?;
     let name = domain::clean_name(&name);
+    if name.is_empty() {
+        return Err(ServerFnError::new("Escribí tu nombre."));
+    }
     db::auth::set_name(&crate::server::pool()?, user.id, &name)
         .await
         .map_err(crate::server::internal)?;
@@ -687,10 +690,16 @@ pub async fn change_password(
         .map_err(internal)?
         .ok_or_else(|| ServerFnError::new("No encontramos tu cuenta."))?;
     if let Some(hash) = account.password_hash {
+        let same = (new.clone(), hash.clone());
         if current.chars().count() > domain::PASSWORD_MAX
             || !blocking(move || db::auth::verify_password(&current, &hash)).await?
         {
             return Ok(PasswordChange::WrongCurrent);
+        }
+        if blocking(move || db::auth::verify_password(&same.0, &same.1)).await? {
+            return Ok(PasswordChange::Weak {
+                reason: "La contraseña nueva tiene que ser distinta de la actual.".into(),
+            });
         }
     }
     let hash = blocking(move || db::auth::hash_password(&new)).await?;

@@ -10,7 +10,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Cuánto dura un código.
-pub const CODE_MINUTES: i32 = 10;
+pub const CODE_MINUTES: i32 = 30;
 /// Intentos por código antes de tener que pedir otro.
 pub const CODE_ATTEMPTS: i32 = 5;
 /// Códigos por email y por hora.

@@ -102,6 +102,16 @@ pub async fn create_store(
         return Ok(NewStoreOutcome::Problem(problem.into()));
     }
     let pool = crate::server::pool()?;
+    // Un tope generoso: frena una cuenta que crea tiendas en serie.
+    const STORES_MAX: usize = 10;
+    let mine = db::auth::stores_for_user(&pool, user.id)
+        .await
+        .map_err(crate::server::internal)?;
+    if mine.len() >= STORES_MAX {
+        return Ok(NewStoreOutcome::Problem(format!(
+            "Llegaste al máximo de {STORES_MAX} tiendas por cuenta. Escribinos a hola@mkr.com.ar si necesitás más."
+        )));
+    }
     let mut doc = domain::template_doc(&template, &name);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

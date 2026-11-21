@@ -1121,8 +1121,12 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     };
 
     let sample_photos = RwSignal::new(0usize);
+    // Lo que la tienda completa sola (la frase del pie) no se marca.
+    let store_info = StoredValue::new(use_context::<domain::StoreInfo>().unwrap_or_default());
     let check_publish = move || {
-        let items = state.doc.with_untracked(domain::placeholder_nodes);
+        let items = state
+            .doc
+            .with_untracked(|d| store_info.with_value(|s| domain::placeholder_nodes_for(d, s)));
         let photos = state.doc.with_untracked(domain::sample_photos);
         sample_photos.set(photos);
         if items.is_empty() && examples == 0 && photos == 0 {

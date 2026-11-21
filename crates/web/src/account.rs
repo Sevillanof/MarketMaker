@@ -534,7 +534,7 @@ fn SignInForm(next: String, create: bool, link: Option<Link>) -> impl IntoView {
                 </p>
                 <p class="mt-3 flex items-center gap-1.5 text-[13px] text-base-content/60">
                     <ui::Icon name="clock" class="size-4"/>
-                    "El enlace vence en 10 minutos."
+                    "El enlace vence en 30 minutos."
                 </p>
                 {move || info.get().map(|i| view! { <p class="mt-4 text-sm text-base-content/70">{i}</p> })}
                 {cfg!(debug_assertions).then(|| view! {
@@ -863,6 +863,10 @@ fn NameDialog(
                 <form class="flex flex-col gap-4" on:submit=move |ev: leptos::ev::SubmitEvent| {
                     ev.prevent_default();
                     problem.set(None);
+                    if domain::clean_name(&name.get_untracked()).is_empty() {
+                        problem.set(Some("Escribí tu nombre.".into()));
+                        return;
+                    }
                     save.dispatch(name.get_untracked());
                 }>
                     <h2 id="nombre-titulo" class="text-xl font-extrabold">"Cambiar tu nombre"</h2>
@@ -916,7 +920,12 @@ fn PasswordDialog(
         Some(Ok(PasswordChange::WrongCurrent)) => {
             problem.set(Some("La contraseña actual no es correcta.".into()))
         }
-        Some(Ok(PasswordChange::Weak { reason })) => problem.set(Some(reason)),
+        // Si el medidor de abajo del campo ya lo dice, no se repite.
+        Some(Ok(PasswordChange::Weak { reason })) => {
+            if domain::password_problem(&new.get_untracked()).as_deref() != Some(reason.as_str()) {
+                problem.set(Some(reason));
+            }
+        }
         Some(Err(_)) => problem.set(Some(CONNECTION.into())),
         None => {}
     });
