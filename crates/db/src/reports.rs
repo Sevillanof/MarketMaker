@@ -47,14 +47,21 @@ pub async fn insert(pool: &PgPool, r: NewReport<'_>) -> sqlx::Result<i64> {
     .await
 }
 
-const COLS: &str = "id, num, estado, descripcion, pagina, quien, pantalla, navegador,
-    (captura IS NOT NULL) AS tiene_captura,
-    EXTRACT(EPOCH FROM now() - creado)::bigint AS hace";
+/// Las columnas de un reporte, sin la captura (literal para `concat!`).
+macro_rules! cols {
+    () => {
+        "id, num, estado, descripcion, pagina, quien, pantalla, navegador,
+         (captura IS NOT NULL) AS tiene_captura,
+         EXTRACT(EPOCH FROM now() - creado)::bigint AS hace"
+    };
+}
 
 /// Los últimos reportes (los más nuevos primero); `estado` vacío = todos.
 pub async fn list(pool: &PgPool, estado: &str, limit: i64) -> sqlx::Result<Vec<Report>> {
-    sqlx::query_as::<_, Report>(&format!(
-        "SELECT {COLS} FROM reportes WHERE ($1 = '' OR estado = $1)
+    sqlx::query_as::<_, Report>(concat!(
+        "SELECT ",
+        cols!(),
+        " FROM reportes WHERE ($1 = '' OR estado = $1)
          ORDER BY creado DESC LIMIT $2"
     ))
     .bind(estado)
@@ -64,7 +71,7 @@ pub async fn list(pool: &PgPool, estado: &str, limit: i64) -> sqlx::Result<Vec<R
 }
 
 pub async fn get(pool: &PgPool, num: i64) -> sqlx::Result<Option<Report>> {
-    sqlx::query_as::<_, Report>(&format!("SELECT {COLS} FROM reportes WHERE num = $1"))
+    sqlx::query_as::<_, Report>(concat!("SELECT ", cols!(), " FROM reportes WHERE num = $1"))
         .bind(num)
         .fetch_optional(pool)
         .await
