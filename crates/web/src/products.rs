@@ -1131,6 +1131,10 @@ fn StockStepper(form: Form) -> impl IntoView {
 #[component]
 fn FichaDialog(ctx: ListCtx) -> impl IntoView {
     let dialog = NodeRef::<leptos::html::Dialog>::new();
+    // La ficha se arma recién en el navegador, ya hidratada la página: el
+    // servidor no la manda (así no hay diferencias al hidratar).
+    let mounted = RwSignal::new(false);
+    Effect::new(move |_| mounted.set(true));
     // Solo en el navegador: la ficha se arma dentro de la lista, que ya
     // está dentro de un Suspense.
     let data = LocalResource::new(move || {
@@ -1242,6 +1246,7 @@ fn FichaDialog(ctx: ListCtx) -> impl IntoView {
         <dialog node_ref=dialog class="modal mk-ficha" aria-label="Ficha completa del producto"
             on:cancel=move |ev: leptos::ev::Event| { ev.prevent_default(); close(); }>
             <div class="modal-box flex h-[calc(100dvh-2rem)] w-[min(72rem,calc(100vw-2rem))] max-w-none flex-col gap-0 p-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:rounded-none">
+                {move || (mounted.get() && ctx.ficha_src.with(Option::is_some)).then(|| view! {
                 <Transition fallback=|| view! { <ui::PanelSkeleton kind=ui::PanelSkeletonKind::Product/> }>
                     {move || Suspend::new(async move {
                         match data.await {
@@ -1260,6 +1265,7 @@ fn FichaDialog(ctx: ListCtx) -> impl IntoView {
                         }
                     })}
                 </Transition>
+                })}
             </div>
         </dialog>
     }
