@@ -323,4 +323,27 @@
   }
 
   fab.addEventListener('click', start);
+
+  // Copia un reporte (captura + texto) al portapapeles, para pegarlo en otro lado.
+  // Lo usa la ventana de Reportes: window.mkbugCopy(num, texto, conCaptura) -> Promise<boolean>.
+  window.mkbugCopy = function (num, text, withImage) {
+    var plain = new Blob([text], { type: 'text/plain' });
+    function textOnly() {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+    }
+    if (!withImage || !window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) return textOnly();
+    return fetch('/api/reportes/' + num + '/captura', { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw 0; return r.blob(); })
+      .then(function (b) { return createImageBitmap(b); })
+      .then(function (bmp) {
+        var c = document.createElement('canvas');
+        c.width = bmp.width; c.height = bmp.height;
+        c.getContext('2d').drawImage(bmp, 0, 0);
+        return new Promise(function (ok, no) { c.toBlob(function (png) { png ? ok(png) : no(0); }, 'image/png'); });
+      })
+      .then(function (png) {
+        return navigator.clipboard.write([new ClipboardItem({ 'image/png': png, 'text/plain': plain })]);
+      })
+      .then(function () { return true; }, textOnly);
+  };
 })();
