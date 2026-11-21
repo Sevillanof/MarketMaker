@@ -1281,10 +1281,8 @@ dialog.mk-cart::backdrop {
 .mk-d4 .mk-pbtn { align-items: stretch; }
 .mk-d4 .mk-pbtn .btn.mk-btn { --btn-color: var(--mk-c); --btn-fg: var(--mk-cc); width: 100%; box-shadow: 0 8px 20px -8px var(--mk-c); }
 
-/* Bordes de la página en el lienzo del editor: se arrastran para cambiar
-   el ancho de toda la tienda (ver `canvas.rs`, `width_handle`). La manija
-   queda a media altura de lo que se ve (sticky) y el contorno punteado
-   muestra hasta dónde llega el contenido. */
+/* Contorno punteado del contenido de la página en el lienzo del editor
+   (aparece al destacar los márgenes desde Mi tienda). */
 .mk-frame-outline {
   position: absolute;
   pointer-events: none;
@@ -1292,71 +1290,6 @@ dialog.mk-cart::backdrop {
   border-radius: var(--radius-box);
   transition: border-color 0.15s ease;
   z-index: 4;
-}
-.mk-page-frame:has(.mk-width-handle:hover, .mk-width-handle:focus-visible, .mk-width-handle.is-dragging) > .mk-frame-outline {
-  border-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
-}
-.mk-width-handle {
-  position: absolute;
-  z-index: 6;
-  width: 24px;
-  cursor: col-resize;
-  touch-action: none;
-  outline: none;
-}
-.mk-width-grip {
-  position: sticky;
-  top: calc(50% - 28px);
-  display: block;
-  width: 10px;
-  height: 56px;
-  margin-inline: auto;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
-  background: var(--color-base-100);
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-.mk-width-handle:hover .mk-width-grip,
-.mk-width-handle:focus-visible .mk-width-grip,
-.mk-width-handle.is-dragging .mk-width-grip {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-}
-.mk-width-handle:focus-visible .mk-width-grip {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 3px;
-}
-/* Cuánto mide el contenido: aparece al pasar por el borde o al arrastrarlo. */
-.mk-width-label {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 10px);
-  translate: 0 -50%;
-  white-space: nowrap;
-  padding: 2px 8px;
-  border-radius: var(--radius-field);
-  background: var(--color-neutral);
-  color: var(--color-neutral-content);
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-.mk-width-handle:not(.is-left) .mk-width-label {
-  left: auto;
-  right: calc(100% + 10px);
-}
-.mk-width-handle:hover .mk-width-label,
-.mk-width-handle:focus-visible .mk-width-label,
-.mk-width-handle.is-dragging .mk-width-label {
-  opacity: 1;
-}
-/* Mientras se arrastra, el lienzo no anima: la página sigue al puntero. */
-.mk-page-frame.is-dragging .mk-anode {
-  transition: none;
 }
 
 /* Cajón "Mi tienda" (ver `store_drawer.rs`). `.mk-side` es la medida de
