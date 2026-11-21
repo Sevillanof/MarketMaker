@@ -11,6 +11,7 @@ pub mod coupons;
 pub mod media;
 pub mod mp;
 pub mod orders;
+pub mod reports;
 pub mod products;
 pub mod secrets;
 

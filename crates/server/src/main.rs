@@ -135,6 +135,7 @@ async fn main() {
     // Mercado Pago: vuelve de "Vincular mi cuenta" y avisa los pagos.
     app = app.merge(web::mp::routes(pool.clone()));
     app = app.merge(web::shipments::routes(pool.clone()));
+    app = app.merge(web::reports::routes(pool.clone()));
     if web::mp::config().is_none() {
         log!("Mercado Pago sin configurar (MP_CLIENT_ID y MP_CLIENT_SECRET en .env.local): los pedidos se pagan coordinando.");
     }
@@ -372,6 +373,9 @@ async fn purge_events(pool: db::Pool) {
             Ok(0) => {}
             Ok(n) => log!("Uso y abandono: se borraron {n} eventos viejos"),
             Err(e) => log!("Uso y abandono: no pudimos borrar eventos viejos: {e}"),
+        }
+        if let Err(e) = db::reports::purge(&pool).await {
+            log!("Reportes: no pudimos borrar los resueltos viejos: {e}");
         }
         if let Err(e) = db::buyers::purge_expired(&pool).await {
             log!("Cuentas de compradores: no pudimos limpiar lo vencido: {e}");
