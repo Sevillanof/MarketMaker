@@ -385,6 +385,44 @@ pub struct StoreInfo {
     /// Cuotas y descuento por transferencia que muestran los precios (de Cobros).
     #[serde(default)]
     pub offers: crate::PriceOffers,
+    /// Cómo entrega la tienda, en corto: para decir el envío en el carrito.
+    #[serde(default)]
+    pub delivery: DeliveryBrief,
+}
+
+/// Lo justo de Entregas para el carrito (ver [`DeliveryBrief::cart_hint`]).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub struct DeliveryBrief {
+    pub pickup: bool,
+    pub shipping: bool,
+    /// Costo fijo del envío propio (0 es gratis); `None`, se coordina.
+    pub shipping_cents: Option<i64>,
+    /// También ofrece un correo, que cotiza según el destino.
+    pub carrier: bool,
+}
+
+/// Qué decir del envío en el carrito, antes de saber adónde va.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ShippingHint {
+    /// Costo fijo conocido; `pickup`: además se puede retirar gratis.
+    Fixed { cents: i64, pickup: bool },
+    /// Solo retiro en el local.
+    PickupOnly,
+    /// Depende del destino o se coordina: se sabe en el paso de entrega.
+    Later,
+}
+
+impl DeliveryBrief {
+    pub fn cart_hint(&self) -> ShippingHint {
+        match (self.shipping, self.shipping_cents, self.carrier) {
+            (true, Some(cents), false) => ShippingHint::Fixed {
+                cents,
+                pickup: self.pickup,
+            },
+            (false, _, false) if self.pickup => ShippingHint::PickupOnly,
+            _ => ShippingHint::Later,
+        }
+    }
 }
 
 impl StoreInfo {

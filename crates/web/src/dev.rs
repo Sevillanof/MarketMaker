@@ -23,6 +23,7 @@ fn provide_sample_store() {
             transfer_discount: 10,
             coordinate: true,
         },
+        delivery: domain::DeliveryBrief::default(),
     });
 }
 

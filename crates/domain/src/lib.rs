@@ -939,7 +939,7 @@ pub fn category_tile_href(
     }
 }
 
-fn encode_query(text: &str) -> String {
+pub fn encode_query(text: &str) -> String {
     let mut out = String::new();
     for b in text.bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {

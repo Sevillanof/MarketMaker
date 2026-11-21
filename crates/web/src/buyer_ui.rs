@@ -303,7 +303,7 @@ fn SignedInPanel(me: BuyerMe, account: Account) -> impl IntoView {
                             <span>"Mis datos"</span><Icon name="chevron-right" class="h-4 w-4 text-base-content/70"/>
                         </a></li>
                         <li><a class="flex items-center justify-between border-b border-base-200 py-4" href="/mi-cuenta/direcciones">
-                            <span>"Direcciones"</span><Icon name="chevron-right" class="h-4 w-4 text-base-content/70"/>
+                            <span>"Dirección"</span><Icon name="chevron-right" class="h-4 w-4 text-base-content/70"/>
                         </a></li>
                     </ul>
                 </nav>
@@ -551,7 +551,7 @@ fn AccountTabs(active: &'static str) -> impl IntoView {
             {tab("pedidos", "/mi-cuenta/pedidos", "Pedidos")}
             {tab("favoritos", "/mi-cuenta/favoritos", "Favoritos")}
             {tab("datos", "/mi-cuenta/datos", "Mis datos")}
-            {tab("direcciones", "/mi-cuenta/direcciones", "Direcciones")}
+            {tab("direcciones", "/mi-cuenta/direcciones", "Dirección")}
         </nav>
     }
 }
@@ -910,7 +910,7 @@ fn ProfileForm(view: domain::PageView, me: BuyerMe, section: &'static str) -> im
                                 prop:value=move || name.get() on:input=move |ev| name.set(event_target_value(&ev))/>
                         </div>
                         <div class="flex flex-col gap-1.5">
-                            <label class="text-sm font-semibold" for="mk-p-phone">"Teléfono"</label>
+                            <label class="text-sm font-semibold" for="mk-p-phone">"WhatsApp"</label>
                             <input id="mk-p-phone" class="input w-full" type="tel" inputmode="tel" autocomplete="tel" maxlength="30"
                                 prop:value=move || phone.get() on:input=move |ev| phone.set(event_target_value(&ev))/>
                         </div>
@@ -918,13 +918,13 @@ fn ProfileForm(view: domain::PageView, me: BuyerMe, section: &'static str) -> im
                     {(!on_data).then(|| view! {
                         <p class="text-sm text-base-content/70">"La usamos para completar tu compra más rápido."</p>
                         <div class="flex flex-col gap-1.5">
-                            <label class="text-sm font-semibold" for="mk-p-address">"Calle y número"</label>
+                            <label class="text-sm font-semibold" for="mk-p-address">"Dirección"</label>
                             <input id="mk-p-address" class="input w-full" type="text" autocomplete="address-line1" maxlength="160"
                                 prop:value=move || address.get() on:input=move |ev| address.set(event_target_value(&ev))/>
                         </div>
                         <div class="grid grid-cols-3 gap-3">
                             <div class="col-span-2 flex flex-col gap-1.5">
-                                <label class="text-sm font-semibold" for="mk-p-city">"Ciudad"</label>
+                                <label class="text-sm font-semibold" for="mk-p-city">"Localidad"</label>
                                 <input id="mk-p-city" class="input w-full" type="text" autocomplete="address-level2" maxlength="80"
                                     prop:value=move || city.get() on:input=move |ev| city.set(event_target_value(&ev))/>
                             </div>
