@@ -109,7 +109,7 @@ pub(crate) fn BlockLook(
                         text="«Tienda», «Tienda 2» y «Tienda 3» son los colores que elegiste en Mi tienda. Con otro color, el texto encima se pone negro o blanco para que se lea bien."
                     />
                 </legend>
-                <div data-theme=theme class="flex flex-wrap gap-2 rounded-box bg-base-100 p-1 text-base-content">
+                <div data-theme=theme class="flex flex-wrap gap-2.5 rounded-box bg-base-100 p-1 text-base-content">
                     {THEME_COLORS.iter().map(|(cid, name)| {
                         let cid: &'static str = cid;
                         let checked = move || look.with(|l| l.color == cid);
@@ -117,7 +117,7 @@ pub(crate) fn BlockLook(
                         view! {
                             <label
                                 title=*name
-                                class=format!("{swatch} grid h-7 w-7 cursor-pointer place-items-center rounded-full ring-1 ring-base-content/20 ring-offset-2 ring-offset-base-100 has-[:checked]:ring-2 has-[:checked]:ring-base-content has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-base-content")
+                                class=format!("{swatch} grid h-6 w-6 cursor-pointer place-items-center rounded-full ring-1 ring-base-content/20 ring-offset-2 ring-offset-base-100 has-[:checked]:ring-2 has-[:checked]:ring-base-content has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-base-content")
                             >
                                 <input
                                     type="radio"
@@ -135,7 +135,7 @@ pub(crate) fn BlockLook(
                     <label
                         for=custom_id.clone()
                         title="Otro color"
-                        class="relative grid h-7 w-7 cursor-pointer place-items-center overflow-hidden rounded-full ring-1 ring-base-content/20 ring-offset-2 ring-offset-base-100 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-base-content"
+                        class="relative grid h-6 w-6 cursor-pointer place-items-center overflow-hidden rounded-full ring-1 ring-base-content/20 ring-offset-2 ring-offset-base-100 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-base-content"
                         class=("ring-2", is_custom)
                         class=("ring-base-content", is_custom)
                         style=move || if is_custom() {

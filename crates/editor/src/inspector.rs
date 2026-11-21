@@ -230,7 +230,7 @@ fn PanelSection(
                     class="flex min-w-0 flex-1 items-center justify-end gap-2 py-2.5 text-xs font-normal text-base-content/75"
                     on:click=toggle
                 >
-                    <span class="flex min-w-0 items-center gap-1.5 truncate" class:hidden=is_open>{summary.run()}</span>
+                    <span class="flex min-w-0 items-center gap-1.5 truncate" class:hidden=is_open>{move || summary.run()}</span>
                     <span class="shrink-0 transition-transform" class=("rotate-180", is_open)><Icon name="chevron-down" class="h-4 w-4"/></span>
                 </button>
             </div>
