@@ -496,7 +496,8 @@ fn ProductFilm(f: RwSignal<Frame>) -> impl IntoView {
                         </fieldset>
                     </div>
                     <fieldset class="fieldset">
-                        <legend class="fieldset-legend">"Fotos " <span class="font-normal text-base-content/60">"· la primera es la principal; tocá una foto para encuadrarla"</span></legend>
+                        <legend class="fieldset-legend">"Fotos"</legend>
+            <p class="label -mt-1 whitespace-normal">"La primera es la principal. Tocá una foto para encuadrarla."</p>
                         <ul class="flex flex-wrap gap-3">
                             {move || has(f, P_PHOTO).then(|| view! {
                                 <li class="relative h-24 w-32 overflow-hidden rounded-box bg-base-200">

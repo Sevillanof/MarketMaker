@@ -2416,7 +2416,8 @@ fn PhotosField(
     });
     view! {
         <fieldset class="fieldset">
-            <legend class="fieldset-legend">"Fotos " <span class="font-normal text-base-content/60">"· la primera es la principal; tocá una foto para encuadrarla"</span></legend>
+            <legend class="fieldset-legend">"Fotos"</legend>
+            <p class="label -mt-1 whitespace-normal">"La primera es la principal. Tocá una foto para encuadrarla."</p>
             <ul class="flex flex-wrap gap-3 max-sm:grid max-sm:grid-cols-3 max-sm:gap-2" aria-label="Fotos del producto">
                 {move || {
                     let list = photos.get();
@@ -2660,7 +2661,8 @@ fn TagsField(form: Form, store_tags: Vec<domain::TagCount>) -> impl IntoView {
     let input_ref = NodeRef::<leptos::html::Input>::new();
     view! {
         <fieldset class="fieldset">
-            <legend class="fieldset-legend">"Etiquetas " <span class="font-normal text-base-content/60">"· para encontrar y agrupar productos (ej.: regalo, cocina, verano)"</span></legend>
+            <legend class="fieldset-legend">"Etiquetas"</legend>
+            <p class="label -mt-1 whitespace-normal">"Para encontrar y agrupar productos (por ejemplo: regalo, cocina, verano)."</p>
             <div class="relative">
                 <div class="flex min-h-10 w-full cursor-text flex-wrap items-center gap-1.5 rounded-field border border-base-content/20 bg-base-100 px-3 py-1.5 focus-within:border-primary focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-primary"
                     on:click=move |_| { if let Some(i) = input_ref.get() { _ = i.focus(); } }>
