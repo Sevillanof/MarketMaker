@@ -188,9 +188,11 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
         }
         None => {}
     });
-    let save_now = move || {
+    // `from_transfer_toggle`: recién prendió Transferencia y todavía no pudo
+    // escribir el alias, así que no se le marca el campo en rojo.
+    let save_with = move |from_transfer_toggle: bool| {
         save_problem.set(None);
-        let options = PaymentOptions {
+        let mut options = PaymentOptions {
             transfer: transfer.get_untracked(),
             transfer_alias: alias.get_untracked(),
             transfer_holder: holder.get_untracked(),
@@ -198,22 +200,32 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
             installments: installments.get_untracked(),
             transfer_discount: discount.get_untracked(),
         };
-        // Transferencia sin alias (o con uno que no sirve): espera a que lo
-        // corrija (no se guarda a medias).
+        // Transferencia sin alias (o con uno que no sirve): todavía no se
+        // activa, pero lo demás se guarda igual. Antes no se guardaba nada y
+        // un cambio en otra forma de cobro se perdía sin aviso.
+        let mut complete = true;
         if options.transfer {
             if let Some(p) = domain::transfer_account_problem(&options.transfer_alias) {
-                saving.set(Saving::Idle);
-                if !options.transfer_alias.trim().is_empty() {
+                complete = false;
+                options.transfer = false;
+                let empty = options.transfer_alias.trim().is_empty();
+                if !empty {
                     alias_problem.set(Some(p));
+                } else if !from_transfer_toggle {
+                    alias_problem.set(Some(
+                        "Escribí tu alias, CBU o CVU para activar la transferencia.".into(),
+                    ));
                 }
-                return false;
             }
         }
-        alias_problem.set(None);
+        if complete {
+            alias_problem.set(None);
+        }
         saving.set(Saving::Busy);
         save.dispatch(options);
-        true
+        complete
     };
+    let save_now = move || save_with(false);
     // La transferencia cuenta recién con un alias que sirve.
     let transfer_ready =
         move || transfer.get() && alias.with(|a| domain::transfer_account_problem(a).is_none());
@@ -371,7 +383,7 @@ fn Payments(slug: String, info: PaymentsInfo) -> impl IntoView {
                     on:change=move |ev| {
                         let on = event_target_checked(&ev);
                         transfer.set(on);
-                        if !save_now() && on {
+                        if !save_with(true) && on {
                             // Falta el alias: se guarda cuando lo escriba.
                             request_animation_frame(|| {
                                 use leptos::wasm_bindgen::JsCast;

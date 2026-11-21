@@ -695,6 +695,76 @@ pub fn shipment_failed_to_owner(
     }
 }
 
+/// Al dueño: entró un pago de Mercado Pago por productos que ya no tenían
+/// stock suficiente (otra persona pagó antes las últimas unidades).
+pub fn sold_without_stock_to_owner(
+    owners: Vec<String>,
+    store_name: &str,
+    slug: &str,
+    o: &Order,
+    short: &[db::orders::ShortItem],
+) -> Email {
+    let url = format!("{}/tienda/{slug}/pedidos", app_url());
+    let line = |i: &db::orders::ShortItem| {
+        let had = match i.had {
+            0 => "no quedaba ninguna".to_string(),
+            1 => "quedaba 1".to_string(),
+            n => format!("quedaban {n}"),
+        };
+        format!("{} × {} ({had})", i.sold, i.name)
+    };
+    let list_html: String = short
+        .iter()
+        .map(|i| format!("<li>{}</li>", esc(&line(i))))
+        .collect();
+    let list_text: String = short.iter().map(|i| format!("- {}\n", line(i))).collect();
+    let html = frame(
+        "MarketMaker",
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">El pedido #{} trae productos sin stock</h1>
+<p style="margin:0;color:#52525b">{} pagó su pedido en {} con Mercado Pago, pero otra compra se llevó antes las últimas unidades:</p>
+<ul style="margin:12px 0 0;background:#f4f4f5;padding:10px 10px 10px 28px;border-radius:8px">{}</ul>
+<p style="margin:12px 0 0;color:#52525b">El pago ya entró. Escribile para avisarle: podés reponer el producto, ofrecerle otro o devolverle la plata desde Mercado Pago.</p>{}"#,
+            o.number,
+            esc(&o.customer_name),
+            esc(store_name),
+            list_html,
+            button(&url, "Ver pedido")
+        ),
+    );
+    let text = format!(
+        "El pedido #{} de {store_name} trae productos sin stock.\n{} pagó con Mercado Pago, pero otra compra se llevó antes las últimas unidades:\n{list_text}\nEl pago ya entró. Escribile para avisarle: podés reponer el producto, ofrecerle otro o devolverle la plata desde Mercado Pago.\nVer pedido: {url}\n",
+        o.number, o.customer_name
+    );
+    Email {
+        to: owners,
+        subject: format!("El pedido #{} trae productos sin stock", o.number),
+        html,
+        text,
+    }
+}
+
+/// Busca lo que hace falta y manda [`sold_without_stock_to_owner`].
+#[cfg(feature = "ssr")]
+pub async fn tell_sold_without_stock(
+    pool: &db::Pool,
+    tenant: uuid::Uuid,
+    order: uuid::Uuid,
+    short: &[db::orders::ShortItem],
+) {
+    let Ok(Some(o)) = db::orders::get(pool, tenant, order).await else {
+        return;
+    };
+    let Ok(Some((name, slug))) = db::mp::name_and_slug(pool, tenant).await else {
+        return;
+    };
+    let owners = db::mp::owner_emails(pool, tenant).await.unwrap_or_default();
+    if owners.is_empty() {
+        return;
+    }
+    send(sold_without_stock_to_owner(owners, &name, &slug, &o, short));
+}
+
 /// Al comprador: su pedido salió con Andreani, con el número de seguimiento.
 pub fn shipped_to_buyer(store_name: &str, slug: &str, o: &Order, tracking: &str) -> Email {
     let first = o.customer_name.split_whitespace().next().unwrap_or("");
@@ -887,6 +957,8 @@ pub fn update_to_buyer(
         let to = o.destination().unwrap_or_else(|| o.city.clone());
         let l = if what == BuyerUpdate::Shipped {
             "Lo enviamos a"
+        } else if matches!(o.delivery, Delivery::Andreani(s) if s.needs_branch()) {
+            "Lo retirás en"
         } else {
             "Envío a domicilio"
         };

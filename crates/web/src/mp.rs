@@ -355,12 +355,17 @@ pub async fn check_payment(
         let paid = v["transaction_amount"].as_f64().unwrap_or(0.0);
         if let Some(order) = order {
             let cents = (paid * 100.0).round() as i64;
-            if db::orders::mark_paid(pool, tenant, order, payment_id, cents)
-                .await
-                .map_err(|e| e.to_string())?
+            if let Some(short) =
+                db::orders::mark_paid_noting(pool, tenant, order, payment_id, cents)
+                    .await
+                    .map_err(|e| e.to_string())?
             {
                 leptos::logging::log!("Mercado Pago: pedido {order} pagado (pago {payment_id})");
                 crate::email::order_emails(pool, tenant, order, true).await;
+                // Se cobró algo que ya no había: el dueño tiene que saberlo.
+                if !short.is_empty() {
+                    crate::email::tell_sold_without_stock(pool, tenant, order, &short).await;
+                }
                 // Si va por Andreani, se crea el envío (sin frenar la respuesta).
                 let pool = pool.clone();
                 tokio::spawn(async move {

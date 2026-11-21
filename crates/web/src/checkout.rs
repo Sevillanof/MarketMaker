@@ -1092,20 +1092,46 @@ fn Checkout(view: PageView, info: CheckoutInfo) -> impl IntoView {
     let quoting = Action::new(|(cp, lines): &(String, Vec<(String, u32)>)| {
         quote_shipping(cp.clone(), lines.clone())
     });
+    // Lo último que se mandó a cotizar: código postal y productos. Si cambia
+    // cualquiera de los dos (por ejemplo, las cantidades desde "Cambiar
+    // productos"), se cotiza de nuevo: el envío depende del peso del paquete.
+    let quoted_for = StoredValue::new(None::<(String, Vec<(String, u32)>)>);
+    let quote_turn = StoredValue::new(0u32);
     Effect::new(move |_| {
         if !has_andreani || !cart.ready.get() {
             return;
         }
+        let lines = lines_now();
         let Some(cp) = domain::normalize_postal_code(&f.postal.get()) else {
             f.quote.set(None);
+            quoted_for.set_value(None);
             return;
         };
-        if f.quote
-            .with_untracked(|q| q.as_ref().is_some_and(|q| q.postal_code == cp))
-        {
+        if lines.is_empty() {
             return;
         }
-        quoting.dispatch((cp, lines_now()));
+        let key = (cp, lines);
+        let same_postal = quoted_for.with_value(|k| k.as_ref().is_some_and(|k| k.0 == key.0));
+        if quoted_for.with_value(|k| k.as_ref() == Some(&key)) {
+            return;
+        }
+        quoted_for.set_value(Some(key.clone()));
+        let turn = quote_turn.get_value().wrapping_add(1);
+        quote_turn.set_value(turn);
+        if !same_postal {
+            quoting.dispatch(key);
+            return;
+        }
+        // Cambió el carrito: espera a que termine de tocar + y −, así no se
+        // pide una cotización por cada toque.
+        set_timeout(
+            move || {
+                if quote_turn.try_get_value() == Some(turn) {
+                    quoting.dispatch(key);
+                }
+            },
+            std::time::Duration::from_millis(500),
+        );
     });
     Effect::new(move |_| {
         let Some(r) = quoting.value().get() else {
