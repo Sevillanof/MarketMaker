@@ -1484,13 +1484,15 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
                 {props
                     .slides
                     .into_iter()
-                    .map(|s| {
+                    .enumerate()
+                    .map(|(i, s)| {
                         let has_button = !s.button_label.is_empty() && (editing || !s.button_href.trim().is_empty());
                         // Sin foto, un fondo oscuro: el texto blanco se lee igual.
                         let has_img = !s.image_url.trim().is_empty();
                         view! {
                             <div class="carousel-item relative h-full w-full" class:bg-neutral=!has_img>
-                                {has_img.then(|| view! { <Image src=s.image_url.clone() alt=s.title.clone()/> })}
+                                // La primera foto es la que se ve al entrar: se pide ya.
+                                {has_img.then(|| view! { <Image src=s.image_url.clone() alt=s.title.clone() eager=i == 0/> })}
                                 <div class="mk-car-ov absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent"></div>
                                 <div class="mk-car-body absolute inset-y-0 left-0 flex max-w-lg flex-col justify-center gap-2 px-14 py-6 text-white @2xl:gap-3">
                                     <h2 class="mk-title text-xl font-bold line-clamp-2 @2xl:text-3xl">{s.title.clone()}</h2>
