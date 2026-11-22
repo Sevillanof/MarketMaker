@@ -8,6 +8,7 @@
 //! todas las cuadrículas de productos. «Todas» queda siempre fija primero;
 //! el resto se desliza de costado cuando no entra.
 
+use crate::AnimText;
 use domain::{CategoryCount, CategoryFilterProps, Product, Widget};
 use leptos::prelude::*;
 
@@ -59,7 +60,7 @@ fn no_cat_cards(title: &str, editing: bool) -> AnyView {
     }
     view! {
         <div class="mk-box mk-pad mk-catcards @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
-            <h2 class="mk-title text-lg font-bold truncate">{label_or(title, "Categorías")}</h2>
+            <h2 class="mk-title text-lg font-bold truncate"><AnimText text={label_or(title, "Categorías")}/></h2>
             <div class="grid min-h-0 flex-1 auto-rows-max content-start grid-cols-2 gap-3 @lg:grid-cols-3">
                 {(0..3).map(|_| view! {
                     <div class="flex aspect-[4/3] items-center justify-center rounded-box border border-dashed border-base-content/25 bg-base-200 text-sm font-semibold opacity-70">
@@ -127,7 +128,7 @@ fn CategoryTabs(
     view! {
         <div class="mk-box mk-pad mk-catrow flex h-full flex-col justify-center gap-2 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-lg font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-lg font-bold truncate"><AnimText text={props.title.clone()}/></h2>
             })}
             <div class="flex items-center gap-2 py-1" role="group" aria-label=group_label_cat(&props.title)>
                 {chip(label_or(&props.all_label, "Todas"), String::new(), products.len())}
@@ -176,7 +177,7 @@ fn CategorySide(
     let cats2 = cats.clone();
     view! {
         <nav class="mk-box mk-pad mk-catside flex h-full flex-col gap-0.5 overflow-y-auto rounded-box" aria-label=label_or(&props.title, "Categorías")>
-            <h2 class="mk-title mb-1 text-sm font-bold uppercase tracking-wide opacity-70">{label_or(&props.title, "Categorías")}</h2>
+            <h2 class="mk-title mb-1 text-sm font-bold uppercase tracking-wide opacity-70"><AnimText text={label_or(&props.title, "Categorías")}/></h2>
             {row(label_or(&props.all_label, "Todas"), String::new(), String::new(), products.len(), false)}
             {cats.into_iter().map(|c| {
                 let name = c.name.clone();
@@ -219,7 +220,7 @@ fn CategoryCards(
     view! {
         <div class="mk-box mk-pad mk-catcards @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             <div class="flex items-baseline justify-between gap-3">
-                <h2 class="mk-title text-lg font-bold truncate">{label_or(&props.title, "Categorías")}</h2>
+                <h2 class="mk-title text-lg font-bold truncate"><AnimText text={label_or(&props.title, "Categorías")}/></h2>
                 <button type="button" class="link link-hover text-sm font-medium"
                     tabindex=editing.then_some("-1")
                     class:invisible=move || !any() && !editing
@@ -462,7 +463,7 @@ fn CategoryPage(
     view! {
         <div class="mk-box mk-pad mk-catpage @container flex h-full flex-col gap-2 overflow-hidden rounded-box">
             <nav aria-label="Dónde estás" class="flex flex-wrap items-center gap-x-2 text-sm opacity-80">{crumbs}</nav>
-            <h2 class="mk-title text-xl font-bold truncate" aria-live="polite">{heading}</h2>
+            <h2 class="mk-title text-xl font-bold truncate" aria-live="polite">{move || view! { <AnimText text=heading()/> }}</h2>
             <div class="flex items-start gap-4 py-1" role="group" aria-label="Ver productos por categoría">
                 {move || { let (first, rest) = items(); view! { {first} <div class="mk-scrollrow flex min-w-0 grow gap-4 relative overflow-x-auto py-1">{rest}</div> } }}
             </div>

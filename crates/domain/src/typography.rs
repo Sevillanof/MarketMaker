@@ -158,6 +158,122 @@ pub const ALIGN_OPTIONS: &[(&str, &str)] = &[
     ("right", "Derecha"),
 ];
 
+/// Animaciones del texto de un bloque: id, nombre y qué hace. La vacía
+/// (ninguna) deja el texto quieto. Los ids son los de las clases
+/// `mk-anim-<id>` de `style/tailwind.css`.
+pub const TEXT_ANIMATIONS: &[(&str, &str, &str)] = &[
+    (
+        "typewriter",
+        "Máquina de escribir",
+        "Escribe letra por letra, con cursor.",
+    ),
+    (
+        "mask",
+        "Subida con máscara",
+        "Las palabras suben desde una línea invisible.",
+    ),
+    (
+        "scramble",
+        "Decodificar",
+        "Letras al azar que se ordenan hasta formar el texto.",
+    ),
+    (
+        "stagger",
+        "Palabra por palabra",
+        "Entran escalonadas, una detrás de otra.",
+    ),
+    (
+        "blur",
+        "Del desenfoque a nítido",
+        "Aparece desenfocado y se enfoca de golpe.",
+    ),
+    (
+        "bounce",
+        "Rebote por letra",
+        "Cada letra cae y rebota como un resorte.",
+    ),
+    (
+        "tracking",
+        "Espaciado que se expande",
+        "Las letras se separan despacio.",
+    ),
+    (
+        "flip",
+        "Giro de letras",
+        "Cada letra gira en 3D sobre su eje.",
+    ),
+    (
+        "zoom",
+        "Impacto con onda",
+        "Cae con fuerza y lanza una onda expansiva.",
+    ),
+    (
+        "split",
+        "Fractura",
+        "El texto se parte al medio y revela una palabra oculta.",
+    ),
+    (
+        "gradient",
+        "Degradé en movimiento",
+        "Los colores fluyen dentro de las letras.",
+    ),
+    ("wave", "Ola", "Las letras suben y bajan como una ola."),
+    ("glitch", "Glitch RGB", "Cortes breves en cian y rojo."),
+    (
+        "rotating",
+        "Palabra que gira",
+        "Una palabra cambia por otra con un giro 3D.",
+    ),
+    (
+        "marker",
+        "Resaltador",
+        "Un trazo fluorescente pinta detrás del texto.",
+    ),
+    (
+        "squiggle",
+        "Subrayado ondulado",
+        "Una línea ondulada se dibuja debajo.",
+    ),
+    (
+        "outline",
+        "Contorno a relleno",
+        "Pasa de solo borde a letra rellena.",
+    ),
+    (
+        "extrude",
+        "Extrusión 3D",
+        "Las letras ganan volumen en capas profundas.",
+    ),
+    (
+        "strike",
+        "Tachar y reemplazar",
+        "Tacha el texto anterior y muestra el nuevo.",
+    ),
+    (
+        "count",
+        "Contador",
+        "Cuenta hasta el número del texto, como un odómetro.",
+    ),
+];
+
+/// El dato extra que pide una animación: (etiqueta del campo, ejemplo).
+pub fn animation_extra(id: &str) -> Option<(&'static str, &'static str)> {
+    match id {
+        "rotating" => Some((
+            "Palabras que rotan, separadas por coma",
+            "rápida, simple, tuya",
+        )),
+        "strike" => Some(("Texto anterior (se muestra tachado)", "$49.900")),
+        "split" => Some(("Palabra oculta", "GRATIS")),
+        _ => None,
+    }
+}
+
+/// Qué animación es (nombre y descripción), si el id existe.
+pub fn text_animation(id: &str) -> Option<&'static (&'static str, &'static str, &'static str)> {
+    TEXT_ANIMATIONS.iter().find(|(k, _, _)| *k == id)
+}
+
 fn factor(table: &[(&str, &str, f32)], id: &str) -> f32 {
     table
         .iter()
@@ -227,6 +343,10 @@ pub struct TextStyle {
     pub italic: bool,
     /// Id de [`ALIGN_OPTIONS`].
     pub align: String,
+    /// Id de [`TEXT_ANIMATIONS`]; vacía = el texto queda quieto.
+    pub animation: String,
+    /// Dato extra de la animación (ver [`animation_extra`]).
+    pub anim_text: String,
 }
 
 impl TextStyle {
@@ -261,6 +381,9 @@ impl TextStyle {
             "right" => c.push_str(" mk-align-right"),
             _ => {}
         }
+        if text_animation(&self.animation).is_some() {
+            c.push_str(&format!(" mk-anim mk-anim-{}", self.animation));
+        }
         c
     }
 
@@ -273,6 +396,14 @@ impl TextStyle {
         }
         if !ALIGN_OPTIONS.iter().any(|(k, _)| *k == self.align) {
             errors.push(format!("{path}Alineación: Elegí una de las opciones."));
+        }
+        if !self.animation.is_empty() && text_animation(&self.animation).is_none() {
+            errors.push(format!("{path}Animación: Elegí una de las opciones."));
+        }
+        if self.anim_text.chars().count() > 80 {
+            errors.push(format!(
+                "{path}Animación: El texto extra admite hasta 80 letras."
+            ));
         }
     }
 }
@@ -311,5 +442,29 @@ mod tests {
         assert!(s.css_vars().ends_with("--mk-block-scale:0.875"));
         assert_eq!(s.classes(), "mk-type mk-bold mk-align-center");
         assert_eq!(TextStyle::default().css_vars(), "--mk-block-scale:1");
+    }
+
+    #[test]
+    fn animation_adds_class_and_validates() {
+        let s = TextStyle {
+            animation: "wave".into(),
+            ..TextStyle::default()
+        };
+        assert_eq!(s.classes(), "mk-type mk-anim mk-anim-wave");
+        assert!(!s.is_default());
+        let mut errors = Vec::new();
+        s.errors("", &mut errors);
+        assert!(errors.is_empty(), "{errors:?}");
+        let bad = TextStyle {
+            animation: "disco".into(),
+            ..TextStyle::default()
+        };
+        assert_eq!(bad.classes(), "mk-type");
+        bad.errors("", &mut errors);
+        assert_eq!(errors.len(), 1);
+        for (id, _, _) in TEXT_ANIMATIONS {
+            assert!(text_animation(id).is_some());
+        }
+        assert_eq!(TEXT_ANIMATIONS.len(), 20);
     }
 }

@@ -2280,13 +2280,15 @@ fn ReceiptHead(
     };
     // Para escribirle a la tienda sin esperar a que escriba ella (pedido a
     // acordar o cancelado), con el número de pedido ya puesto.
-    let write_to_store = (!whatsapp.is_empty()).then(|| {
-        let text = format!("Hola, te escribo por el pedido #{number}.");
-        let href = format!("{whatsapp}?text={}", url_encode(&text));
-        view! {
-            <a class="btn btn-success mt-2" href=href target="_blank" rel="noopener">"Escribirle a la tienda por WhatsApp"</a>
-        }
-    });
+    let write_to_store = || {
+        (!whatsapp.is_empty()).then(|| {
+            let text = format!("Hola, te escribo por el pedido #{number}.");
+            let href = format!("{whatsapp}?text={}", url_encode(&text));
+            view! {
+                <a class="btn btn-success mt-2" href=href target="_blank" rel="noopener">"Escribirle a la tienda por WhatsApp"</a>
+            }
+        })
+    };
     let body = match status {
         S::Paid | S::Shipped | S::Delivered => view! {
             {check}
@@ -2330,7 +2332,7 @@ fn ReceiptHead(
         S::Cancelled => view! {
             <h1 class="mk-h text-2xl font-bold">{format!("Pedido #{number} cancelado")}</h1>
             <p class="text-base-content/75">"Si tenés dudas, escribile a la tienda."</p>
-            {write_to_store.clone()}
+            {write_to_store()}
             <a class="btn btn-primary mt-3" href="/">"Ir a la tienda"</a>
         }.into_any(),
         _ if can_pay => {
@@ -2381,7 +2383,7 @@ fn ReceiptHead(
             {check}
             <h1 class="mk-h text-2xl font-bold">{format!("¡Gracias, {first_name}! Recibimos tu pedido")}</h1>
             <p class="text-base-content/75">{format!("Pedido #{number} · La tienda te va a escribir al {phone} para coordinar el pago. Cuando lo reciba, empieza a prepararlo.")}</p>
-            {write_to_store.clone()}
+            {write_to_store()}
             <a class="btn btn-primary mt-3" href="/">"Seguir comprando"</a>
         }.into_any(),
     };
