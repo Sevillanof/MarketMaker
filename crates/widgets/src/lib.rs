@@ -18,10 +18,12 @@ use leptos::prelude::*;
 use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
 
 pub mod account;
+pub mod anim;
 pub mod cart;
 pub mod categories;
 pub mod product_page;
 pub mod tags;
+pub use anim::{AnimText, TextAnim};
 pub use account::{
     Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar, FavRequest,
     FavoriteHeart, HeartIcon,
@@ -89,12 +91,25 @@ pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::FeaturedProduct(p) => Some(p.cards.clone()),
         _ => None,
     };
-    let content = match cards {
-        Some(cards) => {
-            let (node, ctx) = (node.clone(), ctx.clone());
-            view! { <leptos::context::Provider value=cards>{render_content(&node, &ctx)}</leptos::context::Provider> }.into_any()
+    let inner = {
+        let (node, ctx) = (node.clone(), ctx.clone());
+        move || match cards {
+            Some(cards) => {
+                view! { <leptos::context::Provider value=cards>{render_content(&node, &ctx)}</leptos::context::Provider> }.into_any()
+            }
+            None => render_content(&node, &ctx),
         }
-        None => render_content(node, ctx),
+    };
+    // La animación del texto la leen los títulos del bloque (`AnimText`).
+    let content = match domain::text_animation(&node.style.animation) {
+        Some((id, _, _)) => {
+            let anim = TextAnim {
+                id: (*id).to_string(),
+                extra: node.style.anim_text.trim().to_string(),
+            };
+            view! { <leptos::context::Provider value=anim>{inner()}</leptos::context::Provider> }.into_any()
+        }
+        None => inner(),
     };
     view! { <div class=class style=style>{content}</div> }.into_any()
 }
@@ -179,7 +194,7 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             };
             view! {
                 <div class="mk-box mk-pad mk-pname flex h-full items-start overflow-hidden rounded-box">
-                    <h2 class=class title=name.clone()>{name.clone()}</h2>
+                    <h2 class=class title=name.clone()><AnimText text=name.clone()/></h2>
                 </div>
             }
             .into_any()
@@ -838,7 +853,7 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
                 <div class="mk-banner-panel max-w-xl">
                     // Los textos largos se achican un poco y se parten en
                     // renglones parejos en vez de cortarse con «…».
-                    <h1 class=title_class>{props.title.clone()}</h1>
+                    <h1 class=title_class><AnimText text=props.title.clone()/></h1>
                     {(!props.subtitle.is_empty()).then(|| view! {
                         <p class="mk-banner-sub py-3 text-sm @xl:text-base">{props.subtitle.clone()}</p>
                     })}
@@ -861,7 +876,7 @@ pub fn TextWidget(props: TextProps) -> impl IntoView {
     view! {
         <div class=class>
             {(!props.heading.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold mb-2 truncate">{props.heading.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold mb-2 truncate"><AnimText text={props.heading.clone()}/></h2>
             })}
             <p class="whitespace-pre-line">{props.body}</p>
         </div>
@@ -875,7 +890,7 @@ pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> imp
     view! {
         <div class="mk-box mk-pad @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
             })}
             <FilteredProducts products limit filter paged=true/>
         </div>
@@ -1426,7 +1441,7 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
                                 {has_img.then(|| view! { <Image src=s.image_url.clone() alt=s.title.clone() eager=i == 0/> })}
                                 <div class="mk-car-ov absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent"></div>
                                 <div class="mk-car-body absolute inset-y-0 left-0 flex max-w-lg flex-col justify-center gap-2 px-14 py-6 text-white @2xl:gap-3">
-                                    <h2 class="mk-title text-xl font-bold line-clamp-2 @2xl:text-3xl">{s.title.clone()}</h2>
+                                    <h2 class="mk-title text-xl font-bold line-clamp-2 @2xl:text-3xl"><AnimText text={s.title.clone()}/></h2>
                                     {(!s.subtitle.is_empty()).then(|| view! {
                                         <p class="text-sm line-clamp-2 @2xl:text-base">{s.subtitle.clone()}</p>
                                     })}
@@ -1496,7 +1511,7 @@ pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView 
     view! {
         <div class="mk-box mk-pad mk-cats @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
             })}
             <div class=format!("grid min-h-0 flex-1 auto-rows-fr gap-3 {}", cols)>
                 {props
@@ -1804,7 +1819,7 @@ pub fn StatsWidget(props: StatsProps) -> impl IntoView {
             <div class="mk-stats @container h-full"><div class=format!("mk-box mk-pad grid h-full grid-cols-1 content-center gap-6 overflow-hidden rounded-box bg-base-100 px-6 py-4 text-center {}", cols_xl(n))>
                 {props.items.into_iter().map(|s| view! {
                     <div class="min-w-0">
-                        <p class=ph("mk-title mk-h text-4xl font-extrabold tracking-tight @xl:text-5xl", &s.value)>{s.value.clone()}</p>
+                        <p class=ph("mk-title mk-h text-4xl font-extrabold tracking-tight @xl:text-5xl", &s.value)><AnimText text={s.value.clone()}/></p>
                         <p class="mx-auto mt-2 h-0.5 w-8 bg-current opacity-60"></p>
                         <p class="mt-2 text-sm opacity-70">{s.label}</p>
                     </div>
@@ -1849,7 +1864,7 @@ pub fn StepsWidget(props: StepsProps) -> impl IntoView {
     let n = props.items.len();
     let title = (!props.title.is_empty()).then(|| {
         view! {
-            <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold">{props.title.clone()}</h2>
+            <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold"><AnimText text={props.title.clone()}/></h2>
         }
     });
     match props.variant.as_str() {
@@ -1982,7 +1997,7 @@ pub fn ProductCarouselWidget(
         "b" => view! {
             <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box bg-base-100 p-5 shadow-sm">
                 <div class="flex items-end justify-between gap-3">
-                    <h2 class="mk-title mk-h truncate text-xl font-bold">{title}</h2>
+                    <h2 class="mk-title mk-h truncate text-xl font-bold"><AnimText text={title}/></h2>
                     {link}
                 </div>
                 {rail}
@@ -1992,7 +2007,7 @@ pub fn ProductCarouselWidget(
         "c" => view! {
             <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
                 <div class="flex items-end justify-between gap-3">
-                    <h2 class="mk-title mk-h truncate text-xl font-bold">{title}</h2>
+                    <h2 class="mk-title mk-h truncate text-xl font-bold"><AnimText text={title}/></h2>
                     {link}
                 </div>
                 {rail}
@@ -2003,7 +2018,7 @@ pub fn ProductCarouselWidget(
         _ => view! {
             <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box bg-base-100 p-5 shadow-sm">
                 <div class="flex items-center justify-between gap-3">
-                    <h2 class="mk-title mk-h truncate text-xl font-bold">{title}</h2>
+                    <h2 class="mk-title mk-h truncate text-xl font-bold"><AnimText text={title}/></h2>
                     <div class="flex items-center gap-4">
                         {link}
                         {arrows("flex gap-2")}
@@ -2101,7 +2116,7 @@ pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
         .into_any(),
         _ => view! {
             <div class="mk-box mk-pad mk-social relative flex h-full items-center gap-3 overflow-hidden rounded-box">
-                {(!props.title.is_empty()).then(|| view! { <span class="mk-title mk-h text-sm font-semibold">{props.title.clone()}</span> })}
+                {(!props.title.is_empty()).then(|| view! { <span class="mk-title mk-h text-sm font-semibold"><AnimText text={props.title.clone()}/></span> })}
                 {channels.into_iter().map(|c| view! {
                     <ChannelLink href=c.href external=c.external editing class="mk-btn btn btn-circle btn-outline btn-sm" label=c.label>
                         <Icon name=c.icon class="h-4 w-4"/>
@@ -2165,7 +2180,7 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
 
     view! {
         <div class="mk-box mk-countdown @container flex h-full flex-col items-center justify-center gap-3 overflow-hidden rounded-box p-4 text-center">
-            <h2 class="mk-title text-xl leading-tight font-bold text-balance line-clamp-2 @md:text-2xl @xl:line-clamp-1 @xl:text-3xl">{props.title.clone()}</h2>
+            <h2 class="mk-title text-xl leading-tight font-bold text-balance line-clamp-2 @md:text-2xl @xl:line-clamp-1 @xl:text-3xl"><AnimText text={props.title.clone()}/></h2>
             {(!props.subtitle.is_empty()).then(|| view! {
                 <p class="hidden line-clamp-2 opacity-90 @xl:block">{props.subtitle.clone()}</p>
             })}
@@ -2255,7 +2270,7 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
                 </figure>
             })}
             <div class=body_class>
-                <h2 class="mk-title card-title line-clamp-2">{props.title.clone()}</h2>
+                <h2 class="mk-title card-title line-clamp-2"><AnimText text={props.title.clone()}/></h2>
                 {(!props.body.is_empty()).then(|| view! {
                     <p class="line-clamp-3 grow-0">{props.body.clone()}</p>
                 })}
@@ -2297,7 +2312,7 @@ pub fn FaqWidget(props: FaqProps, #[prop(default = false)] editing: bool) -> imp
     view! {
         <div class="mk-box mk-pad mk-faq flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
             })}
             <div class="join join-vertical min-h-0 w-full flex-1 overflow-y-auto">
                 {props
@@ -2369,7 +2384,7 @@ pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
     view! {
         <div class="mk-box mk-pad mk-testi @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
             {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate">{props.title.clone()}</h2>
+                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
             })}
             <div class="grid min-h-0 flex-1 auto-cols-[minmax(16rem,1fr)] grid-flow-col gap-3 relative overflow-x-auto">
                 {props

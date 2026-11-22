@@ -84,13 +84,22 @@ pub fn DevWidgetsPage() -> impl IntoView {
         product: Some(products[0].clone()),
     };
 
+    // `?anim=wave&extra=...` dibuja todos los widgets con esa animación de
+    // texto (Letras › Animación); `?only=banner,stats` deja solo esos tipos.
+    let query = leptos_router::hooks::use_query_map();
+    let anim = query.with_untracked(|q| q.get("anim")).unwrap_or_default();
+    let anim_text = query.with_untracked(|q| q.get("extra")).unwrap_or_default();
+    let only = query.with_untracked(|q| q.get("only"));
+
     let cases: Vec<(String, Node)> = WIDGET_TYPES
         .iter()
+        .filter(|(t, _)| only.as_deref().is_none_or(|o| o.split(',').any(|o| o == *t)))
         .flat_map(|(type_name, label)| {
             let mut widget = Widget::defaults(type_name).expect("tipo conocido");
             if let Widget::FeaturedProduct(p) = &mut widget {
                 p.product_id = first_id.clone();
             }
+            let (anim, anim_text) = (anim.clone(), anim_text.clone());
             let l = widget.limits();
             [
                 (
@@ -113,6 +122,8 @@ pub fn DevWidgetsPage() -> impl IntoView {
             .map(|(name, size)| {
                 let mut node = Node::new(format!("{type_name}-{name}"), widget.clone());
                 node.size = size;
+                node.style.animation = anim.clone();
+                node.style.anim_text = anim_text.clone();
                 (format!("{label} · {name} ({}×{})", size.w, size.h), node)
             })
             .collect::<Vec<_>>()

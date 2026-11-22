@@ -1814,11 +1814,14 @@ mod tests {
             bold: true,
             italic: true,
             align: "right".into(),
+            animation: "wave".into(),
+            anim_text: String::new(),
         };
         assert_eq!(validate(&doc), Ok(()));
         let json = serde_json::to_value(&doc).unwrap();
         assert_eq!(json["typography"]["heading"], "playfair");
         assert_eq!(json["nodes"][0]["style"]["font"], "oswald");
+        assert_eq!(json["nodes"][0]["style"]["animation"], "wave");
         assert!(json["nodes"][1].get("style").is_none());
         assert_eq!(parse_doc(json), Ok(doc.clone()));
 
