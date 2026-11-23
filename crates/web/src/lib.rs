@@ -386,9 +386,48 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
             let cut = if short.len() < text.len() { "…" } else { "" };
             format!("{price}. {short}{cut}")
         };
-        let image = Some(p.image_url).filter(|u| !u.is_empty()).map(absolute);
+        let image = Some(p.image_url.clone())
+            .filter(|u| !u.is_empty())
+            .map(absolute);
+        // Datos para Google (precio y disponibilidad en los resultados) y
+        // dirección canónica de la ficha.
+        let url = format!("{}://{}/?ver={}", site::scheme(), site::current_host(), p.id);
+        let photos: Vec<String> = std::iter::once(p.image_url.clone())
+            .chain(p.photos.iter().cloned())
+            .filter(|u| !u.is_empty())
+            .map(absolute)
+            .collect();
+        let available = p.in_stock && p.stock != Some(0);
+        let mut data = serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": "Product",
+            "name": p.name,
+            "url": url,
+            "offers": {
+                "@type": "Offer",
+                "url": url,
+                "priceCurrency": "ARS",
+                "price": format!("{:.2}", p.price_cents as f64 / 100.0),
+                "availability": if available {
+                    "https://schema.org/InStock"
+                } else {
+                    "https://schema.org/OutOfStock"
+                },
+                "seller": { "@type": "Organization", "name": name },
+            },
+        });
+        if !photos.is_empty() {
+            data["image"] = serde_json::json!(photos);
+        }
+        if !text.is_empty() {
+            data["description"] = serde_json::json!(text);
+        }
+        // Dentro de <script> un "</" cortaría el bloque.
+        let json = data.to_string().replace("</", "<\\/");
         return view! {
             {icon}
+            <leptos_meta::Link rel="canonical" href=url/>
+            <leptos_meta::Script type_="application/ld+json">{json}</leptos_meta::Script>
             <Title text=title.clone()/>
             {hidden.then(|| view! { <leptos_meta::Meta name="robots" content="noindex"/> })}
             <leptos_meta::Meta name="description" content=description.clone()/>
