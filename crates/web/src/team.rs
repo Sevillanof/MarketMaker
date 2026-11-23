@@ -90,7 +90,7 @@ pub async fn load_team(slug: String) -> Result<Option<TeamInfo>, ServerFnError> 
 }
 
 /// Suma a `email` al equipo con el rol `role`. No manda nada: el email sale
-/// desde la cartita de la persona, con vista previa.
+/// desde la vista previa que la pantalla abre al sumar (o desde la cartita).
 #[server]
 pub async fn add_team_member(
     slug: String,
@@ -126,6 +126,7 @@ pub async fn add_team_member(
         None => TeamChange::TooMany,
         Some(db::auth::TeamAdd::Already) => TeamChange::Already,
         Some(db::auth::TeamAdd::Blocked) => TeamChange::Blocked,
+        Some(db::auth::TeamAdd::Joined) => TeamChange::Joined,
         Some(_) => TeamChange::Done,
     })
 }
@@ -277,8 +278,14 @@ pub fn TeamCard(slug: String) -> impl IntoView {
         set_team_role(slug.get_value(), e.clone(), r.clone())
     });
     let remove = Action::new(move |e: &String| remove_team_member(slug.get_value(), e.clone()));
+    // A quien se acaba de sumar: se abre la vista previa del email para enviarlo.
+    let to_invite = RwSignal::new(None::<(String, bool)>);
     Effect::new(move |_| match add.value().get() {
-        Some(Ok(TeamChange::Done)) => {
+        Some(Ok(done @ (TeamChange::Done | TeamChange::Joined))) => {
+            to_invite.set(Some((
+                domain::normalize_email(&email.get_untracked()).unwrap_or_default(),
+                done == TeamChange::Joined,
+            )));
             email.set(String::new());
             problem.set(None);
             version.update(|v| *v += 1);
@@ -351,6 +358,12 @@ pub fn TeamCard(slug: String) -> impl IntoView {
         original();
         if let Some(d) = preview.get() {
             _ = d.show_modal();
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(target) = to_invite.get() {
+            to_invite.set(None);
+            open_preview.run(target);
         }
     });
     let invite = Action::new(move |(e, s, t, m): &(String, String, String, String)| {
@@ -531,7 +544,7 @@ pub fn TeamCard(slug: String) -> impl IntoView {
                     </div>
                     <div class="flex gap-2">
                         <button type="button" class="btn btn-ghost"
-                            on:click=move |_| { if let Some(d) = preview.get() { d.close(); } }>"Cancelar"</button>
+                            on:click=move |_| { if let Some(d) = preview.get() { d.close(); } }>"Más tarde"</button>
                         <button type="submit" class="btn btn-primary" disabled=move || invite.pending().get()>
                             {move || if invite.pending().get() { "Enviando…" } else { "Enviar invitación" }}
                         </button>
@@ -597,7 +610,7 @@ fn TeamRow(
                         view! { <span class="font-semibold">{p.name.clone()}</span> }.into_any()
                     }}
                     <span class=format!("rounded-full px-2 py-0.5 text-xs {tag_class}")>{tag}</span>
-                    {(!joined).then(|| view! { <span class="rounded-full bg-warning/20 px-2 py-0.5 text-xs text-warning-content">"Pendiente"</span> })}
+                    {(!joined).then(|| view! { <span class="rounded-full bg-warning/20 px-2 py-0.5 text-xs text-warning-content">{if was_sent { "Invitado" } else { "Esperando" }}</span> })}
                 </div>
                 <div class="truncate text-sm text-base-content/70">{email}</div>
                 {(!joined).then(|| view! { <div class="text-sm text-base-content/60">"Todavía no creó su cuenta"</div> })}

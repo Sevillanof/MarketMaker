@@ -393,6 +393,8 @@ pub struct TeamInfo {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum TeamChange {
     Done,
+    /// Sumada, y ya tenía cuenta: entró al equipo al instante.
+    Joined,
     Invalid,
     Already,
     /// Esa persona no puede sumarse (la bloqueó el administrador).
