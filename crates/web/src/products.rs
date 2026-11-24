@@ -630,6 +630,22 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
     let filter = RwSignal::new(Filter::All);
     let problem = RwSignal::new(None::<String>);
     let slug = StoredValue::new(slug);
+    // "Importar": sube para abrir la ventana; al terminar se vuelve a leer la lista.
+    let import_open = RwSignal::new(0u32);
+    let notice = RwSignal::new(None::<String>);
+    let import_done = Callback::new(move |done: crate::import::ImportDone| {
+        leptos::task::spawn_local(async move {
+            if let Ok(Some(fresh)) = list_store_products(slug.get_value()).await {
+                products.set(fresh.products);
+                order.set(fresh.category_order);
+            }
+            problem.set(done.note.clone());
+            notice.set(Some(match done.created {
+                1 => "Importamos 1 producto.".to_string(),
+                n => format!("Importamos {n} productos."),
+            }));
+        });
+    });
 
     let summary = move || {
         products.with(|ps| {
@@ -747,6 +763,7 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
                 <h1 class="text-3xl font-bold max-sm:sr-only">"Productos"</h1>
                 <p class="text-sm text-base-content/70">{summary}</p>
             </div>
+            <button type="button" class="btn btn-ghost max-sm:hidden" on:click=move |_| import_open.update(|n| *n += 1)>"Importar"</button>
             <button type="button" class="btn max-sm:min-h-11 max-sm:flex-1" on:click=move |_| {
                 if let Some(d) = manage.get() { _ = d.show_modal(); }
             }>"Etiquetas"</button>
@@ -814,7 +831,9 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
                 </button>
             </div>
         })}
+        {move || notice.get().map(|e| view! { <p role="status" class="text-sm text-success">{e}</p> })}
         {move || problem.get().map(|e| view! { <p role="alert" class="text-sm text-error">{e}</p> })}
+        <crate::import::ImportDialog slug open=import_open on_done=import_done/>
         <Show when=move || !empty() fallback=move || view! {
             <div class="card bg-base-100 shadow-sm"><div class="card-body items-start">
                 <h2 class="card-title">"Todavía no cargaste productos"</h2>
@@ -979,6 +998,52 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
         ctx.panel_dirty.set(false);
         ctx.nonce.update(|n| *n += 1);
     };
+    // «Duplicar»: copia lo ya guardado, oculta, y la deja abierta.
+    let duplicate = Action::new(move |_: &()| {
+        let source = ctx
+            .products
+            .with_untracked(|ps| ps.iter().find(|x| x.id == id.get_value()).cloned());
+        async move {
+            let Some(mut copy) = source else {
+                return Err(ServerFnError::new("Ese producto ya no está en la lista."));
+            };
+            let suffix = " (copia)";
+            let room = domain::PRODUCT_NAME_MAX - suffix.chars().count();
+            copy.name = format!("{}{suffix}", copy.name.chars().take(room).collect::<String>());
+            copy.visible = false;
+            copy.example = false;
+            let saved = save_product(ctx.slug.get_value(), String::new(), copy.clone()).await?;
+            Ok((saved, copy))
+        }
+    });
+    Effect::new(move |_| match duplicate.value().get() {
+        Some(Ok((
+            SaveResult {
+                id: new_id,
+                outcome: ProductSave::Saved,
+            },
+            mut copy,
+        ))) => {
+            copy.id = new_id.clone();
+            ctx.products.update(|ps| ps.insert(0, copy));
+            ctx.panel_dirty.set(false);
+            ctx.selected.set(Some(new_id));
+        }
+        Some(Ok((
+            SaveResult {
+                outcome: ProductSave::Invalid { errors: e },
+                ..
+            },
+            _,
+        ))) => errors.set(e),
+        Some(Err(e)) => errors.set(vec![error_text(&e)]),
+        None => {}
+    });
+    let on_duplicate = move |_| {
+        ctx.guard(ctx.panel_dirty, move || {
+            duplicate.dispatch(());
+        });
+    };
     let position = move || {
         ctx.shown.with(|ps| {
             ps.iter()
@@ -1033,6 +1098,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
     let photos = product.all_photos();
     let fit_of = StoredValue::new(product.clone());
     let menu_id = format!("mk-pmenu-{}", product.id);
+    let menu_id_dup = menu_id.clone();
     let store_href = format!("{}/?ver={}", ctx.store_url.get_value(), product.id);
     view! {
         <section class="mk-qpanel card bg-base-100 shadow-sm" class=("max-sm:hidden", move || !ctx.phone_open.get())
@@ -1045,6 +1111,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                 <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11" aria-label="Más acciones" popovertarget=menu_id.clone()>"⋯"</button>
                 <div id=menu_id popover="auto" class="mk-pmenu">
                     <a class="btn btn-ghost w-full justify-start" href=store_href.clone() target="_blank" rel="noopener">"Ver en la tienda"</a>
+                    <button type="button" class="btn btn-ghost w-full justify-start border-t border-base-200" popovertarget=menu_id_dup popovertargetaction="hide" on:click=on_duplicate>"Duplicar producto"</button>
                     <button type="button" class="btn btn-ghost w-full justify-start border-t border-base-200 text-error" on:click=ask_delete>"Borrar producto…"</button>
                 </div>
             </div>
@@ -1120,7 +1187,8 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                 <div class="mk-qfoot">
                     <span class="text-right text-xs text-base-content/60 max-sm:hidden" class:invisible=move || !ctx.panel_dirty.get()>"Cambios sin guardar"</span>
                     <div class="mk-qfoot-row">
-                        <span><button type="button" class="btn max-sm:btn-ghost max-sm:px-1" on:click=ficha>"Ficha completa ›"</button></span>
+                        <span class="flex gap-1"><button type="button" class="btn max-sm:btn-ghost max-sm:px-1" on:click=ficha>"Ficha completa ›"</button>
+                            <button type="button" class="btn btn-ghost max-sm:hidden" disabled=move || duplicate.pending().get() on:click=on_duplicate>"Duplicar"</button></span>
                         <span class="max-sm:hidden"><button type="button" class="btn btn-ghost btn-sm text-error" on:click=ask_delete>"Borrar"</button></span>
                         <span class="text-xs text-base-content/60 sm:hidden" class:invisible=move || !ctx.panel_dirty.get()>"Cambios sin guardar"</span>
                         <span class="flex justify-end gap-2">
