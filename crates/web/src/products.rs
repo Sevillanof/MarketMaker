@@ -937,6 +937,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
     Effect::new(move |first: Option<()>| {
         form.name.track();
         form.price.track();
+        form.free.track();
         form.was.track();
         form.description.track();
         form.tags.track();
@@ -1170,6 +1171,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                                 {price_error("was")}
                             </label>
                         </div>
+                        <FreeSwitch form/>
                         <CategoryField form store_categories/>
                         <StockStepper form/>
                         {price_error("stock")}
@@ -1905,6 +1907,8 @@ struct Form {
     /// Cantidad disponible; vacío si no se cuenta.
     stock: RwSignal<String>,
     visible: RwSignal<bool>,
+    /// «Producto gratis»: permite el precio $ 0.
+    free: RwSignal<bool>,
     /// Peso (kg) y medidas (cm) para el envío; todo vacío: el paquete de la tienda.
     weight: RwSignal<String>,
     length: RwSignal<String>,
@@ -1925,7 +1929,8 @@ impl Form {
         };
         Self {
             name: RwSignal::new(p.name.clone()),
-            price: RwSignal::new(if p.id.is_empty() && p.price_cents == 0 {
+            free: RwSignal::new(p.free),
+            price: RwSignal::new(if p.id.is_empty() && p.price_cents == 0 && !p.free {
                 String::new()
             } else {
                 domain::price_input(p.price_cents)
@@ -1971,7 +1976,9 @@ impl Form {
             errors.push("Poné un nombre al producto.".to_string());
         }
         let price = self.price.get();
-        let price_cents = if price.trim().is_empty() {
+        let price_cents = if price.trim().is_empty() && self.free.get() {
+            0
+        } else if price.trim().is_empty() {
             errors.push("Poné el precio.".to_string());
             0
         } else {
@@ -2043,6 +2050,7 @@ impl Form {
             example: false,
             parcel,
             variants,
+            free: self.free.get(),
         };
         if errors.is_empty() {
             Ok(p)
@@ -2133,6 +2141,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
     Effect::new(move |first: Option<()>| {
         form.name.track();
         form.price.track();
+        form.free.track();
         form.was.track();
         form.description.track();
         form.photos.track();
@@ -2361,6 +2370,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
                                 on:blur=move |_| check_price(form.price, "El precio", "price")/>
                         </label>
                         {field_error("price")}
+                        <FreeSwitch form/>
                     </fieldset>
                     <fieldset class="fieldset">
                         <legend class="fieldset-legend mk-tip-legend">"Precio anterior " <span class="font-normal text-base-content/60">"(opcional)"</span>
@@ -3254,5 +3264,27 @@ fn PhotoAdjust(
             </div>
         </div>
         <p class="text-xs text-base-content/60">"La foto original no cambia. Al tocar Guardar, tu tienda la muestra así."</p>
+    }
+}
+
+/// «Producto gratis»: sin él, el precio $ 0 no se puede guardar. Al prenderlo
+/// el precio queda en 0; al apagarlo, vacío para escribir uno.
+#[component]
+fn FreeSwitch(form: Form) -> impl IntoView {
+    view! {
+        <label class="mt-1 flex cursor-pointer items-center gap-2 text-xs text-base-content/70">
+            <input type="checkbox" class="toggle toggle-xs toggle-primary"
+                prop:checked=move || form.free.get()
+                on:change=move |ev| {
+                    let on = event_target_checked(&ev);
+                    form.free.set(on);
+                    if on {
+                        form.price.set("0".to_string());
+                    } else if form.price.with_untracked(|p| p.trim() == "0") {
+                        form.price.set(String::new());
+                    }
+                }/>
+            "Producto gratis ($ 0)"
+        </label>
     }
 }

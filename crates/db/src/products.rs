@@ -29,6 +29,7 @@ struct Row {
     example: bool,
     parcel: Option<Json<Parcel>>,
     variants: Json<Variants>,
+    free: bool,
 }
 
 impl From<Row> for Product {
@@ -51,6 +52,7 @@ impl From<Row> for Product {
             example: r.example,
             parcel: r.parcel.map(|j| j.0),
             variants: r.variants.0,
+            free: r.free,
         }
     }
 }
@@ -60,7 +62,7 @@ macro_rules! select {
     ($rest:literal) => {
         concat!(
             "SELECT id, name, price_cents, image_url, description, compare_at_cents, ",
-            "in_stock, stock, visible, photos, tags, category, subcategory, photo_fits, example, parcel, variants ",
+            "in_stock, stock, visible, photos, tags, category, subcategory, photo_fits, example, parcel, variants, free ",
             $rest
         )
     };
@@ -183,8 +185,8 @@ pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uu
     sqlx::query_scalar(
         "INSERT INTO products (tenant_id, name, price_cents, image_url, description,
                                compare_at_cents, in_stock, visible, photos, tags, stock,
-                               photo_fits, parcel, variants, category, subcategory)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                               photo_fits, parcel, variants, category, subcategory, free)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          RETURNING id",
     )
     .bind(tenant)
@@ -203,6 +205,7 @@ pub async fn create(pool: &PgPool, tenant: Uuid, p: &Product) -> sqlx::Result<Uu
     .bind(Json(&p.variants))
     .bind(&p.category)
     .bind(&p.subcategory)
+    .bind(p.free)
     .fetch_one(pool)
     .await
 }
@@ -212,7 +215,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     let done = sqlx::query(
         "UPDATE products SET name = $3, price_cents = $4, image_url = $5, description = $6,
                 compare_at_cents = $7, in_stock = $8, visible = $9, photos = $10, tags = $11,
-                stock = $12, photo_fits = $13, parcel = $14, variants = $15, category = $16, subcategory = $17, example = false,
+                stock = $12, photo_fits = $13, parcel = $14, variants = $15, category = $16, subcategory = $17, free = $18, example = false,
                 updated_at = now()
          WHERE tenant_id = $1 AND id = $2",
     )
@@ -233,6 +236,7 @@ pub async fn save(pool: &PgPool, tenant: Uuid, id: Uuid, p: &Product) -> sqlx::R
     .bind(Json(&p.variants))
     .bind(&p.category)
     .bind(&p.subcategory)
+    .bind(p.free)
     .execute(pool)
     .await?;
     Ok(done.rows_affected() == 1)
@@ -408,6 +412,20 @@ pub async fn out_of_stock(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
         "SELECT count(*) FROM products WHERE tenant_id = $1 AND (NOT in_stock OR stock = 0)",
     )
     .bind(tenant)
+    .fetch_one(pool)
+    .await
+}
+
+/// Productos visibles a los que les quedan de 1 a `max` unidades (los
+/// agotados no cuentan: tienen su propio número).
+pub async fn low_stock(pool: &PgPool, tenant: Uuid, max: i32) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM products
+         WHERE tenant_id = $1 AND visible AND NOT example AND in_stock
+           AND stock BETWEEN 1 AND $2",
+    )
+    .bind(tenant)
+    .bind(max)
     .fetch_one(pool)
     .await
 }

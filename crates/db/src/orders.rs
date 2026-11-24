@@ -863,6 +863,52 @@ pub async fn unpaid_transfers(pool: &PgPool, hours: i32) -> sqlx::Result<Vec<(Uu
     Ok(out)
 }
 
+/// Lo vendido (pagos, enviados o entregados) en cada uno de los últimos 7
+/// días, hora de Argentina: día de la semana (1 lunes … 7 domingo) y centavos.
+pub async fn week_sales(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<(i32, i64)>> {
+    sqlx::query_as(
+        "WITH today AS (
+            SELECT (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date AS d
+         )
+         SELECT extract(isodow FROM day)::int, COALESCE(sum(o.total_cents), 0)::bigint
+         FROM today, generate_series(today.d - 6, today.d, interval '1 day') AS day
+         LEFT JOIN orders o
+           ON o.tenant_id = $1 AND o.status IN ('paid', 'shipped', 'delivered')
+          AND (o.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = day::date
+         GROUP BY day ORDER BY day",
+    )
+    .bind(tenant)
+    .fetch_all(pool)
+    .await
+}
+
+/// Pedidos pagados (o ya enviados o entregados) de los últimos 7 días.
+pub async fn week_orders(pool: &PgPool, tenant: Uuid) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM orders
+         WHERE tenant_id = $1 AND status IN ('paid', 'shipped', 'delivered')
+           AND created_at >= now() - interval '7 days'",
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await
+}
+
+/// Los 3 productos que más se vendieron en el último mes (nombre y unidades).
+/// Con colores y talles se suman bajo el nombre del producto.
+pub async fn top_products(pool: &PgPool, tenant: Uuid) -> sqlx::Result<Vec<(String, i64)>> {
+    sqlx::query_as(
+        "SELECT split_part(max(i->>'name'), ' · ', 1), sum((i->>'qty')::bigint)::bigint AS units
+         FROM orders o, jsonb_array_elements(o.items) AS i
+         WHERE o.tenant_id = $1 AND o.status IN ('paid', 'shipped', 'delivered')
+           AND o.created_at >= now() - interval '30 days'
+         GROUP BY i->>'product_id' ORDER BY units DESC, 1 LIMIT 3",
+    )
+    .bind(tenant)
+    .fetch_all(pool)
+    .await
+}
+
 /// Números de la tienda para su Inicio en el panel.
 #[derive(Debug, Clone, Default, PartialEq, FromRow)]
 pub struct Summary {

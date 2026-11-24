@@ -810,6 +810,9 @@ pub struct Product {
     /// se vende como siempre.
     #[serde(default, skip_serializing_if = "Variants::is_empty")]
     pub variants: Variants,
+    /// El dueño confirmó que se regala: solo así se publica a $ 0.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub free: bool,
 }
 
 fn yes() -> bool {
@@ -836,6 +839,7 @@ impl Default for Product {
             example: false,
             parcel: None,
             variants: Variants::default(),
+            free: false,
         }
     }
 }

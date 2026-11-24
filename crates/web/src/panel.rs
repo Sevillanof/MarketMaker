@@ -126,6 +126,8 @@ pub async fn load_store_overview(slug: String) -> Result<Option<StoreOverview>, 
             pay_ready: false,
             recent: Vec::new(),
             restricted: true,
+            low_stock: 0,
+            week: domain::WeekStats::default(),
         }));
     }
     let sums = db::orders::summary(&pool, tenant.id)
@@ -169,6 +171,29 @@ pub async fn load_store_overview(slug: String) -> Result<Option<StoreOverview>, 
             .await
             .map_err(internal)?,
         restricted: false,
+        low_stock: db::products::low_stock(&pool, tenant.id, domain::FEW_LEFT as i32)
+            .await
+            .map_err(internal)?,
+        week: {
+            let sales = db::orders::week_sales(&pool, tenant.id)
+                .await
+                .map_err(internal)?;
+            let (visits, carts) = db::analytics::store_week(&pool, &slug)
+                .await
+                .map_err(internal)?;
+            domain::WeekStats {
+                weekdays: sales.iter().map(|(d, _)| *d as u8).collect(),
+                sales: sales.iter().map(|(_, c)| *c).collect(),
+                visits,
+                carts,
+                orders: db::orders::week_orders(&pool, tenant.id)
+                    .await
+                    .map_err(internal)?,
+                top: db::orders::top_products(&pool, tenant.id)
+                    .await
+                    .map_err(internal)?,
+            }
+        },
     }))
 }
 
@@ -714,13 +739,104 @@ fn Kpi(
 ) -> impl IntoView {
     view! {
         <div class="card border border-base-300 bg-base-100">
-            <div class="card-body gap-1 p-5">
+            <div class="card-body items-center gap-1 p-5 text-center">
                 <h2 class="text-xs font-bold uppercase tracking-wide text-base-content/60">{label}</h2>
-                <p class="text-3xl font-bold tabular-nums">{value}</p>
+                <p class="whitespace-nowrap text-3xl font-bold tabular-nums max-sm:text-2xl">{value}</p>
                 {link.map(|(href, text)| view! { <a class="link link-primary link-hover text-sm font-semibold" href=href>{text}</a> })}
                 {note.map(|n| view! { <p class="text-sm text-base-content/60">{n}</p> })}
             </div>
         </div>
+    }
+}
+
+/// Stock en una sola tarjeta: los que quedan con pocas unidades y los agotados.
+#[component]
+fn StockKpi(low: i64, out: i64, href: String) -> impl IntoView {
+    view! {
+        <div class="card border border-base-300 bg-base-100">
+            <div class="card-body items-center gap-1 p-5 text-center">
+                <h2 class="text-xs font-bold uppercase tracking-wide text-base-content/60">"Stock"</h2>
+                {if low == 0 && out == 0 {
+                    view! { <p class="text-3xl font-bold max-sm:text-2xl">"Todo en orden"</p> }.into_any()
+                } else {
+                    view! {
+                        <div class="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3">
+                            <div>
+                                <p class="text-3xl font-bold tabular-nums text-warning-content/90 max-sm:text-2xl" class:text-base-content=low == 0 style=(low > 0).then_some("color:#b27400")>{low}</p>
+                                <p class="text-xs text-base-content/60">"con poco"</p>
+                            </div>
+                            <span class="h-10 w-px bg-base-300" aria-hidden="true"></span>
+                            <div>
+                                <p class="text-3xl font-bold tabular-nums max-sm:text-2xl" style=(out > 0).then_some("color:#c42b2b")>{out}</p>
+                                <p class="text-xs text-base-content/60">"sin stock"</p>
+                            </div>
+                        </div>
+                    }.into_any()
+                }}
+                <a class="link link-primary link-hover text-sm font-semibold" href=href>"Ver productos"</a>
+            </div>
+        </div>
+    }
+}
+
+/// «Tu tienda esta semana»: ventas por día, visitas y lo más vendido.
+#[component]
+fn WeekCard(week: domain::WeekStats) -> impl IntoView {
+    let max = week.sales.iter().copied().max().unwrap_or(0).max(1);
+    let today = week.sales.len().saturating_sub(1);
+    let bars = week
+        .sales
+        .iter()
+        .enumerate()
+        .map(|(i, cents)| {
+            let pct = if *cents == 0 { 4 } else { (cents * 100 / max).max(8) };
+            let label = format!("{}: {}", week.day_label(i), ui::format_price(*cents).trim_end_matches(",00"));
+            let tip = label.clone();
+            view! {
+                <li class="flex h-full flex-1 flex-col items-center justify-end gap-1" title=tip>
+                    <span class="sr-only">{label}</span>
+                    <span class=if i == today { "w-full rounded-t bg-primary" } else { "w-full rounded-t bg-primary/30" } style=format!("height:{pct}%") aria-hidden="true"></span>
+                    <span class="text-[11px] text-base-content/60" aria-hidden="true">{week.day_label(i)}</span>
+                </li>
+            }
+        })
+        .collect_view();
+    let top = week.top.clone();
+    view! {
+        <section aria-labelledby="tu-semana" class="grid gap-4 lg:grid-cols-[3fr_2fr]">
+            <div class="card border border-base-300 bg-base-100">
+                <div class="card-body gap-3 p-5">
+                    <div class="flex items-center gap-2">
+                        <h2 id="tu-semana" class="text-lg font-semibold">"Tu tienda esta semana"</h2>
+                        <span class="badge badge-ghost badge-sm">"Últimos 7 días"</span>
+                    </div>
+                    <ul class="flex h-28 items-stretch gap-2" aria-label="Ventas por día">{bars}</ul>
+                    <dl class="grid grid-cols-3 gap-2 text-center">
+                        <div class="flex flex-col rounded-box bg-base-200/60 py-2"><dt class="order-2 text-xs text-base-content/60">"visitas"</dt><dd class="text-xl font-bold tabular-nums">{week.visits}</dd></div>
+                        <div class="flex flex-col rounded-box bg-base-200/60 py-2"><dt class="order-2 text-xs text-base-content/60">"al carrito"</dt><dd class="text-xl font-bold tabular-nums">{week.carts}</dd></div>
+                        <div class="flex flex-col rounded-box bg-base-200/60 py-2"><dt class="order-2 text-xs text-base-content/60">"compras"</dt><dd class="text-xl font-bold tabular-nums">{week.orders}</dd></div>
+                    </dl>
+                </div>
+            </div>
+            <div class="card border border-base-300 bg-base-100">
+                <div class="card-body gap-1 p-5">
+                    <h2 class="mb-1 text-lg font-semibold">"Lo más vendido"</h2>
+                    {if top.is_empty() {
+                        view! { <p class="border-t border-base-300 pt-3 text-base-content/70">"Cuando vendas, vas a ver acá lo que más sale."</p> }.into_any()
+                    } else {
+                        view! {
+                            <ul>{top.into_iter().map(|(name, units)| view! {
+                                <li class="flex items-center gap-3 border-t border-base-300 py-2.5">
+                                    <span class="min-w-0 grow truncate">{name}</span>
+                                    <b class="whitespace-nowrap tabular-nums">{if units == 1 { "1 u.".to_string() } else { format!("{units} u.") }}</b>
+                                </li>
+                            }).collect_view()}</ul>
+                        }.into_any()
+                    }}
+                    <p class="mt-1 text-xs text-base-content/60">"Del último mes."</p>
+                </div>
+            </div>
+        </section>
     }
 }
 
@@ -964,8 +1080,9 @@ fn Overview(o: StoreOverview) -> impl IntoView {
             <Kpi label="Para preparar" value=o.to_prepare.to_string() link=(orders_href.clone(), "Ver pedidos")/>
             <Kpi label="Esperando pago" value=o.awaiting_payment.to_string() link=(orders_href.clone(), "Ver pedidos")/>
             <Kpi label="Vendido este mes" value=ui::format_price(o.month_cents).trim_end_matches(",00").to_string() note=month_note/>
-            <Kpi label="Sin stock" value=o.out_of_stock.to_string() link=(format!("{base}/productos"), "Ver productos")/>
+            <StockKpi low=o.low_stock out=o.out_of_stock href=format!("{base}/productos")/>
         </section>
+        {(!starting).then(|| view! { <WeekCard week=o.week.clone()/> })}
 
         <div class=if starting { "grid items-start gap-4" } else { "grid items-start gap-4 lg:grid-cols-[3fr_2fr]" }>
             <section class="card border border-base-300 bg-base-100" aria-labelledby="ultimos-pedidos">

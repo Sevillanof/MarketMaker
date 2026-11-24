@@ -62,7 +62,21 @@ pub fn Image(
     /// con prioridad, sin esperar a que el navegador decida si está a la vista.
     #[prop(optional)]
     eager: bool,
+    /// Sin foto, muestra la inicial de `alt` sobre un color suave (el color
+    /// sale del nombre). Para productos; en el resto, el cuadro liso de siempre.
+    #[prop(optional)]
+    initial: bool,
 ) -> impl IntoView {
+    if src.is_empty() && initial {
+        if let Some((letter, style)) = initial_tile(&alt) {
+            return view! {
+                <div class="mk-img mk-initial grid h-full w-full place-items-center overflow-hidden" data-state="empty" role="img" aria-label=alt style=style>
+                    <span class="select-none font-bold leading-none" aria-hidden="true">{letter}</span>
+                </div>
+            }
+            .into_any();
+        }
+    }
     if src.is_empty() {
         return view! {
             <div class="mk-img h-full w-full bg-base-200" data-state="empty" role="img" aria-label=alt></div>
@@ -80,6 +94,22 @@ pub fn Image(
         </div>
     }
     .into_any()
+}
+
+/// La inicial de `name` y el color suave que le toca (siempre el mismo para
+/// el mismo nombre). `None` si no hay nombre.
+pub fn initial_tile(name: &str) -> Option<(String, String)> {
+    let letter = name.chars().find(|c| c.is_alphanumeric())?;
+    let hue = name
+        .bytes()
+        .fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(u32::from(b)))
+        % 360;
+    Some((
+        letter.to_uppercase().collect(),
+        format!(
+            "background:oklch(94% 0.04 {hue});color:oklch(48% 0.14 {hue});container-type:size"
+        ),
+    ))
 }
 
 /// `<picture>` con AVIF para las imágenes propias y la imagen original de
@@ -343,9 +373,21 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         PanelSkeletonKind::Home => view! {
             {sk_head(2)}
             <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                {(0..4).map(|_| sk_card("", Box::new(|| view! {
+                // Tarjetas centradas: título, número y enlace.
+                {(0..4).map(|_| sk_card("items-center", Box::new(|| view! {
                     {sk_line("w-1/3")}<Skeleton class="h-9 w-1/2"/>{sk_line("w-2/3")}
                 }.into_any()))).collect_view()}
+            </div>
+            // «Tu tienda esta semana» (barras y tres cifras) y «Lo más vendido».
+            <div class="grid gap-4 lg:grid-cols-[3fr_2fr]">
+                {sk_card("", Box::new(|| view! {
+                    {sk_line("w-1/3")}<Skeleton class="h-28 w-full"/>
+                    <div class="grid grid-cols-3 gap-2">{(0..3).map(|_| view! { <Skeleton class="h-14 w-full"/> }).collect_view()}</div>
+                }.into_any()))}
+                {sk_card("", Box::new(|| view! {
+                    {sk_line("w-1/3")}
+                    {(0..3).map(|_| view! { {sk_line("w-full")} }).collect_view()}
+                }.into_any()))}
             </div>
             <div class="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
                 {sk_card("", Box::new(|| view! {

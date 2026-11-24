@@ -87,7 +87,11 @@ impl ImportRow {
 
     /// El primer problema de la fila, si lo tiene.
     pub fn problem(&self) -> Option<String> {
-        self.to_product().err().and_then(|e| e.into_iter().next())
+        // «Producto gratis» no existe en la planilla: no se menciona.
+        self.to_product()
+            .err()
+            .and_then(|e| e.into_iter().next())
+            .map(|m| m.split(" Para publicarlo").next().unwrap_or("").to_string())
     }
 
     /// ¿La fila ya tiene alguna foto?

@@ -1310,7 +1310,7 @@ fn FavoriteCard(
         <li class="card overflow-hidden bg-base-100 shadow-sm">
             <div class="relative aspect-[4/5] bg-base-200">
                 <a href=href.clone() class="absolute inset-0" aria-label=format!("Ver {name}")>
-                    <Image src=product.image_url.clone() alt=name.clone() fit/>
+                    <Image src=product.image_url.clone() alt=name.clone() fit initial=true/>
                 </a>
                 <button type="button" class="mk-fav is-on absolute right-2 top-2 z-10"
                     aria-pressed="true" aria-label=format!("Quitar {name} de favoritos")

@@ -127,6 +127,21 @@ pub async fn buyer_funnel(pool: &PgPool, days: i32) -> sqlx::Result<Vec<i64>> {
     Ok(vec![r.0, r.1, r.2, r.3, r.4, r.5, r.6])
 }
 
+/// Visitas de la tienda `slug` en los últimos 7 días y cuántas agregaron algo al carrito.
+pub async fn store_week(pool: &PgPool, slug: &str) -> sqlx::Result<(i64, i64)> {
+    sqlx::query_as(
+        "WITH v AS (
+           SELECT visita, array_agg(DISTINCT paso) AS pasos FROM eventos
+           WHERE quien = 'buyer' AND tienda = $1 AND creado >= now() - interval '7 days'
+           GROUP BY visita
+         )
+         SELECT count(*), count(*) FILTER (WHERE 'carrito' = ANY(pasos)) FROM v",
+    )
+    .bind(slug)
+    .fetch_one(pool)
+    .await
+}
+
 /// Una visita de la lista: hasta dónde llegó y cuánto estuvo.
 #[derive(Debug, Clone, FromRow)]
 pub struct VisitRow {
