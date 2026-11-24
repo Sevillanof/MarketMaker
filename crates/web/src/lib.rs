@@ -118,6 +118,8 @@ pub fn App() -> impl IntoView {
     })));
 
     provide_context(panel::NavCache(RwSignal::new(None)));
+    // Avisos de toda la app («Producto guardado», «Banner borrado · Deshacer»…).
+    ui::provide_notifier();
     // Una sola lista de fotos y una sola bandeja de subidas para toda la app.
     editor::provide_photos();
     // La página ya atiende sus botones: `KEEP_TAPS` deja de guardar toques.
@@ -130,6 +132,7 @@ pub fn App() -> impl IntoView {
     view! {
         <Title text="Marketplace"/>
 
+        <ui::NoticeHost/>
         <Router>
             <analytics::TrackPages/>
             <main>

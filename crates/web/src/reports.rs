@@ -366,7 +366,6 @@ pub fn ReportsDialog(
         }
     });
     // 0 = nada, 1 = copiado, 2 = no se pudo copiar
-    let copied = RwSignal::new(0u8);
     let change = Action::new(|(n, e): &(i64, String)| set_bug_status(*n, e.clone()));
     Effect::new(move |_| match change.value().get() {
         Some(Ok(())) => {
@@ -385,7 +384,7 @@ pub fn ReportsDialog(
     };
     view! {
         <dialog node_ref=dialog class="modal" aria-labelledby="reportes-titulo"
-            on:close=move |_| { problem.set(None); copied.set(0); selected.set(None); filter.set(String::new()); }>
+            on:close=move |_| { problem.set(None); selected.set(None); filter.set(String::new()); }>
             <div class="modal-box flex max-h-[92vh] max-w-4xl flex-col p-0">
                 <div class="flex flex-col gap-3 p-6 pb-3">
                     <div class="flex items-start justify-between gap-4">
@@ -433,7 +432,7 @@ pub fn ReportsDialog(
                             view! {
                                 <li><button type="button" aria-current=on.then_some("true")
                                     class=if on { "flex w-full flex-col gap-1 bg-base-200 px-6 py-2.5 text-left" } else { "flex w-full flex-col gap-1 px-6 py-2.5 text-left hover:bg-base-200/60" }
-                                    on:click=move |_| { copied.set(0); selected.set(Some(num)); }>
+                                    on:click=move |_| { selected.set(Some(num)); }>
                                     <span class="flex items-center gap-2 text-sm">
                                         <b>{format!("#{}", i.num)}</b>
                                         <span class=cls>{label}</span>
@@ -462,9 +461,14 @@ pub fn ReportsDialog(
                         let has_shot = current.captura;
                         let copy = move |_| {
                             let text = copy_text.clone();
+                            let n = ui::use_notifier();
                             leptos::task::spawn_local(async move {
                                 let ok = copy_report(cur, &text, has_shot).await;
-                                copied.set(if ok { 1 } else { 2 });
+                                if ok {
+                                    n.success("Reporte copiado", "Pegalo con Ctrl+V.");
+                                } else {
+                                    n.error("No pudimos copiar el reporte", "Probá de nuevo.");
+                                }
                             });
                         };
                         view! {
@@ -495,11 +499,6 @@ pub fn ReportsDialog(
                                 {buttons}
                                 {move || problem.get().map(|p| view! { <crate::account::FieldNote ok=false text=p/> })}
                                 <div class="ml-auto flex items-center gap-3">
-                                    {move || match copied.get() {
-                                        1 => view! { <span class="text-xs text-success" role="status">"Reporte copiado. Pegalo con Ctrl+V."</span> }.into_any(),
-                                        2 => view! { <span class="text-xs text-error" role="status">"No pudimos copiarlo. Probá de nuevo."</span> }.into_any(),
-                                        _ => ().into_any(),
-                                    }}
                                     <button type="button" class="btn btn-sm btn-primary" on:click=copy.clone()>
                                         <ui::Icon name="copy" class="h-4 w-4"/>"Copiar reporte"
                                     </button>

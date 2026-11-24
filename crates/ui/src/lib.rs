@@ -4,6 +4,11 @@
 
 use leptos::prelude::*;
 
+mod notify;
+pub use notify::{
+    provide_notifier, use_notifier, NoticeAction, NoticeBell, NoticeHost, NoticeKind, Notifier,
+};
+
 /// Botón primario. Con `href` se dibuja como enlace. Con `disabled` (en el
 /// editor) se ve igual pero no navega ni recibe el foco: el enlace queda en
 /// `data-href` y el editor lleva a esa página al tocarlo (ver `MaybeLink`).
@@ -748,6 +753,9 @@ pub fn Icon(#[prop(into)] name: String, #[prop(into, optional)] class: String) -
         "eye" => "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6",
         "trash" => "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
         "check" => "M5 12l5 5 9-10",
+        "bell" => "M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6M10 19a2 2 0 0 0 4 0",
+        "alert-circle" => "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7.5v5.5M12 16.5v.01",
+        "info" => "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 11v6M12 7.5v.01",
         "chevron-down" => "M6 9l6 6 6-6",
         "external" => "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
         "log-out" => "M9 21H4V3h5M16 17l5-5-5-5M21 12H9",
