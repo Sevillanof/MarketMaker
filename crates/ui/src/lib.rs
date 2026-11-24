@@ -369,11 +369,12 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
         }
         .into_any(),
         PanelSkeletonKind::List => view! {
-            // Título y cantidad; Etiquetas, Categorías y + Nuevo producto (en el
+            // Título y cantidad; Importar (solo compu), Etiquetas, Categorías y + Nuevo producto (en el
             // teléfono, + Nuevo producto a todo el ancho arriba).
             <div class="flex flex-wrap items-center gap-3">
                 <Skeleton class="h-11 w-full sm:hidden"/>
                 <div class="flex grow flex-col gap-2"><Skeleton class="h-8 w-40 max-sm:h-7"/>{sk_line("w-56 max-w-full")}</div>
+                <Skeleton class="h-10 w-20 max-sm:hidden"/>
                 <Skeleton class="h-10 w-24 max-sm:h-11 max-sm:flex-1"/><Skeleton class="h-10 w-28 max-sm:h-11 max-sm:flex-1"/>
                 <Skeleton class="h-10 w-40 max-sm:hidden"/>
             </div>
@@ -412,7 +413,7 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                         </div>
                         {sk_line("w-24")}<Skeleton class="h-32 w-full"/>
                         <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-base-200 pt-4">
-                            <Skeleton class="h-10 w-36"/><Skeleton class="h-8 w-16"/>
+                            <div class="flex gap-1"><Skeleton class="h-10 w-36"/><Skeleton class="h-10 w-24"/></div><Skeleton class="h-8 w-16"/>
                             <div class="flex justify-end gap-2"><Skeleton class="h-10 w-24"/><Skeleton class="h-10 w-24"/></div>
                         </div>
                     </div>
