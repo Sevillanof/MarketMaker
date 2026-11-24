@@ -1405,6 +1405,100 @@ pub async fn tell_cancelled(pool: &db::Pool, tenant: uuid::Uuid, o: Order, what:
     ));
 }
 
+/// Al comprador que dejó su compra a medias: sus productos y un enlace para
+/// terminarla (el carrito sigue guardado en su navegador).
+pub fn cart_reminder(store_name: &str, slug: &str, o: &Order) -> Email {
+    let base = store_url(slug);
+    let url = format!("{base}/comprar");
+    let mut rows = String::from(r#"<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:16px">"#);
+    let mut text = String::new();
+    for i in &o.items {
+        let what = [i.color.as_str(), i.size.as_str()]
+            .iter()
+            .filter(|s| !s.is_empty())
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let detail = if what.is_empty() {
+            format!("{} u.", i.qty)
+        } else {
+            format!("{what} · {} u.", i.qty)
+        };
+        let img = if i.image_url.starts_with("http") {
+            i.image_url.clone()
+        } else if i.image_url.starts_with('/') {
+            format!("{base}{}", i.image_url)
+        } else {
+            String::new()
+        };
+        let thumb = if img.is_empty() {
+            String::new()
+        } else {
+            format!(
+                r#"<img src="{}" width="56" height="56" alt="" style="display:block;border-radius:8px;object-fit:cover">"#,
+                esc(&img)
+            )
+        };
+        rows.push_str(&format!(
+            r#"<tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid #f4f4f5;width:56px">{thumb}</td><td style="padding:8px 0;border-bottom:1px solid #f4f4f5"><b>{}</b><br><span style="color:#71717a">{}</span></td><td style="padding:8px 0;border-bottom:1px solid #f4f4f5;text-align:right;white-space:nowrap">{}</td></tr>"#,
+            esc(&i.name),
+            esc(&detail),
+            ui::format_price(i.total_cents())
+        ));
+        text.push_str(&format!(
+            "{} ({detail})  {}\n",
+            i.name,
+            ui::format_price(i.total_cents())
+        ));
+    }
+    rows.push_str("</table>");
+    let html = frame(
+        store_name,
+        &format!(
+            r#"<h1 style="font-size:20px;margin:0 0 8px">Dejaste tu compra a medias</h1>
+<p style="margin:0;color:#52525b">Tu carrito en <b>{}</b> sigue esperándote:</p>{rows}{}
+<p style="margin:16px 0 0;color:#71717a;font-size:13px">Es el único recordatorio que te enviamos. Los productos pueden agotarse.</p>"#,
+            esc(store_name),
+            button(&url, "Terminar mi compra")
+        ),
+    );
+    let text = format!(
+        "Dejaste tu compra a medias\nTu carrito en {store_name} sigue esperándote:\n\n{text}\nTerminar mi compra: {url}\n\nEs el único recordatorio que te enviamos. Los productos pueden agotarse.\n"
+    );
+    Email {
+        to: vec![o.email.clone()],
+        subject: format!("Dejaste tu compra a medias en {store_name}"),
+        html,
+        text,
+    }
+}
+
+/// Manda el recordatorio de carrito abandonado a quienes dejaron la compra a
+/// medias hace entre 3 y 24 horas, en las tiendas que lo tienen prendido
+/// (una vez por compra).
+pub async fn remind_carts(pool: &db::Pool) {
+    let list = match db::orders::abandoned_carts(pool, 3, 24).await {
+        Ok(l) => l,
+        Err(e) => {
+            leptos::logging::log!("Carritos: no pudimos buscar compras a medias: {e}");
+            return;
+        }
+    };
+    for (tenant, o) in list {
+        // Anotar primero: si el envío falla no se reintenta, así nunca hay dos.
+        if !db::orders::note_buyer_update(pool, tenant, &o.id, "carrito")
+            .await
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let Ok(Some((name, slug))) = db::mp::name_and_slug(pool, tenant).await else {
+            continue;
+        };
+        send(cart_reminder(&name, &slug, &o));
+    }
+}
+
 /// Les recuerda la transferencia a quienes compraron hace más de `hours`
 /// horas y todavía no pagaron (una vez por pedido).
 pub async fn remind_unpaid(pool: &db::Pool, hours: i32) {

@@ -73,6 +73,7 @@ pub fn StoreInfoPage() -> impl IntoView {
     // Las dos se piden desde la página (no desde adentro del Suspend): un
     // recurso creado durante la hidratación no coincide con el del servidor.
     let admin = Resource::new(move || slug.get(), store_admin);
+    let reminder = Resource::new(move || slug.get(), cart_reminder);
     view! {
         <leptos_meta::Title text="Datos de la tienda · MarketMaker"/>
             <div class="flex w-full max-w-[1440px] flex-col gap-5 px-8 max-sm:px-4 py-8 max-sm:py-5 max-sm:pb-28">
@@ -82,8 +83,10 @@ pub fn StoreInfoPage() -> impl IntoView {
                             Ok(Some(form)) => {
                                 let name = form.info.name.clone();
                                 let admin = admin.await.ok().flatten();
+                                let reminder = reminder.await.ok().flatten();
                                 view! {
                                     <StoreInfoEditor slug=slug.get_untracked() form/>
+                                    {reminder.map(|on| view! { <BuyerNoticesCard slug=slug.get_untracked() on/> })}
                                     <crate::team::TeamCard slug=slug.get_untracked()/>
                                     {admin.map(|(rest, paused)| view! {
                                         <StoreAdminCard slug=slug.get_untracked() name rest paused/>
@@ -363,6 +366,67 @@ fn StoreInfoEditor(slug: String, form: StoreInfoForm) -> impl IntoView {
 }
 
 /// Dirección y pausa de la tienda `slug`, para la sección "Tu tienda".
+/// ¿La tienda recuerda las compras sin terminar? `None` si quien mira no es
+/// dueño ni administrador.
+#[server]
+pub async fn cart_reminder(slug: String) -> Result<Option<bool>, ServerFnError> {
+    use crate::server::{internal, pool};
+    let Some(tenant) = crate::products::server::owned_store_min(&slug, "admin").await? else {
+        return Ok(None);
+    };
+    Ok(Some(
+        db::orders::cart_reminder(&pool()?, tenant.id)
+            .await
+            .map_err(internal)?,
+    ))
+}
+
+#[server]
+pub async fn set_cart_reminder(slug: String, on: bool) -> Result<(), ServerFnError> {
+    let tenant = crate::products::server::require_store_min(&slug, "admin").await?;
+    db::orders::set_cart_reminder(&crate::server::pool()?, tenant.id, on)
+        .await
+        .map_err(crate::server::internal)
+}
+
+/// «Avisos a compradores»: el recordatorio de compras sin terminar.
+#[component]
+fn BuyerNoticesCard(slug: String, on: bool) -> impl IntoView {
+    let slug = StoredValue::new(slug);
+    let on_now = RwSignal::new(on);
+    let problem = RwSignal::new(None::<String>);
+    let toggle = move |value: bool| {
+        on_now.set(value);
+        problem.set(None);
+        leptos::task::spawn_local(async move {
+            if let Err(e) = set_cart_reminder(slug.get_value(), value).await {
+                on_now.set(!value);
+                problem.set(Some(error_text(&e)));
+            }
+        });
+    };
+    view! {
+        <section class="card border border-base-300 bg-base-100" aria-labelledby="avisos-compradores">
+            <div class="card-body gap-3 p-5">
+                <h2 id="avisos-compradores" class="text-lg font-semibold">"Avisos a compradores"</h2>
+                <label class="flex cursor-pointer items-start gap-3">
+                    <input type="checkbox" class="toggle toggle-primary mt-0.5" id="recordar-carritos"
+                        aria-describedby="recordar-carritos-ayuda"
+                        prop:checked=move || on_now.get()
+                        on:change=move |ev| toggle(event_target_checked(&ev))/>
+                    <span>
+                        <span class="block font-medium">"Recordar compras sin terminar"</span>
+                        <span id="recordar-carritos-ayuda" class="block text-sm text-base-content/70">
+                            "Enviamos un único email a quien dejó su correo y no completó el pago. Incluye un enlace para retomar su carrito."
+                        </span>
+                    </span>
+                </label>
+                {move || problem.get().map(|e| view! { <p role="alert" class="text-sm text-red-700">{e}</p> })}
+            </div>
+        </section>
+    }
+}
+
 #[server]
 pub async fn store_admin(slug: String) -> Result<Option<(String, bool)>, ServerFnError> {
     use crate::server::{internal, pool};

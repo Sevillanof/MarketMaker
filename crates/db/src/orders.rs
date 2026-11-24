@@ -627,6 +627,62 @@ pub async fn get_for_email(
 /// Cambia el estado de un pedido de la tienda. `false` si no existe. Al
 /// cancelar, las unidades vuelven al stock; al recuperar un cancelado, se
 /// descuentan otra vez (sin bajar de 0).
+/// ¿La tienda manda el recordatorio de carrito abandonado?
+pub async fn cart_reminder(pool: &PgPool, tenant: Uuid) -> sqlx::Result<bool> {
+    sqlx::query_scalar("SELECT remind_carts FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .fetch_one(pool)
+        .await
+}
+
+pub async fn set_cart_reminder(pool: &PgPool, tenant: Uuid, on: bool) -> sqlx::Result<()> {
+    sqlx::query("UPDATE tenants SET remind_carts = $2 WHERE id = $1")
+        .bind(tenant)
+        .bind(on)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Compras que quedaron a medias: el comprador dejó su email, fue a pagar con
+/// Mercado Pago y no pagó entre hace `to_hours` y `from_hours` horas, en una
+/// tienda que tiene prendido el recordatorio. No incluye a quien después hizo
+/// otro pedido con ese email, ni a quien ya recibió un recordatorio hace poco.
+pub async fn abandoned_carts(
+    pool: &PgPool,
+    from_hours: i32,
+    to_hours: i32,
+) -> sqlx::Result<Vec<(Uuid, Order)>> {
+    let ids: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT o.tenant_id, o.id FROM orders o JOIN tenants t ON t.id = o.tenant_id
+         WHERE o.status = 'pending_payment' AND o.number IS NULL AND t.remind_carts
+           AND o.email <> ''
+           AND NOT ('carrito' = ANY(o.buyer_updates))
+           AND o.updated_at < now() - make_interval(hours => $1)
+           AND o.updated_at > now() - make_interval(hours => $2)
+           AND NOT EXISTS (
+               SELECT 1 FROM orders p
+               WHERE p.tenant_id = o.tenant_id AND lower(p.email) = lower(o.email)
+                 AND p.number IS NOT NULL AND p.created_at >= o.created_at)
+           AND NOT EXISTS (
+               SELECT 1 FROM orders r
+               WHERE r.tenant_id = o.tenant_id AND lower(r.email) = lower(o.email)
+                 AND 'carrito' = ANY(r.buyer_updates)
+                 AND r.created_at > now() - interval '48 hours')",
+    )
+    .bind(from_hours)
+    .bind(to_hours)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::new();
+    for (tenant, id) in ids {
+        if let Some(o) = get(pool, tenant, id).await? {
+            out.push((tenant, o));
+        }
+    }
+    Ok(out)
+}
+
 /// Anota que al comprador ya se le avisó `what` ("pagado", "enviado"…).
 /// `false` si ya se le había avisado (o no está el pedido): no se repite.
 pub async fn note_buyer_update(

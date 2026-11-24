@@ -401,6 +401,7 @@ async fn expire_unpaid_orders(pool: db::Pool) {
             Err(e) => log!("Pedidos: no pudimos revisar los pedidos sin pagar: {e}"),
         }
         web::email::remind_unpaid(&pool, 24).await;
+        web::email::remind_carts(&pool).await;
         tokio::time::sleep(EVERY).await;
     }
 }

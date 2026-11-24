@@ -547,6 +547,11 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                 </div>
                 <Skeleton class="h-10 w-28"/>
             }.into_any()))}
+            // "Avisos a compradores": un interruptor con su ayuda.
+            {sk_card("gap-3 p-5", Box::new(|| view! {
+                <Skeleton class="h-5 w-44"/>
+                <div class="flex items-start gap-3"><Skeleton class="h-6 w-12 shrink-0 rounded-full"/><div class="flex grow flex-col gap-2">{sk_line("w-56")}{sk_line("w-full max-w-xl")}</div></div>
+            }.into_any()))}
             // "Equipo": campo para sumar gente y la lista (solo dueño y administradores).
             <TeamSkeleton/>
             // "Tu tienda": dirección, pausar y borrar.
