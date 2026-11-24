@@ -170,8 +170,6 @@ struct BoardCtx {
     /// El que se está arrastrando.
     dragging: RwSignal<Option<String>>,
     problem: RwSignal<Option<String>>,
-    /// Aviso para lectores de pantalla y para quien mira: "Pedido #1001 movido a…".
-    notice: RwSignal<String>,
     slug: StoredValue<String>,
     /// Pedidos cuyo envío ya se preguntó a Andreani en esta visita.
     refreshed: StoredValue<Vec<String>>,
@@ -262,8 +260,8 @@ impl BoardCtx {
             Some(c) => c.title().to_string(),
             None => "Cancelados".to_string(),
         };
-        self.notice
-            .set(format!("Pedido #{number} movido a {place}."));
+        let notifier = ui::use_notifier();
+        let notice = notifier.success(format!("Pedido #{number} movido a {place}"), "");
         let id2 = id.clone();
         let slug = self.slug.get_value();
         leptos::task::spawn_local(async move {
@@ -272,7 +270,7 @@ impl BoardCtx {
                 Ok(None) => {}
                 Err(e) => {
                     set(before);
-                    self.notice.set(String::new());
+                    notifier.dismiss_now(notice);
                     self.problem.set(Some(format!(
                         "No pudimos mover el pedido #{number}. {}",
                         error_text(&e)
@@ -290,7 +288,6 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         open: RwSignal::new(None),
         dragging: RwSignal::new(None),
         problem: RwSignal::new(None),
-        notice: RwSignal::new(String::new()),
         slug: StoredValue::new(slug.clone()),
         refreshed: StoredValue::new(Vec::new()),
         asking: RwSignal::new(None),
@@ -320,7 +317,6 @@ fn Board(slug: String, orders: Vec<Order>) -> impl IntoView {
         </div>
         {(!empty).then(|| view! { <BoardTools ctx/> })}
         {move || ctx.problem.get().map(|e| view! { <div role="alert" class="alert alert-error text-sm">{e}</div> })}
-        <p class="sr-only" role="status">{move || ctx.notice.get()}</p>
         {empty.then(|| view! {
             <div class="card bg-base-100 shadow-sm"><div class="card-body items-start">
                 <h2 class="card-title">"Todavía no tenés pedidos"</h2>

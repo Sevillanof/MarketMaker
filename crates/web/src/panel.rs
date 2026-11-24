@@ -352,6 +352,10 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
     let location = leptos_router::hooks::use_location();
     let opening = RwSignal::new(false);
     provide_context(OpeningEditor(opening));
+    // Los avisos se corren a la derecha del menú mientras estás en el panel.
+    let notifier = ui::use_notifier();
+    notifier.set_in_panel(true);
+    on_cleanup(move || notifier.set_in_panel(false));
     // Los "Ver cómo" de los Primeros pasos abren la Ayuda en su película.
     provide_context(crate::help::HelpRequest(RwSignal::new(None)));
     // Se vuelve a pedir en cada cambio de página para refrescar el número de
@@ -432,13 +436,17 @@ fn Shell(slug: Signal<String>, section: Signal<Section>, children: Children) -> 
                     <a href="/" class="text-lg font-bold max-sm:hidden">"MarketMaker"</a>
                     // En el teléfono, el nombre de la sección en que estás.
                     <p class="min-w-0 truncate text-lg font-bold sm:hidden">{move || section.get().title()}</p>
+                    <ui::NoticeBell id="mk-bell-mobile" class="ml-auto max-sm:size-12"/>
                 </header>
                 {children()}
             </div>
             <div class="drawer-side z-30">
                 <label for="mk-panel-nav" aria-label="Cerrar el menú" class="drawer-overlay"></label>
                 <aside class="sticky top-0 flex h-screen w-64 shrink-0 flex-col gap-3 border-r border-base-300 bg-base-100 p-3 max-sm:w-[min(20rem,86vw)]">
-                    <a href="/" class="px-2 pt-1 text-lg font-bold">"MarketMaker"</a>
+                    <div class="flex items-center justify-between pr-1">
+                        <a href="/" class="px-2 pt-1 text-lg font-bold">"MarketMaker"</a>
+                        <ui::NoticeBell id="mk-bell-side" class="max-lg:hidden"/>
+                    </div>
                     <Transition fallback=move || match last.and_then(|l| l.get_untracked()) {
                             Some(nav) => view! { <SideNav nav slug=slug.get_untracked() section whitelist whitelist_version reports reports_version reports_new/> }.into_any(),
                             None => view! { <ui::Skeleton class="h-12 w-full"/> }.into_any(),

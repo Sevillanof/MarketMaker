@@ -239,21 +239,16 @@ enum Status {
     Error(String),
 }
 
-/// Aviso breve que se va solo, con un "Deshacer" opcional.
-#[derive(Clone, Debug, PartialEq)]
-struct Toast {
-    text: String,
-    undo: bool,
-}
-
 /// Estado de la interfaz compartido por todo el editor (por contexto).
 #[derive(Clone, Copy)]
 pub(crate) struct Ui {
-    toast: RwSignal<Option<Toast>>,
-    toast_seq: StoredValue<u64>,
-    /// El mouse o el foco están sobre el aviso: no se va solo mientras tanto.
-    toast_hover: StoredValue<bool>,
-    toast_focus: StoredValue<bool>,
+    /// Los avisos de toda la app (se ven abajo a la izquierda y quedan en la
+    /// campana).
+    notifier: ui::Notifier,
+    /// Deshace lo último (el «Deshacer» de un aviso).
+    undo: Callback<()>,
+    /// El aviso «… Deshacer» que está a la vista, si hay uno.
+    undo_notice: StoredValue<Option<u64>>,
     /// Texto para lectores de pantalla (región `role=status` invisible).
     announce: RwSignal<String>,
     pub preview: RwSignal<bool>,
@@ -310,63 +305,27 @@ impl Ui {
     }
 
     fn toast(&self, text: impl Into<String>, undo: bool) {
-        let seq = self.toast_seq.get_value() + 1;
-        self.toast_seq.set_value(seq);
-        self.toast.set(Some(Toast {
-            text: text.into(),
-            undo,
-        }));
-        self.hide_toast_later(Duration::from_secs(6));
-    }
-
-    /// Cierra el aviso actual dentro de `delay`, salvo que para entonces haya
-    /// otro aviso o el mouse o el foco estén sobre él. En ese caso se vuelve a
-    /// programar cuando salen (ver [`Ui::release_toast`]).
-    fn hide_toast_later(&self, delay: Duration) {
-        let seq = self.toast_seq.get_value();
-        let ui = *self;
-        set_timeout(
-            move || {
-                if ui.toast_seq.get_value() == seq
-                    && !ui.toast_hover.get_value()
-                    && !ui.toast_focus.get_value()
-                {
-                    ui.toast.set(None);
-                }
-            },
-            delay,
-        );
-    }
-
-    /// El mouse (`hover`) o el foco dejaron el aviso: si ya nada lo retiene,
-    /// se va a los pocos segundos.
-    fn release_toast(&self, hover: bool) {
-        if hover {
-            self.toast_hover.set_value(false);
-        } else {
-            self.toast_focus.set_value(false);
+        // Un solo «Deshacer» a la vez: el nuevo reemplaza al anterior.
+        if let Some(old) = self.undo_notice.get_value() {
+            self.notifier.dismiss_now(old);
+            self.undo_notice.set_value(None);
         }
-        if self.toast.with_untracked(Option::is_some) {
-            self.hide_toast_later(Duration::from_secs(3));
+        let action = undo.then(|| ui::NoticeAction::new("Deshacer", self.undo));
+        let id = self
+            .notifier
+            .push(ui::NoticeKind::Success, text.into(), String::new(), action);
+        if undo {
+            self.undo_notice.set_value(Some(id));
         }
     }
 
-    /// Cierra el aviso a mano.
     /// Después de deshacer por otro lado (Ctrl+Z, la flecha de arriba), el
     /// aviso «… Deshacer» ya no corresponde.
     pub fn drop_undo_toast(&self) {
-        if self
-            .toast
-            .with_untracked(|t| t.as_ref().is_some_and(|t| t.undo))
-        {
-            self.close_toast();
+        if let Some(id) = self.undo_notice.get_value() {
+            self.notifier.dismiss_now(id);
+            self.undo_notice.set_value(None);
         }
-    }
-
-    fn close_toast(&self) {
-        self.toast_hover.set_value(false);
-        self.toast_focus.set_value(false);
-        self.toast.set(None);
     }
 
     pub fn announce(&self, text: impl Into<String>) {
@@ -1047,10 +1006,9 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     let products = StoredValue::new(initial.products.clone());
     let status = RwSignal::new(Status::Idle);
     let ui = Ui {
-        toast: RwSignal::new(None),
-        toast_seq: StoredValue::new(0),
-        toast_hover: StoredValue::new(false),
-        toast_focus: StoredValue::new(false),
+        notifier: ui::use_notifier(),
+        undo: Callback::new(move |_: ()| state.undo()),
+        undo_notice: StoredValue::new(None),
         announce: RwSignal::new(String::new()),
         preview: RwSignal::new(false),
         phone: RwSignal::new(false),
@@ -1625,36 +1583,17 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     }
 }
 
-/// Avisos flotantes abajo a la izquierda: el resultado del guardado y los
-/// avisos breves. No mueven el resto de la pantalla.
+/// Aviso fijo bajo la barra de arriba cuando el guardado o la publicación no
+/// salió (se queda hasta cerrarlo). Los avisos breves («Banner borrado ·
+/// Deshacer») van por `ui::NoticeHost`, abajo a la izquierda. No mueven el
+/// resto de la pantalla.
 #[component]
 fn Notices(
     status: RwSignal<Status>,
     save_now: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let ui = expect_context::<Ui>();
     let actions = expect_context::<Actions>();
     let close_alert = move |_| status.set(Status::Idle);
-    // Cierra el aviso breve. Si el foco estaba en él, vuelve adonde estaba.
-    let close = move || {
-        let had_focus = ui.toast_focus.get_value();
-        ui.close_toast();
-        if had_focus {
-            // El elemento de donde vino el foco quedó marcado al entrar.
-            let back = document()
-                .query_selector("[data-mk-focus-return]")
-                .ok()
-                .flatten();
-            if let Some(el) = back.as_ref() {
-                _ = el.remove_attribute("data-mk-focus-return");
-            }
-            match back.and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok()) {
-                Some(el) => _ = el.focus(),
-                None => focus_selector("#mk-inspector-title"),
-            }
-        }
-    };
     let alert = move || {
         let close_btn = move || {
             view! {
@@ -1728,54 +1667,8 @@ fn Notices(
         }
     };
     view! {
-        <div class="pointer-events-none fixed bottom-4 left-4 z-50 flex max-w-lg flex-col gap-2 [&>*]:pointer-events-auto" role="region" aria-label="Avisos">
+        <div class="pointer-events-none fixed top-20 left-1/2 z-50 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 [&>*]:pointer-events-auto" role="region" aria-label="Estado del guardado">
             <div role="alert">{alert}</div>
-            <div role="status" aria-live="polite">
-                {move || ui.toast.get().map(|t| view! {
-                    <div
-                        class="alert bg-neutral text-neutral-content shadow-lg"
-                        on:pointerenter=move |_| ui.toast_hover.set_value(true)
-                        on:pointerleave=move |_| ui.release_toast(true)
-                        on:focusin=move |ev: leptos::ev::FocusEvent| {
-                            // Recordar de dónde vino el foco para devolverlo al cerrar.
-                            if !ui.toast_focus.get_value() {
-                                if let Ok(list) = document().query_selector_all("[data-mk-focus-return]") {
-                                    for i in 0..list.length() {
-                                        if let Some(el) = list.get(i).and_then(|n| n.dyn_into::<web_sys::Element>().ok()) {
-                                            _ = el.remove_attribute("data-mk-focus-return");
-                                        }
-                                    }
-                                }
-                                if let Some(from) = ev.related_target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
-                                    _ = from.set_attribute("data-mk-focus-return", "");
-                                }
-                            }
-                            ui.toast_focus.set_value(true);
-                        }
-                        on:focusout=move |ev: leptos::ev::FocusEvent| {
-                            let inside = ev
-                                .related_target()
-                                .and_then(|t| t.dyn_into::<web_sys::Node>().ok())
-                                .zip(ev.current_target().and_then(|t| t.dyn_into::<web_sys::Node>().ok()))
-                                .is_some_and(|(to, toast)| toast.contains(Some(&to)));
-                            if !inside {
-                                ui.release_toast(false);
-                            }
-                        }
-                    >
-                        <span>{t.text}</span>
-                        {t.undo.then(|| view! {
-                            <button type="button" class="btn btn-sm" on:click=move |_| {
-                                state.undo();
-                                close();
-                            }>"Deshacer"</button>
-                        })}
-                        <button type="button" class="btn btn-ghost btn-sm btn-square text-neutral-content hover:bg-white/10" aria-label="Cerrar aviso" on:click=move |_| close()>
-                            <Icon name="close"/>
-                        </button>
-                    </div>
-                })}
-            </div>
         </div>
     }
 }

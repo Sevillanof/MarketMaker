@@ -632,7 +632,7 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
     let slug = StoredValue::new(slug);
     // "Importar": sube para abrir la ventana; al terminar se vuelve a leer la lista.
     let import_open = RwSignal::new(0u32);
-    let notice = RwSignal::new(None::<String>);
+    let notifier = ui::use_notifier();
     let import_done = Callback::new(move |done: crate::import::ImportDone| {
         leptos::task::spawn_local(async move {
             if let Ok(Some(fresh)) = list_store_products(slug.get_value()).await {
@@ -640,10 +640,13 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
                 order.set(fresh.category_order);
             }
             problem.set(done.note.clone());
-            notice.set(Some(match done.created {
-                1 => "Importamos 1 producto.".to_string(),
-                n => format!("Importamos {n} productos."),
-            }));
+            notifier.success(
+                "Productos importados",
+                match done.created {
+                    1 => "Importamos 1 producto.".to_string(),
+                    n => format!("Importamos {n} productos."),
+                },
+            );
         });
     });
 
@@ -831,7 +834,6 @@ fn ProductList(slug: String, data: StoreProducts, first_ficha: Option<String>) -
                 </button>
             </div>
         })}
-        {move || notice.get().map(|e| view! { <p role="status" class="text-sm text-success">{e}</p> })}
         {move || problem.get().map(|e| view! { <p role="alert" class="text-sm text-error">{e}</p> })}
         <crate::import::ImportDialog slug open=import_open on_done=import_done/>
         <Show when=move || !empty() fallback=move || view! {
@@ -972,6 +974,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
             errors.set(Vec::new());
             ctx.panel_dirty.set(false);
             saved.set(true);
+            ui::use_notifier().success("Producto guardado", p.name.clone());
             ctx.products.update(|ps| {
                 if let Some(old) = ps.iter_mut().find(|x| x.id == p.id) {
                     *old = p;
@@ -1120,7 +1123,7 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                 <div class="flex items-center gap-2 max-sm:hidden">
                     <span class="text-sm text-base-content/60">{position}</span>
                     <span class="ml-auto text-sm text-base-content/60" role="status" aria-live="polite">
-                        {move || if save.pending().get() { "Guardando…" } else if saved.get() { "Guardado ✓" } else { "" }}
+                        {move || if save.pending().get() { "Guardando…" } else { "" }}
                     </span>
                     <button type="button" class="btn btn-sm" disabled=move || prev().is_none() on:click=move |_| go(prev())>"‹ Anterior"</button>
                     <button type="button" class="btn btn-sm" disabled=move || next().is_none() on:click=move |_| go(next())>"Siguiente ›"</button>
@@ -1477,6 +1480,9 @@ fn TagManager(
             problem.set(None);
             confirm.set(false);
             saved.set(now.is_some());
+            if let Some(n) = now.as_ref() {
+                ui::use_notifier().success("Etiqueta guardada", n.clone());
+            }
             match now {
                 Some(n) => {
                     name.set(n.clone());
@@ -1626,7 +1632,6 @@ fn TagManager(
                                             <button type="submit" class="btn btn-primary" disabled=busy>
                                                 {if is_new { "Crear etiqueta" } else { "Guardar cambios" }}
                                             </button>
-                                            {move || saved.get().then(|| view! { <span role="status" class="text-sm text-success">"✓ Guardado"</span> })}
                                             <span class="grow"></span>
                                             {(!is_new).then(|| view! {
                                                 <button type="button" class="btn btn-ghost btn-sm text-error" on:click=move |_| confirm.set(true)>"Borrar etiqueta"</button>
@@ -2196,6 +2201,10 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
             errors.set(Vec::new());
             dirty.set(false);
             saved.set(true);
+            ui::use_notifier().success(
+                if id.get_untracked().is_empty() { "Producto creado" } else { "Producto guardado" },
+                form.name.get_untracked().trim().to_string(),
+            );
             if id.get_untracked().is_empty() {
                 created.set(Some((
                     form.name.get_untracked().trim().to_string(),
@@ -2311,7 +2320,7 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
                 <h2 class="truncate text-xl font-bold max-sm:text-base">{title}</h2>
             </div>
             <span class="text-sm text-base-content/60 max-sm:hidden" role="status" aria-live="polite">
-                {move || if save.pending().get() { "Guardando…" } else if saved.get() && !dirty.get() { "Guardado ✓" } else { "" }}
+                {move || if save.pending().get() { "Guardando…" } else { "" }}
             </span>
             <span class="text-xs text-base-content/60 max-sm:hidden">{move || host.position.get()}</span>
             <button type="button" class="btn btn-sm btn-square min-h-11 min-w-11 sm:min-h-8 sm:min-w-8" aria-label="Producto anterior" disabled=move || !host.has_prev.get() on:click=move |_| host.prev.run(())>"‹"</button>
