@@ -968,7 +968,7 @@ pub fn ProductCard(product: Product, show_price: bool) -> impl IntoView {
         <Card>
             <div class="mk-card-img relative min-h-0 flex-1">
                 <div class="absolute inset-0">
-                    <Image src=product.image_url.clone() alt=product.name.clone() fit/>
+                    <Image src=product.image_url.clone() alt=product.name.clone() fit initial=true/>
                 </div>
                 {heart.map(|(product_id, name)| view! { <FavoriteHeart product_id name/> })}
                 <div class="absolute left-2 top-2 flex flex-col items-start gap-1">

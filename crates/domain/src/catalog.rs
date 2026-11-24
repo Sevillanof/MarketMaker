@@ -515,8 +515,15 @@ pub fn tidy_product(p: &mut Product) -> Vec<String> {
     }
     if !(0..=PRICE_MAX_CENTS).contains(&p.price_cents) {
         errors.push("Revisá el precio: tiene que ser un número de pesos.".to_string());
-    } else if p.price_cents == 0 {
-        errors.push("Poné el precio del producto.".to_string());
+    } else if p.price_cents == 0 && !p.free {
+        errors.push(
+            "Poné el precio del producto. Para publicarlo a $ 0, activá «Producto gratis»."
+                .to_string(),
+        );
+    }
+    // «Gratis» solo vale con precio 0.
+    if p.price_cents != 0 {
+        p.free = false;
     }
     if p.compare_at_cents != 0 && p.compare_at_cents <= p.price_cents {
         errors.push(
@@ -1018,5 +1025,25 @@ mod size_word_tests {
             names(order_categories(cats, &order, true)),
             ["Plantas", "Nueva", "Macetas", "Tierra"]
         );
+    }
+}
+
+#[cfg(test)]
+mod free_product_tests {
+    use super::*;
+
+    #[test]
+    fn zero_price_needs_the_free_switch() {
+        let mut p = Product {
+            name: "Muestra".into(),
+            ..Product::default()
+        };
+        assert!(!tidy_product(&mut p).is_empty());
+        p.free = true;
+        assert!(tidy_product(&mut p).is_empty());
+        // Con precio, «gratis» no cuenta.
+        p.price_cents = 5_000;
+        tidy_product(&mut p);
+        assert!(!p.free);
     }
 }

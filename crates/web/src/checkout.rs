@@ -126,7 +126,7 @@ async fn andreani_quote(
         let id = domain::parse_line_id(line).0;
         if let Some(p) = products
             .iter()
-            .find(|p| p.id == id && p.visible && !p.example)
+            .find(|p| p.id == id && p.visible && !p.example && (p.price_cents > 0 || p.free))
         {
             items.push(crate::andreani::Line {
                 parcel: p.parcel.unwrap_or(settings.parcel),
@@ -570,6 +570,11 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
         }
         shipping_cents = cents;
         shipment = Some(s);
+    }
+    // Un pedido sin nada para pagar (productos gratis y envío sin costo) no
+    // pasa por Mercado Pago: queda para coordinar con la tienda.
+    if items_total + shipping_cents == 0 && form.pay == domain::PayMethod::MercadoPago {
+        form.pay = domain::PayMethod::Coordinate;
     }
     let pay_online = form.pay == domain::PayMethod::MercadoPago;
     let subtotal: i64 = items.iter().map(domain::OrderItem::total_cents).sum();

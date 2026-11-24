@@ -491,6 +491,44 @@ pub struct StoreOverview {
     /// Quien mira es editor: no ve ventas, pedidos ni cobros.
     #[serde(default)]
     pub restricted: bool,
+    /// Productos visibles a los que les quedan pocas unidades (sin contar los agotados).
+    #[serde(default)]
+    pub low_stock: i64,
+    /// Los últimos 7 días de la tienda.
+    #[serde(default)]
+    pub week: WeekStats,
+}
+
+/// Los últimos 7 días de una tienda, para Inicio.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct WeekStats {
+    /// Lo vendido cada día (centavos), del más viejo a hoy.
+    pub sales: Vec<i64>,
+    /// Día de la semana de cada uno (1 lunes … 7 domingo).
+    pub weekdays: Vec<u8>,
+    /// Visitas a la tienda, anónimas.
+    pub visits: i64,
+    /// Visitas que agregaron algo al carrito.
+    pub carts: i64,
+    /// Pedidos pagados.
+    pub orders: i64,
+    /// Lo más vendido del último mes: nombre y unidades.
+    pub top: Vec<(String, i64)>,
+}
+
+impl WeekStats {
+    /// «lu», «ma»… del día `i`.
+    pub fn day_label(&self, i: usize) -> &'static str {
+        match self.weekdays.get(i) {
+            Some(1) => "lu",
+            Some(2) => "ma",
+            Some(3) => "mi",
+            Some(4) => "ju",
+            Some(5) => "vi",
+            Some(6) => "sá",
+            _ => "do",
+        }
+    }
 }
 
 /// Los datos de la tienda que se ven en el diseño: el menú y el pie los usan
