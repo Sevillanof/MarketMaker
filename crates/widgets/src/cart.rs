@@ -676,6 +676,38 @@ fn shipping_hint() -> String {
     }
 }
 
+/// Lo que la tienda pidió en Entregas: envío gratis desde un monto y pedido mínimo.
+fn delivery_goals() -> (Option<i64>, Option<i64>) {
+    use_context::<domain::StoreInfo>().map_or((None, None), |s| {
+        let free = match s.delivery.cart_hint() {
+            domain::ShippingHint::Fixed { cents, .. } if cents > 0 => s.delivery.free_from_cents,
+            _ => None,
+        };
+        (free, s.delivery.min_order_cents)
+    })
+}
+
+/// «Te faltan $ X para el envío gratis», con una barra de avance.
+#[component]
+fn FreeShippingBar(cart: Cart, goal: i64) -> impl IntoView {
+    let left = move || domain::missing_cents(goal, cart.total_cents());
+    let pct = move || (cart.total_cents().min(goal) * 100 / goal.max(1)) as u32;
+    view! {
+        <div class="mb-4 rounded-box bg-primary/10 px-4 py-3 text-sm">
+            <p role="status">
+                {move || if left() == 0 {
+                    "¡Tu envío es gratis!".to_string()
+                } else {
+                    format!("Te faltan {} para el envío gratis", format_price(left()))
+                }}
+            </p>
+            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-base-300" aria-hidden="true">
+                <div class="h-full rounded-full bg-primary transition-[width]" style=move || format!("width:{}%", pct())></div>
+            </div>
+        </div>
+    }
+}
+
 /// − cantidad + . Nunca baja de 1.
 #[component]
 pub fn QtyStepper(
@@ -919,6 +951,7 @@ pub fn CartDrawer(#[prop(optional)] in_checkout: bool) -> impl IntoView {
     });
     let close = move || cart.open.set(false);
     let empty = Memo::new(move |_| cart.items().is_empty());
+    let (free_goal, min_goal) = delivery_goals();
     view! {
         <dialog
             node_ref=dialog_ref
@@ -961,6 +994,7 @@ pub fn CartDrawer(#[prop(optional)] in_checkout: bool) -> impl IntoView {
                         </For>
                     </ul>
                     <footer class="border-t border-base-300 px-6 pt-5 pb-6">
+                        {free_goal.map(|goal| view! { <FreeShippingBar cart goal/> })}
                         <div class="flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span>{move || format_price(cart.total_cents())}</span></div>
                         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_hint()}</span></div>
                         <div class="mt-3 mb-4 flex justify-between text-lg font-bold"><span>"Total"</span><span>{move || format_price(cart.total_cents())}</span></div>
@@ -971,7 +1005,15 @@ pub fn CartDrawer(#[prop(optional)] in_checkout: bool) -> impl IntoView {
                             }.into_any()
                         } else {
                             view! {
-                                <a class="btn btn-primary btn-block btn-lg" href="/comprar">"Finalizar compra"</a>
+                                {move || match min_goal.filter(|m| cart.total_cents() < *m) {
+                                    Some(m) => view! {
+                                        <p role="status" class="mb-3 rounded-box bg-warning/15 px-4 py-3 text-sm">
+                                            "Pedido mínimo: " <b>{format_price(m)}</b> ". Agregá " {format_price(domain::missing_cents(m, cart.total_cents()))} " más."
+                                        </p>
+                                        <button type="button" class="btn btn-block btn-lg" disabled>"Finalizar compra"</button>
+                                    }.into_any(),
+                                    None => view! { <a class="btn btn-primary btn-block btn-lg" href="/comprar">"Finalizar compra"</a> }.into_any(),
+                                }}
                                 <button type="button" class="btn btn-link btn-block mt-1" on:click=move |_| close()>"Seguir comprando"</button>
                             }.into_any()
                         }}

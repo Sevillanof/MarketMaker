@@ -531,6 +531,12 @@ pub struct DeliveryBrief {
     pub shipping_cents: Option<i64>,
     /// También ofrece un correo, que cotiza según el destino.
     pub carrier: bool,
+    /// Envío propio gratis desde este monto de productos.
+    #[serde(default)]
+    pub free_from_cents: Option<i64>,
+    /// Pedido mínimo (sin envío).
+    #[serde(default)]
+    pub min_order_cents: Option<i64>,
 }
 
 /// Qué decir del envío en el carrito, antes de saber adónde va.

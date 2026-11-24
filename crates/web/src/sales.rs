@@ -281,6 +281,8 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             .unwrap_or_default(),
     );
     let note = RwSignal::new(d.shipping_note);
+    let free_from = RwSignal::new(d.free_from_cents.map(domain::price_input).unwrap_or_default());
+    let min_order = RwSignal::new(d.min_order_cents.map(domain::price_input).unwrap_or_default());
     let problems = RwSignal::new(Vec::<FieldError>::new());
     let failure = RwSignal::new(None::<String>);
     let saved = RwSignal::new(false);
@@ -332,6 +334,31 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                 }
             }
         };
+        // Vacío: sin esa condición. Si no se entiende el monto, se marca el campo.
+        let amount = |text: String, field: &'static str, what: &str| -> Result<Option<i64>, ()> {
+            if text.trim().is_empty() {
+                return Ok(None);
+            }
+            match domain::parse_price(&text) {
+                Some(c) => Ok(Some(c)),
+                None => {
+                    if !auto.get_untracked() {
+                        focus_id(format!("d-{field}"));
+                    }
+                    problems.set(vec![FieldError {
+                        field: field.into(),
+                        message: format!("Escribí {what} como 50000 o 50.000, o dejalo vacío."),
+                    }]);
+                    Err(())
+                }
+            }
+        };
+        let Ok(free_from_cents) = amount(free_from.get_untracked(), "free", "el monto") else {
+            return;
+        };
+        let Ok(min_order_cents) = amount(min_order.get_untracked(), "min", "el mínimo") else {
+            return;
+        };
         // Con el retiro prendido y sin dirección, el guardado automático guarda
         // todo lo demás y deja el retiro apagado hasta que se escriba la dirección
         // (antes no se guardaba nada y se perdían los otros cambios).
@@ -349,6 +376,8 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             shipping_enabled: shipping.get_untracked(),
             shipping_cents,
             shipping_note: note.get_untracked(),
+            free_from_cents,
+            min_order_cents,
             andreani: Vec::new(),
         });
     };
@@ -440,8 +469,8 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                         <span class="block text-sm text-base-content/70">"El comprador escribe su dirección al comprar."</span></span>
                     </label>
                     {move || shipping.get().then(|| view! {
-                        <div class="mt-3 grid gap-x-4 sm:grid-cols-[200px_1fr]">
-                            <fieldset class="fieldset">
+                        <div class="mt-3 grid gap-x-4 sm:grid-cols-2">
+                            <fieldset class="fieldset sm:order-1">
                                 <label class="fieldset-legend" for="d-cost">"Costo " <span class="font-normal text-base-content/60">"(opcional)"</span></label>
                                 <label class="input w-full" class:input-error=move || problem("cost").is_some()><span class="text-base-content/60">"$"</span>
                                     <input id="d-cost" inputmode="decimal" placeholder="A coordinar"
@@ -454,15 +483,40 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
                                     None => view! { <p id="d-cost-hint" class="label whitespace-normal">{cost_hint}</p> }.into_any(),
                                 }}
                             </fieldset>
-                            <fieldset class="fieldset">
+                            <fieldset class="fieldset sm:order-3 sm:col-span-2">
                                 <label class="fieldset-legend" for="d-note">"Aviso para el comprador"</label>
                                 <input id="d-note" class="input w-full" maxlength=domain::SHIPPING_NOTE_MAX placeholder="Lo coordinamos por WhatsApp"
                                     aria-describedby="d-note-hint"
                                     prop:value=move || note.get() on:input=move |ev| { note.set(event_target_value(&ev)); dirty(); }/>
                                 <p id="d-note-hint" class="label whitespace-normal">"Se ve al finalizar la compra, debajo de \"Envío a domicilio\". Por ejemplo: cuándo despachás o por dónde avisás."</p>
                             </fieldset>
+                            <fieldset class="fieldset sm:order-2">
+                                <label class="fieldset-legend" for="d-free">"Gratis desde " <span class="font-normal text-base-content/60">"(opcional)"</span>
+                                    <ui::HelpTip id="tip-free" label="Gratis desde" text="Cuando los productos suman este monto, el envío de la tienda no se cobra. El carrito le avisa al comprador cuánto le falta. No cambia lo que cotiza Andreani."/></label>
+                                <label class="input w-full" class:input-error=move || problem("free").is_some()><span class="text-base-content/60">"$"</span>
+                                    <input id="d-free" inputmode="decimal" placeholder="Sin envío gratis"
+                                        aria-invalid=move || problem("free").is_some().to_string()
+                                        aria-describedby=move || problem("free").is_some().then_some("d-free-error")
+                                        prop:value=move || free_from.get() on:input=move |ev| { free_from.set(event_target_value(&ev)); problems.update(|e| e.retain(|e| e.field != "free")); dirty(); }/>
+                                </label>
+                                {move || problem("free").map(|m| view! { <p id="d-free-error" class="label whitespace-normal text-error">{m}</p> })}
+                            </fieldset>
                         </div>
                     })}
+                </div>
+
+                <div class="rounded-box border border-base-300 p-4">
+                    <fieldset class="fieldset max-w-xs">
+                        <label class="fieldset-legend" for="d-min">"Pedido mínimo " <span class="font-normal text-base-content/60">"(opcional)"</span>
+                            <ui::HelpTip id="tip-min" label="Pedido mínimo" text="Lo menos que tiene que sumar un pedido, sin contar el envío. Debajo de ese monto, el comprador no puede finalizar la compra y ve cuánto le falta."/></label>
+                        <label class="input w-full" class:input-error=move || problem("min").is_some()><span class="text-base-content/60">"$"</span>
+                            <input id="d-min" inputmode="decimal" placeholder="Sin mínimo"
+                                aria-invalid=move || problem("min").is_some().to_string()
+                                aria-describedby=move || problem("min").is_some().then_some("d-min-error")
+                                prop:value=move || min_order.get() on:input=move |ev| { min_order.set(event_target_value(&ev)); problems.update(|e| e.retain(|e| e.field != "min")); dirty(); }/>
+                        </label>
+                        {move || problem("min").map(|m| view! { <p id="d-min-error" class="label whitespace-normal text-error">{m}</p> })}
+                    </fieldset>
                 </div>
 
                 <div class="flex min-h-6 items-center gap-3">

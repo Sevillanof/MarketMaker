@@ -12,13 +12,15 @@ struct DeliveryRow {
     shipping_enabled: bool,
     shipping_cents: Option<i64>,
     shipping_note: String,
+    free_from_cents: Option<i64>,
+    min_order_cents: Option<i64>,
 }
 
 /// Cómo entrega la tienda.
 pub async fn delivery(pool: &PgPool, tenant: Uuid) -> sqlx::Result<DeliverySettings> {
     let r = sqlx::query_as::<_, DeliveryRow>(
         "SELECT pickup_enabled, pickup_address, pickup_hours, shipping_enabled,
-                shipping_cents, shipping_note
+                shipping_cents, shipping_note, free_from_cents, min_order_cents
          FROM tenants WHERE id = $1",
     )
     .bind(tenant)
@@ -31,6 +33,8 @@ pub async fn delivery(pool: &PgPool, tenant: Uuid) -> sqlx::Result<DeliverySetti
         shipping_enabled: r.shipping_enabled,
         shipping_cents: r.shipping_cents,
         shipping_note: r.shipping_note,
+        free_from_cents: r.free_from_cents,
+        min_order_cents: r.min_order_cents,
         andreani: Vec::new(),
     })
 }
@@ -96,7 +100,7 @@ pub async fn save_delivery(pool: &PgPool, tenant: Uuid, d: &DeliverySettings) ->
     sqlx::query(
         "UPDATE tenants SET pickup_enabled = $2, pickup_address = $3, pickup_hours = $4,
                 shipping_enabled = $5, shipping_cents = $6, shipping_note = $7,
-                delivery_set = true
+                free_from_cents = $8, min_order_cents = $9, delivery_set = true
          WHERE id = $1",
     )
     .bind(tenant)
@@ -106,6 +110,8 @@ pub async fn save_delivery(pool: &PgPool, tenant: Uuid, d: &DeliverySettings) ->
     .bind(d.shipping_enabled)
     .bind(d.shipping_cents)
     .bind(&d.shipping_note)
+    .bind(d.free_from_cents)
+    .bind(d.min_order_cents)
     .execute(pool)
     .await?;
     Ok(())
