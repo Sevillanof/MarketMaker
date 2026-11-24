@@ -85,6 +85,17 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto px-3 pb-4">
+                <button
+                    type="button"
+                    class="btn btn-outline mt-3 h-auto w-full justify-start gap-3 py-2.5 text-left font-normal"
+                    on:click=move |_| ui.wizard.set(true)
+                >
+                    <Icon name="page" class="h-5 w-5 shrink-0"/>
+                    <span class="flex flex-col leading-tight">
+                        <span class="font-bold">"Asistente de página"</span>
+                        <span class="text-xs text-base-content/70">"Armá o renová tu página en 5 pasos"</span>
+                    </span>
+                </button>
                 <ThemePanel/>
                 <div class="mt-5 border-t border-base-300"></div>
             </div>

@@ -26,6 +26,7 @@ mod store_drawer;
 mod theme_panel;
 mod topbar;
 mod typography;
+mod wizard;
 
 use domain::{Layer, Node, PageDoc, PageView, SaveOutcome, HOME};
 use leptos::prelude::*;
@@ -256,6 +257,8 @@ pub(crate) struct Ui {
     pub phone: RwSignal<bool>,
     /// El cajón "Mi tienda" está abierto en lugar de la lista de bloques.
     pub store_open: RwSignal<bool>,
+    /// El asistente de primera página está abierto.
+    pub wizard: RwSignal<bool>,
     /// Lo último que se cambió en "Mi tienda" (`"box"`, `"field"`, `"selector"`,
     /// separados por espacios) y un contador: el lienzo resalta un instante
     /// los elementos afectados. El contador reinicia la animación.
@@ -1003,6 +1006,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     } else {
         format!("Ver {}", initial.store_name.trim())
     };
+    let store_key = initial.store_name.trim().to_lowercase();
     let products = StoredValue::new(initial.products.clone());
     let status = RwSignal::new(Status::Idle);
     let ui = Ui {
@@ -1013,6 +1017,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         preview: RwSignal::new(false),
         phone: RwSignal::new(false),
         store_open: RwSignal::new(false),
+        wizard: RwSignal::new(false),
         flash: RwSignal::new(("", 0)),
         new_drag: RwSignal::new(None),
         swallow_click: StoredValue::new(false),
@@ -1335,6 +1340,10 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
     // Atajos de teclado de todo el editor.
     Effect::new(move |_| {
         let handle = window_event_listener(leptos::ev::keydown, move |ev| {
+            // Con el asistente abierto, el teclado es del asistente.
+            if ui.wizard.get_untracked() {
+                return;
+            }
             let key = ev.key();
             let cmd = ev.ctrl_key() || ev.meta_key();
             if cmd && !ev.alt_key() {
@@ -1527,6 +1536,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                 </button>
                 </div>
             </header>
+            <wizard::Wizard products store_key/>
             {move || first_live.get().then(|| view! { <FirstPublish open=first_live/> })}
             {move || publish_check.get().map(|items| view! {
                 <PublishCheck items examples photos=sample_photos.get_untracked() check=publish_check

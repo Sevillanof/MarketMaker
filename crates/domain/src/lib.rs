@@ -20,6 +20,7 @@ mod theme;
 mod typography;
 mod variants;
 mod widgets;
+pub mod wizard;
 
 pub use account::*;
 pub use buyer::*;
