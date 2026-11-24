@@ -517,8 +517,16 @@ pub async fn send_order(form: CheckoutForm) -> Result<PlaceOrder, ServerFnError>
             }],
         })
     };
+    let items_total: i64 = items.iter().map(domain::OrderItem::total_cents).sum();
+    if let Some(min) = delivery.min_order_cents.filter(|m| items_total < *m) {
+        return changed(format!(
+            "El pedido mínimo es {}. Agregá {} más.",
+            format_price(min),
+            format_price(domain::missing_cents(min, items_total))
+        ));
+    }
     let mut shipment = None;
-    let mut shipping_cents = domain::shipping_for(form.delivery, &delivery);
+    let mut shipping_cents = domain::shipping_for(form.delivery, &delivery, items_total);
     if let Some(svc) = form.delivery.andreani() {
         let q = andreani_quote(&pool, tenant.id, &form.postal_code, &form.lines).await?;
         let Some(cents) = q.cents(svc) else {
@@ -859,7 +867,7 @@ fn discount_cents(f: Fields, subtotal: i64) -> i64 {
 
 /// Lo que cuesta el envío elegido (con Andreani, según la cotización). Antes
 /// del paso de la entrega todavía no cuenta.
-fn ship_cents(f: Fields, d: &DeliverySettings) -> i64 {
+fn ship_cents(f: Fields, d: &DeliverySettings, subtotal: i64) -> i64 {
     if f.reached.get() < 2 {
         return 0;
     }
@@ -868,18 +876,18 @@ fn ship_cents(f: Fields, d: &DeliverySettings) -> i64 {
             .quote
             .with(|q| q.as_ref().and_then(|q| q.cents(s)))
             .unwrap_or(0),
-        x => domain::shipping_for(x, d),
+        x => domain::shipping_for(x, d, subtotal),
     }
 }
 
 /// Cómo se muestra el costo del envío elegido.
-fn ship_text(f: Fields, d: &DeliverySettings) -> String {
+fn ship_text(f: Fields, d: &DeliverySettings, subtotal: i64) -> String {
     if f.reached.get() < 2 {
         return "Se elige en el paso 2".to_string();
     }
     match f.delivery.get() {
         Delivery::Pickup => "Gratis".to_string(),
-        Delivery::Shipping => domain::shipping_label(d, format_price),
+        Delivery::Shipping => domain::shipping_label(d, subtotal, format_price),
         Delivery::Andreani(s) => f
             .quote
             .with(|q| q.as_ref().and_then(|q| q.cents(s)))
@@ -1682,11 +1690,13 @@ fn DeliveryChoice(
     d: DeliverySettings,
     errors: RwSignal<Vec<FieldError>>,
 ) -> impl IntoView {
+    let cart = use_context::<Cart>();
     let mut own = Vec::new();
     if d.shipping_enabled {
-        let price = domain::shipping_label(&d, format_price);
-        own.push((Delivery::Shipping, price));
+        // El costo se completa en `options`, porque depende de lo que hay en el carrito.
+        own.push((Delivery::Shipping, String::new()));
     }
+    let ship_d = StoredValue::new(d.clone());
     if d.pickup_enabled {
         let detail = if d.pickup_address.is_empty() {
             "Gratis".to_string()
@@ -1710,7 +1720,24 @@ fn DeliveryChoice(
                 })
                 .collect()
         });
-        v.extend(own.iter().cloned());
+        v.extend(own.iter().cloned().map(|(kind, detail)| {
+            if kind == Delivery::Shipping {
+                let sub = cart.map_or(0, |c| c.total_cents());
+                let label = ship_d.with_value(|d| domain::shipping_label(d, sub, format_price));
+                // Sin llegar al monto: avisa cuánto falta para que sea gratis.
+                let left = ship_d.with_value(|d| match (d.shipping_cents, d.free_from_cents) {
+                    (Some(c), Some(f)) if c > 0 && sub < f => Some(domain::missing_cents(f, sub)),
+                    _ => None,
+                });
+                let detail = match left {
+                    Some(l) => format!("{label} · gratis con {} más", format_price(l)),
+                    None => label,
+                };
+                (kind, detail)
+            } else {
+                (kind, detail)
+            }
+        }));
         v
     };
     let error = move || error_for(errors, "delivery");
@@ -2049,8 +2076,8 @@ fn Totals(
 ) -> impl IntoView {
     let d = StoredValue::new(d);
     let subtotal = move || cart.total_cents();
-    let shipping = move || d.with_value(|d| ship_cents(f, d));
-    let shipping_text = move || d.with_value(|d| ship_text(f, d));
+    let shipping = move || d.with_value(|d| ship_cents(f, d, subtotal()));
+    let shipping_text = move || d.with_value(|d| ship_text(f, d, subtotal()));
     view! {
         {coupon_id.map(|id| view! { <CouponBox cart f id/> })}
         <div class="mt-3 flex justify-between text-sm text-base-content/75"><span>"Subtotal"</span><span class="tabular-nums">{move || format_price(subtotal())}</span></div>
@@ -2061,6 +2088,9 @@ fn Totals(
             <div class="mt-1 flex justify-between gap-3 text-sm text-success"><span class="min-w-0">{format!("Descuento por transferencia ({} %)", f.transfer_off)}</span><span class="shrink-0 whitespace-nowrap tabular-nums">{move || format!("−{}", format_price(discount_cents(f, subtotal())))}</span></div>
         })}
         <div class="mt-1 flex justify-between text-sm text-base-content/75"><span>"Envío"</span><span>{shipping_text}</span></div>
+        {move || d.with_value(|d| d.min_order_cents).filter(|m| subtotal() < *m).map(|m| view! {
+            <p role="alert" class="mt-3 text-sm text-error">{format!("Pedido mínimo: {}. Agregá {} más.", format_price(m), format_price(domain::missing_cents(m, subtotal())))}</p>
+        })}
         <div class="mt-3 flex justify-between text-lg font-bold"><span>"Total"</span><span class="tabular-nums">{move || format_price(subtotal() - coupon_cents(f, subtotal()) - discount_cents(f, subtotal()) + shipping())}</span></div>
     }
 }
@@ -2071,7 +2101,7 @@ fn MobileSummary(cart: Cart, f: Fields, d: DeliverySettings) -> impl IntoView {
     let d2 = d.clone();
     let total = move || {
         let sub = cart.total_cents();
-        sub - coupon_cents(f, sub) - discount_cents(f, sub) + ship_cents(f, &d2)
+        sub - coupon_cents(f, sub) - discount_cents(f, sub) + ship_cents(f, &d2, sub)
     };
     view! {
         <details class="group rounded-box bg-base-100 shadow-sm lg:hidden">

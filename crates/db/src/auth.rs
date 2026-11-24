@@ -684,6 +684,11 @@ pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::Sto
     .bind(tenant)
     .fetch_one(pool)
     .await?;
+    let (free_from, min_order): (Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT free_from_cents, min_order_cents FROM tenants WHERE id = $1")
+            .bind(tenant)
+            .fetch_one(pool)
+            .await?;
     Ok(domain::StoreInfo {
         name,
         logo_url: logo.map(domain::avatar_url).unwrap_or_default(),
@@ -710,6 +715,8 @@ pub async fn store_info(pool: &PgPool, tenant: Uuid) -> sqlx::Result<domain::Sto
             shipping,
             shipping_cents,
             carrier,
+            free_from_cents: free_from,
+            min_order_cents: min_order,
         },
         category_order: crate::products::category_order(pool, tenant).await?,
     })

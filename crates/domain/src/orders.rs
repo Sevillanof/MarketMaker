@@ -16,6 +16,12 @@ pub struct DeliverySettings {
     pub shipping_cents: Option<i64>,
     /// Lo que se le dice al comprador, por ejemplo "Lo coordinamos por WhatsApp".
     pub shipping_note: String,
+    /// El envío propio es gratis cuando los productos suman al menos esto.
+    #[serde(default)]
+    pub free_from_cents: Option<i64>,
+    /// Lo mínimo que tiene que sumar un pedido (sin envío); `None`, sin mínimo.
+    #[serde(default)]
+    pub min_order_cents: Option<i64>,
     /// Los servicios de Andreani que se ofrecen (vacío: Andreani no está
     /// conectado o apagado). Se completa al cargar "Finalizar compra"; no se
     /// guarda con el resto.
@@ -32,6 +38,8 @@ impl Default for DeliverySettings {
             shipping_enabled: true,
             shipping_cents: None,
             shipping_note: "Lo coordinamos por WhatsApp".to_string(),
+            free_from_cents: None,
+            min_order_cents: None,
             andreani: Vec::new(),
         }
     }
@@ -67,6 +75,22 @@ pub fn tidy_delivery(d: &mut DeliverySettings) -> Vec<FieldError> {
         errors.push(FieldError {
             field: "cost".into(),
             message: "El costo del envío no parece correcto.".into(),
+        });
+    }
+    if d.free_from_cents
+        .is_some_and(|c| !(1..=SHIPPING_MAX_CENTS).contains(&c))
+    {
+        errors.push(FieldError {
+            field: "free".into(),
+            message: "El monto para envío gratis no parece correcto.".into(),
+        });
+    }
+    if d.min_order_cents
+        .is_some_and(|c| !(1..=SHIPPING_MAX_CENTS).contains(&c))
+    {
+        errors.push(FieldError {
+            field: "min".into(),
+            message: "El pedido mínimo no parece correcto.".into(),
         });
     }
     errors
@@ -579,11 +603,23 @@ pub fn tidy_checkout(f: &mut CheckoutForm, d: &DeliverySettings) -> Vec<FieldErr
 /// Costo del envío para esta forma de entrega (lo que se suma al total; si
 /// se coordina después, 0).
 /// Con Andreani, la cotización va aparte (ver [`crate::AndreaniQuote`]).
-pub fn shipping_for(delivery: Delivery, d: &DeliverySettings) -> i64 {
+/// `subtotal` son los productos: desde el monto de «envío gratis», no se cobra.
+pub fn shipping_for(delivery: Delivery, d: &DeliverySettings, subtotal: i64) -> i64 {
     match delivery {
         Delivery::Pickup | Delivery::Andreani(_) => 0,
+        Delivery::Shipping if free_shipping(d.free_from_cents, subtotal) => 0,
         Delivery::Shipping => d.shipping_cents.unwrap_or(0),
     }
+}
+
+/// ¿Los productos llegan al monto de envío gratis?
+pub fn free_shipping(free_from: Option<i64>, subtotal: i64) -> bool {
+    free_from.is_some_and(|f| subtotal >= f)
+}
+
+/// Lo que falta para llegar a `goal` (nunca negativo).
+pub fn missing_cents(goal: i64, subtotal: i64) -> i64 {
+    (goal - subtotal).max(0)
 }
 
 /// La localidad con su provincia, como se guarda en el pedido: «Rosario,
@@ -626,9 +662,14 @@ pub fn ship_address(address: &str, city: &str, postal_code: &str) -> String {
     s
 }
 
-pub fn shipping_label(d: &DeliverySettings, format_price: impl Fn(i64) -> String) -> String {
+pub fn shipping_label(
+    d: &DeliverySettings,
+    subtotal: i64,
+    format_price: impl Fn(i64) -> String,
+) -> String {
     match d.shipping_cents {
         None => "A coordinar".to_string(),
+        Some(c) if c > 0 && free_shipping(d.free_from_cents, subtotal) => "Gratis".to_string(),
         Some(0) => "Gratis".to_string(),
         Some(c) => format_price(c),
     }
@@ -1176,7 +1217,7 @@ mod tests {
             ..DeliverySettings::default()
         };
         assert!(tidy_checkout(&mut f, &d).is_empty());
-        assert_eq!(shipping_for(Delivery::Pickup, &d), 0);
+        assert_eq!(shipping_for(Delivery::Pickup, &d, 0), 0);
     }
 
     #[test]
@@ -1355,5 +1396,35 @@ mod offers_tests {
             (p.installments, p.transfer_discount),
             (0, TRANSFER_DISCOUNT_MAX)
         );
+    }
+}
+
+#[cfg(test)]
+mod free_shipping_tests {
+    use super::*;
+
+    #[test]
+    fn shipping_is_free_from_the_goal() {
+        let d = DeliverySettings {
+            shipping_cents: Some(500_000),
+            free_from_cents: Some(5_000_000),
+            ..DeliverySettings::default()
+        };
+        assert_eq!(shipping_for(Delivery::Shipping, &d, 4_999_999), 500_000);
+        assert_eq!(shipping_for(Delivery::Shipping, &d, 5_000_000), 0);
+        assert_eq!(shipping_label(&d, 5_000_000, |c| c.to_string()), "Gratis");
+        assert_eq!(missing_cents(5_000_000, 4_198_900), 801_100);
+        assert_eq!(missing_cents(100, 500), 0);
+    }
+
+    #[test]
+    fn goals_must_be_positive() {
+        let mut d = DeliverySettings {
+            free_from_cents: Some(0),
+            min_order_cents: Some(-5),
+            ..DeliverySettings::default()
+        };
+        let fields: Vec<_> = tidy_delivery(&mut d).into_iter().map(|e| e.field).collect();
+        assert_eq!(fields, ["free", "min"]);
     }
 }

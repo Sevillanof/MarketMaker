@@ -458,6 +458,8 @@ pub fn PanelSkeleton(kind: PanelSkeletonKind) -> impl IntoView {
                 }).collect_view()}
                 {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
                 {sk_line("w-1/4")}<Skeleton class="h-10 w-full"/>
+                // Pedido mínimo (Entregas): un campo corto.
+                {sk_line("w-1/5")}<Skeleton class="h-10 w-full max-w-xs"/>
                 <Skeleton class="h-10 w-32"/>
             }.into_any()))}
         }
