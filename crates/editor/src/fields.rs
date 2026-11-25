@@ -682,7 +682,7 @@ fn Stars(
 /// botón para subir más), las fotos de ejemplo y, para quien la necesite,
 /// una dirección propia.
 #[component]
-fn ImagePicker(
+pub(crate) fn ImagePicker(
     uid: String,
     value: Signal<serde_json::Value>,
     /// Cambio de un solo clic.

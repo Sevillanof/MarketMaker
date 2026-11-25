@@ -59,6 +59,10 @@
 /* Fondo de la tienda (ver `domain::StoreStyle`): sale del tema. */
 .mk-store {
   background-color: var(--mk-bg, var(--color-base-200));
+  background-image: var(--mk-bg-img, none);
+  background-size: cover;
+  background-position: center;
+  background-attachment: var(--mk-bg-att, scroll);
 }
 /* Guías de la grilla en el editor, mientras se arrastra un bloque. */
 .mk-grid-guides {
@@ -3297,8 +3301,10 @@ dialog.mk-wiz::backdrop {
 .mk-wiz-dot::after { content: ""; position: absolute; inset: -9px -3px; }
 .mk-wiz-dot[aria-current="true"] { width: 40px; background: var(--color-primary); }
 
-.mk-wiz-panel { min-width: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--color-base-300); overflow: auto; }
-.mk-wiz-pin { display: flex; flex-direction: column; gap: 18px; padding: 18px 20px; }
+.mk-wiz-bg { position: absolute; inset: 0; background-color: var(--mk-bg, var(--color-base-200)); background-image: var(--mk-bg-img, none); background-size: cover; background-position: center; }
+.mk-wiz-bg[hidden] { display: none; }
+.mk-wiz-panel { min-width: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--color-base-300); overflow: auto; background: var(--color-base-200); }
+.mk-wiz-pin { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
 .mk-wiz-pin > * { animation: mk-wiz-rise 0.55s var(--wz-ease) backwards; animation-delay: calc(var(--d, 0) * 60ms); }
 @keyframes mk-wiz-rise { from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 26px)); } }
 @media (prefers-reduced-motion: reduce) {
@@ -3348,3 +3354,28 @@ dialog.mk-wiz::backdrop {
 @media (prefers-reduced-motion: reduce) { .mk-wiz-card li { animation: none; opacity: 1; transform: none; } }
 .mk-wiz-card li b { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--color-primary); color: var(--color-primary-content); font-size: 0.8rem; }
 .mk-wiz-card li span { padding-top: 3px; }
+
+/* Ajustes del asistente: grupos de filas «nombre — valor», como los Ajustes del sistema. */
+.mk-wiz-gh { margin: 0 4px 6px; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: color-mix(in oklab, var(--color-base-content) 62%, transparent); }
+.mk-wiz-card { border: 1px solid var(--color-base-300); border-radius: 12px; background: var(--color-base-100); overflow: hidden; }
+.mk-wiz-card > :not([hidden]) ~ :not([hidden]) { border-top: 1px solid var(--color-base-200); }
+.mk-wiz-rw[hidden], .mk-wiz-note[hidden], .mk-wiz-dots[hidden], .mk-wiz-arrow[hidden] { display: none; }
+.mk-wiz-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 6px 14px; font-size: 0.8125rem; }
+.mk-wiz-row.is-col { flex-direction: column; align-items: stretch; gap: 6px; padding-block: 10px; }
+.mk-wiz-rl { font-weight: 500; white-space: nowrap; }
+.mk-wiz-rl.is-split { display: flex; justify-content: space-between; }
+.mk-wiz-rl.is-split output { font-weight: 400; color: color-mix(in oklab, var(--color-base-content) 62%, transparent); }
+.mk-wiz-inp, .mk-wiz-selv { min-width: 0; width: 150px; max-width: 58%; padding: 6px 4px; border: 0; border-radius: 6px; background: transparent; text-align: right; font: inherit; color: color-mix(in oklab, var(--color-base-content) 68%, transparent); text-overflow: ellipsis; }
+.mk-wiz-inp:hover { background: var(--color-base-200); }
+.mk-wiz-inp:focus-visible, .mk-wiz-selv:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; color: var(--color-base-content); }
+.mk-wiz-selv { appearance: none; -webkit-appearance: none; padding-right: 20px; text-align-last: right; cursor: pointer; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") no-repeat right 3px center / 12px; }
+.mk-wiz-selv:hover { background-color: var(--color-base-200); }
+.mk-wiz-ticks { display: flex; justify-content: space-between; font-size: 0.6875rem; color: color-mix(in oklab, var(--color-base-content) 60%, transparent); }
+.mk-wiz-sws { display: flex; align-items: center; gap: 8px; background: none; }
+.mk-wiz-sws label { position: relative; display: block; width: 22px; height: 22px; cursor: pointer; }
+.mk-wiz-sws input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.mk-wiz-sws i { display: block; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.18); pointer-events: none; transition: box-shadow 0.2s; }
+.mk-wiz-sws label:has(input:checked) i { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.18), 0 0 0 2px var(--color-base-100), 0 0 0 4px var(--color-primary); }
+.mk-wiz-sws label:has(input:focus-visible) i { outline: 3px solid color-mix(in oklab, var(--color-primary) 55%, white); outline-offset: 5px; }
+.mk-wiz-sws .is-custom i { background: conic-gradient(#f43f5e, #f59e0b, #10b981, #3b82f6, #8b5cf6, #f43f5e); }
+.mk-wiz-note { margin: 0; padding: 10px 14px; font-size: 0.8125rem; color: color-mix(in oklab, var(--color-base-content) 68%, transparent); }

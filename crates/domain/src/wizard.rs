@@ -5,10 +5,13 @@
 //! elige la persona en bloques y qué cambia en una página que ya existe. La
 //! ventana con las animaciones vive en el crate del editor.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    starter_doc, CardOptions, Look, Node, PageDoc, Size, Slide, Widget, GRID_COLS,
+    font, normalize_hex, safe_bg_image, starter_doc, CardOptions, Look, Node, PageDoc, Size,
+    Slide, StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, TEXT_ANIMATIONS,
 };
 
 /// Cuántos pasos tiene el asistente.
@@ -152,9 +155,31 @@ pub const NAV_TONES: [(&str, &str); 3] = [("", "Claro"), ("glass", "Vidrio"), ("
 pub const HERO_HEIGHTS: [&str; 3] = ["Baja", "Media", "Alta"];
 pub const PRODUCT_COUNTS: [(&str, i64); 3] = [("Pocos", 4), ("Varios", 8), ("Muchos", 12)];
 
+/// Fondo de la web: cómo se arma (índice de [`BG_KINDS`]).
+pub const BG_KINDS: [&str; 3] = ["Sin cambios", "Color", "Imagen"];
+
 /// Lo que se eligió en el asistente. Se guarda como borrador mientras se usa.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WizardPick {
+    /// Tipo de fondo de la web (índice de [`BG_KINDS`]).
+    pub bg_kind: u8,
+    /// Color del fondo (o de respaldo bajo la imagen), `#rrggbb`; vacío: el del tema.
+    pub bg_color: String,
+    /// Imagen del fondo.
+    pub bg_image: String,
+    /// Cuánto se oscurece la imagen, en %.
+    pub bg_dim: u8,
+    /// La imagen queda quieta al desplazar la página.
+    pub bg_fixed: bool,
+    /// Ajustes de cada bloque: campo → valor (solo los que la persona tocó).
+    pub over: [BTreeMap<String, serde_json::Value>; WIZARD_STEPS],
+    /// Estilo visual (1 a 5) de cada bloque; 0 deja el que tiene.
+    pub design: [u8; WIZARD_STEPS],
+    /// Letra, alineación y animación del texto de cada bloque; vacío: la que tiene.
+    pub font: [String; WIZARD_STEPS],
+    pub align: [String; WIZARD_STEPS],
+    pub anim: [String; WIZARD_STEPS],
     /// Opción elegida en cada paso.
     pub choice: [u8; WIZARD_STEPS],
     /// Color de cada bloque (índice de [`WIZARD_COLORS`]).
@@ -172,6 +197,16 @@ pub struct WizardPick {
 impl Default for WizardPick {
     fn default() -> Self {
         Self {
+            bg_kind: 0,
+            bg_color: String::new(),
+            bg_image: String::new(),
+            bg_dim: 30,
+            bg_fixed: false,
+            over: Default::default(),
+            design: [0; WIZARD_STEPS],
+            font: Default::default(),
+            align: Default::default(),
+            anim: Default::default(),
             choice: [0; WIZARD_STEPS],
             color: [0; WIZARD_STEPS],
             nav_tone: 0,
@@ -192,6 +227,30 @@ impl WizardPick {
         self.nav_tone = self.nav_tone.min(NAV_TONES.len() as u8 - 1);
         self.hero_height = self.hero_height.min(HERO_HEIGHTS.len() as u8 - 1);
         self.products_count = self.products_count.min(PRODUCT_COUNTS.len() as u8 - 1);
+        self.bg_kind = self.bg_kind.min(BG_KINDS.len() as u8 - 1);
+        self.bg_dim = self.bg_dim.min(MAX_BG_DIM);
+        if normalize_hex(&self.bg_color).as_deref() != Some(&self.bg_color) {
+            self.bg_color.clear();
+        }
+        if !safe_bg_image(&self.bg_image) {
+            self.bg_image.clear();
+        }
+        for i in 0..WIZARD_STEPS {
+            self.design[i] = self.design[i].min(5);
+            if !self.font[i].is_empty() && font(&self.font[i]).is_none() {
+                self.font[i].clear();
+            }
+            if !ALIGN_OPTIONS.iter().any(|(k, _)| *k == self.align[i]) {
+                self.align[i].clear();
+            }
+            if !self.anim[i].is_empty() && !TEXT_ANIMATIONS.iter().any(|(k, ..)| *k == self.anim[i]) {
+                self.anim[i].clear();
+            }
+            self.over[i].retain(|k, v| {
+                k.len() <= 40 && !matches!(v, serde_json::Value::Array(_) | serde_json::Value::Object(_))
+                    && v.as_str().is_none_or(|t| t.chars().count() <= 300)
+            });
+        }
         self
     }
 
@@ -227,6 +286,17 @@ pub fn pick_from_doc(doc: &PageDoc) -> WizardPick {
             .unwrap_or(0) as u8;
         p.nav_search = n.search;
     }
+    p.bg_color = doc.style.bg_color.clone();
+    p.bg_image = doc.style.bg_image.clone();
+    p.bg_dim = doc.style.bg_dim;
+    p.bg_fixed = doc.style.bg_fixed;
+    p.bg_kind = if !p.bg_image.is_empty() {
+        2
+    } else if !p.bg_color.is_empty() {
+        1
+    } else {
+        0
+    };
     p.choice[1] = match existing_of(doc, Section::Hero).map(|n| &n.widget) {
         Some(Widget::Banner(_)) => 0,
         Some(Widget::Carousel(_)) => 1,
@@ -286,6 +356,30 @@ pub fn is_untouched(doc: &PageDoc) -> bool {
 /// El bloque que sale de lo elegido en un paso, aprovechando los textos del
 /// bloque que ya está en la página (si lo hay). `None`: sin bloque.
 pub fn section_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -> Option<Widget> {
+    let widget = base_widget(section, pick, existing)?;
+    Some(with_overrides(widget, &pick.over[section.index()]))
+}
+
+/// Los ajustes que tocó la persona, sobre campos que el bloque ya tiene.
+/// Si el valor no le sirve al bloque, se deja como estaba.
+fn with_overrides(widget: Widget, over: &BTreeMap<String, serde_json::Value>) -> Widget {
+    if over.is_empty() {
+        return widget;
+    }
+    let Ok(mut v) = serde_json::to_value(&widget) else {
+        return widget;
+    };
+    if let Some(props) = v.get_mut("props").and_then(|p| p.as_object_mut()) {
+        for (k, val) in over {
+            if props.contains_key(k) {
+                props.insert(k.clone(), val.clone());
+            }
+        }
+    }
+    serde_json::from_value::<Widget>(v).unwrap_or(widget)
+}
+
+fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -> Option<Widget> {
     let choice = pick.choice[section.index()];
     match section {
         Section::Nav => {
@@ -404,6 +498,8 @@ pub fn section_look(section: Section, pick: &WizardPick, existing: Option<&Look>
     let mut look = existing.cloned().unwrap_or_default();
     if section == Section::Footer {
         look.design = [1, 3, 4][usize::from(pick.choice[4])];
+    } else if pick.design[i] > 0 {
+        look.design = pick.design[i];
     }
     let custom = look.color.starts_with('#');
     if !(custom && pick.color[i] == 0) {
@@ -432,6 +528,19 @@ pub fn section_node(section: Section, pick: &WizardPick, doc: &PageDoc) -> Optio
     let widget = section_widget(section, pick, old.map(|n| &n.widget))?;
     let mut node = Node::new(format!("wz-{}", section.index()), widget);
     node.look = section_look(section, pick, old.map(|n| &n.look));
+    if let Some(old) = old {
+        node.style = old.style.clone();
+    }
+    let i = section.index();
+    if !pick.font[i].is_empty() {
+        node.style.font = pick.font[i].clone();
+    }
+    if !pick.align[i].is_empty() {
+        node.style.align = pick.align[i].clone();
+    }
+    if !pick.anim[i].is_empty() {
+        node.style.animation = pick.anim[i].clone();
+    }
     node.size = section_size(section, &node.widget, pick);
     // Un bloque del mismo tipo conserva su alto, salvo la portada, cuya
     // altura es una opción del asistente.
@@ -465,6 +574,7 @@ pub enum Change {
 /// descartaron. Devuelve qué pasó con cada paso. Después hay que compactar
 /// la grilla.
 pub fn apply(doc: &mut PageDoc, pick: &WizardPick) -> [Change; WIZARD_STEPS] {
+    apply_background(&mut doc.style, pick);
     let mut out = [Change::Absent; WIZARD_STEPS];
     for section in Section::ALL {
         let i = section.index();
@@ -482,6 +592,7 @@ pub fn apply(doc: &mut PageDoc, pick: &WizardPick) -> [Change; WIZARD_STEPS] {
                 let mut next = old.clone();
                 next.widget = new.widget;
                 next.look = new.look;
+                next.style = new.style;
                 next.size.h = new.size.h;
                 if next == old {
                     Change::Kept
@@ -524,6 +635,32 @@ pub fn apply(doc: &mut PageDoc, pick: &WizardPick) -> [Change; WIZARD_STEPS] {
         };
     }
     out
+}
+
+/// El fondo de la web según lo elegido. «Sin cambios» no toca nada.
+pub fn apply_background(style: &mut StoreStyle, pick: &WizardPick) {
+    match pick.bg_kind {
+        1 => {
+            style.bg_color = pick.bg_color.clone();
+            style.bg_image.clear();
+            style.bg_dim = 0;
+            style.bg_fixed = false;
+        }
+        2 if !pick.bg_image.is_empty() => {
+            style.bg_color = pick.bg_color.clone();
+            style.bg_image = pick.bg_image.clone();
+            style.bg_dim = pick.bg_dim.min(MAX_BG_DIM);
+            style.bg_fixed = pick.bg_fixed;
+        }
+        _ => {}
+    }
+}
+
+/// ¿El fondo elegido cambia el que tiene la página?
+pub fn background_changes(style: &StoreStyle, pick: &WizardPick) -> bool {
+    let mut copy = style.clone();
+    apply_background(&mut copy, pick);
+    copy != *style
 }
 
 /// Qué cambiaría aplicar lo elegido sobre esta página, sin tocarla.
@@ -697,5 +834,53 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn ajustes_y_fondo_se_aplican_sin_romper_nada() {
+        let mut doc = starter_doc("Tienda");
+        let mut pick = pick_from_doc(&doc);
+        pick.over[0].insert("brand".into(), "Mi marca".into());
+        pick.over[0].insert("no_existe".into(), "x".into());
+        pick.over[3].insert("limit".into(), 16.into());
+        pick.over[3].insert("card_favorite".into(), false.into());
+        pick.design[1] = 3;
+        pick.align[1] = "center".into();
+        pick.bg_kind = 2;
+        pick.bg_image = "/img/banner.webp".into();
+        pick.bg_dim = 99;
+        let pick = pick.clamped();
+        assert_eq!(pick.bg_dim, MAX_BG_DIM);
+        apply(&mut doc, &pick);
+        assert_eq!(doc.style.bg_image, "/img/banner.webp");
+        let nav = doc.nodes.iter().find_map(|n| match &n.widget {
+            Widget::Navbar(n) => Some(n.brand.clone()),
+            _ => None,
+        });
+        assert_eq!(nav.as_deref(), Some("Mi marca"));
+        let grid = doc.nodes.iter().find_map(|n| match &n.widget {
+            Widget::ProductGrid(g) => Some(g.clone()),
+            _ => None,
+        });
+        let grid = grid.unwrap();
+        assert_eq!(grid.limit, 16);
+        assert!(!grid.cards.card_favorite);
+        let hero = doc
+            .nodes
+            .iter()
+            .find(|n| matches!(n.widget, Widget::Banner(_)))
+            .unwrap();
+        assert_eq!(hero.look.design, 3);
+        assert_eq!(hero.style.align, "center");
+    }
+
+    #[test]
+    fn un_valor_malo_o_una_direccion_peligrosa_se_descartan() {
+        let mut pick = WizardPick::default();
+        pick.bg_image = "https://x.com/a.jpg);color:red".into();
+        pick.bg_color = "rojo".into();
+        pick.font[0] = "inventada".into();
+        let pick = pick.clamped();
+        assert!(pick.bg_image.is_empty() && pick.bg_color.is_empty() && pick.font[0].is_empty());
     }
 }

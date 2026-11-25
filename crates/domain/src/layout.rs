@@ -257,6 +257,18 @@ pub struct StoreStyle {
     pub corners: String,
     /// Id de [`BACKGROUNDS`].
     pub background: String,
+    /// Color propio del fondo, `#rrggbb`. Si está, manda sobre [`BACKGROUNDS`].
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub bg_color: String,
+    /// Imagen del fondo (ruta o `https://`). Va debajo de los bloques.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub bg_image: String,
+    /// Cuánto se oscurece la imagen, en % (`0..=`[`MAX_BG_DIM`]).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub bg_dim: u8,
+    /// La imagen queda quieta cuando se desplaza la página.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bg_fixed: bool,
     /// Nombre que se le puso al tema (solo para mostrar).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub name: String,
@@ -285,6 +297,23 @@ pub struct StoreStyle {
     pub depth: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub noise: Option<bool>,
+}
+
+fn is_zero(v: &u8) -> bool {
+    *v == 0
+}
+
+/// Lo más que se puede oscurecer la imagen del fondo, en %.
+pub const MAX_BG_DIM: u8 = 80;
+
+/// ¿Sirve como dirección de imagen dentro de un `url()` de CSS? Solo rutas
+/// propias o `https://`, sin comillas, paréntesis, espacios ni llaves.
+pub fn safe_bg_image(url: &str) -> bool {
+    (url.starts_with('/') && !url.starts_with("//") || url.starts_with("https://"))
+        && url.len() <= 500
+        && !url
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || "\"'()\\;{}<>".contains(c))
 }
 
 /// Esquina más redonda que se puede elegir, en px.
@@ -326,6 +355,10 @@ impl StoreStyle {
             buttons: std::mem::take(&mut self.buttons),
             corners: std::mem::take(&mut self.corners),
             background: std::mem::take(&mut self.background),
+            bg_color: std::mem::take(&mut self.bg_color),
+            bg_image: std::mem::take(&mut self.bg_image),
+            bg_dim: self.bg_dim,
+            bg_fixed: self.bg_fixed,
             ..Self::default()
         };
     }
@@ -431,7 +464,25 @@ impl StoreStyle {
         if let Some(v) = self.noise {
             s.push_str(&format!("--noise:{}; ", u8::from(v)));
         }
-        let bg = css_of(BACKGROUNDS, &self.background).unwrap_or("var(--color-base-200)");
+        let custom = normalize_hex(&self.bg_color).filter(|c| *c == self.bg_color);
+        let bg = custom
+            .as_deref()
+            .or_else(|| css_of(BACKGROUNDS, &self.background))
+            .unwrap_or("var(--color-base-200)");
+        if safe_bg_image(&self.bg_image) {
+            let dim = f32::from(self.bg_dim.min(MAX_BG_DIM)) / 100.0;
+            let url = &self.bg_image;
+            if dim > 0.0 {
+                s.push_str(&format!(
+                    "--mk-bg-img:linear-gradient(rgb(0 0 0 / {dim}),rgb(0 0 0 / {dim})),url({url}); "
+                ));
+            } else {
+                s.push_str(&format!("--mk-bg-img:url({url}); "));
+            }
+            if self.bg_fixed {
+                s.push_str("--mk-bg-att:fixed; ");
+            }
+        }
         s.push_str(&format!("--mk-bg:{bg}"));
         s
     }
@@ -474,6 +525,15 @@ impl StoreStyle {
         }
         if !BACKGROUNDS.iter().any(|(k, ..)| *k == self.background) {
             errors.push("Fondo: Elegí uno de los colores.".into());
+        }
+        if !self.bg_color.is_empty() && normalize_hex(&self.bg_color).as_deref() != Some(&self.bg_color) {
+            errors.push("Fondo: el color no es válido.".into());
+        }
+        if !self.bg_image.is_empty() && !safe_bg_image(&self.bg_image) {
+            errors.push("Fondo: la imagen no es válida.".into());
+        }
+        if self.bg_dim > MAX_BG_DIM {
+            errors.push(format!("Fondo: oscurecer hasta {MAX_BG_DIM} %."));
         }
         if self
             .colors
@@ -597,6 +657,17 @@ mod tests {
         assert!(css.contains("--radius-field:999px"));
         assert!(css.contains("--radius-box:0;"));
         assert!(css.contains("--mk-bg:var(--color-base-100)"));
+        let mut img = StoreStyle::default();
+        img.bg_image = "/img/banner.webp".into();
+        img.bg_dim = 30;
+        img.bg_fixed = true;
+        let css = img.css_vars();
+        assert!(css.contains("url(/img/banner.webp)") && css.contains("0.3"));
+        assert!(css.contains("--mk-bg-att:fixed"));
+        img.bg_image = "https://x.com/a.jpg);color:red".into();
+        assert!(!img.css_vars().contains("--mk-bg-img"));
+        img.bg_color = "#12ab34".into();
+        assert!(img.css_vars().ends_with("--mk-bg:#12ab34"));
         let mut e = Vec::new();
         StoreStyle {
             buttons: "x".into(),
