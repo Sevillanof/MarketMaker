@@ -306,7 +306,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             let st = step.get();
             let c = tops[st] + hs[st] / 2.0;
             format!(
-                "width:{PAGE_W}px; transform: translate(-50%, min(96px, calc(50cqh - {c}px + 18px)))"
+                "width:{PAGE_W}px; transform: translate(-50%, min(40px, calc(50cqh - {c}px - 24px)))"
             )
         }
     };
@@ -407,6 +407,8 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                             type="button"
                             class="mk-wiz-sb"
                             aria-current=move || (state_of() == "on").then_some("step")
+                            aria-label=s.name
+                            title=s.name
                             prop:disabled=move || !can_go()
                             on:click=move |_| go_to(i, if i > step.get_untracked() { 1 } else { -1 })
                         >
@@ -561,27 +563,6 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         }
         let st = step.get();
         let s = &WIZARD[st];
-        let radios = s
-            .options
-            .iter()
-            .enumerate()
-            .map(|(j, o)| {
-                view! {
-                    <label class="mk-wiz-opt">
-                        <input
-                            type="radio"
-                            name="mk-wiz-est"
-                            prop:checked=move || pick.with(|p| usize::from(p.choice[st])) == j
-                            on:change=move |_| pick_choice(j)
-                        />
-                        <span class="mk-wiz-rd" aria-hidden="true">
-                            <Icon name="check" class="h-3 w-3"/>
-                        </span>
-                        <span><b>{o.name}</b><small>{o.desc}</small></span>
-                    </label>
-                }
-            })
-            .collect_view();
         let colors = Seg(SegProps {
             name: "color",
             label: "Color del bloque",
@@ -642,20 +623,11 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         view! {
             <div class="mk-wiz-pin" style=style>
                 <div style="--d:0">
-                    <p class="mk-wiz-eb">{format!("Paso {} de {}", st + 1, WIZARD_STEPS)}</p>
                     <h3 class="mk-wiz-h">{s.name}</h3>
-                </div>
-                <div style="--d:1">
-                    <p class="mk-wiz-lb" id="mk-wiz-l-est">"Elegí una opción o usá las flechas"</p>
-                    <fieldset class="mk-wiz-opts" aria-labelledby="mk-wiz-l-est">{radios}</fieldset>
-                </div>
-                <div class="mk-wiz-sep" style="--d:2">
-                    <p class="mk-wiz-h2">"Personalizalo"</p>
-                    <p class="mk-wiz-sub">"Es opcional. Los cambios se ven al instante."</p>
+                    <p class="mk-wiz-sub">{move || WIZARD[st].options[usize::from(pick.with(|p| p.choice[st]))].desc}</p>
                 </div>
                 {extra}
                 <div style="--d:5">{colors}</div>
-                <p class="mk-wiz-more" style="--d:6">"Hay más ajustes de cada bloque en el editor."</p>
             </div>
         }
         .into_any()
@@ -712,10 +684,6 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                     aria-roledescription="carousel"
                     aria-labelledby="mk-wiz-title"
                 >
-                    <div class="mk-wiz-say" aria-hidden=move || (done.get() || confirm.get()).to_string()>
-                        <h3>{move || WIZARD[step.get()].title}</h3>
-                        <p>{move || WIZARD[step.get()].hint}</p>
-                    </div>
                     <div class="mk-wiz-stage">
                         <div class="mk-wiz-camera" style=camera>
                             <div data-theme=theme class="mk-store mk-wiz-page bg-base-100 text-base-content" style=store_vars>
@@ -730,8 +698,6 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                     <button type="button" class="mk-wiz-arrow is-r" class:is-hint=coach_show on:click=move |_| shift_choice(1)
                         aria-label=move || "Opción siguiente"
                     ><Icon name="chevron-right" class="h-5 w-5"/></button>
-                    <span class="mk-wiz-alab is-l" aria-hidden="true">"Anterior"</span>
-                    <span class="mk-wiz-alab is-r" aria-hidden="true">"Otra opción"</span>
                     <div class="mk-wiz-coach" hidden=move || !coach_show() role="note">"Probá las flechas para ver más opciones de este bloque."</div>
                     <div class="mk-wiz-dots">
                         <p class="mk-wiz-nm">{move || option_name().0}<small>{move || format!("Opción {} de 3", option_name().1)}</small></p>
@@ -750,10 +716,9 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                 </div>
                 <div class="mk-wiz-panel">{move || panel()}</div>
             </div>
-            <footer class="mk-wiz-ft">
-                <span>{move || if done.get() { "Podés deshacer todo con Ctrl+Z.".to_string() } else if intro.get() { String::new() } else { format!("Paso {} de {} · Todo se puede cambiar después en el editor.", step.get() + 1, WIZARD_STEPS) }}</span>
+            <footer class="mk-wiz-ft" hidden=move || done.get() || intro.get()>
                 <div class="mk-wiz-btns">
-                    <button type="button" class="btn" hidden=move || done.get() || intro.get() || (step.get() == 0 && !confirm.get()) on:click=back>
+                    <button type="button" class="btn btn-ghost" hidden=move || done.get() || intro.get() || (step.get() == 0 && !confirm.get()) on:click=back>
                         {move || if confirm.get() { "Volver" } else { "Atrás" }}
                     </button>
                     <button type="button" class="btn btn-primary" hidden=move || done.get() || intro.get() on:click=next>{go_label}</button>
