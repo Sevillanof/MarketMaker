@@ -639,6 +639,11 @@
   font-family: var(--default-font-family);
   font-size: 1rem;
 }
+/* Con foto de fondo, los títulos que quedan sobre la foto (Filtros, Productos)
+   llevan un halo suave del color de la página para poder leerse. */
+.mk-store[style*="--mk-bg-img"] :is(h1, h2, h3, h4, h5, h6, .mk-h) {
+  text-shadow: 0 0 6px color-mix(in oklab, var(--color-base-100) 85%, transparent), 0 1px 2px color-mix(in oklab, var(--color-base-100) 70%, transparent);
+}
 .mk-store :is(h1, h2, h3, h4, h5, h6, .mk-h) {
   font-family: var(--mk-heading, inherit);
 }
@@ -3293,7 +3298,7 @@ dialog.mk-wiz::backdrop {
 .mk-wiz-coach { position: absolute; right: 12px; top: calc(50% - 96px); z-index: 5; width: 170px; padding: 10px 12px; border-radius: 10px; background: #111827; color: #fff; font-size: 0.78rem; line-height: 1.35; box-shadow: 0 8px 20px rgb(0 0 0 / 0.25); }
 .mk-wiz-coach::after { content: ""; position: absolute; bottom: -6px; right: 30px; width: 12px; height: 12px; background: #111827; transform: rotate(45deg); }
 .mk-wiz-coach[hidden] { display: none; }
-.mk-wiz-dots { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 36px 0 14px; background: linear-gradient(transparent, var(--color-base-200) 52%); pointer-events: none; transition: opacity 0.4s; }
+.mk-wiz-dots { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 8px 16px 10px; border-radius: 12px; background: color-mix(in oklab, var(--color-base-100) 78%, transparent); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgb(0 0 0 / 0.12); pointer-events: none; transition: opacity 0.4s; }
 .mk-wiz-dots .mk-wiz-dot { pointer-events: auto; }
 .mk-wiz-nm { margin: 0; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
 .mk-wiz-nm small { margin-left: 6px; font-weight: 500; color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
@@ -3306,6 +3311,8 @@ dialog.mk-wiz::backdrop {
 .mk-wiz-bg[hidden] { display: none; }
 .mk-wiz-panel { min-width: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--color-base-300); overflow-x: hidden; overflow-y: auto; background: var(--color-base-200); }
 .mk-wiz-pin { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; min-width: 0; }
+/* Degradé pegado abajo: avisa que el panel sigue si hay que bajar. */
+.mk-wiz-pin::after { content: ""; position: sticky; bottom: -18px; flex: none; height: 28px; margin: -14px -20px -18px; background: linear-gradient(transparent, var(--color-base-200)); pointer-events: none; }
 .mk-wiz-pin > *, .mk-wiz-box, .mk-wiz-row { min-width: 0; }
 .mk-wiz-pin > * { animation: mk-wiz-rise 0.55s var(--wz-ease) backwards; animation-delay: calc(var(--d, 0) * 60ms); }
 @keyframes mk-wiz-rise { from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 26px)); } }

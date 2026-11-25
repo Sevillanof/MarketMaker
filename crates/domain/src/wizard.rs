@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    font, normalize_hex, safe_bg_image, starter_doc, CardOptions, Look, Node, PageDoc, Size,
+    font, normalize_hex, safe_bg_image, starter_doc, CardOptions, Field, FieldKind, Look, Node, PageDoc, Size,
     Slide, StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, TEXT_ANIMATIONS,
 };
 
@@ -369,14 +369,38 @@ fn with_overrides(widget: Widget, over: &BTreeMap<String, serde_json::Value>) ->
     let Ok(mut v) = serde_json::to_value(&widget) else {
         return widget;
     };
+    let fields = widget.fields();
     if let Some(props) = v.get_mut("props").and_then(|p| p.as_object_mut()) {
         for (k, val) in over {
-            if props.contains_key(k) {
-                props.insert(k.clone(), val.clone());
+            if !props.contains_key(k) {
+                continue;
             }
+            let val = match (fields.iter().find(|f| f.key == k.as_str()), val) {
+                // Un texto más largo que el límite del campo haría que la
+                // página no se pudiera guardar: se recorta.
+                (Some(Field { kind: FieldKind::Text { max } | FieldKind::LongText { max }, .. }), serde_json::Value::String(t)) => {
+                    serde_json::Value::String(t.chars().take(*max).collect())
+                }
+                (Some(Field { kind: FieldKind::Number { min, max }, .. }), serde_json::Value::Number(n)) => {
+                    match n.as_i64() {
+                        Some(i) => serde_json::Value::from(i.clamp(*min, *max)),
+                        None => val.clone(),
+                    }
+                }
+                _ => val.clone(),
+            };
+            props.insert(k.clone(), val);
         }
     }
     serde_json::from_value::<Widget>(v).unwrap_or(widget)
+}
+
+/// Largo máximo de un campo de texto del bloque (`None`: sin límite conocido).
+pub fn text_max(widget: &Widget, key: &str) -> Option<usize> {
+    widget.fields().iter().find(|f| f.key == key).and_then(|f| match f.kind {
+        FieldKind::Text { max } | FieldKind::LongText { max } => Some(max),
+        _ => None,
+    })
 }
 
 fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -> Option<Widget> {
@@ -684,6 +708,22 @@ impl Change {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn un_texto_largo_se_recorta_al_limite_del_campo() {
+        let mut pick = WizardPick::default();
+        pick.over[Section::Hero.index()]
+            .insert("title".into(), serde_json::Value::String("x".repeat(300)));
+        let w = section_widget(Section::Hero, &pick, None).expect("portada");
+        let max = text_max(&w, "title").expect("límite del título");
+        let json = serde_json::to_value(&w).unwrap();
+        let len = json["props"]["title"].as_str().unwrap().chars().count();
+        assert_eq!(len, max);
+        // Y la página que sale se puede guardar.
+        let mut doc = starter_doc("Tienda");
+        apply(&mut doc, &pick);
+        assert_eq!(crate::validate(&doc), Ok(()));
+    }
 
     #[test]
     fn la_pagina_inicial_no_tiene_cambios_de_forma() {
