@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     font, normalize_hex, safe_bg_image, starter_doc, CardOptions, Field, FieldKind, Look, Node, PageDoc, Size,
-    Slide, StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, TEXT_ANIMATIONS,
+    Slide, StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, ROW_PX, TEXT_ANIMATIONS,
 };
 
 /// Cuántos pasos tiene el asistente.
@@ -532,11 +532,35 @@ pub fn section_look(section: Section, pick: &WizardPick, existing: Option<&Look>
     look
 }
 
+/// Alto (en filas de la grilla) que necesita una cuadrícula para mostrar
+/// `limit` productos por página: las columnas son las de `fill_cols` en una
+/// página ancha, y a cada fila de tarjetas se le suma el título y los
+/// números de página.
+fn products_rows(limit: i64) -> u8 {
+    let n = limit.clamp(1, 48) as usize;
+    let cols = match n {
+        1 | 2 => n,
+        3 | 9 => 3,
+        5 | 10 => 5,
+        6 | 12 => 6,
+        _ => 4,
+    };
+    let card_rows = n.div_ceil(cols);
+    // Una tarjeta mide algo menos de las tres cuartas partes de su ancho más
+    // el texto de abajo; 1200 px de ancho útil.
+    let card_px = 1200.0 / cols as f64 * 0.75 + 95.0 + 12.0;
+    let px = 24.0 + 52.0 + card_rows as f64 * card_px + 56.0;
+    (px / f64::from(ROW_PX)).ceil().min(255.0) as u8
+}
+
 /// Tamaño del bloque nuevo: el de siempre, con la altura elegida en la portada.
 pub fn section_size(section: Section, widget: &Widget, pick: &WizardPick) -> Size {
     let limits = widget.limits();
     let mut size = limits.default;
     size.w = GRID_COLS.clamp(limits.min_w, limits.max_w);
+    if let Widget::ProductGrid(g) = widget {
+        size.h = products_rows(g.limit).clamp(limits.min_h, limits.max_h);
+    }
     if section == Section::Hero {
         let factor = [0.75, 1.0, 1.25][usize::from(pick.hero_height)];
         let h = (f64::from(size.h) * factor).round() as u8;
@@ -567,11 +591,16 @@ pub fn section_node(section: Section, pick: &WizardPick, doc: &PageDoc) -> Optio
     }
     node.size = section_size(section, &node.widget, pick);
     // Un bloque del mismo tipo conserva su alto, salvo la portada, cuya
-    // altura es una opción del asistente.
+    // altura es una opción del asistente, y la cuadrícula de productos
+    // cuando se cambia cuántos se muestran (si no, con más productos las
+    // tarjetas se apretaban y los números de página quedaban tapados).
     if let Some(old) = old {
-        if section != Section::Hero
-            && std::mem::discriminant(&old.widget) == std::mem::discriminant(&node.widget)
-        {
+        let same = std::mem::discriminant(&old.widget) == std::mem::discriminant(&node.widget);
+        let limit_changed = matches!(
+            (&old.widget, &node.widget),
+            (Widget::ProductGrid(a), Widget::ProductGrid(b)) if a.limit != b.limit
+        );
+        if section != Section::Hero && same && !limit_changed {
             node.size.h = old.size.h;
         }
     }
@@ -708,6 +737,27 @@ impl Change {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mas_productos_dan_un_bloque_mas_alto() {
+        let doc = starter_doc("Tienda");
+        let h = |count: u8| {
+            let mut pick = pick_from_doc(&doc);
+            pick.products_count = count;
+            section_node(Section::Products, &pick, &doc).expect("productos").size.h
+        };
+        assert!(h(1) > h(0), "8 productos no entran en el alto de 4");
+        assert!(products_rows(24) > products_rows(8), "24 productos no entran en el alto de 8");
+        // Cambiar la cantidad en una página ya armada también reajusta el alto.
+        let mut pick = pick_from_doc(&doc);
+        pick.over[Section::Products.index()].insert("limit".into(), 24.into());
+        let mut doc2 = doc.clone();
+        apply(&mut doc2, &pick);
+        let mut again = pick_from_doc(&doc2);
+        again.products_count = 0;
+        let node = section_node(Section::Products, &again, &doc2).unwrap();
+        assert!(node.size.h < products_rows(24));
+    }
 
     #[test]
     fn un_texto_largo_se_recorta_al_limite_del_campo() {
