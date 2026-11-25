@@ -324,7 +324,7 @@ fn Group(name: &'static str, d: u8, children: Children) -> impl IntoView {
     view! {
         <section class="mk-wiz-grp" style=format!("--d:{d}")>
             <h4 class="mk-wiz-gh">{name}</h4>
-            <div class="mk-wiz-card">{children()}</div>
+            <div class="mk-wiz-box">{children()}</div>
         </section>
     }
 }
@@ -356,6 +356,9 @@ fn background_panel(pick: RwSignal<WizardPick>, style: String, theme: impl Fn() 
                     value=Signal::derive(move || kind().to_string())
                     on_pick=Callback::new(move |v: String| pick.update(|p| {
                         p.bg_kind = v.parse().unwrap_or(0);
+                        if p.bg_kind == 2 && p.bg_dim == 0 {
+                            p.bg_dim = 30;
+                        }
                         if p.bg_kind == 1 && p.bg_color.is_empty() {
                             p.bg_color = BG_PRESETS[0].to_string();
                         }
@@ -380,7 +383,7 @@ fn background_panel(pick: RwSignal<WizardPick>, style: String, theme: impl Fn() 
                         on_pick=Callback::new(move |v: bool| pick.update(|p| p.bg_fixed = v))/>
                 </div>
                 <div class="mk-wiz-rw" hidden=move || kind() == 0>
-                    <div class="mk-wiz-row">
+                    <div class="mk-wiz-row is-col">
                         <span class="mk-wiz-rl" id="wz-bg-color-l">{move || if kind() == 2 { "Color de respaldo" } else { "Color" }}</span>
                         <div class="mk-wiz-sws" role="radiogroup" aria-labelledby="wz-bg-color-l" data-theme=theme>
                             {BG_PRESETS.iter().map(|c| {
@@ -558,7 +561,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         let mut hs = [0f64; WIZARD_STEPS];
         let mut y = 10.0;
         for (i, section) in Section::ALL.into_iter().enumerate() {
-            let h = if r[i + 1] {
+            let h = if r[i + 1] || step.get() == 0 {
                 nodes[i].as_ref().map_or(NONE_H, node_h)
             } else {
                 skeleton_h(section)
@@ -712,7 +715,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             format!("top:{}px;height:{}px", tops[i], hs[i])
         };
         let content = move || -> AnyView {
-            if !reached.get()[i + 1] {
+            if !(reached.get()[i + 1] || step.get() == 0) {
                 return ().into_any();
             }
             if step.get() == i + 1 && !done.get() && !confirm.get() {
@@ -768,7 +771,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             >
                 <div class="mk-wiz-clip" style=style>
                     {content}
-                    <div class="mk-wiz-sk" class:is-off=move || reached.get()[i + 1] aria-hidden="true">
+                    <div class="mk-wiz-sk" class:is-off=move || reached.get()[i + 1] || step.get() == 0 aria-hidden="true">
                         {skeleton(section)}
                     </div>
                 </div>
@@ -1040,7 +1043,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             <div class="mk-wiz-main">
                 <div
                     class="mk-wiz-stagewrap"
-                    class:is-done=move || done.get() || confirm.get()
+                    class:is-done=move || done.get() || confirm.get() || step.get() == 0
                     role="group"
                     aria-roledescription="carousel"
                     aria-labelledby="mk-wiz-title"
