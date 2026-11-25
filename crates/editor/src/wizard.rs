@@ -453,6 +453,8 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             Some((p, s)) => (p.clamped(), s.min(UI_STEPS - 1)),
             None => (wizard::pick_from_doc(&doc), 0),
         };
+        let mut p = p;
+        p.products_total = products.with_value(Vec::len);
         opened_pick.set_value(p.clone());
         pick.set(p);
         step.set(s);
