@@ -259,6 +259,8 @@ pub(crate) struct Ui {
     pub store_open: RwSignal<bool>,
     /// El asistente de primera página está abierto.
     pub wizard: RwSignal<bool>,
+    /// Cuántas veces el asistente armó la página: cada vez se guarda al instante.
+    pub wizard_applied: RwSignal<u32>,
     /// Lo último que se cambió en "Mi tienda" (`"box"`, `"field"`, `"selector"`,
     /// separados por espacios) y un contador: el lienzo resalta un instante
     /// los elementos afectados. El contador reinicia la animación.
@@ -1018,6 +1020,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         phone: RwSignal::new(false),
         store_open: RwSignal::new(false),
         wizard: RwSignal::new(false),
+        wizard_applied: RwSignal::new(0),
         flash: RwSignal::new(("", 0)),
         new_drag: RwSignal::new(None),
         swallow_click: StoredValue::new(false),
@@ -1272,6 +1275,15 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
             },
             AUTOSAVE_DELAY,
         );
+    });
+
+    // El asistente guarda al terminar, sin esperar el rato del guardado
+    // automático: si se cierra la pestaña enseguida no se pierde nada.
+    Effect::new(move |prev: Option<()>| {
+        ui.wizard_applied.track();
+        if prev.is_some() && state.dirty() {
+            save_draft(false);
+        }
     });
 
     // Si se deshace la creación de una página (o se borra), la que se

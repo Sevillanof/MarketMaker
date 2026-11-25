@@ -203,6 +203,7 @@ fn TxtRow(
     label: &'static str,
     id: String,
     value: Signal<String>,
+    max: Signal<usize>,
     on_pick: Callback<String>,
 ) -> impl IntoView {
     view! {
@@ -211,7 +212,7 @@ fn TxtRow(
                 id=id
                 type="text"
                 class="mk-wiz-inp"
-                maxlength="200"
+                maxlength=move || max.get().to_string()
                 autocomplete="off"
                 prop:value=move || value.get()
                 on:input=move |ev| on_pick.run(event_target_value(&ev))
@@ -436,6 +437,8 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
     let base = StoredValue::new(state.doc.get_untracked());
     let untouched = StoredValue::new(false);
     let auto = StoredValue::new(false);
+    // Lo elegido al abrir: en cuanto algo cambia, la ayuda de las flechas sobra.
+    let opened_pick = StoredValue::new(WizardPick::default());
 
     // Al abrir: parte de lo que ya hay en la página o retoma el borrador.
     let start = move || {
@@ -450,6 +453,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             Some((p, s)) => (p.clamped(), s.min(UI_STEPS - 1)),
             None => (wizard::pick_from_doc(&doc), 0),
         };
+        opened_pick.set_value(p.clone());
         pick.set(p);
         step.set(s);
         reached.set(if is_new {
@@ -470,6 +474,12 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         }
         live.set(format!("Asistente abierto. Paso {} de {}.", s + 1, UI_STEPS));
     };
+
+    Effect::new(move |_| {
+        if pick.with(|p| *p != opened_pick.get_value()) {
+            coach.set(false);
+        }
+    });
 
     // Se abre solo, una vez, en una tienda nueva con la página inicial.
     Effect::new(move |ran: Option<()>| {
@@ -647,6 +657,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         done.set(true);
         confirm.set(false);
         clear_draft();
+        ui.wizard_applied.update(|n| *n += 1);
         actions.ui.announce("Armamos tu página. Podés deshacerlo con Ctrl y Z.");
     };
     let next = move |_| {
@@ -876,9 +887,15 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                 let text = Signal::derive(move || {
                     prop(key).and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
                 });
+                let text_max = Signal::derive(move || {
+                    nodes.with(|n| {
+                        n[st].as_ref().and_then(|n| domain::wizard::text_max(&n.widget, key))
+                    })
+                    .unwrap_or(200)
+                });
                 let body = match ctl {
                     Ctl::Text => view! {
-                        <TxtRow label=label id=id value=text
+                        <TxtRow label=label id=id value=text max=text_max
                             on_pick=Callback::new(move |v: String| set_over(key, Value::String(v)))/>
                     }
                     .into_any(),
