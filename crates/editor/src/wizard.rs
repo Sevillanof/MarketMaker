@@ -306,7 +306,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             let st = step.get();
             let c = tops[st] + hs[st] / 2.0;
             format!(
-                "width:{PAGE_W}px; transform: translate(-50%, max(96px, calc(50cqh - {c}px + 18px)))"
+                "width:{PAGE_W}px; transform: translate(-50%, min(96px, calc(50cqh - {c}px + 18px)))"
             )
         }
     };
@@ -413,7 +413,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                             <b aria-hidden="true">
                                 {move || if state_of() == "done" { view! { <Icon name="check" class="h-3 w-3"/> }.into_any() } else { (i + 1).to_string().into_any() }}
                             </b>
-                            {s.name}
+                            <span class="mk-wiz-sn">{s.name}</span>
                         </button>
                     </li>
                 }
