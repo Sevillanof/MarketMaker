@@ -412,7 +412,13 @@ pub fn NoticeHost() -> impl IntoView {
     let n = use_notifier();
     let host = NodeRef::<leptos::html::Div>::new();
     // De dónde venía el foco antes de entrar a un aviso, para devolvérselo.
-    let back = StoredValue::new_local(None::<leptos::web_sys::HtmlElement>);
+    // Va en un `thread_local` y no en un `StoredValue::new_local`: ese envuelve
+    // el valor en un `SendWrapper` que hace panic si el servidor lo suelta en
+    // otro hilo (tumbaba peticiones con un 502). Solo se usa en el navegador.
+    thread_local! {
+        static BACK: std::cell::RefCell<Option<leptos::web_sys::HtmlElement>> =
+            const { std::cell::RefCell::new(None) };
+    }
 
     // Capa superior: queda por encima de cualquier ventana abierta. Se vuelve
     // a pedir con cada aviso nuevo para quedar sobre lo último que se abrió.
@@ -441,7 +447,7 @@ pub fn NoticeHost() -> impl IntoView {
             .ok()
             .flatten()
             .and_then(|e| e.dyn_into::<leptos::web_sys::HtmlElement>().ok());
-        let target = next.or_else(|| back.get_value());
+        let target = next.or_else(|| BACK.with_borrow(Clone::clone));
         if let Some(el) = target {
             _ = el.focus();
         }
@@ -457,7 +463,7 @@ pub fn NoticeHost() -> impl IntoView {
                 let from = ev.related_target().and_then(|t| t.dyn_into::<leptos::web_sys::HtmlElement>().ok());
                 let inside = from.as_ref().zip(host.get_untracked()).is_some_and(|(f, h)| h.contains(Some(f)));
                 if !inside {
-                    back.set_value(from);
+                    BACK.set(from);
                 }
             }
             on:focusout=move |_| n.holding.set_value(false)>
