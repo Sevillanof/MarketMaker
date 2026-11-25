@@ -192,6 +192,9 @@ pub struct WizardPick {
     pub hero_height: u8,
     /// Cuántos productos se muestran (índice de [`PRODUCT_COUNTS`]).
     pub products_count: u8,
+    /// Cuántos productos tiene la tienda (0: no se sabe). Sirve para no
+    /// dejar un bloque altísimo con pocos productos.
+    pub products_total: usize,
 }
 
 impl Default for WizardPick {
@@ -213,6 +216,7 @@ impl Default for WizardPick {
             nav_search: false,
             hero_height: 1,
             products_count: 1,
+            products_total: 0,
         }
     }
 }
@@ -536,8 +540,11 @@ pub fn section_look(section: Section, pick: &WizardPick, existing: Option<&Look>
 /// `limit` productos por página: las columnas son las de `fill_cols` en una
 /// página ancha, y a cada fila de tarjetas se le suma el título y los
 /// números de página.
-fn products_rows(limit: i64) -> u8 {
-    let n = limit.clamp(1, 48) as usize;
+fn products_rows(limit: i64, total: usize) -> u8 {
+    let limit = limit.clamp(1, 48) as usize;
+    // Con menos productos que `limit` no hay más páginas ni más filas.
+    let n = if total > 0 { limit.min(total) } else { limit };
+    let paged = total == 0 || total > limit;
     let cols = match n {
         1 | 2 => n,
         3 | 9 => 3,
@@ -549,7 +556,7 @@ fn products_rows(limit: i64) -> u8 {
     // Una tarjeta mide algo menos de las tres cuartas partes de su ancho más
     // el texto de abajo; 1200 px de ancho útil.
     let card_px = 1200.0 / cols as f64 * 0.75 + 95.0 + 12.0;
-    let px = 24.0 + 52.0 + card_rows as f64 * card_px + 56.0;
+    let px = 24.0 + 52.0 + card_rows as f64 * card_px + if paged { 56.0 } else { 0.0 };
     (px / f64::from(ROW_PX)).ceil().min(255.0) as u8
 }
 
@@ -559,7 +566,7 @@ pub fn section_size(section: Section, widget: &Widget, pick: &WizardPick) -> Siz
     let mut size = limits.default;
     size.w = GRID_COLS.clamp(limits.min_w, limits.max_w);
     if let Widget::ProductGrid(g) = widget {
-        size.h = products_rows(g.limit).clamp(limits.min_h, limits.max_h);
+        size.h = products_rows(g.limit, pick.products_total).clamp(limits.min_h, limits.max_h);
     }
     if section == Section::Hero {
         let factor = [0.75, 1.0, 1.25][usize::from(pick.hero_height)];
@@ -747,7 +754,7 @@ mod tests {
             section_node(Section::Products, &pick, &doc).expect("productos").size.h
         };
         assert!(h(1) > h(0), "8 productos no entran en el alto de 4");
-        assert!(products_rows(24) > products_rows(8), "24 productos no entran en el alto de 8");
+        assert!(products_rows(24, 0) > products_rows(8, 0), "24 productos no entran en el alto de 8");
         // Cambiar la cantidad en una página ya armada también reajusta el alto.
         let mut pick = pick_from_doc(&doc);
         pick.over[Section::Products.index()].insert("limit".into(), 24.into());
@@ -756,7 +763,7 @@ mod tests {
         let mut again = pick_from_doc(&doc2);
         again.products_count = 0;
         let node = section_node(Section::Products, &again, &doc2).unwrap();
-        assert!(node.size.h < products_rows(24));
+        assert!(node.size.h < products_rows(24, 0));
     }
 
     #[test]
