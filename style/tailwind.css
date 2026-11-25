@@ -3132,6 +3132,7 @@ dialog.mk-wiz {
   border: 0;
   border-radius: 16px;
   overflow: hidden;
+  overflow: clip;
   background: var(--color-base-100);
   color: var(--color-base-content);
   box-shadow: 0 30px 70px rgb(0 0 0 / 0.4);
@@ -3303,8 +3304,9 @@ dialog.mk-wiz::backdrop {
 
 .mk-wiz-bg { position: absolute; inset: 0; background-color: var(--mk-bg, var(--color-base-200)); background-image: var(--mk-bg-img, none); background-size: cover; background-position: center; }
 .mk-wiz-bg[hidden] { display: none; }
-.mk-wiz-panel { min-width: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--color-base-300); overflow: auto; background: var(--color-base-200); }
-.mk-wiz-pin { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+.mk-wiz-panel { min-width: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--color-base-300); overflow-x: hidden; overflow-y: auto; background: var(--color-base-200); }
+.mk-wiz-pin { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; min-width: 0; }
+.mk-wiz-pin > *, .mk-wiz-box, .mk-wiz-row { min-width: 0; }
 .mk-wiz-pin > * { animation: mk-wiz-rise 0.55s var(--wz-ease) backwards; animation-delay: calc(var(--d, 0) * 60ms); }
 @keyframes mk-wiz-rise { from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 26px)); } }
 @media (prefers-reduced-motion: reduce) {
@@ -3357,8 +3359,8 @@ dialog.mk-wiz::backdrop {
 
 /* Ajustes del asistente: grupos de filas «nombre — valor», como los Ajustes del sistema. */
 .mk-wiz-gh { margin: 0 4px 6px; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: color-mix(in oklab, var(--color-base-content) 62%, transparent); }
-.mk-wiz-card { border: 1px solid var(--color-base-300); border-radius: 12px; background: var(--color-base-100); overflow: hidden; }
-.mk-wiz-card > :not([hidden]) ~ :not([hidden]) { border-top: 1px solid var(--color-base-200); }
+.mk-wiz-box { border: 1px solid var(--color-base-300); border-radius: 12px; background: var(--color-base-100); overflow: hidden; }
+.mk-wiz-box > :not([hidden]) ~ :not([hidden]) { border-top: 1px solid var(--color-base-200); }
 .mk-wiz-rw[hidden], .mk-wiz-note[hidden], .mk-wiz-dots[hidden], .mk-wiz-arrow[hidden] { display: none; }
 .mk-wiz-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 6px 14px; font-size: 0.8125rem; }
 .mk-wiz-row.is-col { flex-direction: column; align-items: stretch; gap: 6px; padding-block: 10px; }
@@ -3371,7 +3373,7 @@ dialog.mk-wiz::backdrop {
 .mk-wiz-selv { appearance: none; -webkit-appearance: none; padding-right: 20px; text-align-last: right; cursor: pointer; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") no-repeat right 3px center / 12px; }
 .mk-wiz-selv:hover { background-color: var(--color-base-200); }
 .mk-wiz-ticks { display: flex; justify-content: space-between; font-size: 0.6875rem; color: color-mix(in oklab, var(--color-base-content) 60%, transparent); }
-.mk-wiz-sws { display: flex; align-items: center; gap: 8px; background: none; }
+.mk-wiz-sws { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: none; }
 .mk-wiz-sws label { position: relative; display: block; width: 22px; height: 22px; cursor: pointer; }
 .mk-wiz-sws input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .mk-wiz-sws i { display: block; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.18); pointer-events: none; transition: box-shadow 0.2s; }
