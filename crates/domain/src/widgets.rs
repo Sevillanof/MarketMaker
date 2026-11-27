@@ -712,9 +712,6 @@ const BANNER_FIELDS: &[Field] = &[
     field("show_button", "Mostrar botón", FieldKind::Bool),
     field("button_label", "Texto del botón", text(30)),
     field("button_href", "Enlace del botón", FieldKind::Url),
-    field("button_color", "Color del botón", FieldKind::Color),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
     field(
         "align",
         "Alineación del texto",
@@ -773,8 +770,6 @@ const PRODUCT_GRID_FIELDS: &[Field] = &[
             unit: "px",
         },
     ),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
     field(
         "card_favorite",
         "Corazón de favoritos en las tarjetas",
@@ -868,8 +863,6 @@ const NAVBAR_FIELDS: &[Field] = &[
     ),
     field("upper", "Enlaces en mayúsculas", FieldKind::Bool),
     field("search", "Buscador de productos", FieldKind::Bool),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
     adv("button_label", "Texto del botón", text(30)),
     adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
@@ -947,8 +940,6 @@ const CATEGORIES_FIELDS: &[Field] = &[
             unit: "px",
         },
     ),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
     field(
         "items",
         "Categorías",
@@ -986,9 +977,6 @@ const BENEFITS_FIELDS: &[Field] = &[
         "Mostrar el texto de cada beneficio",
         FieldKind::Bool,
     ),
-    field("icon_color", "Color de los íconos", FieldKind::Color),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 const CARD_SIDE_OPTIONS: &[(&str, &str)] = &[("left", "Izquierda"), ("right", "Derecha")];
@@ -999,7 +987,6 @@ const CARD_FIELDS: &[Field] = &[
     field("show_button", "Mostrar botón", FieldKind::Bool),
     field("button_label", "Texto del botón", text(30)),
     field("button_href", "Enlace del botón", FieldKind::Url),
-    field("button_color", "Color del botón", FieldKind::Color),
     field("image_url", "Foto", FieldKind::Url),
     field(
         "side",
@@ -1008,8 +995,6 @@ const CARD_FIELDS: &[Field] = &[
             options: CARD_SIDE_OPTIONS,
         },
     ),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 const FAQ_ITEM: &[Field] = &[
@@ -1029,8 +1014,6 @@ const FAQ_FIELDS: &[Field] = &[
         },
     ),
     field("open_first", "Primera pregunta abierta", FieldKind::Bool),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 const TESTIMONIAL_ITEM: &[Field] = &[
@@ -1058,9 +1041,6 @@ const TESTIMONIALS_FIELDS: &[Field] = &[
         },
     ),
     field("show_stars", "Mostrar estrellas", FieldKind::Bool),
-    field("star_color", "Color de las estrellas", FieldKind::Color),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 pub const VARIANT_PRODUCT_IMAGE: &[(&str, &str)] = &[
@@ -1121,8 +1101,6 @@ const FOOTER_FIELDS: &[Field] = &[
         },
     ),
     field("legal", "Texto legal", text(120)),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 pub const COUPON_LOOK_OPTIONS: &[(&str, &str)] = &[
@@ -1137,8 +1115,6 @@ const ANNOUNCEMENT_FIELDS: &[Field] = &[
     field("show_tag", "Mostrar etiqueta", FieldKind::Bool),
     field("tag", "Etiqueta", text(20)),
     field("href", "Al tocar el mensaje va a", FieldKind::Url),
-    field("bg", "Color de fondo", FieldKind::Color),
-    field("ink", "Color del texto", FieldKind::Color),
     field(
         "align",
         "Alineación",

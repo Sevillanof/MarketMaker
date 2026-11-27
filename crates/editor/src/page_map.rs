@@ -12,6 +12,7 @@ use domain::{Field, FieldKind, Layer, Product, Widget};
 use leptos::prelude::*;
 
 use crate::icons::Icon;
+use crate::look::DesignPicker;
 use crate::inspector::{group_fields, ShownField};
 use crate::palette::{block_info, label_of, Thumb};
 use crate::topbar::{NewPageMenu, PageMenu};
@@ -24,9 +25,17 @@ type Row = (String, &'static str);
 /// primeros campos.
 fn quick_keys(type_name: &str) -> Option<&'static [&'static str]> {
     match type_name {
+        "Announcement" => Some(&["message", "show_tag", "tag"]),
+        "Navbar" => Some(&["brand", "logo_url", "search"]),
         "Banner" => Some(&["title", "image_url"]),
-        "Text" => Some(&["heading", "body"]),
+        "Benefits" => Some(&["items"]),
+        "Categories" => Some(&["title"]),
         "ProductGrid" => Some(&["title", "limit"]),
+        "Card" => Some(&["title", "image_url"]),
+        "Testimonials" => Some(&["items"]),
+        "Faq" => Some(&["title"]),
+        "Footer" => Some(&["brand"]),
+        "Text" => Some(&["heading", "body"]),
         _ => None,
     }
 }
@@ -276,6 +285,7 @@ fn BlockItem(
     let opens_modal = matches!(type_name, "ProductGrid" | "TagTabs" | "FeaturedProduct");
     let has_links = matches!(type_name, "Navbar" | "Footer");
     let quick_id = id.clone();
+    let has_designs = widget.as_ref().is_some_and(Widget::is_new_design);
     let open_advanced = move || {
         request_animation_frame(move || {
             ui.advanced.set(true);
@@ -323,6 +333,7 @@ fn BlockItem(
             </div>
             <div id=body_id class="flex flex-col gap-4 border-t border-base-300 p-3" class:hidden=move || !selected()>
                 <h3 class="text-xs font-bold uppercase tracking-wide text-base-content/70">"Ajustes rápidos"</h3>
+                {has_designs.then(|| view! { <DesignPicker id=quick_id.clone() visible=selected products/> })}
                 {fields
                     .into_iter()
                     .map(|f| view! { <ShownField products id=quick_id.clone() field=f/> })

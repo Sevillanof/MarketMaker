@@ -439,18 +439,10 @@ fn MaybeLink(
 }
 
 /// Texto de un botón de widget nuevo: negro o blanco, el que más contraste da.
-fn nw_on_color(color: &str) -> String {
-    match domain::parse_hex(color) {
-        Some(rgb) => {
-            let text = if domain::prefers_black_text(rgb) {
-                "#000"
-            } else {
-                "#fff"
-            };
-            format!("--accent:{color};--on-accent:{text};")
-        }
-        None => String::new(),
-    }
+fn nw_on_color(_color: &str) -> String {
+    // Los colores salen del tema de la tienda; los que guardaron los
+    // bloques viejos ya no se aplican.
+    String::new()
 }
 
 /// Portada (diseños: marco editorial, fotografía inmersiva, arco).
@@ -1044,11 +1036,7 @@ pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView 
 #[component]
 pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
     let n = props.items.len().max(1);
-    let icon_style = if domain::parse_hex(&props.icon_color).is_some() {
-        format!("color:{}", props.icon_color)
-    } else {
-        String::new()
-    };
+    let icon_style = String::new();
     let show_text = props.show_text;
     view! {
         <div class="mk-nw h-full overflow-hidden">
@@ -1106,15 +1094,8 @@ pub struct ActiveCoupons(pub Vec<String>);
 
 /// Colores propios de un widget nuevo: fondo y texto (`#rrggbb`). Vacío:
 /// los del tema de la tienda.
-fn nw_colors(bg: &str, ink: &str) -> String {
-    let mut css = String::new();
-    if domain::parse_hex(bg).is_some() {
-        css += &format!("background:{bg};--bg:{bg};--surface:{bg};--panel:{bg};--hero:{bg};");
-    }
-    if domain::parse_hex(ink).is_some() {
-        css += &format!("color:{ink};--ink:{ink};--muted:{ink};");
-    }
-    css
+fn nw_colors(_bg: &str, _ink: &str) -> String {
+    String::new()
 }
 
 /// Barra de anuncio (diseños: franja directa, etiqueta suave, nota enmarcada).
@@ -1225,11 +1206,7 @@ pub fn FaqWidget(props: FaqProps, #[prop(default = false)] editing: bool) -> imp
 #[component]
 pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
     let colors = nw_colors(&props.bg, &props.ink);
-    let star_style = if domain::parse_hex(&props.star_color).is_some() {
-        format!("color:{}", props.star_color)
-    } else {
-        String::new()
-    };
+    let star_style = String::new();
     let show_stars = props.show_stars;
     view! {
         <div class="mk-nw h-full overflow-hidden" style=colors>
