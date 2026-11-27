@@ -7,15 +7,13 @@
 //! Los textos se muestran siempre como texto, nunca como HTML.
 
 use domain::{
-    AnnouncementProps, BannerProps, BenefitsProps, CardProps, CarouselProps, CategoriesProps,
-    ContactProps, CountdownProps, CouponProps, FaqProps, FeaturedProductProps, FooterProps,
-    HoverGalleryProps, ImageProps, LinkItem, LogosProps, NavbarProps, Node, Product,
-    ProductButtonProps, ProductCarouselProps, ProductGridProps, ProductModal, SocialProps,
-    StatsProps, StepsProps, TabsProps, TestimonialsProps, TextProps, Widget,
+    AnnouncementProps, BannerProps, BenefitsProps, CardProps, CategoriesProps, ContactProps,
+    FaqProps, FooterProps, LinkItem, NavbarProps, Node, Product, ProductGridProps, ProductModal,
+    TestimonialsProps, TextProps, Widget,
 };
 use leptos::html::Div;
 use leptos::prelude::*;
-use ui::{Button, Card, Icon, Image, Picture, PriceWas, Skeleton};
+use ui::{Button, Card, Icon, Image, PriceWas};
 
 pub mod account;
 pub mod anim;
@@ -29,7 +27,6 @@ pub use account::{
 };
 pub use anim::{AnimText, TextAnim};
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton, ItemName};
-pub use product_page::{ProductImageWidget, ProductPriceWidget};
 pub use tags::{FilteredProducts, NwGrid, ProductFilter};
 
 /// Contexto que recibe todo widget al dibujarse.
@@ -95,9 +92,6 @@ pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
     // Las tarjetas de producto leen su estilo del bloque que las contiene.
     let cards = match &node.widget {
         Widget::ProductGrid(p) => Some(p.cards.clone()),
-        Widget::TagTabs(p) => Some(p.cards.clone()),
-        Widget::ProductCarousel(p) => Some(p.cards.clone()),
-        Widget::FeaturedProduct(p) => Some(p.cards.clone()),
         _ => None,
     };
     let inner = {
@@ -142,20 +136,6 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             view! { <ProductGridWidget props=p.clone() products=ctx.products.clone() editing/> }
                 .into_any()
         }
-        Widget::TagFilter(_)
-        | Widget::TagList(_)
-        | Widget::TagCircles(_)
-        | Widget::TagSearch(_)
-        | Widget::TagTabs(_) => tags::render(&node.widget, ctx),
-        Widget::CategoryTabs(_)
-        | Widget::CategorySide(_)
-        | Widget::CategoryCards(_)
-        | Widget::CategoryDrop(_)
-        | Widget::CategoryPage(_) => categories::render(&node.widget, ctx),
-        Widget::FeaturedProduct(p) => {
-            view! { <FeaturedProductWidget props=p.clone() products=ctx.products.clone() editing/> }
-                .into_any()
-        }
         Widget::Navbar(p) => {
             view! { <NavbarWidget props=p.clone() editing uid=format!("nav-{}", node.id)/> }
                 .into_any()
@@ -163,85 +143,18 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
         Widget::Announcement(p) => {
             view! { <AnnouncementWidget props=p.clone() editing/> }.into_any()
         }
-        Widget::Coupon(p) => view! { <CouponWidget props=p.clone() editing/> }.into_any(),
-        Widget::Stats(p) => view! { <StatsWidget props=p.clone()/> }.into_any(),
-        Widget::Steps(p) => view! { <StepsWidget props=p.clone()/> }.into_any(),
-        Widget::ProductCarousel(p) => view! {
-            <ProductCarouselWidget props=p.clone() products=ctx.products.clone() editing/>
-        }
-        .into_any(),
-        Widget::Social(p) => view! { <SocialWidget props=p.clone() editing/> }.into_any(),
-        Widget::Carousel(p) => view! { <CarouselWidget props=p.clone() editing/> }.into_any(),
         Widget::Categories(p) => view! { <CategoriesWidget props=p.clone() editing/> }.into_any(),
         Widget::Benefits(p) => view! { <BenefitsWidget props=p.clone()/> }.into_any(),
-        Widget::Countdown(p) => view! { <CountdownWidget props=p.clone() editing/> }.into_any(),
         Widget::Card(p) => view! { <CardWidget props=p.clone() editing/> }.into_any(),
-        Widget::Tabs(p) => {
-            view! { <TabsWidget props=p.clone() group=format!("tabs-{}", node.id)/> }.into_any()
-        }
         Widget::Faq(p) => view! { <FaqWidget props=p.clone() editing/> }.into_any(),
-        Widget::HoverGallery(p) => {
-            view! { <HoverGalleryWidget props=p.clone() editing/> }.into_any()
-        }
         Widget::Testimonials(p) => view! { <TestimonialsWidget props=p.clone()/> }.into_any(),
-        Widget::Logos(p) => view! { <LogosWidget props=p.clone() editing/> }.into_any(),
-        Widget::Image(p) => view! { <ImageWidget props=p.clone() editing/> }.into_any(),
         Widget::Contact(p) => view! { <ContactWidget props=p.clone() editing/> }.into_any(),
         Widget::Footer(p) => view! { <FooterWidget props=p.clone() editing/> }.into_any(),
-        Widget::ProductImage(p) => {
-            view! { <ProductImageWidget props=p.clone() product=ctx.product.clone() editing/> }
-                .into_any()
-        }
-        Widget::ProductName(_) => {
-            let name = ctx
-                .product
-                .as_ref()
-                .map(|p| p.name.clone())
-                .unwrap_or_default();
-            // Un nombre largo va en letra algo más chica y hasta tres
-            // renglones: en la ficha tiene que poder leerse entero.
-            let class = if long_name(&name) && !editing {
-                "mk-title text-xl font-bold leading-tight line-clamp-3"
-            } else {
-                "mk-title text-2xl font-bold leading-tight line-clamp-2"
-            };
-            view! {
-                <div class="mk-box mk-pad mk-pname flex h-full items-start overflow-hidden rounded-box">
-                    <h2 class=class title=name.clone()><AnimText text=name.clone()/></h2>
-                </div>
-            }
-            .into_any()
-        }
-        Widget::ProductPrice(p) => view! {
-            <ProductPriceWidget props=p.clone() product=ctx.product.clone() editing/>
-        }
-        .into_any(),
-        Widget::ProductDescription(_) => {
-            let text = ctx
-                .product
-                .as_ref()
-                .map(|p| p.description.clone())
-                .unwrap_or_default();
-            let empty = text.is_empty();
-            view! {
-                <div class="mk-box mk-pad mk-pdesc h-full overflow-y-auto rounded-box">
-                    {if empty && editing {
-                        view! { <p class="text-base-content/60 italic">"Este producto todavía no tiene descripción."</p> }.into_any()
-                    } else {
-                        view! { <p class="whitespace-pre-line opacity-85">{text}</p> }.into_any()
-                    }}
-                </div>
-            }
-            .into_any()
-        }
+        Widget::CategoryPage(_) => categories::render(&node.widget, ctx),
         Widget::ProductSheet(p) => view! {
             <product_page::ProductSheetWidget props=p.clone() product=ctx.product.clone() editing/>
         }
         .into_any(),
-        Widget::ProductButton(p) => {
-            view! { <ProductButtonWidget props=p.clone() editing product=ctx.product.clone()/> }
-                .into_any()
-        }
     }
 }
 
@@ -252,26 +165,6 @@ pub fn product_button_label(label: &str) -> String {
         "" | "Consultar por este producto" => "Agregar al carrito".to_string(),
         other => other.to_string(),
     }
-}
-
-#[component]
-pub fn ProductButtonWidget(
-    props: ProductButtonProps,
-    editing: bool,
-    /// El producto de la ficha. Sin stock: el botón dice "Agotado".
-    product: Option<Product>,
-) -> impl IntoView {
-    if product.as_ref().is_some_and(|p| !p.in_stock) {
-        return view! {
-            <div class="mk-pbtn flex h-full items-start">
-                <button type="button" class="btn btn-primary mk-btn" disabled>"Agotado"</button>
-            </div>
-        }
-        .into_any();
-    }
-    let stacked = props.qty == "b";
-    view! { <AddToCart product label=product_button_label(&props.label) editing stacked/> }
-        .into_any()
 }
 
 /// Ficha del producto en la tienda: un `<dialog>` modal con el diseño de
@@ -296,7 +189,6 @@ pub fn ProductDialog(
         "auto" => "mk-open-auto",
         _ => "mk-open-center",
     };
-    let share_on_photo = modal.share == "photo";
     let mut nodes = modal.nodes;
     nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
     let nodes = StoredValue::new(nodes);
@@ -334,35 +226,12 @@ pub fn ProductDialog(
                 {move || product.get().map(|p| {
                     // Color y talle elegidos, compartidos por la foto y el botón.
                     provide_context(product_page::VariantPick::new());
-                    let offers = use_context::<domain::StoreInfo>().map(|s| s.offers).unwrap_or_default();
-                    let offers = if editing { offers.or_sample() } else { offers };
-                    let flow = nodes.with_value(|n| n.iter().any(|n| matches!(n.widget, Widget::ProductSheet(_))));
-                    let shown = if flow { nodes.get_value() } else { fit_price(fit_name(nodes.get_value(), &p), &p, offers) };
-                    let shown = if flow { shown } else { grow_for_variants(fit_description(shown, &p), &p) };
-                    // Lugar para "Ver carrito y comprar / Seguir comprando" al agregar.
-                    let shown = if editing || flow { shown } else { grow_button(shown, 13) };
-                    let shown = if flow { shown } else { stretch_image(shown) };
-                    provide_context(SharePlace { on_photo: Signal::stored(share_on_photo) });
-                    let share = (!editing && !share_on_photo).then(|| view! { <ShareButton product=p.clone() on_photo=false/> });
                     let ctx = RenderCtx {
                         products: products.get_value(),
                         editing,
                         product: Some(p),
                     };
-                    if flow {
-                        return view! { <div class="mk-sheetflow">{flow_nodes(shown, &ctx)}</div> }.into_any();
-                    }
-                    view! {
-                        {share}
-                        <div class="mk-grid">
-                            {shown
-                                .into_iter()
-                                .map(|node| view! {
-                                    <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
-                                })
-                                .collect_view()}
-                        </div>
-                    }.into_any()
+                    view! { <div class="mk-sheetflow">{flow_nodes(nodes.get_value(), &ctx)}</div> }
                 })}
             </div>
             <form method="dialog" class="modal-backdrop">
@@ -386,30 +255,12 @@ pub fn ProductSheetPreview(
     move || {
         product.get().map(|p| {
             provide_context(product_page::VariantPick::new());
-            let offers = use_context::<domain::StoreInfo>()
-                .map(|s| s.offers)
-                .unwrap_or_default();
-            let flow = nodes.with_value(|n| n.iter().any(|n| matches!(n.widget, Widget::ProductSheet(_))));
-            let shown = fit_price(fit_name(nodes.get_value(), &p), &p, offers);
-            let shown = stretch_image(grow_for_variants(fit_description(shown, &p), &p));
             let ctx = RenderCtx {
                 products: vec![p.clone()],
                 editing: true,
                 product: Some(p),
             };
-            if flow {
-                return view! { <div class="mk-sheetflow">{flow_nodes(nodes.get_value(), &ctx)}</div> }.into_any();
-            }
-            view! {
-                <div class="mk-grid">
-                    {shown
-                        .into_iter()
-                        .map(|node| view! {
-                            <div class="mk-node" style=node_style(&node)>{render_widget(&node, &ctx)}</div>
-                        })
-                        .collect_view()}
-                </div>
-            }.into_any()
+            view! { <div class="mk-sheetflow">{flow_nodes(nodes.get_value(), &ctx)}</div> }
         })
     }
 }
@@ -421,151 +272,6 @@ fn flow_nodes(mut nodes: Vec<Node>, ctx: &RenderCtx) -> impl IntoView {
         .into_iter()
         .map(|node| view! { <div class="mk-sheetnode">{render_widget(&node, ctx)}</div> })
         .collect_view()
-}
-
-/// La descripción ocupa lo que necesita su texto (más o menos, según el
-/// largo de cada producto) y lo que está debajo sube o baja lo mismo: sin
-/// el hueco grande de una descripción corta ni la barra de una larga.
-fn fit_description(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
-    let Some(d) = nodes
-        .iter()
-        .find(|n| matches!(n.widget, Widget::ProductDescription(_)))
-        .cloned()
-    else {
-        return nodes;
-    };
-    // La ficha mide hasta 800 px por dentro, repartidos en las columnas.
-    let col_px = 800.0 / f64::from(domain::GRID_COLS);
-    let width_px = (f64::from(d.size.w) * col_px - 24.0).max(80.0);
-    let per_line = (width_px / 8.6).floor().max(10.0);
-    let lines: f64 = p
-        .description
-        .lines()
-        .map(|l| (l.chars().count() as f64 / per_line).ceil().max(1.0))
-        .sum::<f64>()
-        .max(1.0);
-    // 26 px por renglón, más los márgenes del bloque y un poco de aire.
-    let rows = ((lines * 26.0 + 28.0) / 8.0).ceil().clamp(4.0, 80.0) as i32;
-    let old = i32::from(d.size.h);
-    let delta = rows - old;
-    if delta == 0 {
-        return nodes;
-    }
-    let bottom = i32::from(d.pos.y) + old;
-    let (dx, dw) = (d.pos.x, d.size.w);
-    for n in &mut nodes {
-        if n.id == d.id {
-            n.size.h = rows as u8;
-        } else if i32::from(n.pos.y) >= bottom && n.pos.x < dx + dw && dx < n.pos.x + n.size.w {
-            n.pos.y = (i32::from(n.pos.y) + delta).max(0) as u16;
-        }
-    }
-    nodes
-}
-
-/// El bloque del precio crece lo que ocupan sus renglones de cuotas y
-/// transferencia (según lo que la tienda ofrece y lo que el bloque muestra) y
-/// lo de abajo baja lo mismo: sin ofertas no queda un hueco, y con ofertas
-/// no se cortan.
-fn fit_price(mut nodes: Vec<Node>, p: &Product, offers: domain::PriceOffers) -> Vec<Node> {
-    let Some((n, props)) = nodes.iter().find_map(|n| match &n.widget {
-        Widget::ProductPrice(props) => Some((n.clone(), props.clone())),
-        _ => None,
-    }) else {
-        return nodes;
-    };
-    let per = props.show_installments && offers.installment_cents(p.price_cents).is_some();
-    let transfer = props.show_transfer && offers.transfer_cents(p.price_cents).is_some();
-    let extra: u8 = match props.variant.as_str() {
-        "e" => 4 * (u8::from(per) + u8::from(transfer)),
-        "b" => 4 * u8::from(per),
-        "c" => 5 * u8::from(transfer) + 4 * u8::from(per),
-        _ => 0,
-    };
-    let rows = 6 + extra;
-    if extra == 0 || n.size.h >= rows {
-        return nodes;
-    }
-    let delta = u16::from(rows - n.size.h);
-    let bottom = n.pos.y + u16::from(n.size.h);
-    let (nx, nw) = (n.pos.x, n.size.w);
-    for m in &mut nodes {
-        if m.id == n.id {
-            m.size.h = rows;
-        } else if m.pos.y >= bottom && m.pos.x < nx + nw && nx < m.pos.x + m.size.w {
-            m.pos.y += delta;
-        }
-    }
-    nodes
-}
-
-/// ¿El nombre no entra en dos renglones de la ficha?
-fn long_name(name: &str) -> bool {
-    name.chars().count() > 44
-}
-
-/// El bloque del nombre crece según los renglones que necesita (uno, dos
-/// o tres) y lo que está debajo baja lo mismo: así un nombre corto no deja
-/// un hueco antes del precio y uno largo no se corta.
-fn fit_name(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
-    let Some(n) = nodes
-        .iter()
-        .find(|n| matches!(n.widget, Widget::ProductName(_)))
-        .cloned()
-    else {
-        return nodes;
-    };
-    let rows: u8 = if long_name(&p.name) {
-        12
-    } else if p.name.chars().count() > 22 {
-        9
-    } else {
-        0
-    };
-    if n.size.h >= rows {
-        return nodes;
-    }
-    let extra = u16::from(rows - n.size.h);
-    let bottom = n.pos.y + u16::from(n.size.h);
-    let (nx, nw) = (n.pos.x, n.size.w);
-    for m in &mut nodes {
-        if m.id == n.id {
-            m.size.h = rows;
-        } else if m.pos.y >= bottom && m.pos.x < nx + nw && nx < m.pos.x + m.size.w {
-            m.pos.y += extra;
-        }
-    }
-    nodes
-}
-
-/// La foto llega hasta el final de la ficha cuando no tiene nada debajo:
-/// si no, al crecer la descripción o el botón queda un hueco bajo la foto.
-fn stretch_image(mut nodes: Vec<Node>) -> Vec<Node> {
-    let end = nodes
-        .iter()
-        .map(|n| n.pos.y + u16::from(n.size.h))
-        .max()
-        .unwrap_or(0);
-    let Some(img) = nodes
-        .iter()
-        .find(|n| matches!(n.widget, Widget::ProductImage(_)))
-        .cloned()
-    else {
-        return nodes;
-    };
-    let bottom = img.pos.y + u16::from(img.size.h);
-    let (ix, iw) = (img.pos.x, img.size.w);
-    let alone = !nodes.iter().any(|n| {
-        n.id != img.id && n.pos.y >= bottom && n.pos.x < ix + iw && ix < n.pos.x + n.size.w
-    });
-    // Hasta un cuadrado y medio: una foto mucho más alta que ancha queda rara.
-    let cap = u16::from(iw) * 3;
-    if alone && end > bottom {
-        if let Some(n) = nodes.iter_mut().find(|n| n.id == img.id) {
-            n.size.h = (end - img.pos.y).min(cap).min(255) as u8;
-        }
-    }
-    nodes
 }
 
 /// Dónde va el botón Compartir de la ficha (ver `ProductModal::share`).
@@ -692,100 +398,6 @@ fn native_share(title: &str, url: &str) -> bool {
     }
 }
 
-/// El bloque del botón crece `extra` filas y lo que está debajo baja lo mismo.
-fn grow_button(mut nodes: Vec<Node>, extra: u16) -> Vec<Node> {
-    let Some(b) = nodes
-        .iter()
-        .find(|n| matches!(n.widget, Widget::ProductButton(_)))
-        .cloned()
-    else {
-        return nodes;
-    };
-    let bottom = b.pos.y + u16::from(b.size.h);
-    let (bx, bw) = (b.pos.x, b.size.w);
-    for n in &mut nodes {
-        if n.id == b.id {
-            n.size.h = (u16::from(n.size.h) + extra).min(255) as u8;
-        } else if n.pos.y >= bottom && n.pos.x < bx + bw && bx < n.pos.x + n.size.w {
-            n.pos.y += extra;
-        }
-    }
-    nodes
-}
-
-/// Con colores o talles, el bloque del botón crece para los selectores y lo
-/// que está debajo de él baja lo mismo.
-fn grow_for_variants(mut nodes: Vec<Node>, p: &Product) -> Vec<Node> {
-    if !p.has_variants() {
-        return nodes;
-    }
-    let extra: u16 = 4
-        + if p.variants.colors.is_empty() { 0 } else { 14 }
-        + if p.variants.sizes.is_empty() { 0 } else { 11 };
-    let Some(b) = nodes
-        .iter()
-        .find(|n| matches!(n.widget, Widget::ProductButton(_)))
-        .cloned()
-    else {
-        return nodes;
-    };
-    let bottom = b.pos.y + u16::from(b.size.h);
-    let (bx, bw) = (b.pos.x, b.size.w);
-    for n in &mut nodes {
-        if n.id == b.id {
-            n.size.h = (u16::from(n.size.h) + extra).min(255) as u8;
-        } else if n.pos.y >= bottom && n.pos.x < bx + bw && bx < n.pos.x + n.size.w {
-            n.pos.y += extra;
-        }
-    }
-    nodes
-}
-
-/// «Redes y WhatsApp» con el botón flotante con texto: en la tienda solo se
-/// ve el botón fijo en la esquina, así que el bloque no ocupa lugar.
-fn floats_alone(node: &Node) -> bool {
-    matches!(&node.widget, Widget::Social(p) if p.variant == "b")
-}
-
-/// Las filas que ocupan solo bloques flotantes ([`floats_alone`]) se quitan
-/// y lo de abajo sube: si no, quedaba una franja vacía en la tienda.
-fn collapse_floating(nodes: &[Node]) -> Vec<Node> {
-    if !nodes.iter().any(floats_alone) {
-        return nodes.to_vec();
-    }
-    let span = |n: &Node| {
-        (
-            u32::from(n.pos.y),
-            u32::from(n.pos.y) + u32::from(n.size.h.max(1)),
-        )
-    };
-    // Filas vacías de verdad: las de un flotante que no pisa ningún otro bloque.
-    let mut empty: Vec<u32> = Vec::new();
-    for f in nodes.iter().filter(|n| floats_alone(n)) {
-        let (a, b) = span(f);
-        for r in a..b {
-            let used = nodes.iter().any(|n| {
-                let (y0, y1) = span(n);
-                !floats_alone(n) && y0 <= r && r < y1
-            });
-            if !used && !empty.contains(&r) {
-                empty.push(r);
-            }
-        }
-    }
-    nodes
-        .iter()
-        .map(|n| {
-            let mut n = n.clone();
-            if !floats_alone(&n) {
-                let above = empty.iter().filter(|&&r| r < u32::from(n.pos.y)).count();
-                n.pos.y -= u16::try_from(above).unwrap_or(0);
-            }
-            n
-        })
-        .collect()
-}
-
 /// Variables CSS de posición de un nodo para `.mk-node`: `--x:1; --y:49; --w:48; --h:60`.
 /// `--x` y `--y` suman 1 a `pos` porque las líneas de la grilla CSS empiezan en 1.
 pub fn node_style(node: &Node) -> String {
@@ -804,18 +416,7 @@ pub fn node_style(node: &Node) -> String {
 /// lo mismo, y el menú queda encima. En el celular, apilados, el bloque sube
 /// con un margen negativo (ver `.mk-node-under`).
 pub fn page_nodes(nodes: &[Node]) -> Vec<(&'static str, String)> {
-    let nodes = &collapse_floating(nodes);
-    let out: Vec<(&'static str, String)> = nodes
-        .iter()
-        .map(|n| {
-            if floats_alone(n) {
-                ("mk-node mk-node-fixed", node_style(n))
-            } else {
-                ("mk-node", node_style(n))
-            }
-        })
-        .collect();
-    out
+    nodes.iter().map(|n| ("mk-node", node_style(n))).collect()
 }
 
 /// Enlace si hay `href` y no se está editando; si no, un `div` con la misma
@@ -964,42 +565,6 @@ pub fn ProductGridWidget(
                 <FilteredProducts products limit filter paged=true nw=Some(grid)/>
             </section>
         </div>
-    }
-}
-
-#[component]
-pub fn FeaturedProductWidget(
-    props: FeaturedProductProps,
-    products: Vec<Product>,
-    editing: bool,
-) -> impl IntoView {
-    let chosen = products.iter().position(|p| p.id == props.product_id);
-    // En la tienda nunca se ve el «Elegí un producto» para el dueño: si no
-    // eligió ninguno (o lo borró) se muestra el primero que hay en stock.
-    let index = chosen.or_else(|| {
-        (!editing)
-            .then(|| {
-                products
-                    .iter()
-                    .position(|p| p.in_stock)
-                    .or((!products.is_empty()).then_some(0))
-            })
-            .flatten()
-    });
-    let product = index.map(|i| products[i].clone());
-    match product {
-        Some(p) => view! {
-            <div class="mk-box mk-pad h-full rounded-box">
-                <ProductCard product=p show_price=props.show_price/>
-            </div>
-        }
-        .into_any(),
-        None => view! {
-            <div class="flex h-full items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200 p-4 text-center">
-                "Elegí un producto"
-            </div>
-        }
-        .into_any(),
     }
 }
 
@@ -1427,116 +992,6 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
 }
 
 #[component]
-pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
-    let track = NodeRef::<Div>::new();
-    let current = RwSignal::new(0usize);
-    let count = props.slides.len();
-
-    let go = move |i: usize| {
-        if let Some(el) = track.get_untracked() {
-            let w = el.client_width();
-            el.set_scroll_left(w * i as i32);
-        }
-    };
-
-    // Avance automático (nunca en el editor). Solo corre en el navegador.
-    let autoplay = props.autoplay;
-    if !editing && autoplay > 0 && count > 1 {
-        Effect::new(move |_| {
-            let handle = set_interval_with_handle(
-                move || go((current.get_untracked() + 1) % count),
-                std::time::Duration::from_secs(autoplay as u64),
-            );
-            on_cleanup(move || {
-                if let Ok(h) = handle {
-                    h.clear();
-                }
-            });
-        });
-    }
-
-    view! {
-        <div class="mk-box mk-carousel @container relative h-full overflow-hidden rounded-box bg-base-200">
-            <div
-                node_ref=track
-                class="carousel h-full w-full"
-                on:scroll=move |_| {
-                    if let Some(el) = track.get_untracked() {
-                        let w = el.client_width().max(1);
-                        let i = ((el.scroll_left() + w / 2) / w) as usize;
-                        if current.get_untracked() != i {
-                            current.set(i);
-                        }
-                    }
-                }
-            >
-                {props
-                    .slides
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, s)| {
-                        let has_button = !s.button_label.is_empty() && (editing || !s.button_href.trim().is_empty());
-                        // Sin foto, un fondo oscuro: el texto blanco se lee igual.
-                        let has_img = !s.image_url.trim().is_empty();
-                        view! {
-                            <div class="carousel-item relative h-full w-full" class:bg-neutral=!has_img>
-                                // La primera foto es la que se ve al entrar: se pide ya.
-                                {has_img.then(|| view! { <Image src=s.image_url.clone() alt=s.title.clone() eager=i == 0/> })}
-                                <div class="mk-car-ov absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent"></div>
-                                <div class="mk-car-body absolute inset-y-0 left-0 flex max-w-lg flex-col justify-center gap-2 px-14 py-6 text-white @2xl:gap-3">
-                                    <h2 class="mk-title text-xl font-bold line-clamp-2 @2xl:text-3xl"><AnimText text={s.title.clone()}/></h2>
-                                    {(!s.subtitle.is_empty()).then(|| view! {
-                                        <p class="text-sm line-clamp-2 @2xl:text-base">{s.subtitle.clone()}</p>
-                                    })}
-                                    {has_button.then(|| view! {
-                                        <div>
-                                            <Button label=s.button_label.clone() href=s.button_href.clone() disabled=editing/>
-                                        </div>
-                                    })}
-                                </div>
-                            </div>
-                        }
-                    })
-                    .collect_view()}
-            </div>
-            {(count > 1).then(|| view! {
-                <button
-                    type="button"
-                    class="mk-car-arrow btn btn-circle btn-sm absolute left-3 top-1/2 -translate-y-1/2 border-0 bg-base-100/80"
-                    aria-label="Anterior"
-                    on:click=move |_| go((current.get_untracked() + count - 1) % count)
-                >
-                    "❮"
-                </button>
-                <button
-                    type="button"
-                    class="mk-car-arrow btn btn-circle btn-sm absolute right-3 top-1/2 -translate-y-1/2 border-0 bg-base-100/80"
-                    aria-label="Siguiente"
-                    on:click=move |_| go((current.get_untracked() + 1) % count)
-                >
-                    "❯"
-                </button>
-                <div class="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2">
-                    {(0..count)
-                        .map(|i| view! {
-                            <button
-                                type="button"
-                                class="mk-car-dot h-2 rounded-full bg-white transition-all"
-                                class=("w-6", move || current.get() == i)
-                                class=("w-2", move || current.get() != i)
-                                class=("opacity-50", move || current.get() != i)
-                                aria-label=format!("Diapositiva {}", i + 1)
-                                on:click=move |_| go(i)
-                            ></button>
-                        })
-                        .collect_view()}
-                </div>
-            })}
-        </div>
-    }
-}
-
-#[component]
 pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView {
     // En la tienda, los enlaces viejos a páginas que no existen se arreglan.
     let links = use_context::<StoreLinks>();
@@ -1622,25 +1077,6 @@ pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
 // Widgets con estilos (a, b y c): barra de anuncio, cifras, pasos, carrusel de
 // productos y redes.
 
-/// Columnas de una fila de `n` elementos desde el ancho medio (`@xl`).
-fn cols_xl(n: usize) -> &'static str {
-    match n {
-        0..=2 => "@xl:grid-cols-2",
-        3 => "@xl:grid-cols-3",
-        _ => "@xl:grid-cols-4",
-    }
-}
-
-/// Columnas de una fila de `n` elementos desde el ancho grande (`@2xl`).
-fn cols_2xl(n: usize) -> &'static str {
-    match n {
-        0..=2 => "@2xl:grid-cols-2",
-        3 => "@2xl:grid-cols-3",
-        4 => "@2xl:grid-cols-4",
-        _ => "@2xl:grid-cols-5",
-    }
-}
-
 /// Copia `text` al portapapeles y avisa con `done(true)` o `done(false)`.
 pub fn copy_text(text: &str, done: impl Fn(bool) + 'static) {
     #[cfg(target_arch = "wasm32")]
@@ -1661,98 +1097,6 @@ pub fn copy_text(text: &str, done: impl Fn(bool) + 'static) {
         let _ = text;
         done(false);
     }
-}
-
-/// Estilo «Cupón» del anuncio: el código bien visible y un botón que lo
-/// copia. El aviso de «Copiado» es el mismo texto visible y una región
-/// `role="status"`, así lo leen también los lectores de pantalla.
-#[component]
-fn CouponWidget(props: CouponProps, editing: bool) -> impl IntoView {
-    // En la tienda, solo si el cupón sirve hoy (no está pausado ni vencido).
-    if !editing {
-        if let Some(ActiveCoupons(list)) = use_context::<ActiveCoupons>() {
-            let code = props.code.trim();
-            if !code.is_empty() && !list.iter().any(|c| c.eq_ignore_ascii_case(code)) {
-                return ().into_any();
-            }
-        }
-    }
-    let text = props.text.clone();
-    let look = match props.coupon.as_str() {
-        "solid" | "soft" | "line" => props.coupon.clone(),
-        _ => "notch".to_string(),
-    };
-    let code = props.code.trim().to_string();
-    let has_code = !code.is_empty();
-    // None: nada que avisar; Some(true): copiado; Some(false): no se pudo.
-    let state = RwSignal::new(None::<bool>);
-    let generation = StoredValue::new(0u32);
-    let copy = {
-        let code = code.clone();
-        move |_| {
-            if editing {
-                return;
-            }
-            generation.update_value(|g| *g += 1);
-            let mine = generation.get_value();
-            state.set(None);
-            copy_text(&code, move |ok| {
-                // Si cambió de página mientras tanto, el bloque ya no existe:
-                // sin `try_` esto rompía por dentro.
-                state.try_set(Some(ok));
-                set_timeout(
-                    move || {
-                        if generation.try_get_value() == Some(mine) {
-                            state.try_set(None);
-                        }
-                    },
-                    std::time::Duration::from_secs(2),
-                );
-            });
-        }
-    };
-    let label = if look == "solid" {
-        "Copiar"
-    } else {
-        "Copiar código"
-    };
-    view! {
-        <div class=format!("mk-box mk-ann mk-coupon mk-coupon-{look} @container flex h-full items-center gap-3 overflow-hidden px-4 text-sm")>
-            {(look == "line").then(|| view! { <span class="mk-coupon-kicker">"Cupón"</span> })}
-            {(look == "notch" && has_code).then(|| view! {
-                <span class="mk-coupon-seg hidden @xl:inline-flex">"Código"<span class="mk-coupon-code">{code.clone()}</span></span>
-            })}
-            <p class="mk-coupon-text min-w-0 flex-1 text-balance">
-                {(look == "solid" || look == "soft").then(|| view! { <Icon name="ticket" class="mr-1.5 inline h-5 w-5 align-[-0.3em]"/> })}
-                {text}
-                {(look != "notch" && has_code).then(|| view! { " " <span class="mk-coupon-code">{code.clone()}</span> })}
-                {(look == "notch" && has_code).then(|| view! { <span class="ml-2 @xl:hidden"><span class="mk-coupon-code">{code.clone()}</span></span> })}
-            </p>
-            {(!props.note.is_empty()).then(|| view! { <span class="mk-coupon-note hidden @2xl:inline">{props.note.clone()}</span> })}
-            {has_code.then(|| view! {
-                <span class="relative shrink-0">
-                    <button type="button" class="mk-coupon-btn btn btn-sm"
-                        tabindex=editing.then_some("-1")
-                        aria-label=format!("Copiar el código {code}")
-                        on:click=copy>
-                        {move || match state.get() {
-                            Some(true) => view! { <Icon name="check" class="h-4 w-4"/> "Copiado" }.into_any(),
-                            _ => view! { <Icon name="copy" class="h-4 w-4"/> {label} }.into_any(),
-                        }}
-                    </button>
-                    <span class="sr-only" role="status">{move || match state.get() {
-                        Some(true) => "Código copiado",
-                        Some(false) => "No pudimos copiar el código. Copialo a mano.",
-                        None => "",
-                    }}</span>
-                </span>
-            })}
-            {move || (state.get() == Some(false)).then(|| view! {
-                <span class="mk-coupon-fail text-xs" aria-hidden="true">"No pudimos copiarlo"</span>
-            })}
-        </div>
-    }
-    .into_any()
 }
 
 /// Los códigos de los cupones que sirven hoy. La tienda lo provee: un bloque
@@ -1801,437 +1145,10 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
     }
 }
 
-/// La cifra de ejemplo («Tu número») se ve tenue, para que se note que falta.
-fn ph(class: &str, value: &str) -> String {
-    if value.trim() == domain::STAT_PLACEHOLDER {
-        format!("{class} opacity-40")
-    } else {
-        class.to_string()
-    }
-}
-
-#[component]
-pub fn StatsWidget(props: StatsProps) -> impl IntoView {
-    let n = props.items.len();
-    match props.variant.as_str() {
-        "b" => view! {
-            // El `@container` va afuera: una grilla no puede consultar su propio ancho.
-            <div class="mk-stats @container h-full"><div class=format!("mk-box mk-pad grid h-full grid-cols-1 content-center gap-6 overflow-hidden rounded-box bg-base-100 px-6 py-4 text-center {}", cols_xl(n))>
-                {props.items.into_iter().map(|s| view! {
-                    <div class="min-w-0">
-                        <p class=ph("mk-title mk-h text-4xl font-extrabold tracking-tight @xl:text-5xl", &s.value)><AnimText text={s.value.clone()}/></p>
-                        <p class="mx-auto mt-2 h-0.5 w-8 bg-current opacity-60"></p>
-                        <p class="mt-2 text-sm opacity-70">{s.label}</p>
-                    </div>
-                }).collect_view()}
-            </div></div>
-        }
-        .into_any(),
-        "c" => view! {
-            <div class="mk-stats @container h-full"><div class=format!("grid h-full grid-cols-1 content-center gap-4 overflow-hidden {}", cols_xl(n))>
-                {props.items.into_iter().map(|s| view! {
-                    <div class="mk-item mk-box flex min-w-0 items-center gap-4 rounded-box border border-base-300 bg-base-100 p-5">
-                        <span class="mk-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-full">
-                            <Icon name=s.icon class="h-6 w-6"/>
-                        </span>
-                        <div class="min-w-0">
-                            <p class=ph("mk-h text-2xl font-bold leading-none", &s.value)>{s.value.clone()}</p>
-                            <p class="mt-1 text-sm opacity-70 line-clamp-2">{s.label}</p>
-                        </div>
-                    </div>
-                }).collect_view()}
-            </div></div>
-        }
-        .into_any(),
-        _ => view! {
-            <div class="mk-stats @container h-full overflow-hidden">
-                <div class="mk-box stats stats-vertical @xl:stats-horizontal h-full w-full overflow-hidden rounded-box bg-base-100 shadow-sm">
-                    {props.items.into_iter().map(|s| view! {
-                        <div class="stat place-items-center">
-                            <div class=ph("stat-value mk-h text-primary", &s.value)>{s.value.clone()}</div>
-                            <div class="stat-title whitespace-normal text-center">{s.label}</div>
-                        </div>
-                    }).collect_view()}
-                </div>
-            </div>
-        }
-        .into_any(),
-    }
-}
-
-#[component]
-pub fn StepsWidget(props: StepsProps) -> impl IntoView {
-    let n = props.items.len();
-    let title = (!props.title.is_empty()).then(|| {
-        view! {
-            <h2 class="mk-title mk-h mb-4 text-center text-xl font-bold"><AnimText text={props.title.clone()}/></h2>
-        }
-    });
-    match props.variant.as_str() {
-        "b" => view! {
-            <div class="mk-box mk-steps @container flex h-full flex-col justify-center overflow-hidden rounded-box bg-base-100 p-6 shadow-sm">
-                {title}
-                <ul class="steps steps-vertical @2xl:steps-horizontal w-full">
-                    {props.items.into_iter().map(|s| view! {
-                        <li class="step step-primary"><span class="mk-sub mk-h font-medium">{s.title}</span></li>
-                    }).collect_view()}
-                </ul>
-            </div>
-        }
-        .into_any(),
-        "c" => view! {
-            <div class="mk-steps @container flex h-full flex-col justify-center overflow-hidden">
-                {title}
-                <ol class=format!("grid grid-cols-1 gap-4 {}", cols_xl(n))>
-                    {props.items.into_iter().enumerate().map(|(i, s)| view! {
-                        <li class="mk-item mk-box min-w-0 rounded-box border border-base-300 bg-base-100 p-5">
-                            <p class="mk-h text-5xl font-extrabold opacity-25">{format!("{:02}", i + 1)}</p>
-                            <p class="mk-sub mk-h mt-2 font-semibold">{s.title}</p>
-                            <p class="text-sm opacity-70">{s.text}</p>
-                        </li>
-                    }).collect_view()}
-                </ol>
-            </div>
-        }
-        .into_any(),
-        _ => view! {
-            <div class="mk-box mk-steps @container flex h-full flex-col justify-center overflow-hidden rounded-box bg-base-100 p-6 shadow-sm">
-                {title}
-                <ol class=format!("grid grid-cols-1 gap-6 {}", cols_2xl(n))>
-                    {props.items.into_iter().enumerate().map(|(i, s)| view! {
-                        <li class="flex min-w-0 flex-col items-center gap-2 text-center">
-                            <span class="mk-icon mk-h flex h-10 w-10 items-center justify-center rounded-full bg-primary font-bold text-primary-content">{i + 1}</span>
-                            <p class="mk-sub mk-h font-semibold">{s.title}</p>
-                            <p class="text-sm opacity-70">{s.text}</p>
-                        </li>
-                    }).collect_view()}
-                </ol>
-            </div>
-        }
-        .into_any(),
-    }
-}
-
-#[component]
-pub fn ProductCarouselWidget(
-    props: ProductCarouselProps,
-    products: Vec<Product>,
-    editing: bool,
-) -> impl IntoView {
-    let variant = props.variant.clone();
-    let limit = usize::try_from(props.limit).unwrap_or(0).max(1);
-    let mut products = products;
-    // Los agotados van al final.
-    products.sort_by_key(|p| !p.in_stock);
-    products.truncate(limit);
-    let total = products.len();
-    let track = NodeRef::<Div>::new();
-    let at_start = RwSignal::new(true);
-    let at_end = RwSignal::new(false);
-    let measure = move || {
-        if let Some(el) = track.get_untracked() {
-            let (left, view_w, all) = (el.scroll_left(), el.client_width(), el.scroll_width());
-            at_start.set(left <= 1);
-            at_end.set(left + view_w >= all - 1);
-        }
-    };
-    Effect::new(move |_| measure());
-    let go = move |dir: i32| {
-        if let Some(el) = track.get_untracked() {
-            let step = f64::from(el.client_width()) * 0.8;
-            el.scroll_by_with_x_and_y(f64::from(dir) * step, 0.0);
-        }
-    };
-    let title = props.title.clone();
-    let link = (!props.link_label.is_empty()).then(|| {
-        view! {
-            <MaybeLink href=props.link_href.clone() editing class="mk-link link link-primary shrink-0 text-sm">{props.link_label.clone()}</MaybeLink>
-        }
-    });
-    let arrows = move |class: &'static str| {
-        view! {
-            <div class=class>
-                <button type="button" class="btn btn-circle btn-sm" aria-label="Ver los anteriores"
-                    disabled=move || at_start.get() on:click=move |_| go(-1)>
-                    <Icon name="chevron-left" class="h-4 w-4"/>
-                </button>
-                <button type="button" class="btn btn-circle btn-sm btn-primary mk-btn" aria-label="Ver los siguientes"
-                    disabled=move || at_end.get() on:click=move |_| go(1)>
-                    <Icon name="chevron-right" class="h-4 w-4"/>
-                </button>
-            </div>
-        }
-    };
-    let rail = {
-        let title = title.clone();
-        view! {
-            <div class="relative min-h-0 flex-1">
-                <div node_ref=track
-                    class="mk-rail carousel h-full w-full gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                    tabindex="0" role="region" aria-roledescription="carousel" aria-label=title
-                    on:scroll=move |_| measure()>
-                    {products.into_iter().enumerate().map(|(i, p)| view! {
-                        <div class="carousel-item h-full w-[clamp(9.5rem,24cqw,15rem)]"
-                            role="group" aria-roledescription="slide" aria-label=format!("{} de {total}", i + 1)>
-                            <div class="h-full w-full"><ProductCard product=p show_price=true/></div>
-                        </div>
-                    }).collect_view()}
-                </div>
-                {(total == 0).then(|| view! { <div class="alert">"Todavía no hay productos."</div> })}
-                {(variant == "b").then(|| view! {
-                    <div class="pointer-events-none absolute inset-x-1 top-1/2 flex -translate-y-1/2 justify-between">
-                        <button type="button" class="btn btn-circle pointer-events-auto shadow" aria-label="Ver los anteriores"
-                            disabled=move || at_start.get() on:click=move |_| go(-1)>
-                            <Icon name="chevron-left" class="h-5 w-5"/>
-                        </button>
-                        <button type="button" class="btn btn-circle pointer-events-auto shadow" aria-label="Ver los siguientes"
-                            disabled=move || at_end.get() on:click=move |_| go(1)>
-                            <Icon name="chevron-right" class="h-5 w-5"/>
-                        </button>
-                    </div>
-                })}
-            </div>
-        }
-    };
-    match variant.as_str() {
-        "b" => view! {
-            <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box bg-base-100 p-5 shadow-sm">
-                <div class="flex items-end justify-between gap-3">
-                    <h2 class="mk-title mk-h truncate text-xl font-bold"><AnimText text={title}/></h2>
-                    {link}
-                </div>
-                {rail}
-            </div>
-        }
-        .into_any(),
-        "c" => view! {
-            <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
-                <div class="flex items-end justify-between gap-3">
-                    <h2 class="mk-title mk-h truncate text-xl font-bold"><AnimText text={title}/></h2>
-                    {link}
-                </div>
-                {rail}
-                {arrows("flex justify-center gap-2")}
-            </div>
-        }
-        .into_any(),
-        _ => view! {
-            <div class="mk-box mk-pad mk-pcar @container flex h-full flex-col gap-3 overflow-hidden rounded-box bg-base-100 p-5 shadow-sm">
-                <div class="flex items-center justify-between gap-3">
-                    <h2 class="mk-title mk-h truncate text-xl font-bold"><AnimText text={title}/></h2>
-                    <div class="flex items-center gap-4">
-                        {link}
-                        {arrows("flex gap-2")}
-                    </div>
-                </div>
-                {rail}
-            </div>
-        }
-        .into_any(),
-    }
-}
-
-#[component]
-pub fn SocialWidget(props: SocialProps, editing: bool) -> impl IntoView {
-    let store = use_context::<domain::StoreInfo>().unwrap_or_default();
-    let mut channels = store_channels(&store);
-    // WhatsApp va aparte: es el botón flotante.
-    let whatsapp = channels
-        .iter()
-        .position(|c| c.icon == "whatsapp")
-        .map(|i| channels.remove(i));
-    channels.retain(|c| c.icon == "instagram");
-    if !props.facebook.trim().is_empty() {
-        channels.push(Channel {
-            icon: "facebook",
-            label: "Facebook",
-            value: props
-                .facebook
-                .trim()
-                .trim_start_matches("https://")
-                .trim_start_matches("www.")
-                .to_string(),
-            href: props.facebook.trim().to_string(),
-            external: true,
-        });
-    }
-    if !props.tiktok.trim().is_empty() {
-        channels.push(Channel {
-            icon: "tiktok",
-            label: "TikTok",
-            value: props
-                .tiktok
-                .trim()
-                .trim_start_matches("https://")
-                .trim_start_matches("www.")
-                .to_string(),
-            href: props.tiktok.trim().to_string(),
-            external: true,
-        });
-    }
-    let float = |circle: bool| {
-        let label = props.label.clone();
-        whatsapp.as_ref().map(|w| {
-            let class = if circle {
-                "mk-wa-float btn btn-circle btn-lg border-0 text-white shadow-lg"
-            } else {
-                "mk-wa-float btn rounded-full border-0 px-5 text-white shadow-lg"
-            };
-            let pos = if editing { "absolute bottom-2 right-2" } else { "fixed bottom-6 right-4 z-[45]" };
-            view! {
-                <ChannelLink href=w.href.clone() external=true editing class=format!("{class} {pos}") label="Escribinos por WhatsApp">
-                    <Icon name="whatsapp" class="h-7 w-7"/>
-                    {(!circle).then(|| view! { <span>{label.clone()}</span> })}
-                </ChannelLink>
-            }
-        })
-    };
-    let hint = (editing && whatsapp.is_none() && props.variant != "c").then(|| view! {
-        <p class="text-sm opacity-70">"Cargá tu WhatsApp en «Datos de la tienda» y acá aparece el botón."</p>
-    });
-    match props.variant.as_str() {
-        "b" => view! {
-            <div class="mk-box mk-pad mk-social relative h-full overflow-hidden rounded-box">
-                {hint}
-                {float(false)}
-            </div>
-        }
-        .into_any(),
-        "c" => view! {
-            // El `@container` va afuera: una grilla no puede consultar su propio ancho.
-            <div class="mk-social @container h-full overflow-hidden"><div class="grid h-full grid-cols-1 content-center gap-3 @xl:grid-cols-3">
-                {channels.into_iter().chain(whatsapp).map(|c| view! {
-                    <ChannelLink href=c.href external=c.external editing class="mk-item mk-box flex min-h-14 min-w-0 items-center gap-3 rounded-box border border-base-300 bg-base-100 p-3">
-                        <span class="mk-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
-                            <Icon name=c.icon class="h-5 w-5"/>
-                        </span>
-                        <span class="min-w-0 leading-tight">
-                            <span class="block font-semibold">{c.label}</span>
-                            <span class="block truncate text-sm opacity-70">{c.value}</span>
-                        </span>
-                    </ChannelLink>
-                }).collect_view()}
-            </div></div>
-        }
-        .into_any(),
-        _ => view! {
-            <div class="mk-box mk-pad mk-social relative flex h-full items-center gap-3 overflow-hidden rounded-box">
-                {(!props.title.is_empty()).then(|| view! { <span class="mk-title mk-h text-sm font-semibold"><AnimText text={props.title.clone()}/></span> })}
-                {channels.into_iter().map(|c| view! {
-                    <ChannelLink href=c.href external=c.external editing class="mk-btn btn btn-circle btn-outline btn-sm" label=c.label>
-                        <Icon name=c.icon class="h-4 w-4"/>
-                    </ChannelLink>
-                }).collect_view()}
-                {hint}
-                {float(true)}
-            </div>
-        }
-        .into_any(),
-    }
-}
-
-/// Tiempo que falta hasta `ends_at`, en segundos. Usa la hora local del navegador.
-#[cfg(target_arch = "wasm32")]
-fn seconds_left(ends_at: &str) -> Option<i64> {
-    let end = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(ends_at)).get_time();
-    if end.is_nan() {
-        return None;
-    }
-    Some(((end - js_sys::Date::now()) / 1000.0).max(0.0) as i64)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn seconds_left(_ends_at: &str) -> Option<i64> {
-    None
-}
-
 /// Separa segundos en días, horas, minutos y segundos.
 pub fn split_seconds(total: i64) -> [i64; 4] {
     let t = total.max(0);
     [t / 86_400, t % 86_400 / 3600, t % 3600 / 60, t % 60]
-}
-
-#[component]
-pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
-    // `None` hasta que corre en el navegador: el servidor y la hidratación
-    // dibujan el skeleton, y después el reloj.
-    // `Some(None)`: la fecha está vacía o no se entiende.
-    let left = RwSignal::new(None::<Option<i64>>);
-    let ends_at = props.ends_at.clone();
-    Effect::new(move |_| {
-        left.set(Some(seconds_left(&ends_at)));
-        let ends_at = ends_at.clone();
-        let handle = set_interval_with_handle(
-            move || left.set(Some(seconds_left(&ends_at))),
-            std::time::Duration::from_secs(1),
-        );
-        on_cleanup(move || {
-            if let Ok(h) = handle {
-                h.clear();
-            }
-        });
-    });
-    // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
-    // con un aviso en el panel).
-    let has_button =
-        !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
-    let ended_text = props.ended_text.clone();
-    let units = ["días", "horas", "min", "seg"];
-
-    view! {
-        <div class="mk-box mk-countdown @container flex h-full flex-col items-center justify-center gap-3 overflow-hidden rounded-box p-4 text-center">
-            <h2 class="mk-title text-xl leading-tight font-bold text-balance line-clamp-2 @md:text-2xl @xl:line-clamp-1 @xl:text-3xl"><AnimText text={props.title.clone()}/></h2>
-            {(!props.subtitle.is_empty()).then(|| view! {
-                <p class="hidden line-clamp-2 opacity-90 @xl:block">{props.subtitle.clone()}</p>
-            })}
-            {move || match left.get() {
-                None => view! {
-                    <div class="flex gap-3">
-                        {(0..4).map(|_| view! { <Skeleton class="h-16 w-16 bg-current/20"/> }).collect_view()}
-                    </div>
-                }
-                .into_any(),
-                // Sin fecha: al dueño se le pide que la elija; en la tienda no
-                // se dibujan cajas vacías.
-                Some(None) => editing
-                    .then(|| view! { <p class="text-sm font-semibold opacity-80">"Elegí cuándo termina la oferta"</p> })
-                    .into_any(),
-                Some(Some(0)) => view! { <p class="text-xl font-semibold">{ended_text.clone()}</p> }.into_any(),
-                Some(Some(s)) => {
-                    let parts = split_seconds(s);
-                    view! {
-                        <div class="grid auto-cols-max grid-flow-col gap-3">
-                            {parts
-                                .iter()
-                                .zip(units)
-                                .map(|(v, unit)| {
-                                    let style = format!("--value:{v}; --digits:2;");
-                                    view! {
-                                        <div class="mk-unit flex flex-col items-center rounded-box px-3 py-2">
-                                            <span class="countdown font-mono text-3xl">
-                                                <span style=style aria-live=(!editing).then_some("polite") aria-label=v.to_string()>{v.to_string()}</span>
-                                            </span>
-                                            <span class="text-xs">{unit}</span>
-                                        </div>
-                                    }
-                                })
-                                .collect_view()}
-                        </div>
-                    }
-                    .into_any()
-                }
-            }}
-            {has_button.then(|| view! {
-                <a
-                    class="mk-btn btn btn-sm"
-                    href=(!editing).then(|| props.button_href.clone())
-                    data-href=(editing && !props.button_href.is_empty()).then(|| props.button_href.clone())
-                >
-                    {props.button_label.clone()}
-                </a>
-            })}
-        </div>
-    }
 }
 
 /// Historia destacada (diseños: lado a lado, panorámica, retrato).
@@ -2272,29 +1189,6 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
     }
 }
 
-#[component]
-pub fn TabsWidget(props: TabsProps, group: String) -> impl IntoView {
-    view! {
-        <div class="mk-box mk-tabs tabs tabs-box h-full content-start overflow-hidden bg-base-200">
-            {props
-                .tabs
-                .into_iter()
-                .enumerate()
-                .map(|(i, t)| {
-                    // Sin nombre, la pestaña sería un cuadradito vacío.
-                    let label = if t.label.trim().is_empty() { format!("Pestaña {}", i + 1) } else { t.label };
-                    view! {
-                    <input type="radio" name=group.clone() class="tab" aria-label=label checked={i == 0}/>
-                    <div class="mk-item tab-content h-[calc(100%-3rem)] overflow-auto rounded-box border-base-300 bg-base-100 p-4">
-                        <p class="whitespace-pre-line">{t.body}</p>
-                    </div>
-                    }
-                })
-                .collect_view()}
-        </div>
-    }
-}
-
 /// Preguntas frecuentes (diseños: líneas simples, acordeones enmarcados, índice lateral).
 #[component]
 pub fn FaqWidget(props: FaqProps, #[prop(default = false)] editing: bool) -> impl IntoView {
@@ -2324,36 +1218,6 @@ pub fn FaqWidget(props: FaqProps, #[prop(default = false)] editing: bool) -> imp
                 </div>
             </section>
         </div>
-    }
-}
-
-#[component]
-pub fn HoverGalleryWidget(props: HoverGalleryProps, editing: bool) -> impl IntoView {
-    let title = props.title.clone();
-    view! {
-        <MaybeLink href=props.href.clone() editing class="mk-box mk-hgal card card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm">
-            <div class="skeleton relative min-h-0 flex-1 rounded-none">
-                <figure class="hover-gallery absolute inset-0 h-full">
-                    // Las fotos que aparecen al pasar el mouse son variantes de
-                    // la primera: solo la primera se anuncia.
-                    {props
-                        .images
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, img)| {
-                            let alt = if i == 0 { title.clone() } else { String::new() };
-                            view! { <Picture src=img.image_url alt class="block h-full w-full object-cover"/> }
-                        })
-                        .collect_view()}
-                </figure>
-            </div>
-            <div class="card-body grow-0 shrink-0 gap-0">
-                <h3 class="mk-sub card-title text-sm truncate block">{props.title.clone()}</h3>
-                {(!props.subtitle.is_empty()).then(|| view! {
-                    <p class="text-xs opacity-70 truncate">{props.subtitle.clone()}</p>
-                })}
-            </div>
-        </MaybeLink>
     }
 }
 
@@ -2397,49 +1261,6 @@ pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
                 })
                 .collect_view()}
         </div>
-    }
-}
-
-#[component]
-pub fn LogosWidget(props: LogosProps, editing: bool) -> impl IntoView {
-    view! {
-        <div class="mk-box mk-logos flex h-full flex-col justify-center gap-2 overflow-hidden rounded-box bg-base-100 px-4 py-3">
-            {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-sub text-center text-xs font-semibold uppercase tracking-wide opacity-75 truncate">{props.title.clone()}</h2>
-            })}
-            <div class="flex items-center justify-center-safe gap-8 relative overflow-x-auto">
-                {props
-                    .items
-                    .into_iter()
-                    .map(|l| view! {
-                        <MaybeLink href=l.href editing class="mk-logo block shrink-0">
-                            // Sin imagen, el nombre de la marca escrito (no una imagen rota).
-                            {l.image_url.trim().is_empty().then(|| view! {
-                                <span class="block whitespace-nowrap text-lg font-bold leading-8 tracking-tight opacity-80">{l.alt.clone()}</span>
-                            })}
-                            <img
-                                hidden=l.image_url.trim().is_empty()
-                                class="h-8 w-auto max-w-40 shrink-0 object-contain opacity-70 grayscale transition hover:opacity-100 hover:grayscale-0"
-                                src=l.image_url
-                                alt=l.alt
-                                draggable="false"
-                                loading="lazy"
-                                decoding="async"
-                            />
-                        </MaybeLink>
-                    })
-                    .collect_view()}
-            </div>
-        </div>
-    }
-}
-
-#[component]
-pub fn ImageWidget(props: ImageProps, editing: bool) -> impl IntoView {
-    view! {
-        <MaybeLink href=props.href.clone() editing class="mk-box mk-image block h-full overflow-hidden rounded-box">
-            <Image src=props.image_url.clone() alt=props.alt.clone() contain=props.fit == "contain"/>
-        </MaybeLink>
     }
 }
 
@@ -2727,47 +1548,6 @@ fn or_store(own: &str, store: &str) -> String {
         own
     }
     .to_string()
-}
-
-#[cfg(test)]
-mod float_tests {
-    use super::*;
-    use domain::{Pos, Size};
-
-    fn at(id: &str, w: Widget, y: u16, h: u8) -> Node {
-        let mut n = Node::new(id, w);
-        n.pos = Pos { x: 0, y };
-        n.size = Size { w: 48, h };
-        n
-    }
-
-    #[test]
-    fn floating_social_leaves_no_gap() {
-        let mut social = Widget::defaults("Social").unwrap();
-        if let Widget::Social(p) = &mut social {
-            p.variant = "b".into();
-        }
-        let nodes = vec![
-            at("a", Widget::defaults("Text").unwrap(), 0, 10),
-            at("s", social, 10, 6),
-            at("b", Widget::defaults("Text").unwrap(), 16, 10),
-        ];
-        let out = page_nodes(&nodes);
-        assert_eq!(out[1].0, "mk-node mk-node-fixed");
-        assert!(out[2].1.contains("--y:11;"), "{}", out[2].1);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::split_seconds;
-
-    #[test]
-    fn splits_seconds_into_units() {
-        assert_eq!(split_seconds(0), [0, 0, 0, 0]);
-        assert_eq!(split_seconds(90_061), [1, 1, 1, 1]);
-        assert_eq!(split_seconds(-5), [0, 0, 0, 0]);
-    }
 }
 
 /// Cambia los datos de la dirección (lo que va después de `?`) sin recargar

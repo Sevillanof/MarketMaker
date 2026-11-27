@@ -716,9 +716,85 @@ pub fn parse_doc(mut value: serde_json::Value) -> Result<PageDoc, String> {
         }
         value["schema"] = serde_json::json!(SCHEMA_VERSION);
     }
+    migrate_removed_widgets(&mut value);
     let mut doc: PageDoc = serde_json::from_value(value).map_err(|e| e.to_string())?;
     doc.link_shared();
     Ok(doc)
+}
+
+/// Tipos de bloque que ya no existen (los reemplazaron los widgets nuevos).
+const REMOVED_WIDGETS: &[&str] = &[
+    "TagFilter",
+    "TagList",
+    "TagCircles",
+    "TagSearch",
+    "TagTabs",
+    "CategoryTabs",
+    "CategorySide",
+    "CategoryCards",
+    "CategoryDrop",
+    "FeaturedProduct",
+    "Carousel",
+    "Countdown",
+    "Tabs",
+    "HoverGallery",
+    "Logos",
+    "Image",
+    "Coupon",
+    "Stats",
+    "Steps",
+    "ProductCarousel",
+    "Social",
+    "ProductImage",
+    "ProductName",
+    "ProductPrice",
+    "ProductDescription",
+    "ProductButton",
+];
+
+fn has_removed(nodes: Option<&serde_json::Value>) -> bool {
+    nodes.and_then(|n| n.as_array()).is_some_and(|nodes| {
+        nodes.iter().any(|n| {
+            n.get("type")
+                .and_then(|t| t.as_str())
+                .is_some_and(|t| REMOVED_WIDGETS.contains(&t))
+        })
+    })
+}
+
+/// Una tienda guardada con bloques que ya no existen: Inicio pasa a ser la
+/// tienda de ejemplo, la ficha vuelve a la nueva y en las otras páginas
+/// solo se quitan esos bloques.
+fn migrate_removed_widgets(value: &mut serde_json::Value) {
+    if has_removed(value.get("nodes")) {
+        let example = templates::template_doc("editorial", "");
+        if let Ok(serde_json::Value::Array(mut nodes)) =
+            serde_json::to_value(&example.nodes).map(|v| v)
+        {
+            for n in &mut nodes {
+                if let Some(id) = n.get("id").and_then(|i| i.as_str()) {
+                    n["id"] = serde_json::json!(format!("e{id}"));
+                }
+            }
+            value["nodes"] = serde_json::Value::Array(nodes);
+        }
+    }
+    if has_removed(value.pointer("/product_modal/nodes")) {
+        if let Some(o) = value.as_object_mut() {
+            o.remove("product_modal");
+        }
+    }
+    if let Some(pages) = value.get_mut("pages").and_then(|p| p.as_array_mut()) {
+        for page in pages {
+            if let Some(nodes) = page.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+                nodes.retain(|n| {
+                    !n.get("type")
+                        .and_then(|t| t.as_str())
+                        .is_some_and(|t| REMOVED_WIDGETS.contains(&t))
+                });
+            }
+        }
+    }
 }
 
 /// Después de un cambio (`before` → `after`): si cambió el contenido o las
@@ -1337,31 +1413,6 @@ pub fn validate(doc: &PageDoc) -> Result<(), Vec<String>> {
 mod tests {
     use super::*;
 
-    /// Las fichas guardadas antes de los estilos de foto y precio se siguen
-    /// viendo como antes (estilo clásico y solo el precio).
-    #[test]
-    fn old_product_photo_and_price_keep_their_look() {
-        let w: Widget = serde_json::from_value(
-            serde_json::json!({"type": "ProductImage", "props": {"fit": "cover"}}),
-        )
-        .unwrap();
-        let Widget::ProductImage(p) = w else {
-            panic!("foto")
-        };
-        assert_eq!(
-            (p.variant.as_str(), p.badge.as_str(), p.stock_note),
-            ("a", "", true)
-        );
-        let w: Widget =
-            serde_json::from_value(serde_json::json!({"type": "ProductPrice", "props": {}}))
-                .unwrap();
-        let Widget::ProductPrice(p) = w else {
-            panic!("precio")
-        };
-        assert_eq!(p.variant, "a");
-        assert!(p.show_installments && p.show_transfer);
-    }
-
     /// Menús y anuncios guardados antes de los estilos nuevos: se ven igual.
     #[test]
     fn old_navbar_and_announcement_keep_their_look() {
@@ -1454,8 +1505,8 @@ mod tests {
                 { "id": "n1", "type": "Banner",
                   "props": { "title": "Hola", "subtitle": "", "image_url": "", "button_label": "", "button_href": "" },
                   "pos": { "x": 0, "y": 0 }, "size": "half" },
-                { "id": "n2", "type": "FeaturedProduct",
-                  "props": { "product_id": "", "show_price": true },
+                { "id": "n2", "type": "Text",
+                  "props": { "heading": "", "body": "", "align": "left" },
                   "pos": { "x": 6, "y": 0 }, "size": "large" },
                 { "id": "n3", "type": "Text",
                   "props": { "heading": "", "body": "", "align": "left" },
@@ -1465,7 +1516,7 @@ mod tests {
         let doc = parse_doc(v1).unwrap();
         assert_eq!(doc.schema, SCHEMA_VERSION);
         assert_eq!(doc.nodes[0].size, Size { w: 24, h: 48 });
-        assert_eq!(doc.nodes[1].size, Size { w: 24, h: 60 });
+        assert_eq!(doc.nodes[1].size, Size { w: 24, h: 24 });
         assert_eq!(doc.nodes[1].pos, Pos { x: 24, y: 0 });
         assert_eq!(doc.nodes[2].pos, Pos { x: 0, y: 60 });
         assert_eq!(
@@ -1475,6 +1526,39 @@ mod tests {
         assert_eq!(validate(&doc), Ok(()));
         // Un documento actual pasa sin cambios.
         assert_eq!(parse_doc(serde_json::to_value(&doc).unwrap()), Ok(doc));
+    }
+
+    /// Una tienda guardada con widgets que ya no existen se abre con la
+    /// tienda de ejemplo y la ficha nueva; las otras páginas pierden esos bloques.
+    #[test]
+    fn stores_with_removed_widgets_are_migrated() {
+        let old = serde_json::json!({
+            "schema": SCHEMA_VERSION,
+            "theme": "light",
+            "nodes": [
+                { "id": "n1", "type": "Carousel", "props": {},
+                  "pos": { "x": 0, "y": 0 }, "size": { "w": 48, "h": 40 } }
+            ],
+            "product_modal": { "nodes": [
+                { "id": "m1", "type": "ProductImage", "props": { "fit": "cover" },
+                  "pos": { "x": 0, "y": 0 }, "size": { "w": 27, "h": 48 } }
+            ] },
+            "pages": [ { "path": "/ofertas", "name": "Ofertas", "nodes": [
+                { "id": "p1", "type": "Stats", "props": {},
+                  "pos": { "x": 0, "y": 0 }, "size": { "w": 48, "h": 10 } },
+                { "id": "p2", "type": "Text",
+                  "props": { "heading": "", "body": "", "align": "left" },
+                  "pos": { "x": 0, "y": 10 }, "size": { "w": 48, "h": 20 } }
+            ] } ]
+        });
+        let doc = parse_doc(old).unwrap();
+        assert!(doc
+            .nodes
+            .iter()
+            .any(|n| matches!(n.widget, Widget::Navbar(_))));
+        assert!(doc.product_modal.is_default());
+        assert_eq!(doc.pages[0].nodes.len(), 1);
+        assert_eq!(validate(&doc), Ok(()));
     }
 
     #[test]
@@ -1563,7 +1647,7 @@ mod tests {
     #[test]
     fn product_blocks_only_go_in_the_modal() {
         let mut doc = example();
-        doc.nodes.push(node("p1", "ProductPrice", 0, 200));
+        doc.nodes.push(node("p1", "ProductSheet", 0, 200));
         assert_invalid(&doc, "solo puede ir en la ficha");
 
         let mut doc = example();
@@ -1929,22 +2013,6 @@ mod tests {
     }
 
     #[test]
-    fn validates_list_items_and_length() {
-        let mut doc = PageDoc {
-            nodes: vec![node("c", "Carousel", 0, 0)],
-            ..PageDoc::default()
-        };
-        if let Widget::Carousel(c) = &mut doc.nodes[0].widget {
-            c.slides[1].button_href = "javascript:alert(1)".into();
-        }
-        assert_invalid(&doc, "Carrusel › Diapositivas 2 › Enlace del botón");
-        if let Widget::Carousel(c) = &mut doc.nodes[0].widget {
-            c.slides.clear();
-        }
-        assert_invalid(&doc, "entre 1 y 8 elementos");
-    }
-
-    #[test]
     fn validates_datetime() {
         assert_eq!(tidy_link(" www.google.com "), "https://www.google.com");
         assert_eq!(
@@ -1964,13 +2032,5 @@ mod tests {
         assert!(datetime_ok("2026-12-31T23:59:00"));
         assert!(datetime_ok(""));
         assert!(!datetime_ok("31/12/2026"));
-        let mut doc = PageDoc {
-            nodes: vec![node("o", "Countdown", 0, 0)],
-            ..PageDoc::default()
-        };
-        if let Widget::Countdown(c) = &mut doc.nodes[0].widget {
-            c.ends_at = "mañana".into();
-        }
-        assert_invalid(&doc, "fecha");
     }
 }

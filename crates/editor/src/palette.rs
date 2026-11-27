@@ -19,34 +19,9 @@ use crate::{Actions, EditorState, NewDrag, Ui};
 pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
     (
         "Del producto",
-        "ProductImage",
-        "image",
-        "La foto del producto que se abre",
-    ),
-    (
-        "Del producto",
-        "ProductName",
-        "type",
-        "Su nombre, como título",
-    ),
-    ("Del producto", "ProductPrice", "tag", "Su precio"),
-    (
-        "Del producto",
-        "ProductDescription",
-        "text",
-        "El texto que lo describe",
-    ),
-    (
-        "Del producto",
         "ProductSheet",
         "image",
         "La ficha completa del producto",
-    ),
-    (
-        "Del producto",
-        "ProductButton",
-        "button",
-        "Un botón para consultar o comprar",
     ),
     (
         "Encabezado",
@@ -54,112 +29,16 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "announce",
         "Una franja con un mensaje corto",
     ),
-    (
-        "Encabezado",
-        "Coupon",
-        "ticket",
-        "Un código de descuento para copiar",
-    ),
     ("Encabezado", "Navbar", "navbar", "Logo, nombre y enlaces"),
     ("Encabezado", "Banner", "banner", "Imagen grande con título"),
-    (
-        "Encabezado",
-        "Carousel",
-        "carousel",
-        "Varias imágenes que pasan solas",
-    ),
     ("Productos", "ProductGrid", "grid", "Tus productos en filas"),
-    (
-        "Productos",
-        "ProductCarousel",
-        "rail",
-        "Productos en una fila que se desliza",
-    ),
-    ("Productos", "TagTabs", "grid", "Productos por pestañas"),
-    (
-        "Productos",
-        "FeaturedProduct",
-        "featured",
-        "Un producto con foto y precio",
-    ),
-    (
-        "Productos",
-        "Countdown",
-        "countdown",
-        "Promoción con fecha de fin",
-    ),
     (
         "Productos",
         "Categories",
         "categories",
         "Fotos que llevan a donde quieras",
     ),
-    (
-        "Filtros y categorías",
-        "TagSearch",
-        "tags",
-        "Buscar y filtrar",
-    ),
-    (
-        "Filtros y categorías",
-        "TagFilter",
-        "tags",
-        "Pastillas para filtrar",
-    ),
-    (
-        "Filtros y categorías",
-        "TagList",
-        "tags",
-        "Casillas al costado",
-    ),
-    (
-        "Filtros y categorías",
-        "TagCircles",
-        "tags",
-        "Círculos con foto",
-    ),
-    (
-        "Filtros y categorías",
-        "CategoryTabs",
-        "categories",
-        "Botones para filtrar por categoría",
-    ),
-    (
-        "Filtros y categorías",
-        "CategorySide",
-        "categories",
-        "Categorías al costado",
-    ),
-    (
-        "Filtros y categorías",
-        "CategoryCards",
-        "categories",
-        "Categorías con foto",
-    ),
-    (
-        "Filtros y categorías",
-        "CategoryDrop",
-        "categories",
-        "Menú desplegable de categorías",
-    ),
-    (
-        "Filtros y categorías",
-        "CategoryPage",
-        "categories",
-        "Categoría con subcategorías",
-    ),
-    ("Contenido", "Text", "text", "Título y párrafo"),
-    ("Contenido", "Steps", "steps", "Cómo comprar, paso a paso"),
-    ("Contenido", "Social", "social", "Redes y botón de WhatsApp"),
     ("Contenido", "Card", "card", "Imagen, texto y botón"),
-    ("Contenido", "Image", "image", "Una imagen sola"),
-    (
-        "Contenido",
-        "HoverGallery",
-        "gallery",
-        "Fotos que cambian con el mouse",
-    ),
-    ("Contenido", "Tabs", "tabs", "Información en pestañas"),
     ("Contenido", "Faq", "faq", "Preguntas y respuestas"),
     (
         "Confianza",
@@ -173,14 +52,6 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
         "benefits",
         "Envíos, pagos, cambios",
     ),
-    ("Confianza", "Stats", "stats", "Números que dan confianza"),
-    ("Confianza", "Logos", "logos", "Marcas que vendés"),
-    (
-        "Contenido",
-        "Contact",
-        "contact",
-        "WhatsApp, Instagram, email y horario",
-    ),
     ("Pie", "Footer", "footer", "Datos y enlaces al final"),
 ];
 
@@ -189,7 +60,6 @@ const GROUPS: &[(&str, &str)] = &[
     ("Del producto", "modal"),
     ("Encabezado", "banner"),
     ("Productos", "grid"),
-    ("Filtros y categorías", "tags"),
     ("Contenido", "text"),
     ("Confianza", "benefits"),
     ("Pie", "footer"),
@@ -663,13 +533,7 @@ pub(crate) fn Thumb(
         return ().into_any();
     };
     let products = products.get_value();
-    let mut node = Node::new(format!("mk-pal-{type_name}"), widget);
-    // Un producto destacado sin elegir mostraría un aviso: se ve con el primero.
-    if let Widget::FeaturedProduct(p) = &mut node.widget {
-        if let Some(first) = products.first() {
-            p.product_id = first.id.clone();
-        }
-    }
+    let node = Node::new(format!("mk-pal-{type_name}"), widget);
     let product = in_modal.then(|| products.first().cloned().unwrap_or_else(sample_product));
     let ctx = RenderCtx {
         products,

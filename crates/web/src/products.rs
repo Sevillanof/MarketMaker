@@ -1013,7 +1013,10 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
             };
             let suffix = " (copia)";
             let room = domain::PRODUCT_NAME_MAX - suffix.chars().count();
-            copy.name = format!("{}{suffix}", copy.name.chars().take(room).collect::<String>());
+            copy.name = format!(
+                "{}{suffix}",
+                copy.name.chars().take(room).collect::<String>()
+            );
             copy.visible = false;
             copy.example = false;
             let saved = save_product(ctx.slug.get_value(), String::new(), copy.clone()).await?;
@@ -1090,14 +1093,16 @@ fn QuickPanel(ctx: ListCtx, product: Product) -> impl IntoView {
                 .collect_view()
         })
     };
-    let visible_toggle = move || view! {
-        <label class="flex cursor-pointer items-center justify-between gap-3 rounded-box border border-base-300 px-4 py-3">
-            <span><span class="block font-semibold">"En la tienda"</span>
-                <span class="block text-xs text-base-content/60">{move || if form.visible.get() { "Visible para los compradores" } else { "Oculto: no aparece en la tienda" }}</span></span>
-            <input type="checkbox" class="toggle toggle-primary"
-                prop:checked=move || form.visible.get()
-                on:change=move |ev| form.visible.set(event_target_checked(&ev))/>
-        </label>
+    let visible_toggle = move || {
+        view! {
+            <label class="flex cursor-pointer items-center justify-between gap-3 rounded-box border border-base-300 px-4 py-3">
+                <span><span class="block font-semibold">"En la tienda"</span>
+                    <span class="block text-xs text-base-content/60">{move || if form.visible.get() { "Visible para los compradores" } else { "Oculto: no aparece en la tienda" }}</span></span>
+                <input type="checkbox" class="toggle toggle-primary"
+                    prop:checked=move || form.visible.get()
+                    on:change=move |ev| form.visible.set(event_target_checked(&ev))/>
+            </label>
+        }
     };
     let photos = product.all_photos();
     let fit_of = StoredValue::new(product.clone());
@@ -2202,7 +2207,11 @@ fn ProductForm(slug: String, id: String, edit: ProductEdit, host: FichaHost) -> 
             dirty.set(false);
             saved.set(true);
             ui::use_notifier().success(
-                if id.get_untracked().is_empty() { "Producto creado" } else { "Producto guardado" },
+                if id.get_untracked().is_empty() {
+                    "Producto creado"
+                } else {
+                    "Producto guardado"
+                },
                 form.name.get_untracked().trim().to_string(),
             );
             if id.get_untracked().is_empty() {
@@ -2559,8 +2568,16 @@ fn SheetPreview(slug: String, product: Signal<Option<Product>>) -> impl IntoView
         let Some(b) = btn.get_untracked() else { return };
         let r = b.get_bounding_client_rect();
         let w = leptos::web_sys::window();
-        let vw = w.as_ref().and_then(|w| w.inner_width().ok()).and_then(|v| v.as_f64()).unwrap_or(1024.0);
-        let vh = w.as_ref().and_then(|w| w.inner_height().ok()).and_then(|v| v.as_f64()).unwrap_or(768.0);
+        let vw = w
+            .as_ref()
+            .and_then(|w| w.inner_width().ok())
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1024.0);
+        let vh = w
+            .as_ref()
+            .and_then(|w| w.inner_height().ok())
+            .and_then(|v| v.as_f64())
+            .unwrap_or(768.0);
         if vw < 640.0 {
             pos.set(String::new());
             return;
@@ -2568,9 +2585,17 @@ fn SheetPreview(slug: String, product: Signal<Option<Product>>) -> impl IntoView
         let right = (vw - r.right()).max(16.0);
         let below = vh - r.bottom() - 16.0;
         pos.set(if below >= 360.0 {
-            format!("top:{}px;right:{right}px;max-height:{}px", r.bottom() + 8.0, below - 8.0)
+            format!(
+                "top:{}px;right:{right}px;max-height:{}px",
+                r.bottom() + 8.0,
+                below - 8.0
+            )
         } else {
-            format!("bottom:{}px;right:{right}px;max-height:{}px", vh - r.top() + 8.0, r.top() - 24.0)
+            format!(
+                "bottom:{}px;right:{right}px;max-height:{}px",
+                vh - r.top() + 8.0,
+                r.top() - 24.0
+            )
         });
     };
     view! {

@@ -654,7 +654,10 @@ pub fn invitation(to: &str, url: &str, words: &domain::InviteText) -> Email {
         ],
         "Crear mi cuenta",
         "Tu enlace personal para crear la cuenta.",
-        &format!("El enlace es personal y vence en {} días.", db::auth::INVITE_DAYS),
+        &format!(
+            "El enlace es personal y vence en {} días.",
+            db::auth::INVITE_DAYS
+        ),
     )
 }
 
@@ -675,7 +678,10 @@ pub fn team_invitation(
     }
     .map(|(a, b)| (fill(a), fill(b)))
     .collect();
-    let steps: Vec<(&str, &str)> = steps.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    let steps: Vec<(&str, &str)> = steps
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
     let (button, note) = if has_account {
         (
             fill(domain::TEAM_BUTTON_OLD),
@@ -684,10 +690,21 @@ pub fn team_invitation(
     } else {
         (
             domain::TEAM_BUTTON_NEW.to_string(),
-            format!("El enlace es personal y vence en {} días.", db::auth::INVITE_DAYS),
+            format!(
+                "El enlace es personal y vence en {} días.",
+                db::auth::INVITE_DAYS
+            ),
         )
     };
-    invitation_with(to, url, words, &steps, &button, "Tu enlace personal para sumarte al equipo.", &note)
+    invitation_with(
+        to,
+        url,
+        words,
+        &steps,
+        &button,
+        "Tu enlace personal para sumarte al equipo.",
+        &note,
+    )
 }
 
 fn invitation_with(
@@ -1410,7 +1427,9 @@ pub async fn tell_cancelled(pool: &db::Pool, tenant: uuid::Uuid, o: Order, what:
 pub fn cart_reminder(store_name: &str, slug: &str, o: &Order) -> Email {
     let base = store_url(slug);
     let url = format!("{base}/comprar");
-    let mut rows = String::from(r#"<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:16px">"#);
+    let mut rows = String::from(
+        r#"<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:16px">"#,
+    );
     let mut text = String::new();
     for i in &o.items {
         let what = [i.color.as_str(), i.size.as_str()]

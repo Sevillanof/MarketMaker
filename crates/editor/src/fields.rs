@@ -1153,31 +1153,31 @@ mod tests {
 
     #[test]
     fn new_list_item_keeps_the_photo_but_not_the_texts() {
-        let fields = Widget::defaults("Carousel").unwrap().fields();
-        let FieldKind::List { item, .. } = &fields[0].kind else {
+        let fields = Widget::defaults("Categories").unwrap().fields();
+        let list = fields.iter().find(|f| f.key == "items").unwrap();
+        let FieldKind::List { item, .. } = &list.kind else {
             panic!("se esperaba una lista");
         };
         let last = serde_json::json!({
-            "image_url": "/media/a.avif", "title": "Ofertas", "subtitle": "Hasta el domingo",
-            "button_label": "Ver", "button_href": "/ofertas"
+            "image_url": "/media/a.avif", "label": "Ofertas", "href": "/ofertas"
         });
         let v = new_list_item(std::slice::from_ref(&last), item);
         assert_eq!(v["image_url"], "/media/a.avif");
-        assert_eq!(v["title"], "");
-        assert_eq!(v["button_href"], "");
+        assert_eq!(v["label"], "");
+        assert_eq!(v["href"], "");
     }
 
     #[test]
     fn new_list_item_has_every_field() {
         let fields = Widget::defaults("Testimonials").unwrap().fields();
-        let FieldKind::List { item, .. } = &fields[1].kind else {
+        let list = fields.iter().find(|f| f.key == "items").unwrap();
+        let FieldKind::List { item, .. } = &list.kind else {
             panic!("se esperaba una lista");
         };
         let v = new_list_item(&[], item);
-        assert_eq!(
-            v,
-            serde_json::json!({ "name": "", "text": "", "rating": 1 })
-        );
+        assert_eq!(v["text"], "");
+        assert_eq!(v["name"], "");
+        assert_eq!(v["rating"], 1);
     }
 
     #[test]

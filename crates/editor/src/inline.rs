@@ -446,6 +446,6 @@ mod tests {
         let mut doc = doc_with(Widget::defaults("Banner").unwrap());
         set_text(&mut doc, "n1", &TextPath::Top("title"), "Nuevo título");
         let spots = text_spots(&doc.node("n1").unwrap().widget);
-        assert_eq!(spots[0].value, "Nuevo título");
+        assert!(spots.iter().any(|s| s.value == "Nuevo título"));
     }
 }

@@ -436,11 +436,13 @@ pub async fn store_admin(slug: String) -> Result<Option<(String, bool)>, ServerF
     // Pausar, cambiar la dirección y borrar son solo del dueño.
     let me = crate::auth::current_user().await?;
     let is_owner = match me {
-        Some(u) => db::auth::role_in(&pool()?, tenant.id, u.id)
-            .await
-            .map_err(internal)?
-            .as_deref()
-            == Some("owner"),
+        Some(u) => {
+            db::auth::role_in(&pool()?, tenant.id, u.id)
+                .await
+                .map_err(internal)?
+                .as_deref()
+                == Some("owner")
+        }
         None => false,
     };
     if !is_owner {

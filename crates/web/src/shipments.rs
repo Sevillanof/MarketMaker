@@ -300,7 +300,8 @@ async fn label(
     let Ok(Some(tenant)) = db::orders::tenant_of(&pool, order).await else {
         return fail(StatusCode::NOT_FOUND, "Ese pedido no existe.");
     };
-    if !matches!(db::auth::role_in(&pool, tenant, user.id).await, Ok(Some(ref r)) if domain::role_rank(r) >= domain::role_rank("admin")) {
+    if !matches!(db::auth::role_in(&pool, tenant, user.id).await, Ok(Some(ref r)) if domain::role_rank(r) >= domain::role_rank("admin"))
+    {
         return fail(StatusCode::NOT_FOUND, "Ese pedido no existe.");
     }
     let Ok(Some(o)) = db::orders::get(&pool, tenant, order).await else {

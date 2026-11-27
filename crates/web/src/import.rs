@@ -55,7 +55,9 @@ pub async fn import_products(
     }
     let note = match (skipped, over) {
         (0, 0) => None,
-        (s, 0) => Some(format!("{s} no se importaron porque tenían algo para corregir.")),
+        (s, 0) => Some(format!(
+            "{s} no se importaron porque tenían algo para corregir."
+        )),
         (_, o) => Some(format!(
             "{o} no entraron: la tienda llegó al máximo de {} productos.",
             db::products::MAX_PER_TENANT
@@ -157,10 +159,7 @@ fn Cell(
     #[prop(optional)] numeric: bool,
     #[prop(optional)] bold: bool,
 ) -> impl IntoView {
-    let bad = move || {
-        !flag.is_empty()
-            && problem_of(rows, id).is_some_and(|p| fold_has(&p, flag))
-    };
+    let bad = move || !flag.is_empty() && problem_of(rows, id).is_some_and(|p| fold_has(&p, flag));
     view! {
         <td class:num=numeric>
             <input class="mk-cell" class:font-semibold=bold class:text-right=numeric
@@ -288,7 +287,13 @@ pub fn ImportDialog(
     let current = Memo::new(move |_| page.get().min(pages.get() - 1));
     let on_page = Memo::new(move |_| {
         let from = current.get() * PER_PAGE;
-        ids.with(|v| v.iter().skip(from).take(PER_PAGE).copied().collect::<Vec<_>>())
+        ids.with(|v| {
+            v.iter()
+                .skip(from)
+                .take(PER_PAGE)
+                .copied()
+                .collect::<Vec<_>>()
+        })
     });
     let first_problem = Memo::new(move |_| {
         on_page.with(|v| {
@@ -409,7 +414,11 @@ pub fn ImportDialog(
             .unwrap_or_default()
     };
 
-    let stat = move |label_one: &'static str, label_many: &'static str, n: Signal<usize>, which: Show, tone: &'static str| {
+    let stat = move |label_one: &'static str,
+                     label_many: &'static str,
+                     n: Signal<usize>,
+                     which: Show,
+                     tone: &'static str| {
         view! {
             <button type="button" class="mk-imp-stat"
                 aria-pressed=move || (show.get() == which).to_string()

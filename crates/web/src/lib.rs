@@ -173,7 +173,6 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/entrar/pase") view=platform::PassPage ssr=SsrMode::Async/>
                     <Route path=path!("/dev/widgets") view=dev::DevWidgetsPage/>
                     <Route path=path!("/dev/designs") view=dev::DevDesignsPage/>
-                    <Route path=path!("/dev/ficha") view=dev::DevProductStylesPage/>
                     <Route path=path!("/dev/menus") view=dev::DevMenusPage/>
                     // Lo guardado sin publicar, para la vista de celular del editor.
                     <Route path=path!("/vista-previa") view=DraftPreviewPage ssr=SsrMode::Async/>
@@ -395,7 +394,12 @@ fn StoreMeta(view: domain::PageView) -> impl IntoView {
             .map(absolute);
         // Datos para Google (precio y disponibilidad en los resultados) y
         // dirección canónica de la ficha.
-        let url = format!("{}://{}/?ver={}", site::scheme(), site::current_host(), p.id);
+        let url = format!(
+            "{}://{}/?ver={}",
+            site::scheme(),
+            site::current_host(),
+            p.id
+        );
         let photos: Vec<String> = std::iter::once(p.image_url.clone())
             .chain(p.photos.iter().cloned())
             .filter(|u| !u.is_empty())
