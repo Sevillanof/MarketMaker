@@ -1077,6 +1077,14 @@ pub fn encode_query(text: &str) -> String {
     out
 }
 
+/// Los enlaces a otro bloque de la página empiezan así (`#w-<id del bloque>`).
+pub const WIDGET_HREF_PREFIX: &str = "#w-";
+
+/// Enlace que baja hasta el bloque `node_id` de la misma página.
+pub fn widget_href(node_id: &str) -> String {
+    format!("{WIDGET_HREF_PREFIX}{node_id}")
+}
+
 /// A qué lleva un enlace, para el selector del editor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkKind {
@@ -1086,6 +1094,8 @@ pub enum LinkKind {
     Product,
     /// Una categoría ([`category_href`]).
     Category,
+    /// Otro bloque de la misma página ([`widget_href`]).
+    Widget,
     /// Otro sitio, un email, una parte de la página…
     Other,
 }
@@ -1093,7 +1103,9 @@ pub enum LinkKind {
 impl LinkKind {
     pub fn of(href: &str) -> Self {
         let h = href.trim();
-        if h.starts_with("/?ver=") {
+        if h.starts_with(WIDGET_HREF_PREFIX) {
+            LinkKind::Widget
+        } else if h.starts_with("/?ver=") {
             LinkKind::Product
         } else if h.starts_with("/?categoria=") {
             LinkKind::Category
@@ -1911,6 +1923,7 @@ mod tests {
         assert_eq!(LinkKind::of("/ofertas"), LinkKind::Page);
         assert_eq!(LinkKind::of(""), LinkKind::Page);
         assert_eq!(LinkKind::of("#contacto"), LinkKind::Other);
+        assert_eq!(LinkKind::of(&widget_href("abc123")), LinkKind::Widget);
         assert_eq!(LinkKind::of("https://x.com"), LinkKind::Other);
         assert!(url_ok(&category_href("Mesa y cocina")));
         assert!(url_ok(&product_href("0b1c-22")));
