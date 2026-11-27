@@ -9,7 +9,9 @@ use leptos::prelude::*;
 use leptos::tachys::reactive_graph::OwnedView;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use widgets::{render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx, ShareButton, SharePlace};
+use widgets::{
+    render_widget, sample_product, OpenProduct, ProductDialog, RenderCtx, ShareButton, SharePlace,
+};
 
 use crate::icons::Icon;
 use crate::inline::{inline_at, InlineEdit, InlineEditor};
@@ -336,14 +338,9 @@ pub(crate) fn Canvas(
     let frame = Memo::new(move |_| {
         // Siempre entra entera en el lienzo. El ancho se cambia desde
         // Márgenes en Mi tienda.
-        state.doc.with(|d| {
-            page_frame(
-                &d.layout,
-                None,
-                canvas_w.get(),
-                screen_w.get(),
-            )
-        })
+        state
+            .doc
+            .with(|d| page_frame(&d.layout, None, canvas_w.get(), screen_w.get()))
     });
     // Píxeles de pantalla por píxel de diseño de la capa que se edita.
     let scale = Memo::new(move |_| {

@@ -38,6 +38,12 @@ pub(crate) const BLOCKS: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "Del producto",
+        "ProductSheet",
+        "image",
+        "La ficha completa del producto",
+    ),
+    (
+        "Del producto",
         "ProductButton",
         "button",
         "Un botón para consultar o comprar",
@@ -397,7 +403,11 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
             + 56.0;
         let want = r.top() + r.height() / 2.0 - card_h / 2.0;
         let top = want.clamp(8.0, (vh - card_h - 8.0).max(8.0));
-        hover.set(Some(Hover { type_name, top, edge: n.left() }));
+        hover.set(Some(Hover {
+            type_name,
+            top,
+            edge: n.left(),
+        }));
     };
     let matches = move |type_name: &str, desc: &str, group: &str| {
         if !allowed(type_name) {

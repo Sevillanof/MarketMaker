@@ -526,7 +526,9 @@ impl StoreStyle {
         if !BACKGROUNDS.iter().any(|(k, ..)| *k == self.background) {
             errors.push("Fondo: Elegí uno de los colores.".into());
         }
-        if !self.bg_color.is_empty() && normalize_hex(&self.bg_color).as_deref() != Some(&self.bg_color) {
+        if !self.bg_color.is_empty()
+            && normalize_hex(&self.bg_color).as_deref() != Some(&self.bg_color)
+        {
             errors.push("Fondo: el color no es válido.".into());
         }
         if !self.bg_image.is_empty() && !safe_bg_image(&self.bg_image) {

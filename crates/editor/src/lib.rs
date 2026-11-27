@@ -13,11 +13,11 @@ mod icons;
 mod inline;
 mod inspector;
 mod look;
+mod page_map;
 mod palette;
 mod photos;
-mod page_map;
-mod rail;
 mod pictures;
+mod rail;
 pub use photos::{provide_photos, take_files, LinkImport, MyPhotos, UploadTray};
 
 /// Dirección del panel de la tienda en la plataforma. Si está en el contexto,
@@ -756,7 +756,8 @@ impl Actions {
                 p.name = name.clone();
             }
         });
-        self.ui.toast(format!("La página ahora se llama {name}."), true);
+        self.ui
+            .toast(format!("La página ahora se llama {name}."), true);
         true
     }
 
@@ -1087,17 +1088,14 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                         return;
                     };
                     let now = js_sys::Date::now();
-                    let mine = st
-                        .get_item(OPEN_KEY)
-                        .ok()
-                        .flatten()
-                        .map(|v| {
-                            let mut it = v.splitn(2, '|');
-                            let id = it.next().unwrap_or_default().to_string();
-                            let at = it.next().and_then(|t| t.parse::<f64>().ok()).unwrap_or(0.0);
-                            (id, at)
-                        });
-                    let foreign = matches!(&mine, Some((id, at)) if *id != tab_id && now - *at < 6000.0);
+                    let mine = st.get_item(OPEN_KEY).ok().flatten().map(|v| {
+                        let mut it = v.splitn(2, '|');
+                        let id = it.next().unwrap_or_default().to_string();
+                        let at = it.next().and_then(|t| t.parse::<f64>().ok()).unwrap_or(0.0);
+                        (id, at)
+                    });
+                    let foreign =
+                        matches!(&mine, Some((id, at)) if *id != tab_id && now - *at < 6000.0);
                     if foreign && !claim {
                         other_tab.set(true);
                         return;

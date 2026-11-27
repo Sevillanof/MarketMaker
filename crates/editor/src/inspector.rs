@@ -13,12 +13,11 @@ use crate::fields::{ButtonGroup, PropField};
 use crate::icons::Icon;
 use crate::look::{swatch_class, BlockLook};
 use crate::page_map::{Mini, PageMap, Shortcuts};
+use crate::palette::block_info;
 use crate::palette::Palette;
 use crate::store_drawer::StoreDrawer;
-use crate::palette::block_info;
 use crate::typography::BlockTypography;
 use crate::{size_badge, Actions, EditorState, Tool, Ui, WIDTHS};
-
 
 /// Alto en píxeles de `h` filas.
 fn rows_to_px(h: u8) -> u32 {
@@ -316,7 +315,11 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
 
     let state = expect_context::<EditorState>();
     // Con bloques sin nada para escribir se abre directo el estilo.
-    let open = RwSignal::new(Some(if no_fields { Section::Look } else { Section::Content }));
+    let open = RwSignal::new(Some(if no_fields {
+        Section::Look
+    } else {
+        Section::Content
+    }));
     // Al intentar guardar con errores, los campos están en Contenido.
     Effect::new(move |_| {
         if ui.show_errors.get() {
@@ -324,7 +327,12 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
         }
     });
     let node_look = Memo::new(move |_| {
-        state.doc.with(|d| sid.with_value(|id| d.node(id).map(|n| (n.look.clone(), n.size, n.style.clone()))))
+        state.doc.with(|d| {
+            sid.with_value(|id| {
+                d.node(id)
+                    .map(|n| (n.look.clone(), n.size, n.style.clone()))
+            })
+        })
     });
     let look_summary = move || {
         node_look.with(|n| {
@@ -348,7 +356,8 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     };
     let size_summary = move || {
         node_look.with(|n| {
-            n.as_ref().map_or_else(String::new, |(_, size, _)| size_badge(*size))
+            n.as_ref()
+                .map_or_else(String::new, |(_, size, _)| size_badge(*size))
         })
     };
     let letters_summary = move || {

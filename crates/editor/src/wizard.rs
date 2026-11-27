@@ -8,12 +8,11 @@
 //! opción está en `domain::wizard`.
 
 use domain::wizard::{
-    self, Change, Section, WizardPick, BG_KINDS, HERO_HEIGHTS, WIZARD, WIZARD_COLORS,
-    WIZARD_STEPS,
+    self, Change, Section, WizardPick, BG_KINDS, HERO_HEIGHTS, WIZARD, WIZARD_COLORS, WIZARD_STEPS,
 };
 use domain::{
-    Layer, Node, Product, Widget, ALIGN_OPTIONS, CARD_STYLE_OPTIONS, DESIGNS, FONTS,
-    MAX_BG_DIM, NAV_MENU_OPTIONS, NAV_TONE_OPTIONS, ROW_PX, TEXT_ANIMATIONS,
+    Layer, Node, Product, Widget, ALIGN_OPTIONS, CARD_STYLE_OPTIONS, DESIGNS, FONTS, MAX_BG_DIM,
+    NAV_MENU_OPTIONS, NAV_TONE_OPTIONS, ROW_PX, TEXT_ANIMATIONS,
 };
 use leptos::prelude::*;
 use serde_json::Value;
@@ -93,7 +92,9 @@ fn content_rows(section: Section) -> &'static [RowSpec] {
 const COLOR_VARS: [&str; 4] = ["primary", "secondary", "accent", "neutral"];
 
 /// Colores sugeridos para el fondo de la web.
-const BG_PRESETS: [&str; 6] = ["#f3f4f6", "#ffffff", "#e0e7ff", "#fce7f3", "#d1fae5", "#1f2937"];
+const BG_PRESETS: [&str; 6] = [
+    "#f3f4f6", "#ffffff", "#e0e7ff", "#fce7f3", "#d1fae5", "#1f2937",
+];
 
 /// Ancho de la página en el escenario, en píxeles de pantalla.
 const PAGE_W: f64 = 640.0;
@@ -331,7 +332,11 @@ fn Group(name: &'static str, d: u8, children: Children) -> impl IntoView {
 }
 
 /// Panel del primer paso: el fondo de la web, que queda debajo de los bloques.
-fn background_panel(pick: RwSignal<WizardPick>, style: String, theme: impl Fn() -> String + Copy + Send + Sync + 'static) -> AnyView {
+fn background_panel(
+    pick: RwSignal<WizardPick>,
+    style: String,
+    theme: impl Fn() -> String + Copy + Send + Sync + 'static,
+) -> AnyView {
     let kind = move || pick.with(|p| p.bg_kind);
     let set_color = move |c: String| {
         pick.update(|p| {
@@ -343,7 +348,11 @@ fn background_panel(pick: RwSignal<WizardPick>, style: String, theme: impl Fn() 
     };
     let custom_value = move || {
         let c = pick.with(|p| p.bg_color.clone());
-        if c.is_empty() { "#ffffff".to_string() } else { c }
+        if c.is_empty() {
+            "#ffffff".to_string()
+        } else {
+            c
+        }
     };
     view! {
         <div class="mk-wiz-pin" style=style>
@@ -474,7 +483,11 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         if let Some(st) = storage() {
             _ = st.set_item(&seen_key.get_value(), "1");
         }
-        live.set(format!("Asistente abierto. Paso {} de {}.", s + 1, UI_STEPS));
+        live.set(format!(
+            "Asistente abierto. Paso {} de {}.",
+            s + 1,
+            UI_STEPS
+        ));
     };
 
     Effect::new(move |_| {
@@ -660,7 +673,9 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         confirm.set(false);
         clear_draft();
         ui.wizard_applied.update(|n| *n += 1);
-        actions.ui.announce("Armamos tu página. Podés deshacerlo con Ctrl y Z.");
+        actions
+            .ui
+            .announce("Armamos tu página. Podés deshacerlo con Ctrl y Z.");
     };
     let next = move |_| {
         if confirm.get_untracked() {
@@ -772,7 +787,9 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             } else {
                 match nodes.get()[i].clone() {
                     Some(n) => scaled(&n, &ctx()),
-                    None => view! { <div class="mk-wiz-none">{none_label(section)}</div> }.into_any(),
+                    None => {
+                        view! { <div class="mk-wiz-none">{none_label(section)}</div> }.into_any()
+                    }
                 }
             }
         };
@@ -842,7 +859,9 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                 .collect::<Vec<_>>()
                 .join(", ");
             let p = pick.get_untracked();
-            let bg_changes = state.doc.with_untracked(|d| wizard::background_changes(&d.style, &p));
+            let bg_changes = state
+                .doc
+                .with_untracked(|d| wizard::background_changes(&d.style, &p));
             return view! {
                 <div class="mk-wiz-pin" style=style>
                     <div style="--d:0">
@@ -948,7 +967,8 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                     on_pick=Callback::new(move |v: String| set_over("tone", Value::String(v)))/>
             </div>
         });
-        let node_look = move || nodes.with(|n| n[st].as_ref().map(|n| (n.look.design, n.style.clone())));
+        let node_look =
+            move || nodes.with(|n| n[st].as_ref().map(|n| (n.look.design, n.style.clone())));
         let design = (s.section != Section::Footer).then(|| view! {
             <SelRow label="Estilo visual" id=format!("wz-{st}-design")
                 options=DESIGNS.iter().map(|(n, name, _)| (n.to_string(), name.to_string())).collect()
@@ -1025,7 +1045,8 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
             "Usar este y seguir"
         }
     };
-    let coach_show = move || coach.get() && step.get() > 0 && !intro.get() && !done.get() && !confirm.get();
+    let coach_show =
+        move || coach.get() && step.get() > 0 && !intro.get() && !done.get() && !confirm.get();
     let option_name = move || {
         let st = step.get().saturating_sub(1);
         let c = usize::from(pick.with(|p| p.choice[st]));

@@ -6,7 +6,7 @@
 //! el dedo sin JavaScript); las flechas, los puntitos y las miniaturas solo
 //! mueven ese carril. Las cuotas y el descuento por transferencia salen de
 //! Cobros, por el contexto [`domain::StoreInfo`].
-use domain::{PriceOffers, Product, ProductImageProps, ProductPriceProps};
+use domain::{PriceOffers, Product, ProductImageProps, ProductPriceProps, ProductSheetProps};
 use leptos::html::Div;
 use leptos::prelude::*;
 use ui::{format_price, Icon, Image, PriceWas};
@@ -969,4 +969,169 @@ pub fn VariantBuy(
             {cart.map(|cart| view! { <crate::cart::AddedNotice notice cart/> })}
         </div>
     }
+}
+
+/// La ficha completa (diseños: columnas clásicas, panel enmarcado, centrada).
+/// La foto con sus miniaturas, el nombre, el precio con las ofertas de
+/// Cobros, las opciones, la compra y la descripción (un `<details>`).
+#[component]
+pub fn ProductSheetWidget(
+    props: ProductSheetProps,
+    product: Option<Product>,
+    editing: bool,
+) -> impl IntoView {
+    let Some(p) = product else {
+        return view! { <div class="mk-nw"><div class="nw-pdp"></div></div> }.into_any();
+    };
+    let mut offers = use_context::<domain::StoreInfo>()
+        .map(|s| s.offers)
+        .unwrap_or_default();
+    if editing {
+        offers = offers.or_sample();
+    }
+    let cents = p.price_cents;
+    let off = p.discount_pct();
+    let per = props
+        .show_installments
+        .then(|| offers.installment_cents(cents))
+        .flatten();
+    let transfer = props
+        .show_transfer
+        .then(|| offers.transfer_cents(cents))
+        .flatten();
+    let (n, pct) = (offers.installments, offers.transfer_discount);
+    let few = props.show_stock.then(|| p.few_left()).flatten();
+
+    // Fotos y selección: al elegir un color, la foto va a la de ese color.
+    let mut photos = p.all_photos();
+    if photos.is_empty() {
+        photos.push(String::new());
+    }
+    let colors = p.variants.colors.clone();
+    let sel = RwSignal::new(0usize);
+    if let Some(pick) = use_context::<VariantPick>().filter(|_| !colors.is_empty()) {
+        let all = photos.clone();
+        Effect::new(move |_| {
+            let c = pick.color.get();
+            let found = colors
+                .iter()
+                .find(|x| x.name == c)
+                .and_then(|x| all.iter().position(|u| *u == x.photo));
+            if let Some(i) = found {
+                sel.set(i);
+            }
+        });
+    }
+    let photos = StoredValue::new(photos);
+    let total = photos.with_value(Vec::len);
+    let fits = StoredValue::new(p.photo_fits.clone());
+    let name = p.name.clone();
+    let alt = name.clone();
+    let main = move || {
+        let i = sel.get().min(total - 1);
+        let src = photos.with_value(|v| v[i].clone());
+        let fit = fits.with_value(|f| f.get(&src).copied());
+        view! { <Image src alt=alt.clone() fit initial=true/> }
+    };
+    let thumbs = (props.show_thumbs && total > 1).then(|| {
+        view! {
+            <div class="nw-pdp-thumbs">
+                {(0..total).map(|i| {
+                    let src = photos.with_value(|v| v[i].clone());
+                    let alt = format!("{}, foto {} de {total}", p.name, i + 1);
+                    let label = alt.clone();
+                    view! {
+                        <button type="button" class="nw-pdp-thumb" class:on=move || sel.get() == i
+                            aria-label=label aria-pressed=move || (sel.get() == i).to_string()
+                            on:click=move |_| sel.set(i)>
+                            <span class="nw-img"><Image src alt/></span>
+                        </button>
+                    }
+                }).collect_view()}
+            </div>
+        }
+    });
+    let tag = props.badge.trim().to_string();
+    let heart = props.show_favorite.then(|| {
+        view! { <crate::FavoriteHeart product_id=p.id.clone() name=p.name.clone()/> }
+    });
+    let share = (props.show_share && !editing)
+        .then(|| view! { <crate::ShareButton product=p.clone() on_photo=false inline=true/> });
+    let share_static = (props.show_share && editing).then(|| {
+        view! { <span class="nw-pdp-share"><span class="nw-pdp-sharebtn">"Compartir"</span></span> }
+    });
+    let category = (props.show_category && !p.category.is_empty()).then(|| p.category.clone());
+    let trust = props.show_trust.then(|| {
+        props
+            .trust
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(|l| view! { <li>{l.to_string()}</li> })
+            .collect_view()
+    });
+    let desc = (props.show_description && !p.description.is_empty()).then(|| {
+        view! {
+            <details class="nw-pdp-desc" open=props.desc_open>
+                <summary>{props.desc_title.clone()}</summary>
+                <p class="whitespace-pre-line">{p.description.clone()}</p>
+            </details>
+        }
+    });
+    let buy = if p.in_stock {
+        view! {
+            <div class="nw-pdp-buy" style=crate::nw_on_color(&props.button_color)>
+                <crate::cart::AddToCart product=Some(p.clone()) label=crate::product_button_label(&props.button_label) editing/>
+            </div>
+        }
+        .into_any()
+    } else {
+        view! { <div class="nw-pdp-buy"><button type="button" class="btn btn-primary mk-btn" disabled>"Agotado"</button></div> }
+            .into_any()
+    };
+    let mut style = format!(
+        "--pdp-ratio:{};--radius:{}px;",
+        props.ratio,
+        props.radius.clamp(0, 24)
+    );
+    style += &crate::nw_colors(&props.bg, &props.ink);
+    view! {
+        <div class="mk-nw">
+            <section class="nw-pdp" style=style>
+                <div class="nw-pdp-gallery">
+                    <div class="nw-pdp-main">
+                        <div class="nw-img">{main}</div>
+                        {(!tag.is_empty()).then(|| view! { <span class="nw-pdp-tag">{tag}</span> })}
+                        {heart}
+                    </div>
+                    {thumbs}
+                </div>
+                <div class="nw-pdp-info">
+                    <div class="nw-pdp-top">
+                        <span>{category}</span>
+                        {share}{share_static}
+                    </div>
+                    <h3>{name}</h3>
+                    <div class="nw-pdp-price">
+                        <strong>{format_price(cents)}</strong>
+                        {(p.compare_at_cents > cents).then(|| view! {
+                            <s><span class="sr-only">"Antes "</span>{format_price(p.compare_at_cents)}</s>
+                        })}
+                        {off.map(|o| view! { <em>{format!("-{o}%")}</em> })}
+                    </div>
+                    {transfer.map(|c| view! {
+                        <p class="nw-pdp-line"><b>{format_price(c)}</b>{format!(" con transferencia ({pct} % menos)")}</p>
+                    })}
+                    {per.map(|c| view! {
+                        <p class="nw-pdp-line">{format!("{n} cuotas sin interés de ")}<b>{format_price(c)}</b></p>
+                    })}
+                    {few.map(|t| view! { <p class="nw-pdp-stock">{t}</p> })}
+                    {buy}
+                    {trust.map(|t| view! { <ul class="nw-pdp-trust">{t}</ul> })}
+                    {desc}
+                </div>
+            </section>
+        </div>
+    }
+    .into_any()
 }

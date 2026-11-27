@@ -78,7 +78,11 @@ fn BlocksPanel(products: StoredValue<Vec<Product>>) -> impl IntoView {
     let ui = expect_context::<Ui>();
     let index = Signal::derive(move || state.page.get());
     let rows = rows_of(index);
-    let name = move || state.doc.with(|d| d.page_name(state.page.get()).to_string());
+    let name = move || {
+        state
+            .doc
+            .with(|d| d.page_name(state.page.get()).to_string())
+    };
     view! {
         <div class="flex flex-col gap-4">
             <div class="flex items-start gap-2">
@@ -228,21 +232,33 @@ pub(crate) fn Mini(type_name: &'static str, products: StoredValue<Vec<Product>>)
 
 /// Un bloque del mapa. Elegido, muestra sus ajustes rápidos.
 #[component]
-fn BlockItem(id: String, type_name: &'static str, products: StoredValue<Vec<Product>>) -> impl IntoView {
+fn BlockItem(
+    id: String,
+    type_name: &'static str,
+    products: StoredValue<Vec<Product>>,
+) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let actions = expect_context::<Actions>();
     let ui = expect_context::<Ui>();
     let sid = StoredValue::new(id.clone());
     let (_, description) = block_info(type_name);
     let label = label_of(type_name);
-    let selected = move || state.selected.with(|s| s.as_deref() == Some(sid.get_value().as_str()));
+    let selected = move || {
+        state
+            .selected
+            .with(|s| s.as_deref() == Some(sid.get_value().as_str()))
+    };
     let (body_id, name_id) = (format!("mk-map-block-{id}"), format!("mk-map-name-{id}"));
     let widget = state.node(&id).map(|n| n.widget);
     let fields = widget.as_ref().map(quick_fields).unwrap_or_default();
     // El título actual del bloque, como en la tienda; si no tiene, qué es.
     let title_key = widget
         .as_ref()
-        .and_then(|w| w.fields().iter().find(|f| matches!(f.kind, FieldKind::Text { .. })))
+        .and_then(|w| {
+            w.fields()
+                .iter()
+                .find(|f| matches!(f.kind, FieldKind::Text { .. }))
+        })
         .map(|f| f.key);
     let subtitle = move || {
         title_key
