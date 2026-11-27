@@ -22,9 +22,17 @@ type Row = (String, &'static str);
 pub(crate) fn PageMap(products: StoredValue<Vec<Product>>) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let actions = expect_context::<Actions>();
-    // Página desplegada. Sigue a la que se edita; se puede plegar a mano.
-    let expanded = RwSignal::new(Some(state.page.get_untracked()));
-    Effect::new(move |_| expanded.set(Some(state.page.get())));
+    // Páginas desplegadas: cada una se abre y se pliega por su cuenta (se
+    // pueden comparar dos). Al pasar a una página, se despliega sola.
+    let expanded = RwSignal::new(vec![state.page.get_untracked()]);
+    Effect::new(move |_| {
+        let page = state.page.get();
+        expanded.update(|e| {
+            if !e.contains(&page) {
+                e.push(page);
+            }
+        });
+    });
     let pages = Memo::new(move |_| {
         state.doc.with(|d| {
             (0..d.page_count())
@@ -64,12 +72,12 @@ pub(crate) fn PageMap(products: StoredValue<Vec<Product>>) -> impl IntoView {
 fn PageItem(
     index: usize,
     name: String,
-    expanded: RwSignal<Option<usize>>,
+    expanded: RwSignal<Vec<usize>>,
     products: StoredValue<Vec<Product>>,
     actions: Actions,
 ) -> impl IntoView {
     let state = expect_context::<EditorState>();
-    let is_open = move || expanded.get() == Some(index);
+    let is_open = move || expanded.with(|e| e.contains(&index));
     let is_current = move || state.page.get() == index;
     let body_id = format!("mk-map-page-{index}");
     // Un Memo: la lista se arma de nuevo solo si cambian los bloques o su
@@ -92,7 +100,13 @@ fn PageItem(
                     class="flex min-w-0 flex-1 items-center gap-2 rounded-box py-2.5 pl-3 pr-1 text-left text-sm font-semibold"
                     aria-expanded=move || is_open().to_string()
                     aria-controls=body_id.clone()
-                    on:click=move |_| expanded.set(if is_open() { None } else { Some(index) })
+                    on:click=move |_| expanded.update(|e| {
+                        if let Some(at) = e.iter().position(|p| *p == index) {
+                            e.remove(at);
+                        } else {
+                            e.push(index);
+                        }
+                    })
                 >
                     <span class="shrink-0 transition-transform" class=("-rotate-90", move || !is_open())>
                         <Icon name="chevron-down" class="h-4 w-4"/>
