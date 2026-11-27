@@ -329,7 +329,11 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     let look_summary = move || {
         node_look.with(|n| {
             let look = n.as_ref().map(|(l, _, _)| l.clone()).unwrap_or_default();
-            let name = DESIGNS.iter().find(|(d, _, _)| *d == look.design).map_or("Clásico", |(_, n, _)| *n);
+            let designs = state
+                .doc
+                .with_untracked(|d| sid.with_value(|id| d.node(id).map(|n| n.widget.designs())))
+                .unwrap_or(DESIGNS);
+            let name = designs.iter().find(|(d, _, _)| *d == look.design).map_or("Clásico", |(_, n, _)| *n);
             let dot = if look.color.starts_with('#') {
                 format!("background:{}", look.color)
             } else {

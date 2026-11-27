@@ -97,16 +97,48 @@ pub struct ProductButtonProps {
     pub qty: String,
 }
 
+/// Portada (diseños: marco editorial, fotografía inmersiva, arco).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
 pub struct BannerProps {
-    /// Antetítulo chico sobre el título (opcional; los documentos anteriores no lo traen).
-    #[serde(default)]
+    /// Antetítulo chico sobre el título.
     pub kicker: String,
+    pub show_kicker: bool,
     pub title: String,
     pub subtitle: String,
     pub image_url: String,
+    pub show_button: bool,
     pub button_label: String,
     pub button_href: String,
+    /// Color propio del botón (`#rrggbb`); vacío, el del tema.
+    pub button_color: String,
+    /// Oscuridad del velo sobre la foto en «Fotografía inmersiva» (0 a 90).
+    pub veil: i64,
+    /// Alineación del texto: `start` o `center`.
+    pub align: String,
+    /// Fondo y texto propios (`#rrggbb`); vacío, los del tema.
+    pub bg: String,
+    pub ink: String,
+}
+
+impl Default for BannerProps {
+    fn default() -> Self {
+        Self {
+            kicker: String::new(),
+            show_kicker: true,
+            title: "Bienvenidos a nuestra tienda".to_string(),
+            subtitle: "Escribí acá una frase sobre tu tienda".to_string(),
+            image_url: "/img/banner.webp".to_string(),
+            show_button: true,
+            button_label: String::new(),
+            button_href: String::new(),
+            button_color: String::new(),
+            veil: 68,
+            align: "start".to_string(),
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -242,29 +274,24 @@ pub struct NavbarProps {
     pub links: Vec<LinkItem>,
     pub button_label: String,
     pub button_href: String,
-    /// `a` clásico, `b` flotante sobre la portada, `c` logo al centro.
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    /// Fondo: `""` claro, `glass` vidrio, `dark` oscuro, `color` color del
-    /// bloque, `soft` color suave del bloque.
-    #[serde(default)]
-    pub tone: String,
     /// Enlaces en mayúsculas.
     #[serde(default)]
     pub upper: bool,
     /// Buscador de productos (filtra los productos de la página).
     #[serde(default)]
     pub search: bool,
-    /// En el desplegable «En columnas»: fondo con el color del bloque.
+    /// Tamaño del nombre de la tienda, en píxeles.
+    #[serde(default = "brand_size")]
+    pub size: i64,
+    /// Fondo y texto propios (`#rrggbb`); vacío, los del tema.
     #[serde(default)]
-    pub menu_color: bool,
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
 }
 
-impl NavbarProps {
-    /// Flota sobre el bloque de abajo (la portada).
-    pub fn floats(&self) -> bool {
-        self.variant == "b"
-    }
+fn brand_size() -> i64 {
+    26
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -436,29 +463,40 @@ fn variant_list() -> String {
     "list".to_string()
 }
 
+/// Franja fina con un mensaje corto (diseños: franja directa, etiqueta suave,
+/// nota enmarcada). Todo se edita: texto, etiqueta, enlace, colores y alto.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct AnnouncementItem {
-    pub text: String,
-    pub link_label: String,
-    pub link_href: String,
+#[serde(default)]
+pub struct AnnouncementProps {
+    pub message: String,
+    /// Etiqueta chica junto al mensaje (se ve en el diseño «Etiqueta suave»).
+    pub tag: String,
+    pub show_tag: bool,
+    /// A dónde lleva la barra al tocarla. Vacío: no es un enlace.
+    pub href: String,
+    /// `center` o `left`.
+    pub align: String,
+    /// Alto de la barra: relleno de arriba y abajo, en píxeles.
+    pub pad: i64,
+    /// Color de fondo propio (`#rrggbb`); vacío, el del tema.
+    pub bg: String,
+    /// Color del texto propio (`#rrggbb`); vacío, el del tema.
+    pub ink: String,
 }
 
-/// Franja fina con un mensaje corto. Estilos: `a` simple, `b` varios
-/// mensajes que rotan, `c` con botón para cerrarla.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct AnnouncementProps {
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    pub items: Vec<AnnouncementItem>,
-    /// Estilo `d` (cupón): el código que se copia, por ejemplo `HOTSALE`.
-    #[serde(default)]
-    pub code: String,
-    /// Estilo `d`: aclaración corta al costado, por ejemplo "Hasta el domingo".
-    #[serde(default)]
-    pub note: String,
-    /// Estilo `d`: `notch` recortable, `solid` sólido, `soft` suave, `line` línea.
-    #[serde(default)]
-    pub coupon: String,
+impl Default for AnnouncementProps {
+    fn default() -> Self {
+        Self {
+            message: "Envíos a todo el país · 3 cuotas sin interés".to_string(),
+            tag: "Novedades".to_string(),
+            show_tag: true,
+            href: String::new(),
+            align: "center".to_string(),
+            pad: 12,
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 /// Franja con un código de descuento para copiar. El código es uno de los
@@ -654,13 +692,35 @@ pub const BENEFIT_ICON_OPTIONS: &[(&str, &str)] = &[
     ("clock", "Rapidez"),
 ];
 
+const HERO_ALIGN_OPTIONS: &[(&str, &str)] = &[("start", "A la izquierda"), ("center", "Centrado")];
 const BANNER_FIELDS: &[Field] = &[
+    field("show_kicker", "Mostrar antetítulo", FieldKind::Bool),
+    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
-    field("subtitle", "Subtítulo", text(160)),
-    field("image_url", "Imagen", FieldKind::Url),
-    adv("kicker", "Antetítulo", text(40)),
-    adv("button_label", "Texto del botón", text(30)),
-    adv("button_href", "Enlace del botón", FieldKind::Url),
+    field("subtitle", "Texto", text(160)),
+    field("image_url", "Foto", FieldKind::Url),
+    field("show_button", "Mostrar botón", FieldKind::Bool),
+    field("button_label", "Texto del botón", text(30)),
+    field("button_href", "Enlace del botón", FieldKind::Url),
+    field("button_color", "Color del botón", FieldKind::Color),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
+    field(
+        "align",
+        "Alineación del texto",
+        FieldKind::Select {
+            options: HERO_ALIGN_OPTIONS,
+        },
+    ),
+    field(
+        "veil",
+        "Oscuridad del velo sobre la foto",
+        FieldKind::Range {
+            min: 0,
+            max: 90,
+            unit: "%",
+        },
+    ),
 ];
 // La alineación del texto se elige en "Letras de este bloque" (`Node::style`);
 // `TextProps::align` queda como valor de partida de los documentos viejos.
@@ -837,29 +897,17 @@ const NAV_LINK_ITEM: &[Field] = &[
     adv("image_url", "Foto del panel ancho", FieldKind::Url),
 ];
 const NAVBAR_FIELDS: &[Field] = &[
-    field(
-        "variant",
-        "Estilo",
-        FieldKind::Select {
-            options: VARIANT_NAVBAR,
-        },
-    ),
-    field(
-        "tone",
-        "Fondo",
-        FieldKind::Select {
-            options: NAV_TONE_OPTIONS,
-        },
-    ),
     field("brand", "Nombre de la tienda", text(40)),
-    field("logo_url", "Logo", FieldKind::Url),
     field(
-        "menu",
-        "Desplegable",
-        FieldKind::Select {
-            options: NAV_MENU_OPTIONS,
+        "size",
+        "Tamaño del nombre",
+        FieldKind::Range {
+            min: 18,
+            max: 40,
+            unit: "px",
         },
     ),
+    field("logo_url", "Logo", FieldKind::Url),
     field(
         "links",
         "Enlaces",
@@ -869,13 +917,17 @@ const NAVBAR_FIELDS: &[Field] = &[
             max: 8,
         },
     ),
-    adv(
-        "menu_color",
-        "Desplegable en columnas con fondo de color",
-        FieldKind::Bool,
+    field(
+        "menu",
+        "Desplegable",
+        FieldKind::Select {
+            options: NAV_MENU_OPTIONS,
+        },
     ),
-    adv("search", "Buscador de productos", FieldKind::Bool),
-    adv("upper", "Enlaces en mayúsculas", FieldKind::Bool),
+    field("upper", "Enlaces en mayúsculas", FieldKind::Bool),
+    field("search", "Buscador de productos", FieldKind::Bool),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
     adv("button_label", "Texto del botón", text(30)),
     adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
@@ -1171,22 +1223,11 @@ const FOOTER_FIELDS: &[Field] = &[
     field("legal", "Texto legal", text(120)),
 ];
 
-pub const VARIANT_ANNOUNCEMENT: &[(&str, &str)] = &[
-    ("a", "Simple (muestra el primer mensaje)"),
-    ("b", "Mensajes que rotan"),
-    ("c", "Con botón para cerrarla"),
-    ("d", "Cupón con código para copiar"),
-];
 pub const COUPON_LOOK_OPTIONS: &[(&str, &str)] = &[
     ("", "Recortable (con muescas)"),
     ("solid", "Sólido"),
     ("soft", "Suave"),
     ("line", "Minimal, con línea"),
-];
-const ANNOUNCEMENT_ITEM: &[Field] = &[
-    field("text", "Mensaje", text(100)),
-    field("link_label", "Texto del enlace", text(30)),
-    field("link_href", "Enlace", FieldKind::Url),
 ];
 const COUPON_FIELDS: &[Field] = &[
     field("code", "Cupón", text(24)),
@@ -1200,34 +1241,28 @@ const COUPON_FIELDS: &[Field] = &[
         },
     ),
 ];
+const BAR_ALIGN_OPTIONS: &[(&str, &str)] = &[("center", "Centrado"), ("left", "A la izquierda")];
 const ANNOUNCEMENT_FIELDS: &[Field] = &[
+    field("message", "Mensaje", text(120)),
+    field("show_tag", "Mostrar etiqueta", FieldKind::Bool),
+    field("tag", "Etiqueta", text(20)),
+    field("href", "Al tocar el mensaje va a", FieldKind::Url),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
     field(
-        "variant",
-        "Estilo",
+        "align",
+        "Alineación",
         FieldKind::Select {
-            options: VARIANT_ANNOUNCEMENT,
+            options: BAR_ALIGN_OPTIONS,
         },
     ),
     field(
-        "items",
-        "Mensajes",
-        FieldKind::List {
-            item: ANNOUNCEMENT_ITEM,
-            min: 1,
-            max: 5,
-        },
-    ),
-    field("code", "Código del cupón (estilo cupón)", text(24)),
-    field(
-        "note",
-        "Aclaración (estilo cupón), ej. «Hasta el domingo»",
-        text(40),
-    ),
-    field(
-        "coupon",
-        "Forma del cupón",
-        FieldKind::Select {
-            options: COUPON_LOOK_OPTIONS,
+        "pad",
+        "Alto de la barra",
+        FieldKind::Range {
+            min: 6,
+            max: 28,
+            unit: "px",
         },
     ),
 ];
@@ -1504,6 +1539,37 @@ impl Widget {
         }
     }
 
+    /// Los widgets nuevos (de la maqueta de 30 diseños): su CSS está en
+    /// `style/widgets-new.css` y no usan los cinco estilos de siempre.
+    pub fn is_new_design(&self) -> bool {
+        matches!(
+            self,
+            Widget::Announcement(_) | Widget::Navbar(_) | Widget::Banner(_)
+        )
+    }
+
+    /// Los diseños que ofrece el widget: (número, nombre, descripción).
+    pub fn designs(&self) -> &'static [(u8, &'static str, &'static str)] {
+        match self {
+            Widget::Announcement(_) => &[
+                (1, "Franja directa", "Un mensaje centrado con el color principal"),
+                (2, "Etiqueta suave", "La información aparece junto a una pequeña etiqueta"),
+                (3, "Nota enmarcada", "Una superficie contenida con acento lateral"),
+            ],
+            Widget::Navbar(_) => &[
+                (1, "Equilibrado", "Marca a un lado y navegación en una línea"),
+                (2, "Marca al centro", "Dos niveles: marca y accesos arriba, páginas abajo"),
+                (3, "Menú contenido", "Una barra que se separa suavemente del fondo"),
+            ],
+            Widget::Banner(_) => &[
+                (1, "Marco editorial", "Texto y fotografía contenidos, con aire interior"),
+                (2, "Fotografía inmersiva", "La imagen ocupa el fondo y el texto queda en primer plano"),
+                (3, "Arco", "Un recorte curvo acompaña el texto sobre fondo abierto"),
+            ],
+            _ => crate::DESIGNS,
+        }
+    }
+
     /// Nombre para mostrar del tipo.
     pub fn label(&self) -> &'static str {
         let t = self.type_name();
@@ -1518,7 +1584,7 @@ impl Widget {
     /// defecto.
     pub fn limits(&self) -> SizeLimits {
         match self {
-            Widget::Banner(_) => limits(16, 48, 24, 96, 48, 48),
+            Widget::Banner(_) => limits(16, 48, 24, 120, 48, 68),
             Widget::Text(_) => limits(8, 48, 12, 96, 24, 24),
             Widget::ProductGrid(_) => limits(12, 48, 36, 255, 48, 96),
             Widget::TagFilter(_) => limits(12, 48, 7, 24, 48, 9),
@@ -1618,7 +1684,8 @@ impl Widget {
                 image_url: s("/img/banner.webp"),
                 button_label: String::new(),
                 button_href: String::new(),
-            }),
+            ..Default::default()
+        }),
             "Text" => Widget::Text(TextProps {
                 heading: s("Quiénes somos"),
                 body: s("Contá acá quiénes son, qué venden y cómo trabajan."),
@@ -1692,11 +1759,11 @@ impl Widget {
                 links: vec![link("Inicio", "/")],
                 button_label: String::new(),
                 button_href: String::new(),
-                variant: s("a"),
-                tone: String::new(),
                 upper: false,
                 search: false,
-                menu_color: false,
+                size: 26,
+                bg: String::new(),
+                ink: String::new(),
             }),
             "Carousel" => Widget::Carousel(CarouselProps {
                 slides: (1..=3)
@@ -1865,24 +1932,7 @@ impl Widget {
                 links: vec![link("Inicio", "/")],
                 legal: String::new(),
             }),
-            "Announcement" => Widget::Announcement(AnnouncementProps {
-                variant: s("a"),
-                items: vec![
-                    AnnouncementItem {
-                        text: s("Escribí acá un mensaje corto, por ejemplo tu envío gratis"),
-                        link_label: s("Ver productos"),
-                        link_href: s("/"),
-                    },
-                    AnnouncementItem {
-                        text: s("Escribí acá otro mensaje, por ejemplo tus cuotas"),
-                        link_label: String::new(),
-                        link_href: String::new(),
-                    },
-                ],
-                code: s("BIENVENIDA"),
-                note: String::new(),
-                coupon: String::new(),
-            }),
+            "Announcement" => Widget::Announcement(AnnouncementProps::default()),
             // El código se elige de los cupones de la tienda (lo completa el editor).
             "Coupon" => Widget::Coupon(CouponProps {
                 code: String::new(),

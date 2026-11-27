@@ -81,7 +81,8 @@ pub struct OpenProduct(pub RwSignal<Option<String>>);
 /// Dibuja un nodo dentro de su envoltorio de letras (`.mk-type`, ver
 /// [`domain::TextStyle`] y `style/tailwind.css`).
 pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
-    let class = format!("{} {} h-full", node.style.classes(), node.look.classes());
+    let nwl = if node.widget.is_new_design() { " mk-nwl" } else { "" };
+    let class = format!("{} {}{nwl} h-full", node.style.classes(), node.look.classes_max(node.widget.designs().len() as u8));
     let style = format!("{}; {}", node.style.css_vars(), node.look.css_vars());
     // Las tarjetas de producto leen su estilo del bloque que las contiene.
     let cards = match &node.widget {
@@ -757,7 +758,7 @@ pub fn node_style(node: &Node) -> String {
 /// con un margen negativo (ver `.mk-node-under`).
 pub fn page_nodes(nodes: &[Node]) -> Vec<(&'static str, String)> {
     let nodes = &collapse_floating(nodes);
-    let mut out: Vec<(&'static str, String)> = nodes
+    let out: Vec<(&'static str, String)> = nodes
         .iter()
         .map(|n| {
             if floats_alone(n) {
@@ -767,41 +768,6 @@ pub fn page_nodes(nodes: &[Node]) -> Vec<(&'static str, String)> {
             }
         })
         .collect();
-    for (k, nav) in nodes.iter().enumerate() {
-        let Widget::Navbar(p) = &nav.widget else {
-            continue;
-        };
-        if !p.floats() {
-            continue;
-        }
-        let (nx, nw) = (u32::from(nav.pos.x), u32::from(nav.size.w));
-        let bottom = u32::from(nav.pos.y) + u32::from(nav.size.h);
-        let under = nodes
-            .iter()
-            .enumerate()
-            .filter(|(i, n)| {
-                let (x, w) = (u32::from(n.pos.x), u32::from(n.size.w));
-                *i != k && u32::from(n.pos.y) >= bottom && x < nx + nw && nx < x + w
-            })
-            .min_by_key(|(_, n)| n.pos.y);
-        let Some((i, b)) = under else { continue };
-        if matches!(out[i].0, "mk-node mk-node-under") {
-            continue;
-        }
-        let lift = u32::from(b.pos.y) - u32::from(nav.pos.y);
-        out[k].0 = "mk-node mk-node-float";
-        out[i] = (
-            "mk-node mk-node-under",
-            format!(
-                "--x:{}; --y:{}; --w:{}; --h:{}; --lift:{lift}; --up:{}",
-                u32::from(b.pos.x) + 1,
-                u32::from(nav.pos.y) + 1,
-                b.size.w,
-                u32::from(b.size.h) + lift,
-                nav.size.h
-            ),
-        );
-    }
     out
 }
 
@@ -824,47 +790,56 @@ fn MaybeLink(
     }
 }
 
+/// Texto de un botón de widget nuevo: negro o blanco, el que más contraste da.
+fn nw_on_color(color: &str) -> String {
+    match domain::parse_hex(color) {
+        Some(rgb) => {
+            let text = if domain::prefers_black_text(rgb) { "#000" } else { "#fff" };
+            format!("--accent:{color};--on-accent:{text};")
+        }
+        None => String::new(),
+    }
+}
+
+/// Portada (diseños: marco editorial, fotografía inmersiva, arco).
 #[component]
 pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
-    let has_image = !props.image_url.is_empty();
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button =
-        !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
-    let root_class = if has_image {
-        "mk-box mk-banner mk-has-img @container hero relative h-full overflow-hidden rounded-box bg-base-200"
+    let has_button = props.show_button
+        && !props.button_label.is_empty()
+        && (editing || !props.button_href.trim().is_empty());
+    let copy_style = if props.align == "center" {
+        "align-items:center;text-align:center;"
     } else {
-        "mk-box mk-banner @container hero relative h-full overflow-hidden rounded-box bg-base-200"
+        ""
     };
-    let title_class = if props.title.chars().count() > 50 {
-        "mk-title mk-banner-title text-lg font-bold @xl:text-2xl"
-    } else {
-        "mk-title mk-banner-title text-xl font-bold @xl:text-3xl"
-    };
+    let root_style = format!(
+        "{}--nw-veil:{};",
+        nw_colors(&props.bg, &props.ink),
+        f64::from(props.veil.clamp(0, 90) as i32) / 100.0
+    );
     view! {
-        <div class=root_class>
-            {has_image.then(|| view! {
-                <div class="mk-banner-img absolute inset-0">
-                    <Image src=props.image_url.clone() alt=props.title.clone() eager=true/>
-                </div>
-                <div class="mk-banner-ov hero-overlay absolute inset-0"></div>
-            })}
-            <div class="mk-banner-body hero-content relative text-center">
-                <div class="mk-banner-panel max-w-xl">
-                    {(!props.kicker.is_empty()).then(|| view! {
-                        <p class="mk-kicker">{props.kicker.clone()}</p>
+        <div class="mk-nw h-full overflow-hidden">
+            <div class="nw-hero-wrap"><section class="nw-hero nw-veil" style=root_style>
+                <div class="nw-hero-copy" style=copy_style>
+                    {(props.show_kicker && !props.kicker.is_empty()).then(|| view! {
+                        <span class="nw-kicker">{props.kicker.clone()}</span>
                     })}
-                    // Los textos largos se achican un poco y se parten en
-                    // renglones parejos en vez de cortarse con «…».
-                    <h1 class=title_class><AnimText text=props.title.clone()/></h1>
-                    {(!props.subtitle.is_empty()).then(|| view! {
-                        <p class="mk-banner-sub py-3 text-sm @xl:text-base">{props.subtitle.clone()}</p>
-                    })}
+                    <h4><AnimText text=props.title.clone()/></h4>
+                    {(!props.subtitle.is_empty()).then(|| view! { <p>{props.subtitle.clone()}</p> })}
                     {has_button.then(|| view! {
-                        <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
+                        <span style=nw_on_color(&props.button_color)>
+                            <MaybeLink href=props.button_href.clone() editing class="nw-action">
+                                {format!("{} ↗", props.button_label)}
+                            </MaybeLink>
+                        </span>
                     })}
                 </div>
-            </div>
+                <div class="nw-hero-photo">
+                    <Image src=props.image_url.clone() alt="" eager=true/>
+                </div>
+            </section></div>
         </div>
     }
 }
@@ -1195,9 +1170,6 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
     let logo_url = or_store(&props.logo_url, &store.logo_url);
     let columns = props.menu == "columns";
     let wide = props.menu == "panel" || columns;
-    let centered = props.variant == "c";
-    let floats = props.floats();
-    let search = props.search;
     let links = props.links;
     let desktop = links
         .clone()
@@ -1274,14 +1246,14 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                 }
                 .into_any()
             };
-            let pop_class = match (pop_wide, columns && props.menu_color) {
-                (true, true) => "mk-navpop mk-navpop-wide mk-navpop-color @container",
-                (true, false) => "mk-navpop mk-navpop-wide @container",
-                _ => "mk-navpop",
+            let pop_class = if pop_wide {
+                "mk-navpop mk-navpop-wide @container"
+            } else {
+                "mk-navpop"
             };
             view! {
                 <li>
-                    <button type="button" class="mk-link btn btn-ghost btn-sm font-normal whitespace-nowrap"
+                    <button type="button" class="mk-link nw-linkbtn whitespace-nowrap"
                         popovertarget=pid.clone()
                         on:click=move |ev| place_popover(ev, &pid_click, pop_wide)>
                         {l.label}
@@ -1300,90 +1272,62 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
         .enumerate()
         .map(|(i, l)| mobile_link(l, editing, &format!("{uid}-mm{i}")))
         .collect_view();
-    // En el teléfono los espacios se achican para que entren el carrito y el menú.
-    let mut nav_class = String::from("mk-box mk-nav navbar @container h-full min-h-0 gap-4 max-sm:gap-1 rounded-box bg-base-100 px-4 shadow-sm");
-    if matches!(props.tone.as_str(), "glass" | "dark" | "color" | "soft") {
-        nav_class.push_str(" mk-tone-");
-        nav_class.push_str(&props.tone);
-    }
-    if floats {
-        nav_class.push_str(" mk-nav-float");
-    }
-    if centered {
-        nav_class.push_str(" mk-nav-center");
-    }
-    if props.upper {
-        nav_class.push_str(" mk-nav-upper");
-    }
-    let brand_view = view! {
-        // Angosto, el nombre se acorta con "…" antes que empujar el carrito
-        // fuera de la pantalla.
-        <MaybeLink href="/" editing class="mk-nav-brand flex min-w-0 items-center gap-2 @2xl:shrink-0">
-            {(!logo_url.is_empty()).then(|| view! {
-                // Un logo ancho (con el nombre adentro) se ve a su ancho, hasta 8 rem.
-                <img class="h-8 w-auto max-w-32 min-w-8 shrink-0 object-contain object-left" src=logo_url.clone() alt="" draggable="false"/>
-            })}
-            <span class="mk-brand mk-h truncate text-lg font-bold">{brand}</span>
-        </MaybeLink>
+    // «nido.»: un punto al final del nombre va en el color de acento.
+    let (brand_main, brand_dot) = match brand.strip_suffix('.') {
+        Some(main) => (main.to_string(), true),
+        None => (brand.clone(), false),
     };
-    let burger = view! {
-        <button type="button" class="btn btn-ghost btn-square @2xl:hidden" aria-label="Abrir el menú"
-            popovertarget=mobile_id.clone()
-            on:click=move |ev| place_popover(ev, &mobile_click, true)>
-            <Icon name="menu" class="h-6 w-6"/>
-        </button>
-    };
-    let tools = view! {
-        {search.then(|| view! { <NavSearch editing class="hidden @2xl:block"/> })}
-        // Angosto, el botón pasa a ser el primer renglón del menú.
-        {has_button.then(|| view! {
-            <span class="hidden @2xl:contents">
-                <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
-            </span>
-        })}
-        <AccountNavButton/>
-        <CartNavButton/>
-    };
+    let brand_style = format!("font-size:{}px", props.size.clamp(18, 40));
+    let links_class = if props.upper { "nw-nav-links nw-upper" } else { "nw-nav-links" };
+    let search = props.search;
     let mobile_pop = view! {
-        <div id=mobile_id popover="auto" class="mk-navpop mk-navpop-wide">
+        <div id=mobile_id.clone() popover="auto" class="mk-navpop">
             {has_button.then(|| view! {
                 <div class="p-2 pb-0 [&_.mk-btn]:w-full">
                     <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
                 </div>
             })}
             {search.then(|| view! { <NavSearch editing class="p-2 pb-0"/> })}
-            <ul class="menu w-full p-2">{mobile}</ul>
+            <ul class="menu w-64 p-2">{mobile}</ul>
         </div>
     };
-    if centered {
-        // Enlaces a la izquierda, el logo al centro y a la derecha el
-        // buscador, la cuenta y el carrito.
-        return view! {
-            <nav class=nav_class>
-                <div class="flex min-w-0 items-center">
-                    {burger}
-                    <ul class="menu menu-horizontal hidden min-w-0 flex-nowrap items-center px-0 @2xl:flex">{desktop}</ul>
-                </div>
-                {brand_view}
-                <div class="flex min-w-0 items-center justify-end gap-2">{tools}</div>
-                {mobile_pop}
-            </nav>
-        }
-        .into_any();
-    }
     view! {
-        <nav class=nav_class>
-            {brand_view}
-            <ul class="menu menu-horizontal hidden min-w-0 flex-1 flex-nowrap items-center justify-end px-0 @2xl:flex">
-                {desktop}
-            </ul>
-            <div class="flex-1 @2xl:hidden"></div>
-            {tools}
-            {burger}
-            {mobile_pop}
-        </nav>
+        <div class="mk-nw h-full">
+            <header class="nw-navigation" style=nw_colors(&props.bg, &props.ink)>
+                <div class="nw-nav-row">
+                    <MaybeLink href="/" editing class="nw-brand flex min-w-0 items-center gap-2">
+                        {(!logo_url.is_empty()).then(|| view! {
+                            <img class="h-8 w-auto max-w-32 min-w-8 shrink-0 object-contain object-left" src=logo_url.clone() alt="" draggable="false"/>
+                        })}
+                        <span class="truncate" style=brand_style>
+                            {brand_main}
+                            {brand_dot.then(|| view! { <i>"."</i> })}
+                        </span>
+                    </MaybeLink>
+                    <ul class=links_class>{desktop}</ul>
+                    <div class="nw-nav-icons">
+                        {search.then(|| view! { <NavSearch editing class="nw-navsearch"/> })}
+                        {has_button.then(|| view! {
+                            <span class="nw-nav-button">
+                                <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
+                            </span>
+                        })}
+                        <AccountNavButton/>
+                        <CartNavButton/>
+                    </div>
+                    <div class="nw-nav-mobile">
+                        <button type="button" class="nw-nav-mobile-btn" aria-label="Abrir el menú"
+                            popovertarget=mobile_id
+                            on:click=move |ev| place_popover(ev, &mobile_click, false)>
+                            <Icon name="menu" class="h-5 w-5"/>
+                            "Menú"
+                        </button>
+                    </div>
+                    {mobile_pop}
+                </div>
+            </header>
+        </div>
     }
-    .into_any()
 }
 
 #[component]
@@ -1703,105 +1647,41 @@ fn CouponWidget(props: CouponProps, editing: bool) -> impl IntoView {
 #[derive(Clone, Debug)]
 pub struct ActiveCoupons(pub Vec<String>);
 
+/// Colores propios de un widget nuevo: fondo y texto (`#rrggbb`). Vacío:
+/// los del tema de la tienda.
+fn nw_colors(bg: &str, ink: &str) -> String {
+    let mut css = String::new();
+    if domain::parse_hex(bg).is_some() {
+        css += &format!("background:{bg};--bg:{bg};--surface:{bg};--panel:{bg};--hero:{bg};");
+    }
+    if domain::parse_hex(ink).is_some() {
+        css += &format!("color:{ink};--ink:{ink};--muted:{ink};");
+    }
+    css
+}
+
+/// Barra de anuncio (diseños: franja directa, etiqueta suave, nota enmarcada).
 #[component]
 pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoView {
-    if props.variant == "d" {
-        // El estilo "Cupón" de antes del bloque Cupón.
-        let props = CouponProps {
-            text: props
-                .items
-                .first()
-                .map(|m| m.text.clone())
-                .unwrap_or_default(),
-            code: props.code,
-            note: props.note,
-            coupon: props.coupon,
-        };
-        return view! { <CouponWidget props editing/> }.into_any();
-    }
-    let variant = props.variant.clone();
-    let count = props.items.len().max(1);
-    let items = StoredValue::new(props.items);
-    let current = RwSignal::new(0usize);
-    let paused = RwSignal::new(false);
-    let closed = RwSignal::new(false);
-    if variant == "b" && !editing && count > 1 {
-        Effect::new(move |_| {
-            let handle = set_interval_with_handle(
-                move || {
-                    if !paused.get_untracked() {
-                        current.update(|c| *c = (*c + 1) % count);
-                    }
-                },
-                std::time::Duration::from_secs(6),
-            );
-            on_cleanup(move || {
-                if let Ok(h) = handle {
-                    h.clear();
-                }
-            });
-        });
-    }
-    let rotating = variant == "b";
-    let closable = variant == "c";
-    let message = move || {
-        let i = if rotating { current.get() } else { 0 };
-        items.with_value(|v| v.get(i).cloned())
-    };
-    let step = move |d: isize| {
-        current.update(|c| *c = ((*c as isize + d).rem_euclid(count as isize)) as usize);
-    };
+    let style = format!(
+        "{}padding-block:{}px;text-align:{};",
+        nw_colors(&props.bg, &props.ink),
+        props.pad.clamp(6, 28),
+        if props.align == "left" { "left" } else { "center" }
+    );
+    let href = props.href.trim().to_string();
     view! {
-        <div class="mk-box mk-ann flex h-full items-center gap-2 overflow-hidden rounded-box bg-primary px-2 text-sm text-primary-content"
-            class:hidden=move || closed.get()
-            on:mouseenter=move |_| paused.set(true)
-            on:mouseleave=move |_| paused.set(false)
-            on:focusin=move |_| paused.set(true)
-            on:focusout=move |_| paused.set(false)>
-            {rotating.then(|| view! {
-                <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Mensaje anterior" on:click=move |_| step(-1)>
-                    <Icon name="chevron-left" class="h-4 w-4"/>
-                </button>
-            })}
-            // Un solo renglón: si el mensaje no entra se corta con «…» y el enlace
-            // queda siempre a la vista. En el celular baja de renglón y la barra
-            // crece (ver `.mk-ann-msg` en el CSS). Es un `div` y no un `p`: en el
-            // editor el enlace es un `div`, y dentro de un `p` el navegador lo
-            // saca afuera y la hidratación falla.
-            <div class="mk-ann-msg flex min-w-0 flex-1 items-baseline justify-center whitespace-nowrap">
-                {move || message().map(|m| view! {
-                    <span class="mk-ann-text min-w-0 truncate">{m.text}</span>
-                    {(!m.link_label.is_empty()).then(|| view! {
-                        <span class="shrink-0">
-                            "\u{a0}· "
-                            <MaybeLink href=m.link_href.clone() editing class="mk-link inline font-semibold underline underline-offset-2">{m.link_label.clone()}</MaybeLink>
-                        </span>
+        <div class="mk-nw h-full">
+            <div class="nw-ann" style=style>
+                <MaybeLink href=href editing class="nw-ann-inner">
+                    {(props.show_tag && !props.tag.is_empty()).then(|| view! {
+                        <span class="nw-ann-mark">{props.tag.clone()}</span>
                     })}
-                })}
+                    <span>{props.message.clone()}</span>
+                </MaybeLink>
             </div>
-            // En el editor, el estilo que muestra un solo mensaje avisa cuántos más
-            // hay y los lista al pasar el mouse.
-            {(editing && !rotating && count > 1).then(|| {
-                let all = items.with_value(|v| v.iter().map(|m| m.text.clone()).collect::<Vec<_>>().join("\n"));
-                view! {
-                    <span class="badge badge-sm shrink-0 border-0 bg-primary-content/20 text-primary-content" title=all>
-                        {format!("+{} más", count - 1)}
-                    </span>
-                }
-            })}
-            {rotating.then(|| view! {
-                <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Mensaje siguiente" on:click=move |_| step(1)>
-                    <Icon name="chevron-right" class="h-4 w-4"/>
-                </button>
-            })}
-            {closable.then(|| view! {
-                <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Cerrar aviso" on:click=move |_| closed.set(true)>
-                    <Icon name="close" class="h-4 w-4"/>
-                </button>
-            })}
         </div>
     }
-    .into_any()
 }
 
 /// La cifra de ejemplo («Tu número») se ve tenue, para que se note que falta.
@@ -2775,46 +2655,7 @@ mod float_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{page_nodes, split_seconds};
-    use domain::{Node, Pos, Size, Widget};
-
-    fn node(id: &str, kind: &str, y: u16, h: u8) -> Node {
-        let mut n = Node::new(id.to_string(), Widget::defaults(kind).unwrap());
-        n.pos = Pos { x: 0, y };
-        n.size = Size { w: 48, h };
-        n
-    }
-
-    /// El menú flotante se monta sobre la portada: la portada sube a la fila
-    /// del menú y crece lo mismo; sin flotar, nada cambia.
-    #[test]
-    fn floating_navbar_overlaps_the_block_below() {
-        let mut nav = node("nav", "Navbar", 0, 12);
-        let nodes = vec![
-            nav.clone(),
-            node("ban", "Banner", 12, 48),
-            node("txt", "Text", 60, 10),
-        ];
-        let plain = page_nodes(&nodes);
-        assert!(plain.iter().all(|(c, _)| *c == "mk-node"));
-        if let Widget::Navbar(p) = &mut nav.widget {
-            p.variant = "b".to_string();
-        }
-        let nodes = vec![
-            nav,
-            node("ban", "Banner", 12, 48),
-            node("txt", "Text", 60, 10),
-        ];
-        let out = page_nodes(&nodes);
-        assert_eq!(out[0].0, "mk-node mk-node-float");
-        assert_eq!(out[1].0, "mk-node mk-node-under");
-        assert!(
-            out[1].1.contains("--y:1;") && out[1].1.contains("--h:60;"),
-            "{}",
-            out[1].1
-        );
-        assert_eq!(out[2].0, "mk-node");
-    }
+    use super::split_seconds;
 
     #[test]
     fn splits_seconds_into_units() {

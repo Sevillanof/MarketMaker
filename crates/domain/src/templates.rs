@@ -207,11 +207,11 @@ fn navbar(links: Vec<LinkItem>, button: (&str, &str)) -> Widget {
         button_label: s(button.0),
         button_href: s(button.1),
         menu: s("list"),
-        variant: s("a"),
-        tone: String::new(),
         upper: false,
         search: false,
-        menu_color: false,
+        size: 26,
+        bg: String::new(),
+        ink: String::new(),
     })
 }
 
@@ -285,17 +285,6 @@ fn categories(title: &str) -> Widget {
 /// preguntas y pie). Va con el tema Línea; cambiar de tema no mueve nada.
 fn editorial(name: &str) -> PageDoc {
     let announcement = Widget::defaults("Announcement")
-        .map(|w| match w {
-            Widget::Announcement(mut p) => {
-                p.items = vec![crate::AnnouncementItem {
-                    text: s("Envíos a todo el país · 3 cuotas sin interés"),
-                    link_label: String::new(),
-                    link_href: String::new(),
-                }];
-                Widget::Announcement(p)
-            }
-            w => w,
-        })
         .expect("Announcement tiene valores por defecto");
     let category = |label: &str, image: &str| crate::CategoryItem {
         label: s(label),
@@ -332,7 +321,8 @@ fn editorial(name: &str) -> PageDoc {
                 image_url: s("/img/category-hogar.webp"),
                 button_label: s("Explorar la colección"),
                 button_href: s("/#productos"),
-            }))
+            ..Default::default()
+        }))
             .h(56)],
             vec![block(Widget::Benefits(BenefitsProps {
                 items: vec![
@@ -615,7 +605,8 @@ fn noche(name: &str) -> PageDoc {
                 image_url: s("/img/banner.webp"),
                 button_label: s("Ver productos"),
                 button_href: s("/#productos"),
-            }))
+            ..Default::default()
+        }))
             .h(56)
             .text("larger", "center")],
             vec![block(Widget::TagSearch(TagSearchProps {

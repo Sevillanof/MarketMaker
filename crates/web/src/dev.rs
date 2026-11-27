@@ -383,7 +383,7 @@ pub fn DevMenusPage() -> impl IntoView {
     };
     let links = vec![leaf("Ofertas"), mega, leaf("Mujer"), leaf("Niños")];
     let nav =
-        |variant: &str, tone: &str, upper: bool, search: bool, menu: &str, menu_color: bool| {
+        |_variant: &str, _tone: &str, upper: bool, search: bool, menu: &str, _menu_color: bool| {
             Widget::Navbar(domain::NavbarProps {
                 menu: menu.to_string(),
                 brand: "Casa Luna".to_string(),
@@ -391,11 +391,11 @@ pub fn DevMenusPage() -> impl IntoView {
                 links: links.clone(),
                 button_label: String::new(),
                 button_href: String::new(),
-                variant: variant.to_string(),
-                tone: tone.to_string(),
                 upper,
                 search,
-                menu_color,
+                size: 26,
+                bg: String::new(),
+                ink: String::new(),
             })
         };
     // (título, menú, color del bloque, con portada debajo)
@@ -509,15 +509,12 @@ pub fn DevMenusPage() -> impl IntoView {
     .into_iter()
     .enumerate()
     .map(|(i, (look, color, text, code, note))| {
-        let mut w = Widget::defaults("Announcement").expect("tipo conocido");
-        if let Widget::Announcement(p) = &mut w {
-            p.variant = "d".to_string();
+        let mut w = Widget::defaults("Coupon").expect("tipo conocido");
+        if let Widget::Coupon(p) = &mut w {
             p.coupon = look.to_string();
             p.code = code.to_string();
             p.note = note.to_string();
-            p.items.truncate(1);
-            p.items[0].text = text.to_string();
-            p.items[0].link_label.clear();
+            p.text = text.to_string();
         }
         let mut n = Node::new(format!("cup{i}"), w);
         n.size = Size { w: 48, h: 9 };

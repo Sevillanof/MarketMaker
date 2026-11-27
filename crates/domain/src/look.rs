@@ -66,11 +66,16 @@ impl Look {
 
     /// Clases del envoltorio del bloque.
     pub fn classes(&self) -> String {
-        let d = self.design.clamp(1, 5);
+        self.classes_max(5)
+    }
+
+    /// Igual que [`Look::classes`] para un widget con `max` diseños.
+    pub fn classes_max(&self, max: u8) -> String {
+        let d = self.design.clamp(1, max);
         // `mk-m{n}`: el diseño que se usa en el celular (el de escritorio si
         // no se eligió otro). El CSS de los widgets nuevos lo lee con
         // consultas de contenedor.
-        let m = if self.design_m == 0 { d } else { self.design_m.clamp(1, 5) };
+        let m = if self.design_m == 0 { d } else { self.design_m.clamp(1, max) };
         format!("mk-look mk-d{d} mk-m{m}")
     }
 

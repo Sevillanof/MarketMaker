@@ -56,11 +56,11 @@ pub fn starter_doc(name: &str) -> PageDoc {
             }],
             button_label: String::new(),
             button_href: String::new(),
-            variant: s("a"),
-            tone: String::new(),
             upper: false,
             search: false,
-            menu_color: false,
+            size: 26,
+            bg: String::new(),
+            ink: String::new(),
         }),
         Widget::Banner(BannerProps {
             kicker: String::new(),
@@ -69,6 +69,7 @@ pub fn starter_doc(name: &str) -> PageDoc {
             image_url: s("/img/banner.webp"),
             button_label: String::new(),
             button_href: String::new(),
+            ..Default::default()
         }),
         Widget::ProductGrid(ProductGridProps {
             cards: crate::CardOptions::default(),
