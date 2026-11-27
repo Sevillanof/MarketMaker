@@ -71,7 +71,6 @@ pub(crate) fn BlockLook(
     view! {
         <section class="flex flex-col gap-4">
             <DesignPicker id=id.clone() visible products/>
-            {(!own_colors).then(|| view! {
             <div class="flex flex-col gap-1">
                 <label for=mobile_id.clone() class="flex items-center gap-1 text-sm font-medium">
                     "Diseño en celular"
@@ -94,7 +93,6 @@ pub(crate) fn BlockLook(
                     {designs.iter().map(|(n, name, _)| view! { <option value=n.to_string()>{*name}</option> }).collect_view()}
                 </select>
             </div>
-            })}
             {(!own_colors).then(|| view! { <fieldset>
                 <legend class="mb-2 flex items-center gap-1 text-sm font-medium">
                     "Color"
