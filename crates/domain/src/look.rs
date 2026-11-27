@@ -41,6 +41,10 @@ pub const THEME_COLORS: &[(&str, &str)] = &[
 pub struct Look {
     /// Número de [`DESIGNS`].
     pub design: u8,
+    /// Diseño en el celular. 0: el mismo que en escritorio (lo normal);
+    /// otro número: ese diseño cuando el bloque se ve angosto.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub design_m: u8,
     /// Id de [`THEME_COLORS`] o un color propio `#rrggbb`.
     pub color: String,
 }
@@ -49,6 +53,7 @@ impl Default for Look {
     fn default() -> Self {
         Self {
             design: 1,
+            design_m: 0,
             color: String::new(),
         }
     }
@@ -61,7 +66,12 @@ impl Look {
 
     /// Clases del envoltorio del bloque.
     pub fn classes(&self) -> String {
-        format!("mk-look mk-d{}", self.design.clamp(1, 5))
+        let d = self.design.clamp(1, 5);
+        // `mk-m{n}`: el diseño que se usa en el celular (el de escritorio si
+        // no se eligió otro). El CSS de los widgets nuevos lo lee con
+        // consultas de contenedor.
+        let m = if self.design_m == 0 { d } else { self.design_m.clamp(1, 5) };
+        format!("mk-look mk-d{d} mk-m{m}")
     }
 
     /// Variables CSS del color. Vacío con el color principal (lo pone el CSS).
@@ -90,11 +100,18 @@ impl Look {
         if !DESIGNS.iter().any(|(n, _, _)| *n == self.design) {
             errors.push(format!("{path}Diseño: Elegí uno de los cinco."));
         }
+        if self.design_m > 5 {
+            errors.push(format!("{path}Diseño en celular: Elegí uno de la lista."));
+        }
         let known = THEME_COLORS.iter().any(|(id, _)| *id == self.color);
         if !known && parse_hex(&self.color).is_none() {
             errors.push(format!("{path}Color: Elegí uno de la lista o uno propio."));
         }
     }
+}
+
+fn is_zero(n: &u8) -> bool {
+    *n == 0
 }
 
 /// `#rrggbb` → (r, g, b).
@@ -157,10 +174,11 @@ mod tests {
         let l = Look::default();
         assert!(l.is_default());
         assert_eq!(l.css_vars(), "");
-        assert_eq!(l.classes(), "mk-look mk-d1");
+        assert_eq!(l.classes(), "mk-look mk-d1 mk-m1");
         let l = Look {
             design: 4,
             color: "secondary".into(),
+            ..Look::default()
         };
         assert_eq!(
             l.css_vars(),
@@ -169,11 +187,13 @@ mod tests {
         let yellow = Look {
             design: 2,
             color: "#FFD400".into(),
+            ..Look::default()
         };
         assert_eq!(yellow.css_vars(), "--mk-c:#ffd400; --mk-cc:#000; ");
         let navy = Look {
             design: 2,
             color: "#1e2a78".into(),
+            ..Look::default()
         };
         assert!(navy.css_vars().ends_with("--mk-cc:#fff; "));
     }
@@ -184,6 +204,7 @@ mod tests {
         Look {
             design: 9,
             color: "rosa".into(),
+            ..Look::default()
         }
         .errors("", &mut errors);
         assert_eq!(errors.len(), 2);
@@ -191,6 +212,7 @@ mod tests {
         Look {
             design: 5,
             color: "#00aa00".into(),
+            ..Look::default()
         }
         .errors("", &mut errors);
         assert!(errors.is_empty());

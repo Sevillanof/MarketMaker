@@ -49,6 +49,7 @@ pub(crate) fn BlockLook(
     let group_name = format!("mk-design-{id}");
     let color_name = format!("mk-color-{id}");
     let custom_id = format!("mk-color-custom-{id}");
+    let mobile_id = format!("mk-design-mobile-{id}");
     let is_custom = move || look.with(|l| l.color.starts_with('#'));
     let custom_value = move || {
         look.with(|l| {
@@ -100,6 +101,28 @@ pub(crate) fn BlockLook(
                     }).collect_view()}
                 </div>
             </fieldset>
+            <div class="flex flex-col gap-1">
+                <label for=mobile_id.clone() class="flex items-center gap-1 text-sm font-medium">
+                    "Diseño en celular"
+                    <ui::HelpTip
+                        id=format!("tip-mobile-{id}")
+                        label="Diseño en celular"
+                        text="Por defecto el celular usa el mismo diseño que escritorio. Elegí otro si querés que en pantallas angostas se vea distinto."
+                    />
+                </label>
+                <select
+                    id=mobile_id.clone()
+                    class="select select-sm w-full"
+                    prop:value=move || look.with(|l| l.design_m.to_string())
+                    on:change=move |ev| {
+                        let n = event_target_value(&ev).parse::<u8>().unwrap_or(0);
+                        set(None, Box::new(move |l| l.design_m = n));
+                    }
+                >
+                    <option value="0">"Igual que escritorio"</option>
+                    {DESIGNS.iter().map(|(n, name, _)| view! { <option value=n.to_string()>{*name}</option> }).collect_view()}
+                </select>
+            </div>
             <fieldset>
                 <legend class="mb-2 flex items-center gap-1 text-sm font-medium">
                     "Color"
@@ -236,6 +259,7 @@ fn Thumb(node: Node, design: u8, products: StoredValue<Vec<Product>>) -> impl In
     };
     let mut node = node;
     node.look.design = design;
+    node.look.design_m = 0;
     // Otro id que el del lienzo: así las pestañas de la miniatura no forman
     // un grupo con las del bloque y no le cambian la pestaña abierta.
     node.id = format!("{}-thumb{design}", node.id);

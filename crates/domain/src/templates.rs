@@ -118,6 +118,7 @@ impl Block {
         self.look = Look {
             design,
             color: s(color),
+            ..Look::default()
         };
         self
     }

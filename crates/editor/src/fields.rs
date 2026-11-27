@@ -35,7 +35,7 @@ pub(crate) fn field_value(doc: &PageDoc, id: &str, key: &str) -> serde_json::Val
 fn empty_value(kind: &FieldKind) -> serde_json::Value {
     use serde_json::Value;
     match kind {
-        FieldKind::Number { min, .. } => Value::from(*min),
+        FieldKind::Number { min, .. } | FieldKind::Range { min, .. } => Value::from(*min),
         FieldKind::Bool => Value::Bool(false),
         FieldKind::Select { options } => {
             Value::String(options.first().map(|(k, _)| *k).unwrap_or_default().into())
@@ -478,6 +478,71 @@ fn FieldInput(
                 </p>
             }
             .into_any()
+        }
+        FieldKind::Range { min, max, unit } => {
+            let (min, max, unit) = (*min, *max, *unit);
+            return view! {
+                <div class="flex flex-col gap-1">
+                    <div class="flex items-baseline justify-between gap-2">
+                        <label class="text-sm font-medium" for=uid.clone()>{field.label}</label>
+                        <output class="text-xs tabular-nums text-base-content/75" for=uid.clone()>
+                            {move || format!("{}{unit}", value.get().as_i64().unwrap_or(min))}
+                        </output>
+                    </div>
+                    <input
+                        type="range"
+                        id=uid.clone()
+                        class="range range-primary range-xs"
+                        min=min
+                        max=max
+                        step="1"
+                        aria-describedby=described.clone()
+                        prop:value=move || value.get().as_i64().unwrap_or(min).to_string()
+                        on:input=move |ev| {
+                            if let Ok(n) = event_target_value(&ev).parse::<i64>() {
+                                set.run(serde_json::Value::from(n.clamp(min, max)));
+                            }
+                        }
+                        on:change=move |_| end()
+                    />
+                </div>
+            }
+            .into_any();
+        }
+        FieldKind::Color => {
+            let theme = move || value.get().as_str().is_none_or(str::is_empty);
+            return view! {
+                <div class="flex flex-col gap-1">
+                    <span class="text-sm font-medium" id=format!("{uid}-label")>{field.label}</span>
+                    <div class="flex items-center gap-3">
+                        <input
+                            type="color"
+                            id=uid.clone()
+                            class="h-8 w-12 cursor-pointer rounded-field border border-base-300 bg-base-100 p-0.5"
+                            aria-labelledby=format!("{uid}-label")
+                            prop:value=move || value.get().as_str().filter(|s| !s.is_empty()).unwrap_or("#888888").to_string()
+                            on:input=move |ev| set.run(serde_json::Value::String(event_target_value(&ev)))
+                            on:change=move |_| end()
+                        />
+                        <label class="flex items-center gap-1.5 text-xs">
+                            <input
+                                type="checkbox"
+                                class="checkbox checkbox-xs"
+                                prop:checked=theme
+                                on:change=move |ev| {
+                                    if event_target_checked(&ev) {
+                                        set_once(serde_json::Value::String(String::new()));
+                                    } else {
+                                        set_once(serde_json::Value::String("#888888".into()));
+                                    }
+                                }
+                            />
+                            "Del tema"
+                        </label>
+                    </div>
+                </div>
+            }
+            .into_any();
         }
         FieldKind::Bool => {
             return view! {
