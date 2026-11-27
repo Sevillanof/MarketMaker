@@ -12,10 +12,12 @@ use leptos::prelude::*;
 use crate::fields::{ButtonGroup, PropField};
 use crate::icons::Icon;
 use crate::look::{swatch_class, BlockLook};
-use crate::page_map::{PageMap, Shortcuts};
+use crate::page_map::{Mini, PageMap, Shortcuts};
+use crate::palette::Palette;
+use crate::store_drawer::StoreDrawer;
 use crate::palette::block_info;
 use crate::typography::BlockTypography;
-use crate::{size_badge, Actions, EditorState, Ui, WIDTHS};
+use crate::{size_badge, Actions, EditorState, Tool, Ui, WIDTHS};
 
 
 /// Alto en píxeles de `h` filas.
@@ -83,32 +85,46 @@ pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
         }
     });
     // Los avanzados se ven con un bloque elegido; en la ficha no hay mapa.
-    let detail = move || current.get().is_some() && (state.in_modal() || ui.advanced.get());
+    let detail = move || {
+        current.get().is_some()
+            && matches!(ui.tool.get(), Tool::Pages | Tool::Blocks)
+            && (state.in_modal() || ui.advanced.get())
+    };
 
+    let on_tool = move |tools: &'static [Tool]| tools.contains(&ui.tool.get());
     view! {
-        <aside class="w-[23rem] shrink-0 overflow-y-auto border-l border-base-300 bg-base-100 p-4 pb-24" aria-label="Propiedades del bloque">
-            // El mapa queda armado aunque se vean los avanzados: así no pierde
-            // las páginas desplegadas ni el lugar donde estabas.
-            <div class:hidden=move || state.in_modal() || detail()>
-                <PageMap products/>
-            </div>
-            {move || match current.get() {
-                _ if !detail() => state.in_modal().then(|| view! { <EmptyInspector/> }).into_any(),
-                None => ().into_any(),
-                Some(id) => match state.node(&id) {
-                    Some(node) => view! {
-                        {(!state.in_modal()).then(|| view! {
-                            <button type="button" class="btn btn-ghost btn-sm mb-3 -ml-2 gap-1.5" on:click=move |_| {
-                                ui.advanced.set(false);
-                                request_animation_frame(|| crate::focus_selector("#mk-inspector-title"));
-                            }>
-                                <Icon name="arrow-left" class="h-4 w-4"/>"Tu tienda"
-                            </button>
-                        })}
-                        <NodeInspector products id widget=node.widget/>
-                    }.into_any(),
+        <aside class="relative flex w-[23rem] shrink-0 flex-col border-l border-base-300 bg-base-100" aria-label="Panel de la derecha">
+            // Páginas y Bloques: el mapa y, con un bloque en "Ajustes avanzados",
+            // sus secciones. El mapa queda armado aunque se vean los avanzados:
+            // así no pierde las páginas desplegadas ni el lugar donde estabas.
+            <div class="min-h-0 flex-1 overflow-y-auto p-4 pb-24" class:hidden=move || !on_tool(&[Tool::Pages, Tool::Blocks])>
+                <div class:hidden=move || state.in_modal() || detail()>
+                    <PageMap products/>
+                </div>
+                {move || match current.get() {
+                    _ if !detail() => state.in_modal().then(|| view! { <EmptyInspector/> }).into_any(),
                     None => ().into_any(),
-                },
+                    Some(id) => match state.node(&id) {
+                        Some(node) => view! {
+                            {(!state.in_modal()).then(|| view! {
+                                <button type="button" class="btn btn-ghost btn-sm mb-3 -ml-2 gap-1.5" on:click=move |_| {
+                                    ui.advanced.set(false);
+                                    request_animation_frame(|| crate::focus_selector("#mk-inspector-title"));
+                                }>
+                                    <Icon name="arrow-left" class="h-4 w-4"/>
+                                    {move || if ui.tool.get() == Tool::Pages { "Páginas" } else { "Bloques" }}
+                                </button>
+                            })}
+                            <NodeInspector products id widget=node.widget/>
+                        }.into_any(),
+                        None => ().into_any(),
+                    },
+                }}
+            </div>
+            {move || match ui.tool.get() {
+                Tool::Add => view! { <Palette products/> }.into_any(),
+                Tool::Style => view! { <StoreDrawer/> }.into_any(),
+                _ => ().into_any(),
             }}
         </aside>
     }
@@ -268,7 +284,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     let ui = expect_context::<Ui>();
     let actions = expect_context::<Actions>();
     let label = widget.label();
-    let (icon, description) = block_info(widget.type_name());
+    let (_, description) = block_info(widget.type_name());
     let sid = StoredValue::new(id.clone());
     let (size_sid, look_id, type_id) = (id.clone(), id.clone(), id.clone());
     let widget_size = widget.clone();
@@ -341,10 +357,13 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     view! {
         <div class="flex flex-col gap-4">
             <div class="flex items-start gap-3">
-                <span class="rounded-field bg-primary/10 p-2 text-primary" aria-hidden="true"><Icon name=icon class="h-5 w-5"/></span>
+                <Mini type_name=widget.type_name() products/>
                 <div class="min-w-0 flex-1">
                     <h2 id="mk-inspector-title" tabindex="-1" class="text-lg font-bold leading-tight">{label}</h2>
-                    <p class="text-sm text-base-content/75">{description}</p>
+                    <p class="text-sm text-base-content/75">
+                        {move || (!state.in_modal()).then(|| format!("{} · ", state.doc.with(|d| d.page_name(state.page.get()).to_string())))}
+                        {description}
+                    </p>
                 </div>
             </div>
             <div class="-mt-1 flex gap-2" role="group" aria-label="Acciones del bloque">

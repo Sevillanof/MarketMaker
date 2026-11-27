@@ -1,58 +1,10 @@
-//! Piezas de la barra superior del editor: el menú "Mi tienda" (todo lo que
-//! vale para la tienda entera) y los menús de página que usa el mapa.
+//! Menús de página del editor (nueva, nombre y borrar), que usa el panel
+//! de Páginas.
 
 use leptos::prelude::*;
 
 use crate::icons::Icon;
-use crate::store_drawer::{close_drawer, STORE_BUTTON_ID};
-use crate::{Actions, EditorState, Ui};
-
-/// Botón "Mi tienda": abre y cierra el cajón con los ajustes de toda la
-/// tienda (ver [`crate::store_drawer`]), en lugar de la lista de bloques.
-#[component]
-pub(crate) fn StoreMenu() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let ui = expect_context::<Ui>();
-    let theme = move || state.doc.with(|d| d.theme.clone());
-    let open = move || ui.store_open.get();
-
-    view! {
-        <button
-            type="button"
-            id=STORE_BUTTON_ID
-            class=move || format!(
-                "btn h-11 gap-2.5 pl-1.5 pr-2.5 font-normal shadow-none {}",
-                if open() { "border-primary bg-primary/10" } else { "border-base-300 bg-base-100 hover:border-primary" }
-            )
-            aria-expanded=move || open().to_string()
-            aria-controls="mk-drawer-title"
-            title="Colores, letras, márgenes y más de toda la tienda"
-            on:click=move |_| {
-                if ui.store_open.get_untracked() {
-                    close_drawer(ui);
-                } else {
-                    ui.preview.set(false);
-                    ui.store_open.set(true);
-                }
-            }
-        >
-            <span data-theme=theme class="flex h-8 w-8 items-center justify-center gap-0.5 rounded-field border border-base-content/15 bg-base-100" aria-hidden="true">
-                <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
-                <span class="h-1.5 w-1.5 rounded-full bg-secondary"></span>
-                <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
-            </span>
-            <span class="flex flex-col items-start leading-tight">
-                <span class="text-[0.9375rem] font-bold">"Mi tienda"</span>
-                <span class="text-xs text-base-content/75 max-[1699px]:hidden">"Ajustes de toda la tienda"</span>
-            </span>
-            {move || if open() {
-                view! { <Icon name="close" class="h-3.5 w-3.5"/> }
-            } else {
-                view! { <Icon name="chevron-down" class="h-3.5 w-3.5"/> }
-            }}
-        </button>
-    }
-}
+use crate::{Actions, EditorState};
 
 /// «⋯» de la página actual (nunca Inicio): cambiar su nombre y borrarla,
 /// preguntando antes de borrar.
