@@ -12,6 +12,7 @@ use leptos::prelude::*;
 use crate::fields::{ButtonGroup, PropField};
 use crate::icons::Icon;
 use crate::look::{swatch_class, BlockLook};
+use crate::page_map::{PageMap, Shortcuts};
 use crate::palette::block_info;
 use crate::typography::BlockTypography;
 use crate::{size_badge, Actions, EditorState, Ui, WIDTHS};
@@ -28,16 +29,16 @@ fn px_to_rows(px: f64) -> i32 {
 }
 
 /// Campos de un bloque repartidos para el panel.
-struct FieldGroups {
+pub(crate) struct FieldGroups {
     /// A la vista en Contenido.
-    basic: Vec<&'static Field>,
+    pub(crate) basic: Vec<&'static Field>,
     /// Texto y enlace del botón, si el bloque tiene uno.
     button: Option<(&'static Field, &'static Field)>,
     /// Plegados en "Más opciones".
     advanced: Vec<&'static Field>,
 }
 
-fn group_fields(fields: &'static [Field]) -> FieldGroups {
+pub(crate) fn group_fields(fields: &'static [Field]) -> FieldGroups {
     let find = |key: &str| fields.iter().find(|f| f.key == key);
     let button = find("button_label").zip(find("button_href"));
     let is_button = |f: &Field| button.is_some() && matches!(f.key, "button_label" | "button_href");
@@ -57,6 +58,7 @@ fn group_fields(fields: &'static [Field]) -> FieldGroups {
 #[component]
 pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
     let state = expect_context::<EditorState>();
+    let ui = expect_context::<Ui>();
     // Se redibuja solo cuando cambia el nodo seleccionado (o deja de existir),
     // no con cada tecla, para no perder el foco de los campos.
     let current = Memo::new(move |_| {
@@ -65,13 +67,46 @@ pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
             state.doc.with(|d| d.layer_of(id)) == Some(layer)
         })
     });
+    // Cada bloque nuevo que se elige empieza en el mapa, con sus ajustes
+    // rápidos; los avanzados se piden aparte.
+    Effect::new(move |prev: Option<Option<String>>| {
+        let now = state.selected.get();
+        if prev.is_some_and(|p| p != now) {
+            ui.advanced.set(false);
+        }
+        now
+    });
+    // Al guardar con errores, los campos a corregir están en los avanzados.
+    Effect::new(move |_| {
+        if ui.show_errors.get() && current.get_untracked().is_some() {
+            ui.advanced.set(true);
+        }
+    });
+    // Los avanzados se ven con un bloque elegido; en la ficha no hay mapa.
+    let detail = move || current.get().is_some() && (state.in_modal() || ui.advanced.get());
 
     view! {
         <aside class="w-[23rem] shrink-0 overflow-y-auto border-l border-base-300 bg-base-100 p-4 pb-24" aria-label="Propiedades del bloque">
+            // El mapa queda armado aunque se vean los avanzados: así no pierde
+            // las páginas desplegadas ni el lugar donde estabas.
+            <div class:hidden=move || state.in_modal() || detail()>
+                <PageMap products/>
+            </div>
             {move || match current.get() {
-                None => view! { <EmptyInspector/> }.into_any(),
+                _ if !detail() => state.in_modal().then(|| view! { <EmptyInspector/> }).into_any(),
+                None => ().into_any(),
                 Some(id) => match state.node(&id) {
-                    Some(node) => view! { <NodeInspector products id widget=node.widget/> }.into_any(),
+                    Some(node) => view! {
+                        {(!state.in_modal()).then(|| view! {
+                            <button type="button" class="btn btn-ghost btn-sm mb-3 -ml-2 gap-1.5" on:click=move |_| {
+                                ui.advanced.set(false);
+                                request_animation_frame(|| crate::focus_selector("#mk-inspector-title"));
+                            }>
+                                <Icon name="arrow-left" class="h-4 w-4"/>"Tu tienda"
+                            </button>
+                        })}
+                        <NodeInspector products id widget=node.widget/>
+                    }.into_any(),
                     None => ().into_any(),
                 },
             }}
@@ -83,17 +118,6 @@ pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
 fn EmptyInspector() -> impl IntoView {
     let state = expect_context::<EditorState>();
     let actions = expect_context::<Actions>();
-    let shortcuts: &[(&str, &str)] = &[
-        ("Ctrl/⌘ + Z", "Deshacer"),
-        ("Ctrl/⌘ + Mayús + Z", "Rehacer"),
-        ("Ctrl/⌘ + S", "Guardar ahora"),
-        ("Tab", "Ir de un bloque a otro"),
-        ("Enter", "Editar el bloque enfocado"),
-        ("Flechas", "Mover el bloque"),
-        ("Mayús + flechas", "Cambiar su tamaño"),
-        ("Suprimir", "Borrar el bloque"),
-        ("Esc", "Soltar el bloque elegido"),
-    ];
     view! {
         <div class="flex flex-col gap-4">
             <h2 id="mk-inspector-title" tabindex="-1" class="text-lg font-bold">"Elegí un bloque para cambiarlo"</h2>
@@ -109,15 +133,7 @@ fn EmptyInspector() -> impl IntoView {
                 }.into_any()
             }}
             <p class="rounded-box bg-base-200 p-3 text-sm">"Consejo: arrastrá un bloque para moverlo, y tirá de su borde para cambiar su tamaño."</p>
-            <details class="text-sm">
-                <summary class="cursor-pointer font-semibold">"⌨ Atajos de teclado"</summary>
-                <dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
-                    {shortcuts.iter().map(|(k, d)| view! {
-                        <dt><kbd class="kbd kbd-sm">{*k}</kbd></dt>
-                        <dd>{*d}</dd>
-                    }).collect_view()}
-                </dl>
-            </details>
+            <Shortcuts/>
         </div>
     }
 }
@@ -441,7 +457,7 @@ fn field_condition(key: &str) -> Option<(&'static str, &'static str)> {
 /// Un campo del panel que se muestra solo si su opción está elegida (ver
 /// [`field_condition`]).
 #[component]
-fn ShownField(
+pub(crate) fn ShownField(
     products: StoredValue<Vec<Product>>,
     id: String,
     field: &'static Field,

@@ -1,5 +1,5 @@
 //! Piezas de la barra superior del editor: el menú "Mi tienda" (todo lo que
-//! vale para la tienda entera) y el selector de la página que se edita.
+//! vale para la tienda entera) y los menús de página que usa el mapa.
 
 use leptos::prelude::*;
 
@@ -54,58 +54,10 @@ pub(crate) fn StoreMenu() -> impl IntoView {
     }
 }
 
-/// Selector de la página que se está editando, con su dirección y el botón
-/// para borrarla (Inicio no se borra).
-#[component]
-pub(crate) fn PageSwitcher() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let actions = expect_context::<Actions>();
-    let pages = move || {
-        state.doc.with(|d| {
-            (0..d.page_count())
-                .map(|i| (i, d.page_name(i).to_string()))
-                .collect::<Vec<_>>()
-        })
-    };
-    let hint = move || {
-        if state.doc.with(|d| d.pages.is_empty()) {
-            "Tocá un enlace del menú superior (Ofertas, Categorías…) para crear y editar esa página."
-        } else {
-            "Tocá un enlace del menú para ir a esa página, o elegila acá."
-        }
-    };
-
-    view! {
-        <div class="flex items-center gap-1" role="group" aria-label="Páginas de la tienda">
-            <label class="select select-sm h-9 w-48 gap-2 max-[1399px]:w-36" title=hint>
-                <Icon name="page" class="h-4 w-4 text-base-content/70"/>
-                <span class="sr-only">"Página"</span>
-                <select
-                    id="mk-page-select"
-                    class="font-semibold"
-                    prop:value=move || state.page.get().to_string()
-                    on:change=move |ev| {
-                        if let Ok(i) = event_target_value(&ev).parse::<usize>() {
-                            actions.open_page(i, true);
-                        }
-                    }
-                >
-                    {move || pages()
-                        .into_iter()
-                        .map(|(i, name)| view! { <option value=i.to_string() selected=move || state.page.get() == i>{name}</option> })
-                        .collect_view()}
-                </select>
-            </label>
-            <NewPageMenu/>
-            {move || (state.page.get() > 0).then(|| view! { <PageMenu/> })}
-        </div>
-    }
-}
-
 /// «⋯» de la página actual (nunca Inicio): cambiar su nombre y borrarla,
 /// preguntando antes de borrar.
 #[component]
-fn PageMenu() -> impl IntoView {
+pub(crate) fn PageMenu() -> impl IntoView {
     let state = expect_context::<EditorState>();
     let actions = expect_context::<Actions>();
     let menu = NodeRef::<leptos::html::Details>::new();
@@ -137,7 +89,7 @@ fn PageMenu() -> impl IntoView {
     });
     on_cleanup(move || outside.remove());
     view! {
-        <details node_ref=menu class="dropdown"
+        <details node_ref=menu class="dropdown dropdown-end"
             on:toggle=move |_| {
                 if menu.get_untracked().is_some_and(|d| d.open()) {
                     name.set(current());
@@ -206,7 +158,7 @@ fn PageMenu() -> impl IntoView {
 /// "+ Nueva página": nombre, dirección y con qué empieza (en blanco o una
 /// de las páginas modelo), con el menú y el pie de la actual.
 #[component]
-fn NewPageMenu() -> impl IntoView {
+pub(crate) fn NewPageMenu() -> impl IntoView {
     let actions = expect_context::<Actions>();
     let name = RwSignal::new(String::new());
     // `None`: en blanco; `Some(i)`: la página modelo `i`.
@@ -242,7 +194,7 @@ fn NewPageMenu() -> impl IntoView {
     });
     on_cleanup(move || outside.remove());
     view! {
-        <details node_ref=menu class="dropdown"
+        <details node_ref=menu class="dropdown dropdown-end"
             // Y con Escape, devolviendo el foco al botón.
             on:keydown=move |ev| {
                 if ev.key() == "Escape" {
