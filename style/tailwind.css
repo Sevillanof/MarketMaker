@@ -578,6 +578,58 @@
   transform-origin: top right;
   transform: scale(var(--mk-unscale, 1));
 }
+/* Barra del bloque elegido (arriba a la derecha): nombre, Editar y subir /
+   bajar. Mismo tamaño en pantalla con cualquier escala del lienzo. */
+.mk-bar {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.625rem;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.16);
+  transform-origin: top right;
+  transform: scale(var(--mk-unscale, 1));
+}
+.mk-bar-name {
+  max-width: 11rem;
+  overflow: hidden;
+  padding-inline: 0.5rem;
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mk-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding-inline: 0.4rem;
+  border-radius: 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mk-bar-btn:hover {
+  background: var(--color-base-200);
+}
+.mk-bar-edit {
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+}
+.mk-bar-btn:focus-visible {
+  outline: 3px solid var(--color-base-content);
+  outline-offset: 1px;
+}
 .mk-menu-trigger:focus-visible {
   outline: 3px solid var(--color-base-content);
   outline-offset: 2px;

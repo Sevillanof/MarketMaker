@@ -258,7 +258,10 @@ fn thumb_size(
 #[derive(Clone, Copy)]
 struct Hover {
     type_name: &'static str,
+    /// Altura en la ventana.
     top: f64,
+    /// Borde izquierdo del panel: la lupa se abre hacia el lienzo.
+    edge: f64,
 }
 
 #[component]
@@ -393,8 +396,8 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
             + 40.0
             + 56.0;
         let want = r.top() + r.height() / 2.0 - card_h / 2.0;
-        let top = want.clamp(8.0, (vh - card_h - 8.0).max(8.0)) - n.top();
-        hover.set(Some(Hover { type_name, top }));
+        let top = want.clamp(8.0, (vh - card_h - 8.0).max(8.0));
+        hover.set(Some(Hover { type_name, top, edge: n.left() }));
     };
     let matches = move |type_name: &str, desc: &str, group: &str| {
         if !allowed(type_name) {
@@ -459,7 +462,7 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
     view! {
         <nav
             node_ref=nav_ref
-            class="relative z-30 flex w-44 shrink-0 flex-col border-r border-base-300 bg-base-100"
+            class="relative z-30 flex min-h-0 w-full flex-1 flex-col bg-base-100"
             aria-label="Agregar bloques"
             on:keydown=on_key
         >
@@ -552,8 +555,8 @@ pub(crate) fn Palette(products: StoredValue<Vec<Product>>) -> impl IntoView {
                 let (_, desc) = block_info(h.type_name);
                 view! {
                     <div
-                        class="pointer-events-none absolute left-full z-40 ml-2 overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-2xl"
-                        style=format!("top:{}px; width:{}px", h.top, ZOOM_W + 80.0)
+                        class="pointer-events-none fixed z-40 overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-2xl"
+                        style=format!("top:{}px; left:{}px; width:{}px", h.top, h.edge - 8.0 - (ZOOM_W + 80.0), ZOOM_W + 80.0)
                         aria-hidden="true"
                     >
                         <div class=ZOOM_STAGE>
@@ -635,7 +638,7 @@ fn cat_icon(g: &str) -> &'static str {
 /// El bloque con sus valores de fábrica, dibujado de verdad en el tema y
 /// las letras de la tienda y achicado (o agrandado) a `tw` píxeles de ancho.
 #[component]
-fn Thumb(
+pub(crate) fn Thumb(
     type_name: &'static str,
     products: StoredValue<Vec<Product>>,
     tw: f64,

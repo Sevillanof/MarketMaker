@@ -15,7 +15,7 @@ use crate::theme_panel::ThemePanel;
 use crate::{EditorState, Ui};
 
 /// Id del botón "Mi tienda" de la barra: vuelve el foco ahí al cerrar.
-pub(crate) const STORE_BUTTON_ID: &str = "mk-store-button";
+pub(crate) const STORE_BUTTON_ID: &str = "mk-rail-style";
 
 /// Clase de una opción con dibujito.
 pub(crate) fn tile(active: bool) -> &'static str {
@@ -47,9 +47,9 @@ pub(crate) fn Section(
     }
 }
 
-/// Cierra el cajón y vuelve el foco al botón "Mi tienda".
+/// Cierra "Estilo" (vuelve a Bloques) y devuelve el foco a su botón del riel.
 pub(crate) fn close_drawer(ui: Ui) {
-    ui.store_open.set(false);
+    ui.tool.set(crate::Tool::Blocks);
     if let Some(b) = document().get_element_by_id(STORE_BUTTON_ID) {
         use wasm_bindgen::JsCast;
         if let Ok(b) = b.dyn_into::<web_sys::HtmlElement>() {
@@ -63,7 +63,7 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
     let ui = expect_context::<Ui>();
     view! {
         <aside
-            class="flex w-80 shrink-0 flex-col border-r border-base-300 bg-base-100"
+            class="flex min-h-0 w-full flex-1 flex-col bg-base-100"
             aria-labelledby="mk-drawer-title"
             on:keydown=move |ev| {
                 if ev.key() == "Escape" {
@@ -73,11 +73,11 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
             }
         >
             <div class="flex h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4">
-                <h2 id="mk-drawer-title" tabindex="-1" class="font-bold focus:outline-none">"Mi tienda"</h2>
+                <h2 id="mk-drawer-title" tabindex="-1" class="font-bold focus:outline-none">"Estilo de la tienda"</h2>
                 <button
                     type="button"
                     class="btn btn-ghost btn-sm btn-square ml-auto"
-                    aria-label="Cerrar Mi tienda"
+                    aria-label="Cerrar Estilo"
                     title="Cerrar (Esc)"
                     on:click=move |_| close_drawer(ui)
                 >

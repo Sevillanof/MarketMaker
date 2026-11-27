@@ -676,7 +676,7 @@ pub fn EditorSkeleton() -> impl IntoView {
     ];
 
     view! {
-        <div data-theme="light" class="relative grid h-screen grid-cols-[176px_1fr_368px] grid-rows-[64px_1fr] bg-base-100 text-base-content" aria-busy="true" role="status" aria-label="Abriendo el editor">
+        <div data-theme="light" class="relative grid h-screen grid-cols-[72px_1fr_368px] grid-rows-[64px_1fr] bg-base-100 text-base-content" aria-busy="true" role="status" aria-label="Abriendo el editor">
             <div class="col-span-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3.5 border-b border-base-300 px-4">
                 // Izquierda: "← Panel", la tienda y la página.
                 <div class="flex items-center gap-3.5">
@@ -692,12 +692,10 @@ pub fn EditorSkeleton() -> impl IntoView {
                 // Derecha: estado, deshacer / rehacer, ver tienda y Publicar.
                 <div class="flex items-center justify-end gap-3"><Skeleton class="h-5 w-28"/><Skeleton class="h-9 w-20"/><Skeleton class="size-9"/><Skeleton class="h-9 w-24"/></div>
             </div>
-            // Bloques para agregar: la categoría y cada bloque con su dibujo,
-            // su nombre y para qué sirve.
-            <div class="flex flex-col gap-4 overflow-hidden border-r border-base-300 p-2.5">
-                <Skeleton class="h-8 w-full"/>
+            // Riel de herramientas: Páginas, Bloques, Agregar y Estilo (ícono y nombre).
+            <div class="flex flex-col gap-1.5 overflow-hidden border-r border-base-300 p-2">
                 {(0..4).map(|_| view! {
-                    <div class="flex flex-col gap-1.5"><Skeleton class="h-24 w-full"/>{sk_line("w-2/3")}<Skeleton class="h-2.5 w-full"/></div>
+                    <div class="flex flex-col items-center gap-1.5 py-2.5"><Skeleton class="size-5"/><Skeleton class="h-2.5 w-10"/></div>
                 }).collect_view()}
             </div>
             <div class="flex justify-center overflow-hidden bg-base-200 py-3">
@@ -709,24 +707,23 @@ pub fn EditorSkeleton() -> impl IntoView {
                     </div>
                 </div>
             </div>
-            // Panel de la derecha: el mapa de la tienda. Título y "+", la página
-            // actual desplegada con sus bloques (uno abierto con sus ajustes
-            // rápidos y el botón de avanzados) y otra página plegada.
+            // Panel de la derecha (Bloques): título y botón Páginas, los bloques de la
+            // página (miniatura, nombre y título; uno abierto con sus ajustes
+            // rápidos) y el botón de agregar.
             <div class="flex flex-col gap-3 overflow-hidden border-l border-base-300 p-4">
-                <div class="flex items-start gap-2"><div class="flex grow flex-col gap-1.5"><Skeleton class="h-5 w-1/2"/>{sk_line("w-full")}</div><Skeleton class="size-8"/></div>
-                <div class="flex flex-col gap-2 rounded-box border border-base-300 p-2">
-                    <div class="flex items-center gap-2 p-1"><Skeleton class="size-4"/><Skeleton class="h-4 w-20"/><Skeleton class="h-4 w-12"/></div>
+                <div class="flex items-start gap-2"><div class="flex grow flex-col gap-1.5"><Skeleton class="h-5 w-1/2"/>{sk_line("w-2/3")}</div><Skeleton class="h-8 w-20"/></div>
+                <div class="flex flex-col gap-1.5">
                     {(0..2).map(|_| view! {
-                        <div class="flex items-center gap-2.5 rounded-field border border-base-300 p-2"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
+                        <div class="flex items-center gap-2.5 rounded-field border border-base-300 p-2"><Skeleton class="h-11 w-14"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
                     }).collect_view()}
                     <div class="flex flex-col gap-3 rounded-field border border-base-300 p-2">
-                        <div class="flex items-center gap-2.5"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
+                        <div class="flex items-center gap-2.5"><Skeleton class="h-11 w-14"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
                         {(0..2).map(|_| view! { <div class="flex flex-col gap-1.5">{sk_line("w-1/4")}<Skeleton class="h-8 w-full"/></div> }).collect_view()}
                         <Skeleton class="h-8 w-36"/>
                     </div>
-                    <div class="flex items-center gap-2.5 rounded-field border border-base-300 p-2"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
+                    <div class="flex items-center gap-2.5 rounded-field border border-base-300 p-2"><Skeleton class="h-11 w-14"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
                 </div>
-                {(0..2).map(|_| view! { <Skeleton class="h-11 w-full"/> }).collect_view()}
+                <Skeleton class="h-8 w-full"/>
             </div>
             <div class="pointer-events-none absolute inset-0 grid place-items-center">
                 <div class="mk-load-msg relative h-11 w-72 rounded-box border border-base-300 bg-base-100 font-semibold shadow-lg">
