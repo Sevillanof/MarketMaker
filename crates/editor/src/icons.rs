@@ -12,6 +12,7 @@ fn path(name: &str) -> &'static str {
         "chevron-left" => "M15 6l-6 6 6 6",
         "chevron-right" => "M9 6l6 6-6 6",
         "arrow-left" => "M19 12H5M11 18l-6-6 6-6",
+        "arrow-right" => "M5 12h14M13 6l6 6-6 6",
         "pencil" => "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
         "up" => "M12 19V5M5 12l7-7 7 7",
         "down" => "M12 5v14M19 12l-7 7-7-7",

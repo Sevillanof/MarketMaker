@@ -702,16 +702,24 @@ pub fn EditorSkeleton() -> impl IntoView {
                     </div>
                 </div>
             </div>
-            // Panel del bloque: cabecera con ícono, Duplicar / Borrar, la sección
-            // Contenido abierta (tres campos) y las otras cuatro plegadas.
+            // Panel de la derecha: el mapa de la tienda. Título y "+", la página
+            // actual desplegada con sus bloques (uno abierto con sus ajustes
+            // rápidos y el botón de avanzados) y otra página plegada.
             <div class="flex flex-col gap-3 overflow-hidden border-l border-base-300 p-4">
-                <div class="flex items-start gap-3"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-5 w-3/4"/>{sk_line("w-full")}</div></div>
-                <div class="flex gap-2"><Skeleton class="h-8 w-24"/><Skeleton class="h-8 w-20"/></div>
-                <div class="flex flex-col gap-3 rounded-box border border-base-300 p-3">
-                    <Skeleton class="h-5 w-24"/>
-                    {(0..3).map(|_| view! { <div class="flex flex-col gap-1.5">{sk_line("w-1/4")}<Skeleton class="h-8 w-full"/></div> }).collect_view()}
+                <div class="flex items-start gap-2"><div class="flex grow flex-col gap-1.5"><Skeleton class="h-5 w-1/2"/>{sk_line("w-full")}</div><Skeleton class="size-8"/></div>
+                <div class="flex flex-col gap-2 rounded-box border border-base-300 p-2">
+                    <div class="flex items-center gap-2 p-1"><Skeleton class="size-4"/><Skeleton class="h-4 w-20"/><Skeleton class="h-4 w-12"/></div>
+                    {(0..2).map(|_| view! {
+                        <div class="flex items-center gap-2.5 rounded-field border border-base-300 p-2"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
+                    }).collect_view()}
+                    <div class="flex flex-col gap-3 rounded-field border border-base-300 p-2">
+                        <div class="flex items-center gap-2.5"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
+                        {(0..2).map(|_| view! { <div class="flex flex-col gap-1.5">{sk_line("w-1/4")}<Skeleton class="h-8 w-full"/></div> }).collect_view()}
+                        <Skeleton class="h-8 w-36"/>
+                    </div>
+                    <div class="flex items-center gap-2.5 rounded-field border border-base-300 p-2"><Skeleton class="size-9"/><div class="flex grow flex-col gap-1.5"><Skeleton class="h-3.5 w-2/3"/>{sk_line("w-full")}</div></div>
                 </div>
-                {(0..3).map(|_| view! { <Skeleton class="h-11 w-full"/> }).collect_view()}
+                {(0..2).map(|_| view! { <Skeleton class="h-11 w-full"/> }).collect_view()}
             </div>
             <div class="pointer-events-none absolute inset-0 grid place-items-center">
                 <div class="mk-load-msg relative h-11 w-72 rounded-box border border-base-300 bg-base-100 font-semibold shadow-lg">

@@ -15,6 +15,7 @@ mod inspector;
 mod look;
 mod palette;
 mod photos;
+mod page_map;
 mod pictures;
 pub use photos::{provide_photos, take_files, LinkImport, MyPhotos, UploadTray};
 
@@ -37,7 +38,7 @@ use canvas::Canvas;
 pub use icons::Icon;
 use inspector::Inspector;
 use palette::Palette;
-use topbar::{PageSwitcher, StoreMenu};
+use topbar::StoreMenu;
 
 /// Cuántos pasos de deshacer se guardan.
 pub const MAX_UNDO: usize = 50;
@@ -261,6 +262,9 @@ pub(crate) struct Ui {
     pub wizard: RwSignal<bool>,
     /// Cuántas veces el asistente armó la página: cada vez se guarda al instante.
     pub wizard_applied: RwSignal<u32>,
+    /// El panel de la derecha muestra los ajustes avanzados del bloque
+    /// elegido en lugar del mapa de la tienda.
+    pub advanced: RwSignal<bool>,
     /// Lo último que se cambió en "Mi tienda" (`"box"`, `"field"`, `"selector"`,
     /// separados por espacios) y un contador: el lienzo resalta un instante
     /// los elementos afectados. El contador reinicia la animación.
@@ -778,7 +782,13 @@ impl Actions {
     /// Elige un bloque y lleva el foco al inspector.
     pub fn edit(&self, id: &str) {
         self.state.selected.set(Some(id.to_string()));
-        request_animation_frame(|| focus_selector("#mk-inspector-title"));
+        // Editar lleva directo a los ajustes avanzados (después de que el
+        // panel reinicie su vista por el cambio de bloque).
+        let advanced = self.ui.advanced;
+        request_animation_frame(move || {
+            advanced.set(true);
+            request_animation_frame(|| focus_selector("#mk-inspector-title"));
+        });
     }
 }
 
@@ -1021,6 +1031,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         store_open: RwSignal::new(false),
         wizard: RwSignal::new(false),
         wizard_applied: RwSignal::new(0),
+        advanced: RwSignal::new(false),
         flash: RwSignal::new(("", 0)),
         new_drag: RwSignal::new(None),
         swallow_click: StoredValue::new(false),
@@ -1420,8 +1431,6 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                     </a>
                 })}
                 <StoreMenu/>
-                <span class="h-7 w-px bg-base-300" aria-hidden="true"></span>
-                <PageSwitcher/>
                 </div>
                 <div class="flex items-center">
                     <div class="flex gap-0.5 rounded-field bg-base-200 p-0.5" role="group" aria-label="Modo">
