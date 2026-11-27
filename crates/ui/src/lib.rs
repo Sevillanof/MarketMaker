@@ -241,20 +241,27 @@ pub fn Skeleton(#[prop(into, optional)] class: String) -> impl IntoView {
     view! { <div class=class></div> }
 }
 
-/// Skeleton de una página mientras llega del servidor: barra, banner y una
-/// grilla de tarjetas, con la misma grilla que el marketplace.
+/// Skeleton de una página mientras llega del servidor, con la forma de la
+/// plantilla editorial: franja de anuncio, menú, portada dividida (texto y
+/// foto), tres categorías y una fila de cuatro productos, con la misma grilla
+/// que el marketplace.
 #[component]
 pub fn PageSkeleton() -> impl IntoView {
     view! {
-        <div class="min-h-screen bg-base-200" aria-busy="true" aria-label="Cargando">
+        <div class="min-h-screen bg-base-100" aria-busy="true" aria-label="Cargando">
             <div class="mx-auto max-w-6xl p-4">
                 <div class="mk-grid">
-                    <div class="mk-node skeleton" style="--x:1; --y:1; --w:48; --h:12"></div>
-                    <div class="mk-node skeleton" style="--x:1; --y:13; --w:48; --h:48"></div>
-                    <div class="mk-node skeleton" style="--x:1; --y:61; --w:12; --h:48"></div>
-                    <div class="mk-node skeleton" style="--x:13; --y:61; --w:12; --h:48"></div>
-                    <div class="mk-node skeleton" style="--x:25; --y:61; --w:12; --h:48"></div>
-                    <div class="mk-node skeleton" style="--x:37; --y:61; --w:12; --h:48"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:1; --w:48; --h:4"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:5; --w:48; --h:10"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:15; --w:22; --h:56"></div>
+                    <div class="mk-node skeleton" style="--x:23; --y:15; --w:26; --h:56"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:71; --w:16; --h:40"></div>
+                    <div class="mk-node skeleton" style="--x:17; --y:71; --w:16; --h:40"></div>
+                    <div class="mk-node skeleton" style="--x:33; --y:71; --w:16; --h:40"></div>
+                    <div class="mk-node skeleton" style="--x:1; --y:111; --w:12; --h:66"></div>
+                    <div class="mk-node skeleton" style="--x:13; --y:111; --w:12; --h:66"></div>
+                    <div class="mk-node skeleton" style="--x:25; --y:111; --w:12; --h:66"></div>
+                    <div class="mk-node skeleton" style="--x:37; --y:111; --w:12; --h:66"></div>
                 </div>
             </div>
         </div>
