@@ -30,7 +30,7 @@ pub use account::{
 };
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton, ItemName};
 pub use product_page::{ProductImageWidget, ProductPriceWidget};
-pub use tags::{FilteredProducts, ProductFilter};
+pub use tags::{FilteredProducts, NwGrid, ProductFilter};
 
 /// Contexto que recibe todo widget al dibujarse.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -128,7 +128,7 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             view! { <TextWidget props/> }.into_any()
         }
         Widget::ProductGrid(p) => {
-            view! { <ProductGridWidget props=p.clone() products=ctx.products.clone()/> }.into_any()
+            view! { <ProductGridWidget props=p.clone() products=ctx.products.clone() editing/> }.into_any()
         }
         Widget::TagFilter(_)
         | Widget::TagList(_)
@@ -861,16 +861,53 @@ pub fn TextWidget(props: TextProps) -> impl IntoView {
     }
 }
 
+/// Encabezado de las secciones nuevas: antetítulo, título y enlace a la derecha.
 #[component]
-pub fn ProductGridWidget(props: ProductGridProps, products: Vec<Product>) -> impl IntoView {
+fn NwHead(
+    kicker: String,
+    title: String,
+    show_all: bool,
+    all_label: String,
+    all_href: String,
+    editing: bool,
+) -> impl IntoView {
+    let link = show_all && !all_label.is_empty();
+    view! {
+        <div class="nw-section-head">
+            <div>
+                {(!kicker.is_empty()).then(|| view! { <div class="nw-kicker">{kicker.clone()}</div> })}
+                {(!title.is_empty()).then(|| view! { <h4><AnimText text=title.clone()/></h4> })}
+            </div>
+            {link.then(|| view! {
+                <MaybeLink href=all_href editing class="nw-section-link">{format!("{all_label} ↗")}</MaybeLink>
+            })}
+        </div>
+    }
+}
+
+/// Cuadrícula de productos (diseños: lateral, enmarcada, flotante translúcida).
+#[component]
+pub fn ProductGridWidget(
+    props: ProductGridProps,
+    products: Vec<Product>,
+    editing: bool,
+) -> impl IntoView {
     let limit = usize::try_from(props.limit).unwrap_or(0);
     let filter = use_context::<ProductFilter>();
+    let grid = NwGrid {
+        cols: props.cols.clamp(2, 6),
+        show_category: props.show_category,
+        show_installments: props.show_installments,
+        favorite: props.cards.card_favorite,
+    };
+    let style = format!("{}--radius:{}px;", nw_colors(&props.bg, &props.ink), props.radius.clamp(0, 24));
     view! {
-        <div class="mk-box mk-pad @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
-            {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
-            })}
-            <FilteredProducts products limit filter paged=true/>
+        <div class="mk-nw h-full overflow-hidden">
+            <section class="nw-section" style=style>
+                <NwHead kicker=props.kicker.clone() title=props.title.clone() show_all=props.show_all
+                    all_label=props.all_label.clone() all_href=props.all_href.clone() editing/>
+                <FilteredProducts products limit filter paged=true nw=Some(grid)/>
+            </section>
         </div>
     }
 }
@@ -1442,7 +1479,6 @@ pub fn CarouselWidget(props: CarouselProps, editing: bool) -> impl IntoView {
 
 #[component]
 pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView {
-    let cols = tags::fill_cols(props.items.len());
     // En la tienda, los enlaces viejos a páginas que no existen se arreglan.
     let links = use_context::<StoreLinks>();
     let mut props = props;
@@ -1455,47 +1491,65 @@ pub fn CategoriesWidget(props: CategoriesProps, editing: bool) -> impl IntoView 
             c.href = domain::category_tile_href(&c.href, &c.label, has_page, &l.categories);
         }
     }
+    let ratio = match props.ratio.as_str() {
+        "1" | "0.8" | "1.78" => props.ratio.clone(),
+        _ => "1.25".to_string(),
+    };
+    let style = format!(
+        "{}--nw-ratio:{ratio};--nw-rad:{}px;",
+        nw_colors(&props.bg, &props.ink),
+        props.radius.clamp(0, 24)
+    );
+    let n = props.items.len().clamp(1, 4);
+    let arrow = props.arrow;
     view! {
-        <div class="mk-box mk-pad mk-cats @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
-            {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
-            })}
-            <div class=format!("grid min-h-0 flex-1 auto-rows-fr gap-3 {}", cols)>
-                {props
-                    .items
-                    .into_iter()
-                    .map(|c| view! {
-                        <MaybeLink href=c.href editing class="mk-cat group relative block min-h-0 overflow-hidden rounded-box">
-                            <div class="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
-                                <Image src=c.image_url.clone() alt=c.label.clone()/>
-                            </div>
-                            <div class="mk-cat-label absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-white">
-                                <span class="mk-h font-semibold">{c.label.clone()}</span>
-                            </div>
-                        </MaybeLink>
-                    })
-                    .collect_view()}
-            </div>
+        <div class="mk-nw h-full overflow-hidden">
+            <section class="nw-section" style=style>
+                <NwHead kicker=props.kicker.clone() title=props.title.clone() show_all=props.show_all
+                    all_label=props.all_label.clone() all_href=props.all_href.clone() editing/>
+                <div class="nw-categories" style=format!("--n:{n}")>
+                    {props
+                        .items
+                        .into_iter()
+                        .map(|c| view! {
+                            <MaybeLink href=c.href editing class="nw-category">
+                                <div class="nw-img"><Image src=c.image_url.clone() alt=c.label.clone()/></div>
+                                <div class="nw-category-label">
+                                    <span>{c.label.clone()}</span>
+                                    {arrow.then(|| view! { <span aria-hidden="true">"↗"</span> })}
+                                </div>
+                            </MaybeLink>
+                        })
+                        .collect_view()}
+                </div>
+            </section>
         </div>
     }
 }
 
 #[component]
 pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
+    let n = props.items.len().max(1);
+    let icon_style = if domain::parse_hex(&props.icon_color).is_some() {
+        format!("color:{}", props.icon_color)
+    } else {
+        String::new()
+    };
+    let show_text = props.show_text;
     view! {
-        <div class="mk-box mk-benefits h-full overflow-hidden rounded-box bg-base-100 px-4 py-2">
-            <div class="grid h-full auto-cols-[minmax(13rem,1fr)] grid-flow-col items-center gap-4 relative overflow-x-auto">
+        <div class="mk-nw h-full overflow-hidden">
+            <div class="nw-benefits" style=format!("{}--n:{n}", nw_colors(&props.bg, &props.ink))>
                 {props
                     .items
                     .into_iter()
                     .map(|b| view! {
-                        <div class="mk-benefit flex min-w-0 items-center gap-3">
-                            <div class="mk-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-full">
-                                <Icon name=b.icon class="h-6 w-6"/>
-                            </div>
-                            <div class="min-w-0">
-                                <p class="mk-sub mk-h font-semibold truncate">{b.title}</p>
-                                <p class="text-sm opacity-70 line-clamp-2">{b.text}</p>
+                        <div class="nw-benefit">
+                            <span class="nw-benefit-icon" style=icon_style.clone()>
+                                <Icon name=b.icon class="h-5 w-5"/>
+                            </span>
+                            <div>
+                                <b>{b.title}</b>
+                                {(show_text && !b.text.is_empty()).then(|| view! { <small>{b.text.clone()}</small> })}
                             </div>
                         </div>
                     })

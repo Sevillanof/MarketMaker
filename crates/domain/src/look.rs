@@ -75,7 +75,11 @@ impl Look {
         // `mk-m{n}`: el diseño que se usa en el celular (el de escritorio si
         // no se eligió otro). El CSS de los widgets nuevos lo lee con
         // consultas de contenedor.
-        let m = if self.design_m == 0 { d } else { self.design_m.clamp(1, max) };
+        let m = if self.design_m == 0 {
+            d
+        } else {
+            self.design_m.clamp(1, max)
+        };
         format!("mk-look mk-d{d} mk-m{m}")
     }
 

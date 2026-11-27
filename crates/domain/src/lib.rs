@@ -1381,10 +1381,11 @@ mod tests {
         assert!(!p.search && !p.upper);
         assert_eq!(p.size, 26);
         // Un anuncio guardado con el formato anterior sigue abriéndose.
-        let w: Widget = serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
-            "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
-        }}))
-        .unwrap();
+        let w: Widget =
+            serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
+                "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
+            }}))
+            .unwrap();
         let Widget::Announcement(p) = w else {
             panic!("anuncio")
         };
@@ -1442,9 +1443,10 @@ mod tests {
             matches!(&doc.nodes[0].widget, Widget::Banner(b) if b.title == "Ofertas de la semana")
         );
         let json = serde_json::to_value(&doc).unwrap();
-        let original: serde_json::Value = serde_json::from_str(EXAMPLE).unwrap();
-        assert_eq!(json, original);
-        let back: PageDoc = serde_json::from_value(json).unwrap();
+        // Los campos que el ejemplo no trae se completan con su valor de
+        // siempre: lo guardado y vuelto a leer queda igual.
+        let back: PageDoc = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&back).unwrap(), json);
         assert_eq!(back, doc);
         assert_eq!(validate(&doc), Ok(()));
     }
@@ -1790,7 +1792,7 @@ mod tests {
         let mut doc = example();
         doc.nodes[0].size = Size { w: 8, h: 48 };
         assert_invalid(&doc, "límites");
-        doc.nodes[0].size = Size { w: 48, h: 97 };
+        doc.nodes[0].size = Size { w: 48, h: 121 };
         assert_invalid(&doc, "límites");
     }
 
