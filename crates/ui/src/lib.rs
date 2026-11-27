@@ -111,9 +111,7 @@ pub fn initial_tile(name: &str) -> Option<(String, String)> {
         % 360;
     Some((
         letter.to_uppercase().collect(),
-        format!(
-            "background:oklch(94% 0.04 {hue});color:oklch(48% 0.14 {hue});container-type:size"
-        ),
+        format!("background:oklch(94% 0.04 {hue});color:oklch(48% 0.14 {hue});container-type:size"),
     ))
 }
 

@@ -335,12 +335,25 @@ pub fn open_reports(dialog: NodeRef<leptos::html::Dialog>, version: RwSignal<u32
 /// `window.mkbugCopy`, que vive en `public/js/reportar.js`.
 async fn copy_report(num: i64, text: &str, with_image: bool) -> bool {
     use wasm_bindgen::JsCast;
-    let Some(win) = web_sys::window() else { return false };
-    let Ok(f) = js_sys::Reflect::get(&win, &"mkbugCopy".into()) else { return false };
-    let Ok(f) = f.dyn_into::<js_sys::Function>() else { return false };
-    let Ok(p) = f.call3(&win, &(num as f64).into(), &text.into(), &with_image.into()) else { return false };
-    let Ok(p) = p.dyn_into::<js_sys::Promise>() else { return false };
-    wasm_bindgen_futures::JsFuture::from(p).await.map(|v| v.as_bool().unwrap_or(false)).unwrap_or(false)
+    let Some(win) = web_sys::window() else {
+        return false;
+    };
+    let Ok(f) = js_sys::Reflect::get(&win, &"mkbugCopy".into()) else {
+        return false;
+    };
+    let Ok(f) = f.dyn_into::<js_sys::Function>() else {
+        return false;
+    };
+    let Ok(p) = f.call3(&win, &(num as f64).into(), &text.into(), &with_image.into()) else {
+        return false;
+    };
+    let Ok(p) = p.dyn_into::<js_sys::Promise>() else {
+        return false;
+    };
+    wasm_bindgen_futures::JsFuture::from(p)
+        .await
+        .map(|v| v.as_bool().unwrap_or(false))
+        .unwrap_or(false)
 }
 
 /// La ventana de Reportes: lista a la izquierda, el detalle con la captura a

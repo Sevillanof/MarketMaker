@@ -1,4 +1,4 @@
-//! Asistente de primera página: cinco pasos (encabezado, portada, filtros,
+//! Asistente de primera página: cuatro pasos (encabezado, portada,
 //! productos y pie) que arman o reemplazan esos bloques en Inicio.
 //!
 //! Todo es lógica pura: las opciones de cada paso, cómo se convierte lo que
@@ -10,13 +10,12 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    font, normalize_hex, safe_bg_image, starter_doc, CardOptions, Field, FieldKind, Look, Node,
-    PageDoc, Size, Slide, StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, ROW_PX,
-    TEXT_ANIMATIONS,
+    font, normalize_hex, safe_bg_image, starter_doc, Field, FieldKind, Look, Node, PageDoc, Size,
+    StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, ROW_PX, TEXT_ANIMATIONS,
 };
 
 /// Cuántos pasos tiene el asistente.
-pub const WIZARD_STEPS: usize = 5;
+pub const WIZARD_STEPS: usize = 4;
 
 /// Cada bloque que arma el asistente. El orden es el de la página, de arriba
 /// hacia abajo, y también el de los pasos.
@@ -24,7 +23,6 @@ pub const WIZARD_STEPS: usize = 5;
 pub enum Section {
     Nav,
     Hero,
-    Filters,
     Products,
     Footer,
 }
@@ -33,7 +31,6 @@ impl Section {
     pub const ALL: [Section; WIZARD_STEPS] = [
         Section::Nav,
         Section::Hero,
-        Section::Filters,
         Section::Products,
         Section::Footer,
     ];
@@ -46,16 +43,8 @@ impl Section {
     pub fn of(widget: &Widget) -> Option<Section> {
         Some(match widget {
             Widget::Navbar(_) => Section::Nav,
-            Widget::Banner(_) | Widget::Carousel(_) => Section::Hero,
-            Widget::TagFilter(_)
-            | Widget::TagList(_)
-            | Widget::TagCircles(_)
-            | Widget::TagSearch(_)
-            | Widget::CategoryTabs(_)
-            | Widget::CategorySide(_)
-            | Widget::CategoryCards(_)
-            | Widget::CategoryDrop(_) => Section::Filters,
-            Widget::ProductGrid(_) | Widget::ProductCarousel(_) => Section::Products,
+            Widget::Banner(_) => Section::Hero,
+            Widget::ProductGrid(_) => Section::Products,
             Widget::Footer(_) => Section::Footer,
             _ => return None,
         })
@@ -94,8 +83,8 @@ pub const WIZARD: [WizardStep; WIZARD_STEPS] = [
         hint: "Es la barra de arriba, con tu logo y el menú. Mirá las opciones con las flechas.",
         options: &[
             opt("Clásico", "Logo a la izquierda y enlaces a la derecha"),
-            opt("Logo al centro", "Enlaces repartidos a los costados"),
-            opt("Flotante", "Se apoya sobre la portada"),
+            opt("Marca al centro", "Enlaces repartidos a los costados"),
+            opt("Con barra de búsqueda", "Una segunda fila con el buscador"),
         ],
     },
     WizardStep {
@@ -104,20 +93,12 @@ pub const WIZARD: [WizardStep; WIZARD_STEPS] = [
         title: "Elegí la portada",
         hint: "Es lo primero que ve tu cliente. Cambiá de opción con las flechas.",
         options: &[
-            opt("Banner", "Una imagen grande con título"),
-            opt("Carrusel", "Varias imágenes que pasan solas"),
-            opt("Sin portada", "Empezar directo con los productos"),
-        ],
-    },
-    WizardStep {
-        section: Section::Filters,
-        name: "Filtros",
-        title: "Elegí cómo buscan tus clientes",
-        hint: "Los filtros ayudan a encontrar productos. Si no los necesitás, elegí «Sin filtros».",
-        options: &[
-            opt("Pestañas por categoría", "Una fila con tus categorías"),
-            opt("Buscador y filtros", "Búsqueda y menú de etiquetas"),
-            opt("Sin filtros", "Solo los productos"),
+            opt("Marco editorial", "Texto y foto dentro de un marco"),
+            opt(
+                "Fotografía inmersiva",
+                "La foto a todo el ancho con el texto encima",
+            ),
+            opt("Arco", "Foto en arco junto al texto"),
         ],
     },
     WizardStep {
@@ -126,12 +107,12 @@ pub const WIZARD: [WizardStep; WIZARD_STEPS] = [
         title: "Elegí cómo se muestran tus productos",
         hint: "Se usan los que cargues. Mientras tanto ves productos de ejemplo.",
         options: &[
-            opt("Cuadrícula", "Tarjetas simples, una al lado de la otra"),
+            opt("Lateral", "Foto a un lado y el texto al otro, de a dos"),
+            opt("Enmarcada", "Cada producto en una tarjeta con marco"),
             opt(
-                "Cuadrícula con detalle",
-                "Con precios por transferencia y cuotas",
+                "Flotante translúcida",
+                "El texto flota sobre la foto con un velo",
             ),
-            opt("Carrusel", "Pasan de costado con flechas"),
         ],
     },
     WizardStep {
@@ -141,9 +122,15 @@ pub const WIZARD: [WizardStep; WIZARD_STEPS] = [
         hint:
             "Es la franja del final, con tus enlaces. Después tocá «Usar este y crear mi página».",
         options: &[
-            opt("Clásico", "Fondo simple, enlaces claros"),
-            opt("Suave", "Fondo con un tono suave"),
-            opt("Intenso", "Más contraste, con color"),
+            opt("Columnas", "Marca y columnas de enlaces en una fila"),
+            opt(
+                "Marca protagonista",
+                "La marca centrada arriba y los enlaces abajo",
+            ),
+            opt(
+                "Bloque contenido",
+                "Todo dentro de un recuadro sobre el fondo",
+            ),
         ],
     },
 ];
@@ -268,12 +255,9 @@ impl WizardPick {
         self
     }
 
-    /// ¿El paso termina sin bloque («Sin portada», «Sin filtros»)?
-    pub fn is_empty_choice(&self, section: Section) -> bool {
-        matches!(
-            (section, self.choice[section.index()]),
-            (Section::Hero, 2) | (Section::Filters, 2)
-        )
+    /// ¿El paso termina sin bloque? Ya no hay opciones sin bloque.
+    pub fn is_empty_choice(&self, _section: Section) -> bool {
+        false
     }
 }
 
@@ -302,48 +286,22 @@ pub fn pick_from_doc(doc: &PageDoc) -> WizardPick {
     } else {
         0
     };
-    p.choice[1] = match existing_of(doc, Section::Hero).map(|n| &n.widget) {
-        Some(Widget::Banner(_)) => 0,
-        Some(Widget::Carousel(_)) => 1,
-        _ => 2,
-    };
-    p.choice[2] = match existing_of(doc, Section::Filters).map(|n| &n.widget) {
-        Some(Widget::CategoryTabs(_)) => 0,
-        Some(Widget::TagSearch(_)) => 1,
-        Some(_) => 0,
-        None => 2,
-    };
-    if let Some(node) = existing_of(doc, Section::Products) {
-        p.choice[3] = match &node.widget {
-            Widget::ProductGrid(g) if g.cards.card == "full" => 1,
-            Widget::ProductCarousel(_) => 2,
-            _ => 0,
-        };
-        let limit = match &node.widget {
-            Widget::ProductGrid(g) => g.limit,
-            Widget::ProductCarousel(c) => c.limit,
-            _ => 8,
-        };
+    if let Some(Widget::ProductGrid(g)) = existing_of(doc, Section::Products).map(|n| &n.widget) {
         p.products_count = PRODUCT_COUNTS
             .iter()
-            .position(|(_, n)| *n >= limit)
+            .position(|(_, n)| *n >= g.limit)
             .unwrap_or(1) as u8;
     }
     for section in Section::ALL {
         if let Some(node) = existing_of(doc, section) {
-            if let Some(i) = WIZARD_COLORS
+            let i = section.index();
+            if let Some(c) = WIZARD_COLORS
                 .iter()
                 .position(|(c, _)| *c == node.look.color)
             {
-                p.color[section.index()] = i as u8;
+                p.color[i] = c as u8;
             }
-            if section == Section::Footer {
-                p.choice[4] = match node.look.design {
-                    3 => 1,
-                    4 => 2,
-                    _ => 0,
-                };
-            }
+            p.choice[i] = node.look.design.saturating_sub(1);
         }
     }
     p.clamped()
@@ -428,7 +386,6 @@ pub fn text_max(widget: &Widget, key: &str) -> Option<usize> {
 }
 
 fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -> Option<Widget> {
-    let choice = pick.choice[section.index()];
     match section {
         Section::Nav => {
             let Some(Widget::Navbar(mut n)) = existing
@@ -441,96 +398,21 @@ fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -
             n.search = pick.nav_search;
             Some(Widget::Navbar(n))
         }
-        Section::Hero => match choice {
-            0 => {
-                let banner = match existing {
-                    Some(Widget::Banner(b)) => Some(b.clone()),
-                    Some(Widget::Carousel(c)) => c.slides.first().map(|s| crate::BannerProps {
-                        kicker: String::new(),
-                        title: s.title.clone(),
-                        subtitle: s.subtitle.clone(),
-                        image_url: s.image_url.clone(),
-                        button_label: s.button_label.clone(),
-                        button_href: s.button_href.clone(),
-                        ..Default::default()
-                    }),
-                    _ => None,
-                };
-                match banner {
-                    Some(b) => Some(Widget::Banner(b)),
-                    None => Widget::defaults("Banner"),
-                }
-            }
-            1 => match existing {
-                Some(Widget::Carousel(c)) => Some(Widget::Carousel(c.clone())),
-                other => {
-                    let mut w = Widget::defaults("Carousel")?;
-                    if let (Widget::Carousel(c), Some(Widget::Banner(b))) = (&mut w, other) {
-                        if let Some(first) = c.slides.first_mut() {
-                            *first = Slide {
-                                image_url: b.image_url.clone(),
-                                title: b.title.clone(),
-                                subtitle: b.subtitle.clone(),
-                                button_label: b.button_label.clone(),
-                                button_href: b.button_href.clone(),
-                            };
-                        }
-                    }
-                    Some(w)
-                }
-            },
-            _ => None,
+        Section::Hero => match existing {
+            Some(Widget::Banner(b)) => Some(Widget::Banner(b.clone())),
+            _ => Widget::defaults("Banner"),
         },
-        Section::Filters => {
-            let name = match choice {
-                0 => "CategoryTabs",
-                1 => "TagSearch",
-                _ => return None,
-            };
-            let fresh = Widget::defaults(name)?;
-            match existing {
-                Some(w) if std::mem::discriminant(w) == std::mem::discriminant(&fresh) => {
-                    Some(w.clone())
-                }
-                _ => Some(fresh),
-            }
-        }
         Section::Products => {
             let limit = PRODUCT_COUNTS[usize::from(pick.products_count)].1;
-            let (title, cards) = match existing {
-                Some(Widget::ProductGrid(g)) => (Some(g.title.clone()), Some(g.cards.clone())),
-                Some(Widget::ProductCarousel(c)) => (Some(c.title.clone()), Some(c.cards.clone())),
-                _ => (None, None),
+            let base = match existing {
+                Some(w @ Widget::ProductGrid(_)) => w.clone(),
+                _ => Widget::defaults("ProductGrid")?,
             };
-            let card = if choice == 1 { "full" } else { "" };
-            match choice {
-                0 | 1 => {
-                    let Widget::ProductGrid(mut g) = Widget::defaults("ProductGrid")? else {
-                        return None;
-                    };
-                    if let Some(t) = title {
-                        g.title = t;
-                    }
-                    g.cards = cards.unwrap_or_else(CardOptions::default);
-                    g.cards.card = card.to_string();
-                    g.limit = limit;
-                    Some(Widget::ProductGrid(g))
-                }
-                _ => {
-                    let Widget::ProductCarousel(mut c) = Widget::defaults("ProductCarousel")?
-                    else {
-                        return None;
-                    };
-                    if let Some(t) = title {
-                        c.title = t;
-                    }
-                    if let Some(cards) = cards {
-                        c.cards = cards;
-                    }
-                    c.limit = limit;
-                    Some(Widget::ProductCarousel(c))
-                }
-            }
+            let Widget::ProductGrid(mut g) = base else {
+                return None;
+            };
+            g.limit = limit;
+            Some(Widget::ProductGrid(g))
         }
         Section::Footer => existing
             .cloned()
@@ -544,11 +426,7 @@ fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -
 pub fn section_look(section: Section, pick: &WizardPick, existing: Option<&Look>) -> Look {
     let i = section.index();
     let mut look = existing.cloned().unwrap_or_default();
-    if section == Section::Footer {
-        look.design = [1, 3, 4][usize::from(pick.choice[4])];
-    } else if pick.design[i] > 0 {
-        look.design = pick.design[i];
-    }
+    look.design = pick.choice[i] + 1;
     let custom = look.color.starts_with('#');
     if !(custom && pick.color[i] == 0) {
         look.color = WIZARD_COLORS[usize::from(pick.color[i])].0.to_string();
@@ -821,10 +699,8 @@ mod tests {
     fn reabrir_arranca_en_lo_que_ya_hay() {
         let doc = starter_doc("Tienda");
         let pick = pick_from_doc(&doc);
-        // La plantilla inicial tiene banner, cuadrícula y no tiene filtros.
-        assert_eq!(pick.choice[1], 0);
-        assert_eq!(pick.choice[2], 2);
-        assert_eq!(pick.choice[3], 0);
+        // La plantilla inicial tiene todo en el primer diseño.
+        assert_eq!(pick.choice, [0; WIZARD_STEPS]);
     }
 
     #[test]
@@ -851,21 +727,20 @@ mod tests {
             })
             .unwrap();
         let mut pick = pick_from_doc(&doc);
-        pick.choice[1] = 1; // carrusel
-        pick.choice[0] = 1; // logo al centro
+        pick.choice[1] = 2; // arco
+        pick.choice[0] = 1; // marca al centro
         let changes = apply(&mut doc, &pick);
-        // El menú ya no tiene variantes en el asistente (el diseño se elige en
-        // el editor); el asistente se rehace en el PR 6.
+        assert_eq!(changes[0], Change::Replaced);
         assert_eq!(changes[1], Change::Replaced);
-        let carousel = doc
+        let hero = doc
             .nodes
             .iter()
             .find_map(|n| match &n.widget {
-                Widget::Carousel(c) => Some(c.clone()),
+                Widget::Banner(b) => Some((b.title.clone(), n.look.design)),
                 _ => None,
             })
             .unwrap();
-        assert_eq!(carousel.slides[0].title, title_before);
+        assert_eq!(hero, (title_before, 3));
         assert!(doc
             .nodes
             .iter()
@@ -873,48 +748,13 @@ mod tests {
     }
 
     #[test]
-    fn agrega_filtros_entre_la_portada_y_los_productos() {
-        let mut doc = starter_doc("Tienda");
-        let mut pick = pick_from_doc(&doc);
-        pick.choice[2] = 0; // pestañas
-        let changes = apply(&mut doc, &pick);
-        assert_eq!(changes[2], Change::Added);
-        let mut nodes = doc.nodes.clone();
-        nodes.sort_by_key(|n| n.pos.y);
-        let order: Vec<_> = nodes
-            .iter()
-            .filter_map(|n| Section::of(&n.widget))
-            .collect();
-        let mut sorted = order.clone();
-        sorted.sort_by_key(|s| s.index());
-        assert_eq!(order, sorted);
-        // Ningún bloque queda encima de otro.
-        for (a, b) in nodes.iter().zip(nodes.iter().skip(1)) {
-            assert!(b.pos.y >= a.pos.y + u16::from(a.size.h), "{a:?} / {b:?}");
-        }
-    }
-
-    #[test]
-    fn sin_portada_quita_el_bloque() {
-        let mut doc = starter_doc("Tienda");
-        let mut pick = pick_from_doc(&doc);
-        pick.choice[1] = 2;
-        let changes = apply(&mut doc, &pick);
-        assert_eq!(changes[1], Change::Removed);
-        assert!(doc
-            .nodes
-            .iter()
-            .all(|n| !matches!(n.widget, Widget::Banner(_) | Widget::Carousel(_))));
-    }
-
-    #[test]
     fn el_plan_no_toca_la_pagina() {
         let doc = starter_doc("Tienda");
         let mut pick = pick_from_doc(&doc);
-        pick.choice[3] = 2;
+        pick.choice[2] = 2;
         let before = doc.clone();
         let plan = plan(&doc, &pick);
-        assert_eq!(plan[3], Change::Replaced);
+        assert_eq!(plan[2], Change::Replaced);
         assert_eq!(doc, before);
     }
 
@@ -943,7 +783,7 @@ mod tests {
                 for c in 0..3u8 {
                     for d in 0..3u8 {
                         let mut pick = WizardPick::default();
-                        pick.choice = [a, b, c, d, a];
+                        pick.choice = [a, b, c, d];
                         let mut copy = doc.clone();
                         apply(&mut copy, &pick);
                         for n in &copy.nodes {
@@ -961,9 +801,9 @@ mod tests {
         let mut pick = pick_from_doc(&doc);
         pick.over[0].insert("brand".into(), "Mi marca".into());
         pick.over[0].insert("no_existe".into(), "x".into());
-        pick.over[3].insert("limit".into(), 16.into());
-        pick.over[3].insert("card_favorite".into(), false.into());
-        pick.design[1] = 3;
+        pick.over[2].insert("limit".into(), 16.into());
+        pick.over[2].insert("card_favorite".into(), false.into());
+        pick.choice[1] = 2;
         pick.align[1] = "center".into();
         pick.bg_kind = 2;
         pick.bg_image = "/img/banner.webp".into();

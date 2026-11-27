@@ -228,19 +228,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_stats_count_as_unchanged_text() {
-        let Widget::Stats(st) = Widget::defaults("Stats").unwrap() else {
-            panic!("Stats");
-        };
-        assert!(st.items.iter().all(|i| i.value == STAT_PLACEHOLDER));
-        assert!(st
-            .items
-            .iter()
-            .all(|i| is_placeholder(&i.value) && is_placeholder(&i.label)));
-        assert!(!is_placeholder("+500"));
-    }
-
-    #[test]
     fn the_starter_is_valid_and_carries_the_name() {
         let doc = starter_doc("La Huerta");
         assert!(crate::validate(&doc).is_ok(), "{:?}", crate::validate(&doc));

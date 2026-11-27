@@ -77,7 +77,6 @@ pub fn DevWidgetsPage() -> impl IntoView {
     }
     provide_sample_store();
     let products = sample_products();
-    let first_id = products[0].id.clone();
     let ctx = RenderCtx {
         products: products.clone(),
         editing: false,
@@ -93,12 +92,12 @@ pub fn DevWidgetsPage() -> impl IntoView {
 
     let cases: Vec<(String, Node)> = WIDGET_TYPES
         .iter()
-        .filter(|(t, _)| only.as_deref().is_none_or(|o| o.split(',').any(|o| o == *t)))
+        .filter(|(t, _)| {
+            only.as_deref()
+                .is_none_or(|o| o.split(',').any(|o| o == *t))
+        })
         .flat_map(|(type_name, label)| {
-            let mut widget = Widget::defaults(type_name).expect("tipo conocido");
-            if let Widget::FeaturedProduct(p) = &mut widget {
-                p.product_id = first_id.clone();
-            }
+            let widget = Widget::defaults(type_name).expect("tipo conocido");
             let (anim, anim_text) = (anim.clone(), anim_text.clone());
             let l = widget.limits();
             [
@@ -169,7 +168,6 @@ pub fn DevDesignsPage() -> impl IntoView {
         .unwrap_or_else(|| "light".to_string());
     let only = leptos_router::hooks::use_query_map().with_untracked(|q| q.get("only"));
     let products = sample_products();
-    let first_id = products[0].id.clone();
     let ctx = RenderCtx {
         products: products.clone(),
         editing: false,
@@ -183,10 +181,7 @@ pub fn DevDesignsPage() -> impl IntoView {
                 .is_none_or(|o| o.split(',').any(|o| o == *t))
         })
         .map(|(type_name, label)| {
-            let mut widget = Widget::defaults(type_name).expect("tipo conocido");
-            if let Widget::FeaturedProduct(p) = &mut widget {
-                p.product_id = first_id.clone();
-            }
+            let widget = Widget::defaults(type_name).expect("tipo conocido");
             let cells = domain::DESIGNS
                 .iter()
                 .zip(colors)
@@ -230,110 +225,6 @@ pub fn DevDesignsPage() -> impl IntoView {
                     </section>
                 })
                 .collect_view()}
-        </div>
-    }
-    .into_any()
-}
-
-/// Ruta de desarrollo `/dev/ficha`: los estilos de la foto y del precio de
-/// la ficha, con un producto de varias fotos y pocas unidades.
-#[component]
-pub fn DevProductStylesPage() -> impl IntoView {
-    if !cfg!(debug_assertions) {
-        return hidden_page();
-    }
-    provide_sample_store();
-    let mut product = sample_products().remove(0);
-    product.photos = (1..=5).map(|i| format!("/img/product-{i}.webp")).collect();
-    product.stock = Some(3);
-    let mut grid_products = sample_products();
-    grid_products[1].stock = Some(2);
-    let ctx = RenderCtx {
-        products: grid_products,
-        editing: false,
-        product: Some(product),
-    };
-    let mut cases: Vec<(String, Node)> = Vec::new();
-    for (v, label) in domain::VARIANT_PRODUCT_IMAGE {
-        let mut w = Widget::defaults("ProductImage").expect("tipo conocido");
-        if let Widget::ProductImage(p) = &mut w {
-            p.variant = (*v).to_string();
-            p.badge = "Más vendido".to_string();
-        }
-        let mut node = Node::new(format!("img-{v}"), w);
-        node.size = domain::Size { w: 28, h: 56 };
-        cases.push((format!("Foto · {label}"), node));
-    }
-    for (v, label) in domain::VARIANT_PRODUCT_PRICE {
-        let mut w = Widget::defaults("ProductPrice").expect("tipo conocido");
-        if let Widget::ProductPrice(p) = &mut w {
-            p.variant = (*v).to_string();
-        }
-        let mut node = Node::new(format!("price-{v}"), w);
-        node.size = domain::Size {
-            w: 20,
-            h: if *v == "d" { 22 } else { 10 },
-        };
-        cases.push((format!("Precio · {label}"), node));
-    }
-    for (v, label) in domain::CARD_STYLE_OPTIONS {
-        let mut w = Widget::defaults("ProductGrid").expect("tipo conocido");
-        if let Widget::ProductGrid(p) = &mut w {
-            p.cards.card = (*v).to_string();
-            p.limit = 4;
-            p.title = "Novedades".to_string();
-        }
-        let mut node = Node::new(
-            format!("cards-{}", if v.is_empty() { "classic" } else { v }),
-            w,
-        );
-        node.size = domain::Size { w: 48, h: 50 };
-        cases.push((format!("Tarjetas · {label}"), node));
-    }
-    // Las formas de abrir la ficha, con barra de compra (ficha larga para
-    // que el botón quede arriba al bajar).
-    let dialog_product = ctx.product.clone().unwrap_or_default();
-    let dialogs = [("", "light"), ("drawer", "dark"), ("sheet", "color"), ("auto", "light")]
-        .into_iter()
-        .map(|(open_mode, bar)| {
-            let mut modal = domain::ProductModal::default();
-            modal.open = open_mode.to_string();
-            modal.buybar = bar.to_string();
-            for n in &mut modal.nodes {
-                match n.id.as_str() {
-                    "m5" => n.pos.y = 18,
-                    "m4" => {
-                        n.pos.y = 25;
-                        n.size.h = 120;
-                    }
-                    _ => {}
-                }
-            }
-            let open = RwSignal::new(None::<String>);
-            let id = dialog_product.id.clone();
-            let label = format!("Abrir ficha «{}» con barra «{bar}»", if open_mode.is_empty() { "centro" } else { open_mode });
-            view! {
-                <button type="button" class="btn btn-sm mr-2 mb-2" data-open=open_mode.to_string() on:click=move |_| open.set(Some(id.clone()))>{label}</button>
-                <widgets::ProductDialog modal products=vec![dialog_product.clone()] open/>
-            }
-        })
-        .collect_view();
-    view! {
-        <div data-theme="light" class="mk-store min-h-screen bg-base-200 p-6 text-base-content">
-            <section class="mb-8">{dialogs}</section>
-            {cases.into_iter().map(|(title, mut node)| {
-                node.pos = domain::Pos { x: 0, y: 0 };
-                let style = node_style(&node);
-                let content = render_widget(&node, &ctx);
-                view! {
-                    <section class="mb-8" data-case=node.id.clone()>
-                        <h2 class="mb-2 text-sm font-semibold opacity-75">{title}</h2>
-                        <div class="mk-grid rounded-box bg-base-100 p-4" style="width:1136px">
-                            <div class="mk-node" style=style>{content}</div>
-                        </div>
-                    </section>
-                }
-            }).collect_view()}
         </div>
     }
     .into_any()
@@ -499,40 +390,9 @@ pub fn DevMenusPage() -> impl IntoView {
             }
         })
         .collect_view();
-    let coupons = [
-        ("", "#e85d04", "15% OFF en toda la tienda", "HOTSALE", "Hasta el domingo"),
-        ("", "#111111", "15% OFF en toda la tienda", "HOTSALE", "Hasta el domingo"),
-        ("solid", "", "Usá el código y llevate 10% off en tu primera compra", "BIENVENIDA", ""),
-        ("soft", "", "10% off en tu primera compra con", "BIENVENIDA", ""),
-        ("line", "accent", "20% OFF con el código · solo hoy", "AMIGOS20", ""),
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(i, (look, color, text, code, note))| {
-        let mut w = Widget::defaults("Coupon").expect("tipo conocido");
-        if let Widget::Coupon(p) = &mut w {
-            p.coupon = look.to_string();
-            p.code = code.to_string();
-            p.note = note.to_string();
-            p.text = text.to_string();
-        }
-        let mut n = Node::new(format!("cup{i}"), w);
-        n.size = Size { w: 48, h: 9 };
-        n.look.color = color.to_string();
-        let style = node_style(&n);
-        let content = render_widget(&n, &ctx);
-        view! {
-            <section class="mb-6" data-case=format!("cup{i}")>
-                <h2 class="mb-2 text-sm font-semibold opacity-75">{format!("Cupón · {}", if look.is_empty() { "recortable" } else { look })}</h2>
-                <div class="mk-grid" style="width:min(1136px,100%)"><div class="mk-node" style=style>{content}</div></div>
-            </section>
-        }
-    })
-    .collect_view();
     view! {
         <div data-theme="light" class="mk-store min-h-screen bg-base-200 p-6 text-base-content max-md:p-2">
             {menus}
-            {coupons}
         </div>
     }
     .into_any()

@@ -11,92 +11,18 @@ pub enum Widget {
     Banner(BannerProps),
     Text(TextProps),
     ProductGrid(ProductGridProps),
-    TagFilter(TagFilterProps),
-    TagList(TagFilterProps),
-    TagCircles(TagFilterProps),
-    TagSearch(TagSearchProps),
-    TagTabs(TagTabsProps),
-    CategoryTabs(CategoryFilterProps),
-    CategorySide(CategoryFilterProps),
-    CategoryCards(CategoryFilterProps),
-    CategoryDrop(CategoryFilterProps),
     CategoryPage(CategoryFilterProps),
-    FeaturedProduct(FeaturedProductProps),
     Navbar(NavbarProps),
-    Carousel(CarouselProps),
     Categories(CategoriesProps),
     Benefits(BenefitsProps),
-    Countdown(CountdownProps),
     Card(CardProps),
-    Tabs(TabsProps),
     Faq(FaqProps),
-    HoverGallery(HoverGalleryProps),
     Testimonials(TestimonialsProps),
-    Logos(LogosProps),
-    Image(ImageProps),
     Contact(ContactProps),
     Footer(FooterProps),
     Announcement(AnnouncementProps),
-    Coupon(CouponProps),
-    Stats(StatsProps),
-    Steps(StepsProps),
-    ProductCarousel(ProductCarouselProps),
-    Social(SocialProps),
-    // Bloques de la ficha del producto: muestran el producto que se abrió.
-    ProductImage(ProductImageProps),
-    ProductName(ProductNameProps),
-    ProductPrice(ProductPriceProps),
-    ProductDescription(ProductDescriptionProps),
-    ProductButton(ProductButtonProps),
     /// La ficha completa en un solo bloque (foto, datos, compra y descripción).
     ProductSheet(ProductSheetProps),
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct ProductImageProps {
-    pub fit: String,
-    /// `a` clásico (foto grande y miniaturas abajo), `b` galería grande,
-    /// `c` mosaico, `d` miniaturas al costado, `e` visor con flechas.
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    /// Cartel sobre la foto, por ejemplo "Más vendido". Vacío: no se muestra.
-    #[serde(default)]
-    pub badge: String,
-    /// Avisa cuando quedan pocas unidades ("Quedan 3").
-    #[serde(default = "yes")]
-    pub stock_note: bool,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct ProductNameProps {}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct ProductPriceProps {
-    /// `a` solo el precio, `b` con cuotas, `c` transferencia destacada,
-    /// `d` cajita con las formas de pago, `e` etiquetas chicas una debajo de
-    /// la otra (la de una ficha nueva).
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    /// Las cuotas sin interés de Cobros (si la tienda las configuró).
-    #[serde(default = "yes")]
-    pub show_installments: bool,
-    /// El precio con transferencia de Cobros (si la tienda tiene descuento).
-    #[serde(default = "yes")]
-    pub show_transfer: bool,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct ProductDescriptionProps {}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct ProductButtonProps {
-    pub label: String,
-    #[serde(default)]
-    pub href: String,
-    /// Cantidad en el celular: `a` botones redondos al lado del botón, `b`
-    /// la cantidad arriba y el botón abajo, a todo el ancho.
-    #[serde(default = "variant_a")]
-    pub qty: String,
 }
 
 /// La ficha del producto (diseños: columnas clásicas, panel enmarcado,
@@ -325,18 +251,6 @@ pub const CARD_STYLE_OPTIONS: &[(&str, &str)] = &[
     ("clean", "Limpia con «Añadir»"),
 ];
 
-/// Las etiquetas de los productos, para que el comprador filtre las
-/// cuadrículas de la misma página.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct TagFilterProps {
-    pub title: String,
-    /// Texto del botón que muestra todos los productos.
-    pub all_label: String,
-    /// Mostrar cuántos productos tiene cada etiqueta.
-    #[serde(default)]
-    pub show_counts: bool,
-}
-
 /// Las categorías de los productos, para que el comprador filtre las
 /// cuadrículas de la misma página (los cinco bloques de categorías).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -347,32 +261,6 @@ pub struct CategoryFilterProps {
     /// Mostrar cuántos productos tiene cada categoría.
     #[serde(default)]
     pub show_counts: bool,
-}
-
-/// Buscador con un menú para filtrar por etiquetas.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct TagSearchProps {
-    pub placeholder: String,
-    #[serde(default)]
-    pub show_counts: bool,
-}
-
-/// Cuadrícula de productos con las etiquetas como pestañas arriba.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct TagTabsProps {
-    pub title: String,
-    pub limit: i64,
-    pub all_label: String,
-    #[serde(flatten)]
-    pub cards: CardOptions,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct FeaturedProductProps {
-    pub product_id: String,
-    pub show_price: bool,
-    #[serde(flatten)]
-    pub cards: CardOptions,
 }
 
 /// Enlace con texto, usado en la navbar y el footer. En la navbar puede
@@ -418,22 +306,6 @@ pub struct NavbarProps {
 
 fn brand_size() -> i64 {
     26
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct Slide {
-    pub image_url: String,
-    pub title: String,
-    pub subtitle: String,
-    pub button_label: String,
-    pub button_href: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct CarouselProps {
-    pub slides: Vec<Slide>,
-    /// Segundos entre diapositivas; 0 la deja quieta.
-    pub autoplay: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -533,18 +405,6 @@ impl Default for BenefitsProps {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct CountdownProps {
-    pub title: String,
-    pub subtitle: String,
-    /// Fecha y hora local de fin, como la da `<input type="datetime-local">`:
-    /// `2026-12-24T20:00`.
-    pub ends_at: String,
-    pub ended_text: String,
-    pub button_label: String,
-    pub button_href: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct CardProps {
     /// Antetítulo chico sobre el título (opcional; los documentos anteriores no lo traen).
     #[serde(default)]
@@ -598,17 +458,6 @@ impl Default for CardProps {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct TabItem {
-    pub label: String,
-    pub body: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct TabsProps {
-    pub tabs: Vec<TabItem>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FaqItem {
     pub question: String,
     pub answer: String,
@@ -640,19 +489,6 @@ impl Default for FaqProps {
             ink: String::new(),
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct GalleryImage {
-    pub image_url: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct HoverGalleryProps {
-    pub images: Vec<GalleryImage>,
-    pub title: String,
-    pub subtitle: String,
-    pub href: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -694,27 +530,6 @@ impl Default for TestimonialsProps {
             ink: String::new(),
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct LogoItem {
-    pub image_url: String,
-    pub alt: String,
-    pub href: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct LogosProps {
-    pub title: String,
-    pub items: Vec<LogoItem>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct ImageProps {
-    pub image_url: String,
-    pub alt: String,
-    pub href: String,
-    pub fit: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -764,11 +579,6 @@ pub struct ContactProps {
     pub address: String,
 }
 
-/// Estilo por defecto de los widgets con variantes (`a`, `b` o `c`).
-fn variant_a() -> String {
-    "a".to_string()
-}
-
 fn yes() -> bool {
     true
 }
@@ -813,145 +623,29 @@ impl Default for AnnouncementProps {
     }
 }
 
-/// Franja con un código de descuento para copiar. El código es uno de los
-/// cupones de la tienda: si se pausa o vence, el bloque no se ve.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-#[serde(default)]
-pub struct CouponProps {
-    /// El código del cupón (de la pantalla Cupones), por ejemplo `HOTSALE`.
-    pub code: String,
-    /// El mensaje, por ejemplo "10 % en toda la tienda".
-    pub text: String,
-    /// Aclaración corta al costado, por ejemplo "Hasta el domingo".
-    pub note: String,
-    /// Forma: vacío recortable, `solid`, `soft` o `line`.
-    pub coupon: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct StatItem {
-    pub value: String,
-    pub label: String,
-    #[serde(default)]
-    pub icon: String,
-}
-
-/// Números grandes que dan confianza. Estilos: `a` en una caja, `b` sin
-/// caja, `c` tarjetas con ícono.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct StatsProps {
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    pub items: Vec<StatItem>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct StepItem {
-    pub title: String,
-    pub text: String,
-}
-
-/// «Cómo comprar» en pasos. Estilos: `a` en línea con números, `b` línea
-/// de pasos (solo títulos), `c` tarjetas con número grande.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct StepsProps {
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    pub title: String,
-    pub items: Vec<StepItem>,
-}
-
-/// Los productos en una fila que se desliza. Estilos: `a` flechas arriba a
-/// la derecha, `b` flechas a los costados, `c` sin caja y con la última
-/// tarjeta asomando.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct ProductCarouselProps {
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    pub title: String,
-    pub limit: i64,
-    #[serde(default)]
-    pub link_label: String,
-    #[serde(default)]
-    pub link_href: String,
-    #[serde(flatten)]
-    pub cards: CardOptions,
-}
-
-/// Redes de la tienda y botón de WhatsApp. WhatsApp e Instagram salen de
-/// "Datos de la tienda". Estilos: `a` íconos + botón flotante redondo, `b`
-/// botón flotante con texto, `c` franja de redes con el usuario.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct SocialProps {
-    #[serde(default = "variant_a")]
-    pub variant: String,
-    pub title: String,
-    #[serde(default)]
-    pub facebook: String,
-    #[serde(default)]
-    pub tiktok: String,
-    /// Texto del botón flotante con texto (estilo `b`).
-    #[serde(default)]
-    pub label: String,
-}
-
 /// Tipos de widget disponibles, con su nombre para mostrar, en el orden de la paleta.
 pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("Navbar", "Menú superior"),
     ("Banner", "Banner"),
-    ("Carousel", "Carrusel"),
     ("Categories", "Accesos con foto"),
     ("ProductGrid", "Cuadrícula de productos"),
-    ("TagFilter", "Etiquetas en fila"),
-    ("TagList", "Etiquetas en columna"),
-    ("TagCircles", "Etiquetas con foto"),
-    ("TagSearch", "Buscador con filtros"),
-    ("TagTabs", "Productos con pestañas"),
-    ("CategoryTabs", "Categorías en pastillas"),
-    ("CategorySide", "Categorías al costado"),
-    ("CategoryCards", "Categorías con foto"),
-    ("CategoryDrop", "Menú de categorías"),
     ("CategoryPage", "Categoría con subcategorías"),
-    ("FeaturedProduct", "Producto destacado"),
     ("Benefits", "Beneficios"),
-    ("Countdown", "Oferta con cuenta regresiva"),
     ("Card", "Tarjeta"),
     ("Text", "Texto"),
-    ("Tabs", "Pestañas"),
     ("Faq", "Preguntas frecuentes"),
-    ("HoverGallery", "Galería de fotos"),
     ("Testimonials", "Testimonios"),
-    ("Logos", "Logos de marcas"),
-    ("Image", "Imagen"),
     ("Contact", "Contacto"),
     ("Footer", "Pie de página"),
     ("Announcement", "Barra de anuncio"),
-    ("Coupon", "Cupón"),
-    ("Stats", "Cifras destacadas"),
-    ("Steps", "Pasos"),
-    ("ProductCarousel", "Carrusel de productos"),
-    ("Social", "Redes y WhatsApp"),
-    ("ProductImage", "Foto del producto"),
-    ("ProductName", "Nombre del producto"),
-    ("ProductPrice", "Precio del producto"),
-    ("ProductDescription", "Descripción del producto"),
-    ("ProductButton", "Botón de la ficha"),
     ("ProductSheet", "Ficha del producto"),
 ];
 
 /// Bloques que solo tienen sentido dentro de la ficha de un producto.
-pub const PRODUCT_MODAL_ONLY: &[&str] = &[
-    "ProductImage",
-    "ProductName",
-    "ProductPrice",
-    "ProductDescription",
-    "ProductButton",
-    "ProductSheet",
-];
+pub const PRODUCT_MODAL_ONLY: &[&str] = &["ProductSheet"];
 
 /// Bloques de la página que también se pueden poner en la ficha.
-pub const PRODUCT_MODAL_SHARED: &[&str] =
-    &["Text", "Image", "Benefits", "Tabs", "Faq", "Testimonials"];
+pub const PRODUCT_MODAL_SHARED: &[&str] = &["Text", "Benefits", "Faq", "Testimonials"];
 
 /// ¿Se puede poner un bloque de este tipo en `layer`?
 pub fn allowed_in(type_name: &str, layer: Layer) -> bool {
@@ -1096,82 +790,6 @@ const TAG_FILTER_FIELDS: &[Field] = &[
         FieldKind::Bool,
     ),
 ];
-const TAG_SEARCH_FIELDS: &[Field] = &[
-    field("placeholder", "Texto del buscador", text(40)),
-    adv(
-        "show_counts",
-        "Mostrar cuántos productos hay",
-        FieldKind::Bool,
-    ),
-];
-const TAG_TABS_FIELDS: &[Field] = &[
-    field("title", "Título", text(80)),
-    field(
-        "limit",
-        "Cantidad de productos",
-        FieldKind::Number { min: 1, max: 12 },
-    ),
-    adv("all_label", "Texto de la pestaña de todos", text(20)),
-    field(
-        "card",
-        "Tarjetas",
-        FieldKind::Select {
-            options: CARD_STYLE_OPTIONS,
-        },
-    ),
-    adv(
-        "card_transfer",
-        "Tarjeta completa: precio con transferencia",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_installments",
-        "Tarjeta completa: cuotas sin interés",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_favorite",
-        "Corazón de favoritos en las tarjetas y la ficha",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_colors",
-        "Puntos de color en las tarjetas",
-        FieldKind::Bool,
-    ),
-];
-const FEATURED_PRODUCT_FIELDS: &[Field] = &[
-    field("product_id", "Producto", FieldKind::ProductRef),
-    adv("show_price", "Mostrar precio", FieldKind::Bool),
-    field(
-        "card",
-        "Tarjetas",
-        FieldKind::Select {
-            options: CARD_STYLE_OPTIONS,
-        },
-    ),
-    adv(
-        "card_transfer",
-        "Tarjeta completa: precio con transferencia",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_installments",
-        "Tarjeta completa: cuotas sin interés",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_favorite",
-        "Corazón de favoritos en las tarjetas y la ficha",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_colors",
-        "Puntos de color en las tarjetas",
-        FieldKind::Bool,
-    ),
-];
-
 pub const NAV_MENU_OPTIONS: &[(&str, &str)] = &[
     ("list", "Lista simple"),
     ("panel", "Panel ancho con foto"),
@@ -1254,30 +872,6 @@ const NAVBAR_FIELDS: &[Field] = &[
     field("ink", "Color del texto", FieldKind::Color),
     adv("button_label", "Texto del botón", text(30)),
     adv("button_href", "Enlace del botón", FieldKind::Url),
-];
-
-const SLIDE_ITEM: &[Field] = &[
-    field("image_url", "Imagen", FieldKind::Url),
-    field("title", "Título", text(80)),
-    field("subtitle", "Subtítulo", text(160)),
-    field("button_label", "Texto del botón", text(30)),
-    field("button_href", "Enlace del botón", FieldKind::Url),
-];
-const CAROUSEL_FIELDS: &[Field] = &[
-    field(
-        "slides",
-        "Diapositivas",
-        FieldKind::List {
-            item: SLIDE_ITEM,
-            min: 1,
-            max: 8,
-        },
-    ),
-    adv(
-        "autoplay",
-        "Segundos entre diapositivas (0 = quieto)",
-        FieldKind::Number { min: 0, max: 30 },
-    ),
 ];
 
 const CATEGORY_ITEM: &[Field] = &[
@@ -1397,15 +991,6 @@ const BENEFITS_FIELDS: &[Field] = &[
     field("ink", "Color del texto", FieldKind::Color),
 ];
 
-const COUNTDOWN_FIELDS: &[Field] = &[
-    field("title", "Título", text(80)),
-    field("subtitle", "Subtítulo", text(160)),
-    field("ends_at", "Termina", FieldKind::DateTime),
-    adv("ended_text", "Texto al terminar", text(80)),
-    adv("button_label", "Texto del botón", text(30)),
-    adv("button_href", "Enlace del botón", FieldKind::Url),
-];
-
 const CARD_SIDE_OPTIONS: &[(&str, &str)] = &[("left", "Izquierda"), ("right", "Derecha")];
 const CARD_FIELDS: &[Field] = &[
     field("kicker", "Antetítulo", text(40)),
@@ -1427,20 +1012,6 @@ const CARD_FIELDS: &[Field] = &[
     field("ink", "Color del texto", FieldKind::Color),
 ];
 
-const TAB_ITEM: &[Field] = &[
-    field("label", "Pestaña", text(30)),
-    field("body", "Contenido", long(1000)),
-];
-const TABS_FIELDS: &[Field] = &[field(
-    "tabs",
-    "Pestañas",
-    FieldKind::List {
-        item: TAB_ITEM,
-        min: 1,
-        max: 6,
-    },
-)];
-
 const FAQ_ITEM: &[Field] = &[
     field("question", "Pregunta", text(120)),
     field("answer", "Respuesta", long(600)),
@@ -1460,22 +1031,6 @@ const FAQ_FIELDS: &[Field] = &[
     field("open_first", "Primera pregunta abierta", FieldKind::Bool),
     field("bg", "Color de fondo", FieldKind::Color),
     field("ink", "Color del texto", FieldKind::Color),
-];
-
-const GALLERY_ITEM: &[Field] = &[field("image_url", "Imagen", FieldKind::Url)];
-const HOVER_GALLERY_FIELDS: &[Field] = &[
-    field(
-        "images",
-        "Imágenes",
-        FieldKind::List {
-            item: GALLERY_ITEM,
-            min: 1,
-            max: 10,
-        },
-    ),
-    field("title", "Título", text(60)),
-    field("subtitle", "Subtítulo", text(80)),
-    adv("href", "Enlace", FieldKind::Url),
 ];
 
 const TESTIMONIAL_ITEM: &[Field] = &[
@@ -1508,37 +1063,6 @@ const TESTIMONIALS_FIELDS: &[Field] = &[
     field("ink", "Color del texto", FieldKind::Color),
 ];
 
-const LOGO_ITEM: &[Field] = &[
-    field("image_url", "Logo", FieldKind::Url),
-    field("alt", "Nombre de la marca", text(40)),
-    field("href", "Enlace", FieldKind::Url),
-];
-const LOGOS_FIELDS: &[Field] = &[
-    field("title", "Título", text(80)),
-    field(
-        "items",
-        "Marcas",
-        FieldKind::List {
-            item: LOGO_ITEM,
-            min: 1,
-            max: 12,
-        },
-    ),
-];
-
-const IMAGE_FIELDS: &[Field] = &[
-    field("image_url", "Imagen", FieldKind::Url),
-    field("alt", "Descripción", text(120)),
-    adv("href", "Enlace", FieldKind::Url),
-    adv(
-        "fit",
-        "Ajuste",
-        FieldKind::Select {
-            options: IMAGE_FIT_OPTIONS,
-        },
-    ),
-];
-
 pub const VARIANT_PRODUCT_IMAGE: &[(&str, &str)] = &[
     ("a", "Clásico: foto y miniaturas abajo"),
     ("b", "Galería grande con flechas"),
@@ -1546,25 +1070,6 @@ pub const VARIANT_PRODUCT_IMAGE: &[(&str, &str)] = &[
     ("d", "Miniaturas al costado"),
     ("e", "Visor que se desliza"),
 ];
-const PRODUCT_IMAGE_FIELDS: &[Field] = &[
-    field(
-        "variant",
-        "Estilo",
-        FieldKind::Select {
-            options: VARIANT_PRODUCT_IMAGE,
-        },
-    ),
-    field("badge", "Cartel sobre la foto (opcional)", text(24)),
-    field("stock_note", "Avisar cuando quedan pocas", FieldKind::Bool),
-    adv(
-        "fit",
-        "Ajuste",
-        FieldKind::Select {
-            options: IMAGE_FIT_OPTIONS,
-        },
-    ),
-];
-
 pub const VARIANT_PRODUCT_PRICE: &[(&str, &str)] = &[
     ("a", "Solo el precio"),
     ("b", "Con cuotas"),
@@ -1572,42 +1077,12 @@ pub const VARIANT_PRODUCT_PRICE: &[(&str, &str)] = &[
     ("d", "Cajita con formas de pago"),
     ("e", "Etiquetas chicas"),
 ];
-const PRODUCT_PRICE_FIELDS: &[Field] = &[
-    field(
-        "variant",
-        "Estilo",
-        FieldKind::Select {
-            options: VARIANT_PRODUCT_PRICE,
-        },
-    ),
-    field(
-        "show_installments",
-        "Mostrar cuotas sin interés (se eligen en Cobros)",
-        FieldKind::Bool,
-    ),
-    field(
-        "show_transfer",
-        "Mostrar precio con transferencia (se elige en Cobros)",
-        FieldKind::Bool,
-    ),
-];
 /// El botón de la ficha agrega al carrito: ya no lleva enlace (`href`
 /// queda solo para leer fichas viejas).
 /// Cómo se ve la cantidad en el celular (ver [`ProductButtonProps::qty`]).
 pub const QTY_STYLES: &[(&str, &str)] = &[
     ("a", "Botones redondos al lado"),
     ("b", "Cantidad arriba, botón abajo"),
-];
-
-const PRODUCT_BUTTON_FIELDS: &[Field] = &[
-    field("label", "Texto del botón", text(30)),
-    field(
-        "qty",
-        "Cantidad en el celular",
-        FieldKind::Select {
-            options: QTY_STYLES,
-        },
-    ),
 ];
 
 const CONTACT_FIELDS: &[Field] = &[
@@ -1656,18 +1131,6 @@ pub const COUPON_LOOK_OPTIONS: &[(&str, &str)] = &[
     ("soft", "Suave"),
     ("line", "Minimal, con línea"),
 ];
-const COUPON_FIELDS: &[Field] = &[
-    field("code", "Cupón", text(24)),
-    field("text", "Mensaje", text(80)),
-    field("note", "Aclaración (opcional)", text(40)),
-    field(
-        "coupon",
-        "Forma",
-        FieldKind::Select {
-            options: COUPON_LOOK_OPTIONS,
-        },
-    ),
-];
 const BAR_ALIGN_OPTIONS: &[(&str, &str)] = &[("center", "Centrado"), ("left", "A la izquierda")];
 const ANNOUNCEMENT_FIELDS: &[Field] = &[
     field("message", "Mensaje", text(120)),
@@ -1699,134 +1162,21 @@ pub const VARIANT_STATS: &[(&str, &str)] = &[
     ("b", "Sin caja, centradas"),
     ("c", "Tarjetas con ícono"),
 ];
-const STAT_ITEM: &[Field] = &[
-    field("value", "Número", text(12)),
-    field("label", "Qué mide", text(60)),
-    adv(
-        "icon",
-        "Ícono (estilo tarjetas)",
-        FieldKind::Select {
-            options: BENEFIT_ICON_OPTIONS,
-        },
-    ),
-];
-const STATS_FIELDS: &[Field] = &[
-    field(
-        "variant",
-        "Estilo",
-        FieldKind::Select {
-            options: VARIANT_STATS,
-        },
-    ),
-    field(
-        "items",
-        "Cifras",
-        FieldKind::List {
-            item: STAT_ITEM,
-            min: 2,
-            max: 4,
-        },
-    ),
-];
-
 pub const VARIANT_STEPS: &[(&str, &str)] = &[
     ("a", "En línea con números"),
     ("b", "Línea de pasos (solo títulos)"),
     ("c", "Tarjetas con número grande"),
 ];
-const STEP_ITEM: &[Field] = &[
-    field("title", "Título", text(40)),
-    field("text", "Texto", text(100)),
-];
-const STEPS_FIELDS: &[Field] = &[
-    field(
-        "variant",
-        "Estilo",
-        FieldKind::Select {
-            options: VARIANT_STEPS,
-        },
-    ),
-    field("title", "Título", text(80)),
-    field(
-        "items",
-        "Pasos",
-        FieldKind::List {
-            item: STEP_ITEM,
-            min: 2,
-            max: 5,
-        },
-    ),
-];
-
 pub const VARIANT_PRODUCT_CAROUSEL: &[(&str, &str)] = &[
     ("a", "Flechas arriba a la derecha"),
     ("b", "Flechas a los costados"),
     ("c", "Sin caja, la última tarjeta asoma"),
 ];
-const PRODUCT_CAROUSEL_FIELDS: &[Field] = &[
-    field(
-        "variant",
-        "Estilo",
-        FieldKind::Select {
-            options: VARIANT_PRODUCT_CAROUSEL,
-        },
-    ),
-    field("title", "Título", text(80)),
-    field(
-        "limit",
-        "Cantidad de productos",
-        FieldKind::Number { min: 2, max: 24 },
-    ),
-    adv("link_label", "Texto de «Ver todos»", text(30)),
-    adv("link_href", "Enlace de «Ver todos»", FieldKind::Url),
-    field(
-        "card",
-        "Tarjetas",
-        FieldKind::Select {
-            options: CARD_STYLE_OPTIONS,
-        },
-    ),
-    adv(
-        "card_transfer",
-        "Tarjeta completa: precio con transferencia",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_installments",
-        "Tarjeta completa: cuotas sin interés",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_favorite",
-        "Corazón de favoritos en las tarjetas y la ficha",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_colors",
-        "Puntos de color en las tarjetas",
-        FieldKind::Bool,
-    ),
-];
-
 pub const VARIANT_SOCIAL: &[(&str, &str)] = &[
     ("a", "Íconos y botón flotante de WhatsApp"),
     ("b", "Botón flotante con texto"),
     ("c", "Franja de redes con usuario"),
 ];
-const SOCIAL_FIELDS: &[Field] = &[
-    field(
-        "variant",
-        "Estilo",
-        FieldKind::Select {
-            options: VARIANT_SOCIAL,
-        },
-    ),
-    field("title", "Título", text(40)),
-    field("label", "Texto del botón flotante", text(30)),
-    adv("facebook", "Facebook (enlace)", FieldKind::Url),
-    adv("tiktok", "TikTok (enlace)", FieldKind::Url),
-];
-
 /// Fin de una cuenta regresiva nueva: `days` días después de `unix_secs`, a
 /// las 23:59, como lo da `<input type="datetime-local">` (`2026-11-27T23:59`).
 /// Con una fecha fija en los valores de ejemplo, desde ese día todas las
@@ -1843,21 +1193,6 @@ pub fn countdown_end(unix_secs: i64, days: i64) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
     format!("{y:04}-{m:02}-{d:02}T23:59")
-}
-
-impl crate::PageDoc {
-    /// Pone `ends_at` en todas las cuentas regresivas de la tienda (para una
-    /// tienda recién creada desde una plantilla).
-    pub fn set_countdowns_end(&mut self, ends_at: &str) {
-        let pages = self.pages.iter_mut().map(|p| &mut p.nodes);
-        for nodes in std::iter::once(&mut self.nodes).chain(pages) {
-            for n in nodes.iter_mut() {
-                if let Widget::Countdown(c) = &mut n.widget {
-                    c.ends_at = ends_at.to_string();
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1927,42 +1262,16 @@ impl Widget {
             Widget::Banner(_) => "Banner",
             Widget::Text(_) => "Text",
             Widget::ProductGrid(_) => "ProductGrid",
-            Widget::TagFilter(_) => "TagFilter",
-            Widget::TagList(_) => "TagList",
-            Widget::TagCircles(_) => "TagCircles",
-            Widget::TagSearch(_) => "TagSearch",
-            Widget::TagTabs(_) => "TagTabs",
-            Widget::CategoryTabs(_) => "CategoryTabs",
-            Widget::CategorySide(_) => "CategorySide",
-            Widget::CategoryCards(_) => "CategoryCards",
-            Widget::CategoryDrop(_) => "CategoryDrop",
             Widget::CategoryPage(_) => "CategoryPage",
-            Widget::FeaturedProduct(_) => "FeaturedProduct",
             Widget::Navbar(_) => "Navbar",
-            Widget::Carousel(_) => "Carousel",
             Widget::Categories(_) => "Categories",
             Widget::Benefits(_) => "Benefits",
-            Widget::Countdown(_) => "Countdown",
             Widget::Card(_) => "Card",
-            Widget::Tabs(_) => "Tabs",
             Widget::Faq(_) => "Faq",
-            Widget::HoverGallery(_) => "HoverGallery",
             Widget::Testimonials(_) => "Testimonials",
-            Widget::Logos(_) => "Logos",
-            Widget::Image(_) => "Image",
             Widget::Contact(_) => "Contact",
             Widget::Footer(_) => "Footer",
             Widget::Announcement(_) => "Announcement",
-            Widget::Coupon(_) => "Coupon",
-            Widget::Stats(_) => "Stats",
-            Widget::Steps(_) => "Steps",
-            Widget::ProductCarousel(_) => "ProductCarousel",
-            Widget::Social(_) => "Social",
-            Widget::ProductImage(_) => "ProductImage",
-            Widget::ProductName(_) => "ProductName",
-            Widget::ProductPrice(_) => "ProductPrice",
-            Widget::ProductDescription(_) => "ProductDescription",
-            Widget::ProductButton(_) => "ProductButton",
             Widget::ProductSheet(_) => "ProductSheet",
         }
     }
@@ -2145,42 +1454,16 @@ impl Widget {
             Widget::Banner(_) => limits(16, 48, 24, 120, 48, 68),
             Widget::Text(_) => limits(8, 48, 12, 96, 24, 24),
             Widget::ProductGrid(_) => limits(12, 48, 36, 255, 48, 70),
-            Widget::TagFilter(_) => limits(12, 48, 7, 24, 48, 9),
-            Widget::TagList(_) => limits(8, 24, 20, 144, 12, 44),
-            Widget::TagCircles(_) => limits(12, 48, 15, 36, 48, 19),
-            Widget::TagSearch(_) => limits(16, 48, 7, 16, 48, 9),
-            Widget::TagTabs(_) => limits(12, 48, 36, 144, 48, 96),
-            Widget::CategoryTabs(_) => limits(12, 48, 7, 24, 48, 9),
-            Widget::CategorySide(_) => limits(8, 24, 20, 144, 12, 44),
-            Widget::CategoryCards(_) => limits(12, 48, 20, 96, 48, 40),
-            Widget::CategoryDrop(_) => limits(6, 24, 5, 12, 12, 6),
             Widget::CategoryPage(_) => limits(12, 48, 20, 96, 48, 36),
-            Widget::FeaturedProduct(_) => limits(8, 24, 36, 96, 12, 48),
             Widget::Navbar(_) => limits(24, 48, 12, 24, 48, 12),
-            Widget::Carousel(_) => limits(24, 48, 36, 96, 48, 48),
             Widget::Categories(_) => limits(12, 48, 24, 96, 48, 64),
             Widget::Benefits(_) => limits(12, 48, 12, 48, 48, 14),
-            Widget::Countdown(_) => limits(16, 48, 36, 72, 48, 36),
             Widget::Card(_) => limits(8, 48, 36, 96, 48, 56),
-            Widget::Tabs(_) => limits(12, 48, 24, 96, 24, 36),
             Widget::Faq(_) => limits(12, 48, 24, 120, 48, 56),
-            Widget::HoverGallery(_) => limits(8, 24, 36, 96, 12, 48),
             Widget::Testimonials(_) => limits(16, 48, 36, 72, 48, 40),
-            Widget::Logos(_) => limits(12, 48, 12, 36, 48, 24),
-            Widget::Image(_) => limits(4, 48, 12, 120, 16, 36),
             Widget::Contact(_) => limits(24, 48, 36, 96, 48, 52),
             Widget::Footer(_) => limits(24, 48, 14, 60, 48, 32),
             Widget::Announcement(_) => limits(24, 48, 4, 12, 48, 5),
-            Widget::Coupon(_) => limits(24, 48, 5, 12, 48, 7),
-            Widget::Stats(_) => limits(16, 48, 10, 40, 48, 16),
-            Widget::Steps(_) => limits(16, 48, 16, 60, 48, 28),
-            Widget::ProductCarousel(_) => limits(16, 48, 36, 120, 48, 58),
-            Widget::Social(_) => limits(12, 48, 4, 40, 48, 12),
-            Widget::ProductImage(_) => limits(8, 48, 12, 120, 24, 52),
-            Widget::ProductName(_) => limits(8, 48, 5, 24, 24, 9),
-            Widget::ProductPrice(_) => limits(6, 48, 4, 32, 24, 9),
-            Widget::ProductDescription(_) => limits(8, 48, 6, 96, 24, 28),
-            Widget::ProductButton(_) => limits(8, 48, 6, 12, 24, 7),
             Widget::ProductSheet(_) => limits(24, 48, 40, 160, 48, 90),
         }
     }
@@ -2190,39 +1473,16 @@ impl Widget {
             Widget::Banner(_) => BANNER_FIELDS,
             Widget::Text(_) => TEXT_FIELDS,
             Widget::ProductGrid(_) => PRODUCT_GRID_FIELDS,
-            Widget::TagFilter(_) | Widget::TagList(_) | Widget::TagCircles(_) => TAG_FILTER_FIELDS,
-            Widget::TagSearch(_) => TAG_SEARCH_FIELDS,
-            Widget::TagTabs(_) => TAG_TABS_FIELDS,
-            Widget::CategoryTabs(_)
-            | Widget::CategorySide(_)
-            | Widget::CategoryCards(_)
-            | Widget::CategoryDrop(_)
-            | Widget::CategoryPage(_) => TAG_FILTER_FIELDS,
-            Widget::FeaturedProduct(_) => FEATURED_PRODUCT_FIELDS,
             Widget::Navbar(_) => NAVBAR_FIELDS,
-            Widget::Carousel(_) => CAROUSEL_FIELDS,
             Widget::Categories(_) => CATEGORIES_FIELDS,
             Widget::Benefits(_) => BENEFITS_FIELDS,
-            Widget::Countdown(_) => COUNTDOWN_FIELDS,
             Widget::Card(_) => CARD_FIELDS,
-            Widget::Tabs(_) => TABS_FIELDS,
             Widget::Faq(_) => FAQ_FIELDS,
-            Widget::HoverGallery(_) => HOVER_GALLERY_FIELDS,
             Widget::Testimonials(_) => TESTIMONIALS_FIELDS,
-            Widget::Logos(_) => LOGOS_FIELDS,
-            Widget::Image(_) => IMAGE_FIELDS,
             Widget::Contact(_) => CONTACT_FIELDS,
             Widget::Footer(_) => FOOTER_FIELDS,
             Widget::Announcement(_) => ANNOUNCEMENT_FIELDS,
-            Widget::Coupon(_) => COUPON_FIELDS,
-            Widget::Stats(_) => STATS_FIELDS,
-            Widget::Steps(_) => STEPS_FIELDS,
-            Widget::ProductCarousel(_) => PRODUCT_CAROUSEL_FIELDS,
-            Widget::Social(_) => SOCIAL_FIELDS,
-            Widget::ProductImage(_) => PRODUCT_IMAGE_FIELDS,
-            Widget::ProductPrice(_) => PRODUCT_PRICE_FIELDS,
-            Widget::ProductName(_) | Widget::ProductDescription(_) => &[],
-            Widget::ProductButton(_) => PRODUCT_BUTTON_FIELDS,
+            Widget::CategoryPage(_) => TAG_FILTER_FIELDS,
             Widget::ProductSheet(_) => PRODUCT_SHEET_FIELDS,
         }
     }
@@ -2255,60 +1515,10 @@ impl Widget {
                 cards: CardOptions::default(),
                 title: s("Productos"),
                 limit: 8, ..Default::default() }),
-            "TagFilter" => Widget::TagFilter(TagFilterProps {
-                title: String::new(),
-                all_label: s("Todos"),
-                show_counts: true,
-            }),
-            "TagList" => Widget::TagList(TagFilterProps {
-                title: s("Filtrar"),
-                all_label: s("Limpiar filtros"),
-                show_counts: true,
-            }),
-            "TagCircles" => Widget::TagCircles(TagFilterProps {
-                title: String::new(),
-                all_label: s("Todos"),
-                show_counts: false,
-            }),
-            "CategoryTabs" => Widget::CategoryTabs(CategoryFilterProps {
-                title: String::new(),
-                all_label: s("Todas"),
-                show_counts: false,
-            }),
-            "CategorySide" => Widget::CategorySide(CategoryFilterProps {
-                title: s("Categorías"),
-                all_label: s("Todas"),
-                show_counts: true,
-            }),
-            "CategoryCards" => Widget::CategoryCards(CategoryFilterProps {
-                title: s("Comprá por categoría"),
-                all_label: s("Todas"),
-                show_counts: true,
-            }),
-            "CategoryDrop" => Widget::CategoryDrop(CategoryFilterProps {
-                title: s("Categorías"),
-                all_label: s("Todas"),
-                show_counts: false,
-            }),
             "CategoryPage" => Widget::CategoryPage(CategoryFilterProps {
                 title: String::new(),
                 all_label: s("Todas"),
                 show_counts: false,
-            }),
-            "TagSearch" => Widget::TagSearch(TagSearchProps {
-                placeholder: s("Buscar productos"),
-                show_counts: true,
-            }),
-            "TagTabs" => Widget::TagTabs(TagTabsProps {
-                cards: CardOptions::default(),
-                title: s("Productos"),
-                limit: 8,
-                all_label: s("Todos"),
-            }),
-            "FeaturedProduct" => Widget::FeaturedProduct(FeaturedProductProps {
-                cards: CardOptions::default(),
-                product_id: String::new(),
-                show_price: true,
             }),
             "Navbar" => Widget::Navbar(NavbarProps {
                 menu: s("list"),
@@ -2323,22 +1533,6 @@ impl Widget {
                 size: 26,
                 bg: String::new(),
                 ink: String::new(),
-            }),
-            "Carousel" => Widget::Carousel(CarouselProps {
-                slides: (1..=3)
-                    .map(|i| Slide {
-                        image_url: format!("/img/slide-{i}.webp"),
-                        title: s(["Novedades", "Ofertas", "Envíos"][i - 1]),
-                        subtitle: s([
-                            "Contá acá qué hay de nuevo",
-                            "Contá acá qué está en oferta",
-                            "Contá acá cómo y adónde enviás",
-                        ][i - 1]),
-                        button_label: s("Ver más"),
-                        button_href: s("/"),
-                    })
-                    .collect(),
-                autoplay: 5,
             }),
             "Categories" => Widget::Categories(CategoriesProps {
                 title: s("Categorías"),
@@ -2379,14 +1573,6 @@ impl Widget {
                         text: s("Contá acá cómo te pueden contactar"),
                     },
                 ], ..Default::default() }),
-            "Countdown" => Widget::Countdown(CountdownProps {
-                title: s("Ofertas relámpago"),
-                subtitle: s("Contá acá qué está en oferta y hasta cuándo"),
-                ends_at: s("2026-12-31T23:59"),
-                ended_text: s("¡La oferta terminó!"),
-                button_label: s("Ver ofertas"),
-                button_href: s("/ofertas"),
-            }),
             "Card" => Widget::Card(CardProps {
                 kicker: String::new(),
                 image_url: s("/img/card.webp"),
@@ -2395,22 +1581,6 @@ impl Widget {
                 button_label: s("Ver más"),
                 button_href: s("/"),
                 layout: s("vertical"), ..Default::default() }),
-            "Tabs" => Widget::Tabs(TabsProps {
-                tabs: vec![
-                    TabItem {
-                        label: s("Envíos"),
-                        body: s("Contá acá cómo y adónde enviás, y cuánto tarda."),
-                    },
-                    TabItem {
-                        label: s("Pagos"),
-                        body: s("Contá acá cómo te pueden pagar."),
-                    },
-                    TabItem {
-                        label: s("Cambios"),
-                        body: s("Contá acá cómo son los cambios y las devoluciones."),
-                    },
-                ],
-            }),
             "Faq" => Widget::Faq(FaqProps {
                 title: s("Preguntas frecuentes"),
                 items: vec![
@@ -2427,16 +1597,6 @@ impl Widget {
                         answer: s("Escribí acá la respuesta."),
                     },
                 ], ..Default::default() }),
-            "HoverGallery" => Widget::HoverGallery(HoverGalleryProps {
-                images: (1..=4)
-                    .map(|i| GalleryImage {
-                        image_url: format!("/img/gallery-{i}.webp"),
-                    })
-                    .collect(),
-                title: s("Nuestra colección"),
-                subtitle: s("Tocá o pasá el mouse para ver más fotos"),
-                href: String::new(),
-            }),
             "Testimonials" => Widget::Testimonials(TestimonialsProps {
                 title: s("Lo que dicen nuestros clientes"),
                 // Sin nombres inventados: se completan con opiniones reales.
@@ -2446,32 +1606,7 @@ impl Widget {
                         text: s("Copiá acá lo que te dijo un cliente real."),
                         rating: 5, note: String::new() })
                     .collect(), ..Default::default() }),
-            "Logos" => Widget::Logos(LogosProps {
-                title: s("Marcas que trabajamos"),
-                items: [
-                    "Nórdika",
-                    "Altavista",
-                    "Kumo",
-                    "Brisa",
-                    "Valle Sur",
-                    "Oriente",
-                ]
-                .iter()
-                .enumerate()
-                .map(|(i, name)| LogoItem {
-                    image_url: format!("/img/brand-{}.svg", i + 1),
-                    alt: s(name),
-                    href: String::new(),
-                })
-                .collect(),
-            }),
             // Otra foto que la de la Tarjeta: agregadas juntas no se repiten.
-            "Image" => Widget::Image(ImageProps {
-                image_url: s("/img/category-hogar.webp"),
-                alt: s("Imagen de ejemplo"),
-                href: String::new(),
-                fit: s("cover"),
-            }),
             "Contact" => Widget::Contact(ContactProps {
                 title: s("Hablemos"),
                 text: s("¿Tenés dudas sobre un producto, un envío o tu pedido? Escribinos y te respondemos a la brevedad."),
@@ -2486,88 +1621,7 @@ impl Widget {
                 legal: String::new(), ..Default::default() }),
             "Announcement" => Widget::Announcement(AnnouncementProps::default()),
             // El código se elige de los cupones de la tienda (lo completa el editor).
-            "Coupon" => Widget::Coupon(CouponProps {
-                code: String::new(),
-                text: s("Usá este código y ahorrá en tu compra"),
-                note: String::new(),
-                coupon: String::new(),
-            }),
-            "Stats" => Widget::Stats(StatsProps {
-                variant: s("a"),
-                items: vec![
-                    StatItem {
-                        value: s(crate::STAT_PLACEHOLDER),
-                        label: s("Ej.: clientes felices"),
-                        icon: s("truck"),
-                    },
-                    StatItem {
-                        value: s(crate::STAT_PLACEHOLDER),
-                        label: s("Ej.: puntaje en reseñas"),
-                        icon: s("star"),
-                    },
-                    StatItem {
-                        value: s(crate::STAT_PLACEHOLDER),
-                        label: s("Ej.: tiempo de entrega"),
-                        icon: s("clock"),
-                    },
-                ],
-            }),
-            "Steps" => Widget::Steps(StepsProps {
-                variant: s("a"),
-                title: s("Comprar es muy fácil"),
-                items: vec![
-                    StepItem {
-                        title: s("Elegí"),
-                        text: s("Mirá el catálogo y sumá al carrito."),
-                    },
-                    StepItem {
-                        title: s("Pagá"),
-                        text: s("Contá acá cómo te pueden pagar."),
-                    },
-                    StepItem {
-                        title: s("Lo preparamos"),
-                        text: s("Contá acá cuánto tardás en despachar."),
-                    },
-                    StepItem {
-                        title: s("Recibilo"),
-                        text: s("Contá acá cómo les llega el pedido."),
-                    },
-                ],
-            }),
-            "ProductCarousel" => Widget::ProductCarousel(ProductCarouselProps {
-                cards: CardOptions::default(),
-                variant: s("a"),
-                title: s("Lo más vendido"),
-                limit: 8,
-                link_label: String::new(),
-                link_href: String::new(),
-            }),
-            "Social" => Widget::Social(SocialProps {
-                variant: s("a"),
-                title: s("Seguinos"),
-                facebook: String::new(),
-                tiktok: String::new(),
-                label: s("¿Dudas? Escribinos"),
-            }),
-            "ProductImage" => Widget::ProductImage(ProductImageProps {
-                fit: s("cover"),
-                variant: s("a"),
-                badge: String::new(),
-                stock_note: true,
-            }),
-            "ProductName" => Widget::ProductName(ProductNameProps {}),
-            "ProductPrice" => Widget::ProductPrice(ProductPriceProps {
-                variant: s("e"),
-                show_installments: true,
-                show_transfer: true,
-            }),
-            "ProductDescription" => Widget::ProductDescription(ProductDescriptionProps {}),
             "ProductSheet" => Widget::ProductSheet(ProductSheetProps::default()),
-            "ProductButton" => Widget::ProductButton(ProductButtonProps {
-                label: s("Agregar al carrito"),
-                href: String::new(),
-                qty: s("a"),
-            }),
             _ => return None,
         };
         Some(widget)

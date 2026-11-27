@@ -869,7 +869,7 @@ pub(crate) fn Canvas(
                 (is_selected.get() && !is_moving.get() && !is_resizing.get()).then(|| {
                     let (up, down, dup, del) = (id.clone(), id.clone(), id.clone(), id.clone());
                     let has_modal = node.get_untracked().is_some_and(|n| {
-                        matches!(n.widget, Widget::ProductGrid(_) | Widget::TagTabs(_) | Widget::FeaturedProduct(_))
+                        matches!(n.widget, Widget::ProductGrid(_))
                     });
                     let menu_id = format!("mk-menu-{id}");
                     let menu_ref = NodeRef::<Div>::new();

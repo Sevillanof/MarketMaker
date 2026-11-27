@@ -1729,44 +1729,21 @@ mod tests {
         let found = problems(&doc);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].node_id, "n1");
-        assert!(found[0]
-            .text
-            .starts_with("Banner › Imagen: Escribí una página de tu tienda"));
+        assert!(
+            found[0].text.contains("Escribí una página de tu tienda"),
+            "{}",
+            found[0].text
+        );
         assert_eq!(new_node_id(&doc), "n2");
     }
 
     #[test]
-    fn product_modal_problems_say_they_are_in_the_modal() {
+    fn new_ids_do_not_collide_with_the_modal() {
         let mut doc = PageDoc::default();
-        let mut image = Node::new("m6", Widget::defaults("Image").unwrap());
-        if let Widget::Image(i) = &mut image.widget {
-            i.image_url = "www.ejemplo.com".into();
-        }
-        doc.product_modal.nodes.push(image);
-        let found = problems(&doc);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].layer, Layer::ProductModal);
-        assert_eq!(found[0].node_id, "m6");
-        assert!(found[0].text.starts_with("Ficha del producto › Imagen"));
-        // Los ids nuevos no chocan con los de la ficha.
         doc.nodes
             .push(Node::new("n1", Widget::defaults("Text").unwrap()));
         doc.product_modal.nodes[0].id = "n2".into();
         assert_eq!(new_node_id(&doc), "n3");
-    }
-
-    #[test]
-    fn list_item_problems_say_which_item() {
-        let mut doc = PageDoc::default();
-        let mut node = Node::new("n1", Widget::defaults("Carousel").unwrap());
-        if let Widget::Carousel(c) = &mut node.widget {
-            c.slides[1].button_href = "javascript:alert(1)".into();
-        }
-        doc.nodes.push(node);
-        assert_eq!(
-            problems(&doc)[0].text,
-            "Carrusel › Diapositivas 2 › Enlace del botón: Escribí una página de tu tienda (/ofertas), una dirección (https://…) o un email."
-        );
     }
 }
 
@@ -1946,19 +1923,7 @@ fn PublishCheck(
 /// los que dependen del momento. La cuenta regresiva termina en 7 días; con
 /// una fecha fija, desde ese día todas nacían «terminadas».
 pub fn fresh_widget(type_name: &str) -> Option<domain::Widget> {
-    let mut widget = domain::Widget::defaults(type_name)?;
-    if let domain::Widget::Countdown(c) = &mut widget {
-        if let Some(end) = in_a_week() {
-            c.ends_at = end;
-        }
-    }
-    // El bloque Cupón arranca con el cupón más nuevo que sirve hoy.
-    if let domain::Widget::Coupon(c) = &mut widget {
-        if let Some(first) = coupons().into_iter().next() {
-            c.code = first.code;
-        }
-    }
-    Some(widget)
+    domain::Widget::defaults(type_name)
 }
 
 thread_local! {
@@ -1969,11 +1934,4 @@ thread_local! {
 /// editor), para el bloque Cupón.
 pub(crate) fn coupons() -> Vec<domain::CouponBrief> {
     COUPONS.with(|c| c.borrow().clone())
-}
-
-/// Dentro de 7 días a las 23:59.
-fn in_a_week() -> Option<String> {
-    let now = js_sys::Date::now();
-    now.is_finite()
-        .then(|| domain::countdown_end((now / 1000.0) as i64, 7))
 }

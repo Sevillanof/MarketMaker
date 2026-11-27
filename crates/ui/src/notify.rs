@@ -514,7 +514,10 @@ pub fn NoticeHost() -> impl IntoView {
 /// Campana con la lista de los últimos avisos. `id` identifica la lista (si
 /// hay dos campanas en pantalla, cada una con el suyo).
 #[component]
-pub fn NoticeBell(#[prop(into)] id: String, #[prop(into, optional)] class: String) -> impl IntoView {
+pub fn NoticeBell(
+    #[prop(into)] id: String,
+    #[prop(into, optional)] class: String,
+) -> impl IntoView {
     let n = use_notifier();
     let panel = NodeRef::<leptos::html::Div>::new();
     // Hasta que carga el navegador no se sabe qué hay guardado: la cuenta

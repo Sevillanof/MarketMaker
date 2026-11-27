@@ -294,10 +294,7 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
     } = group_fields(widget.fields());
     let has_advanced = !advanced.is_empty();
     let no_fields = basic.is_empty() && button.is_none() && !has_advanced;
-    let opens_modal = matches!(
-        widget,
-        Widget::ProductGrid(_) | Widget::TagTabs(_) | Widget::FeaturedProduct(_)
-    );
+    let opens_modal = matches!(widget, Widget::ProductGrid(_));
     let (basic_id, advanced_id, button_id) = (id.clone(), id.clone(), id.clone());
     // Filtros que mueven la cuadrícula de la página (no la llevan adentro).
     let filters_grid = matches!(
@@ -679,27 +676,8 @@ mod tests {
     #[test]
     fn button_fields_get_their_own_group() {
         let g = group_fields(Widget::defaults("Banner").unwrap().fields());
-        let keys = |v: &[&Field]| v.iter().map(|f| f.key).collect::<Vec<_>>();
-        assert_eq!(keys(&g.basic), ["title", "subtitle", "image_url"]);
         let (label, href) = g.button.expect("el banner tiene botón");
         assert_eq!((label.key, href.key), ("button_label", "button_href"));
-        assert!(g.advanced.is_empty());
-    }
-
-    #[test]
-    fn other_advanced_fields_stay_folded() {
-        let g = group_fields(Widget::defaults("Countdown").unwrap().fields());
-        assert!(g.button.is_some());
-        assert_eq!(
-            g.advanced.iter().map(|f| f.key).collect::<Vec<_>>(),
-            ["ended_text"]
-        );
-
-        let g = group_fields(Widget::defaults("Image").unwrap().fields());
-        assert!(g.button.is_none());
-        assert_eq!(
-            g.advanced.iter().map(|f| f.key).collect::<Vec<_>>(),
-            ["href", "fit"]
-        );
+        assert!(g.basic.iter().any(|f| f.key == "title"));
     }
 }

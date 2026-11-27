@@ -281,8 +281,16 @@ fn DeliveryForm(slug: String, d: DeliverySettings) -> impl IntoView {
             .unwrap_or_default(),
     );
     let note = RwSignal::new(d.shipping_note);
-    let free_from = RwSignal::new(d.free_from_cents.map(domain::price_input).unwrap_or_default());
-    let min_order = RwSignal::new(d.min_order_cents.map(domain::price_input).unwrap_or_default());
+    let free_from = RwSignal::new(
+        d.free_from_cents
+            .map(domain::price_input)
+            .unwrap_or_default(),
+    );
+    let min_order = RwSignal::new(
+        d.min_order_cents
+            .map(domain::price_input)
+            .unwrap_or_default(),
+    );
     let problems = RwSignal::new(Vec::<FieldError>::new());
     let failure = RwSignal::new(None::<String>);
     let saved = RwSignal::new(false);

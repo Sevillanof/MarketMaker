@@ -1,5 +1,5 @@
 //! Asistente de primera página: una ventana sobre el editor donde se arma la
-//! página en cinco pasos (encabezado, portada, filtros, productos y pie).
+//! página en cuatro pasos (encabezado, portada, productos y pie).
 //!
 //! En el centro está la página de verdad, que se va armando; las flechas
 //! cambian de opción con un deslizamiento. A la derecha están los ajustes
@@ -11,8 +11,8 @@ use domain::wizard::{
     self, Change, Section, WizardPick, BG_KINDS, HERO_HEIGHTS, WIZARD, WIZARD_COLORS, WIZARD_STEPS,
 };
 use domain::{
-    Layer, Node, Product, Widget, ALIGN_OPTIONS, CARD_STYLE_OPTIONS, DESIGNS, FONTS, MAX_BG_DIM,
-    NAV_MENU_OPTIONS, NAV_TONE_OPTIONS, ROW_PX, TEXT_ANIMATIONS,
+    Layer, Node, Product, Widget, ALIGN_OPTIONS, FONTS, MAX_BG_DIM, NAV_MENU_OPTIONS,
+    NAV_TONE_OPTIONS, ROW_PX, TEXT_ANIMATIONS,
 };
 use leptos::prelude::*;
 use serde_json::Value;
@@ -63,22 +63,13 @@ fn content_rows(section: Section) -> &'static [RowSpec] {
             ("subtitle", "Subtítulo", Ctl::Text),
             ("image_url", "Imagen", Ctl::Photo),
             ("button_label", "Texto del botón", Ctl::Text),
-            ("autoplay", "Cambia cada", Ctl::Slider(0, 30, " s")),
-        ],
-        Section::Filters => &[
-            ("title", "Título", Ctl::Text),
-            ("all_label", "Texto de «Todas»", Ctl::Text),
-            ("placeholder", "Texto del buscador", Ctl::Text),
-            ("show_counts", "Cantidad por categoría", Ctl::Toggle),
         ],
         Section::Products => &[
             ("title", "Título", Ctl::Text),
             ("limit", "Cuántos productos", Ctl::Slider(4, 24, "")),
-            ("card", "Tarjeta", Ctl::Select(CARD_STYLE_OPTIONS)),
+            ("show_category", "Categoría de cada producto", Ctl::Toggle),
+            ("show_installments", "Cuotas sin interés", Ctl::Toggle),
             ("card_favorite", "Corazón de favoritos", Ctl::Toggle),
-            ("card_colors", "Puntos de color y talle", Ctl::Toggle),
-            ("card_transfer", "Precio por transferencia", Ctl::Toggle),
-            ("card_installments", "Cuotas sin interés", Ctl::Toggle),
         ],
         Section::Footer => &[
             ("brand", "Nombre de la tienda", Ctl::Text),
@@ -116,7 +107,6 @@ fn skeleton_h(section: Section) -> f64 {
     let name = match section {
         Section::Nav => "Navbar",
         Section::Hero => "Banner",
-        Section::Filters => "CategoryTabs",
         Section::Products => "ProductGrid",
         Section::Footer => "Footer",
     };
@@ -128,7 +118,7 @@ fn skeleton_h(section: Section) -> f64 {
 fn none_label(section: Section) -> &'static str {
     match section {
         Section::Hero => "Sin portada",
-        _ => "Sin filtros",
+        _ => "Sin bloque",
     }
 }
 
@@ -163,12 +153,6 @@ fn skeleton(section: Section) -> AnyView {
             <i style="left:7%;top:38%;width:34%;height:12%"></i>
             <i style="left:7%;top:56%;width:24%;height:7%"></i>
             <i style="right:6%;top:14%;width:40%;height:72%"></i>
-        }
-        .into_any(),
-        Section::Filters => view! {
-            <i style="left:10px;top:34%;width:14%;height:30%"></i>
-            <i style="left:18%;top:34%;width:14%;height:30%"></i>
-            <i style="left:34%;top:34%;width:14%;height:30%"></i>
         }
         .into_any(),
         Section::Products => (0..4)
@@ -437,7 +421,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
     let done = RwSignal::new(false);
     let confirm = RwSignal::new(false);
     let pick = RwSignal::new(WizardPick::default());
-    let reached = RwSignal::new([true, false, false, false, false, false]);
+    let reached = RwSignal::new([true, false, false, false, false]);
     // Hacia dónde se va (+1 adelante, -1 atrás): decide de qué lado entra lo nuevo.
     let dir = RwSignal::new(0i32);
     // Las flechas laten hasta que se usan por primera vez.
@@ -969,12 +953,6 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
         });
         let node_look =
             move || nodes.with(|n| n[st].as_ref().map(|n| (n.look.design, n.style.clone())));
-        let design = (s.section != Section::Footer).then(|| view! {
-            <SelRow label="Estilo visual" id=format!("wz-{st}-design")
-                options=DESIGNS.iter().map(|(n, name, _)| (n.to_string(), name.to_string())).collect()
-                value=Signal::derive(move || node_look().map(|(d, _)| d).unwrap_or(1).to_string())
-                on_pick=Callback::new(move |v: String| pick.update(|p| p.design[st] = v.parse().unwrap_or(0)))/>
-        });
         let swatches = view! {
             <div class="mk-wiz-row">
                 <span class="mk-wiz-rl" id=format!("wz-{st}-color-l")>"Color"</span>
@@ -990,7 +968,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                 </div>
             </div>
         };
-        let font = matches!(s.section, Section::Nav | Section::Filters | Section::Footer).then(|| {
+        let font = matches!(s.section, Section::Nav | Section::Footer).then(|| {
             let mut opts = vec![(String::new(), "La de tu tienda".to_string())];
             opts.extend(FONTS.iter().map(|f| (f.id.to_string(), f.label.to_string())));
             view! {
@@ -1002,7 +980,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                     on_pick=Callback::new(move |v: String| pick.update(|p| p.font[st] = v))/>
             }
         });
-        let align = matches!(s.section, Section::Hero | Section::Filters).then(|| view! {
+        let align = matches!(s.section, Section::Hero).then(|| view! {
             <SelRow label="Alineación" id=format!("wz-{st}-align")
                 options=ALIGN_OPTIONS.iter().map(|(v, l)| (v.to_string(), l.to_string())).collect()
                 value=Signal::derive(move || {
@@ -1030,7 +1008,7 @@ pub(crate) fn Wizard(products: StoredValue<Vec<Product>>, store_key: String) -> 
                     <p class="mk-wiz-sub">{move || WIZARD[st].options[usize::from(pick.with(|p| p.choice[st]))].desc}</p>
                 </div>
                 <Group name="Contenido" d=1>{content}{hero_h}</Group>
-                <Group name="Aspecto" d=2>{tone}{design}{swatches}{font}{align}{anim}</Group>
+                <Group name="Aspecto" d=2>{tone}{swatches}{font}{align}{anim}</Group>
             </div>
         }
         .into_any()
