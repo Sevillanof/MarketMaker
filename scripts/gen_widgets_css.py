@@ -212,6 +212,7 @@ TAIL = """
 """
 
 if __name__ == "__main__":
-    out = HEADER + "\n" + convert(SRC) + "\n" + TAIL
+    ficha = (ROOT / "scripts" / "widgets-ficha.css").read_text()
+    out = HEADER + "\n" + convert(SRC) + "\n" + TAIL + "\n/* Ficha del producto (scripts/widgets-ficha.css) */\n" + ficha
     (ROOT / "style" / "widgets-new.css").write_text(out)
     print("style/widgets-new.css:", len(out), "bytes")

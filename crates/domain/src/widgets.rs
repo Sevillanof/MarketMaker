@@ -48,6 +48,8 @@ pub enum Widget {
     ProductPrice(ProductPriceProps),
     ProductDescription(ProductDescriptionProps),
     ProductButton(ProductButtonProps),
+    /// La ficha completa en un solo bloque (foto, datos, compra y descripción).
+    ProductSheet(ProductSheetProps),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -95,6 +97,73 @@ pub struct ProductButtonProps {
     /// la cantidad arriba y el botón abajo, a todo el ancho.
     #[serde(default = "variant_a")]
     pub qty: String,
+}
+
+/// La ficha del producto (diseños: columnas clásicas, panel enmarcado,
+/// centrada). Reúne la foto con miniaturas, el nombre, el precio, las
+/// opciones, la compra y la descripción en un solo bloque.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct ProductSheetProps {
+    /// Cartel sobre la foto, por ejemplo «Más vendido». Vacío: no se muestra.
+    pub badge: String,
+    pub show_thumbs: bool,
+    pub show_favorite: bool,
+    pub show_category: bool,
+    pub show_share: bool,
+    pub show_installments: bool,
+    pub show_transfer: bool,
+    /// «Quedan N» cuando quedan pocas unidades.
+    pub show_stock: bool,
+    pub show_description: bool,
+    pub desc_title: String,
+    pub desc_open: bool,
+    pub show_trust: bool,
+    /// Un renglón por línea (envíos, cambios, etc.).
+    pub trust: String,
+    /// Texto del botón de compra.
+    pub button_label: String,
+    /// Color propio del botón (`#rrggbb`); vacío, el del tema.
+    pub button_color: String,
+    /// Proporción de la foto principal: `1`, `0.8`, `1.25` o `1.5`.
+    pub ratio: String,
+    /// Esquinas, en px.
+    pub radius: i64,
+    pub bg: String,
+    pub ink: String,
+}
+
+pub const SHEET_RATIO_OPTIONS: &[(&str, &str)] = &[
+    ("1", "Cuadrada"),
+    ("0.8", "Vertical (4:5)"),
+    ("1.25", "Apaisada (5:4)"),
+    ("1.5", "Panorámica (3:2)"),
+];
+
+impl Default for ProductSheetProps {
+    fn default() -> Self {
+        Self {
+            badge: String::new(),
+            show_thumbs: true,
+            show_favorite: true,
+            show_category: true,
+            show_share: true,
+            show_installments: true,
+            show_transfer: true,
+            show_stock: true,
+            show_description: true,
+            desc_title: "Descripción".to_string(),
+            desc_open: true,
+            show_trust: true,
+            trust: "Envíos a todo el país\nCambios dentro de los 30 días".to_string(),
+            button_label: "Agregar al carrito".to_string(),
+            button_color: String::new(),
+            ratio: "1".to_string(),
+            radius: 8,
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 /// Portada (diseños: marco editorial, fotografía inmersiva, arco).
@@ -867,6 +936,7 @@ pub const WIDGET_TYPES: &[(&str, &str)] = &[
     ("ProductPrice", "Precio del producto"),
     ("ProductDescription", "Descripción del producto"),
     ("ProductButton", "Botón de la ficha"),
+    ("ProductSheet", "Ficha del producto"),
 ];
 
 /// Bloques que solo tienen sentido dentro de la ficha de un producto.
@@ -876,6 +946,7 @@ pub const PRODUCT_MODAL_ONLY: &[&str] = &[
     "ProductPrice",
     "ProductDescription",
     "ProductButton",
+    "ProductSheet",
 ];
 
 /// Bloques de la página que también se pueden poner en la ficha.
@@ -1213,6 +1284,45 @@ const CATEGORY_ITEM: &[Field] = &[
     field("label", "Nombre", text(40)),
     field("image_url", "Imagen", FieldKind::Url),
     field("href", "Enlace", FieldKind::Url),
+];
+const PRODUCT_SHEET_FIELDS: &[Field] = &[
+    field("badge", "Cartel sobre la foto", text(24)),
+    field("show_thumbs", "Mostrar miniaturas", FieldKind::Bool),
+    field("show_favorite", "Corazón de favoritos", FieldKind::Bool),
+    field("show_category", "Mostrar la categoría", FieldKind::Bool),
+    field("show_share", "Botón Compartir", FieldKind::Bool),
+    field("show_transfer", "Precio con transferencia", FieldKind::Bool),
+    field("show_installments", "Cuotas sin interés", FieldKind::Bool),
+    field("show_stock", "Aviso «Quedan N»", FieldKind::Bool),
+    field("button_label", "Texto del botón", text(30)),
+    field("button_color", "Color del botón", FieldKind::Color),
+    field(
+        "show_description",
+        "Mostrar la descripción",
+        FieldKind::Bool,
+    ),
+    field("desc_title", "Título de la descripción", text(30)),
+    field("desc_open", "Descripción abierta", FieldKind::Bool),
+    field("show_trust", "Mostrar envíos y cambios", FieldKind::Bool),
+    field("trust", "Texto de envíos y cambios", long(300)),
+    field(
+        "ratio",
+        "Proporción de la foto",
+        FieldKind::Select {
+            options: SHEET_RATIO_OPTIONS,
+        },
+    ),
+    field(
+        "radius",
+        "Esquinas",
+        FieldKind::Range {
+            min: 0,
+            max: 24,
+            unit: "px",
+        },
+    ),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
 ];
 const CATEGORY_RATIO_OPTIONS: &[(&str, &str)] = &[
     ("1.25", "Apaisada (5:4)"),
@@ -1853,6 +1963,7 @@ impl Widget {
             Widget::ProductPrice(_) => "ProductPrice",
             Widget::ProductDescription(_) => "ProductDescription",
             Widget::ProductButton(_) => "ProductButton",
+            Widget::ProductSheet(_) => "ProductSheet",
         }
     }
 
@@ -1871,6 +1982,7 @@ impl Widget {
                 | Widget::Testimonials(_)
                 | Widget::Faq(_)
                 | Widget::Footer(_)
+                | Widget::ProductSheet(_)
         )
     }
 
@@ -1958,22 +2070,59 @@ impl Widget {
             Widget::Card(_) => &[
                 (1, "Lado a lado", "Foto y texto en dos mitades"),
                 (2, "Panorámica", "Foto ancha arriba y el texto debajo"),
-                (3, "Retrato", "Foto circular y texto con una línea de acento"),
+                (
+                    3,
+                    "Retrato",
+                    "Foto circular y texto con una línea de acento",
+                ),
             ],
             Widget::Testimonials(_) => &[
                 (1, "Editorial", "Cita centrada, sin caja"),
-                (2, "Enmarcada", "La cita dentro de una tarjeta sobre fondo suave"),
-                (3, "Cita lateral", "Comillas de color y la cita entre filetes"),
+                (
+                    2,
+                    "Enmarcada",
+                    "La cita dentro de una tarjeta sobre fondo suave",
+                ),
+                (
+                    3,
+                    "Cita lateral",
+                    "Comillas de color y la cita entre filetes",
+                ),
             ],
             Widget::Faq(_) => &[
                 (1, "Líneas simples", "Preguntas separadas por filetes"),
                 (2, "Acordeones enmarcados", "Cada pregunta en su recuadro"),
-                (3, "Índice lateral", "Título a un lado y preguntas numeradas"),
+                (
+                    3,
+                    "Índice lateral",
+                    "Título a un lado y preguntas numeradas",
+                ),
+            ],
+            Widget::ProductSheet(_) => &[
+                (
+                    1,
+                    "Columnas clásicas",
+                    "Miniaturas al costado de la foto y el texto al lado",
+                ),
+                (
+                    2,
+                    "Panel enmarcado",
+                    "La información dentro de un panel con marco",
+                ),
+                (3, "Centrada", "Foto grande arriba y todo centrado debajo"),
             ],
             Widget::Footer(_) => &[
                 (1, "Columnas", "Marca y columnas de enlaces en una fila"),
-                (2, "Marca protagonista", "La marca centrada arriba y los enlaces abajo"),
-                (3, "Bloque contenido", "Todo dentro de un recuadro sobre el fondo"),
+                (
+                    2,
+                    "Marca protagonista",
+                    "La marca centrada arriba y los enlaces abajo",
+                ),
+                (
+                    3,
+                    "Bloque contenido",
+                    "Todo dentro de un recuadro sobre el fondo",
+                ),
             ],
             _ => crate::DESIGNS,
         }
@@ -2032,6 +2181,7 @@ impl Widget {
             Widget::ProductPrice(_) => limits(6, 48, 4, 32, 24, 9),
             Widget::ProductDescription(_) => limits(8, 48, 6, 96, 24, 28),
             Widget::ProductButton(_) => limits(8, 48, 6, 12, 24, 7),
+            Widget::ProductSheet(_) => limits(24, 48, 40, 160, 48, 90),
         }
     }
 
@@ -2073,6 +2223,7 @@ impl Widget {
             Widget::ProductPrice(_) => PRODUCT_PRICE_FIELDS,
             Widget::ProductName(_) | Widget::ProductDescription(_) => &[],
             Widget::ProductButton(_) => PRODUCT_BUTTON_FIELDS,
+            Widget::ProductSheet(_) => PRODUCT_SHEET_FIELDS,
         }
     }
 
@@ -2411,6 +2562,7 @@ impl Widget {
                 show_transfer: true,
             }),
             "ProductDescription" => Widget::ProductDescription(ProductDescriptionProps {}),
+            "ProductSheet" => Widget::ProductSheet(ProductSheetProps::default()),
             "ProductButton" => Widget::ProductButton(ProductButtonProps {
                 label: s("Agregar al carrito"),
                 href: String::new(),

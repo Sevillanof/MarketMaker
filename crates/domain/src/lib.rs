@@ -510,20 +510,14 @@ impl Default for ProductModal {
     /// La foto a la izquierda, algo más de la mitad; nombre, precio,
     /// descripción y botón a la derecha, uno debajo del otro sin huecos.
     fn default() -> Self {
-        let at = |id: &str, t: &str, x: u8, y: u16, w: u8, h: u8| {
-            let mut n = Node::new(id, Widget::defaults(t).expect("tipo conocido"));
-            n.pos = Pos { x, y };
-            n.size = Size { w, h };
-            n
-        };
+        let mut sheet = Node::new(
+            "m1",
+            Widget::defaults("ProductSheet").expect("tipo conocido"),
+        );
+        sheet.pos = Pos { x: 0, y: 0 };
+        sheet.size = Size { w: 48, h: 90 };
         Self {
-            nodes: vec![
-                at("m1", "ProductImage", 0, 0, 27, 48),
-                at("m2", "ProductName", 27, 0, 21, 6),
-                at("m3", "ProductPrice", 27, 6, 21, 6),
-                at("m4", "ProductDescription", 27, 12, 21, 29),
-                at("m5", "ProductButton", 27, 41, 21, 7),
-            ],
+            nodes: vec![sheet],
             open: String::new(),
             buybar: String::new(),
             share: String::new(),
@@ -1548,7 +1542,7 @@ mod tests {
     fn product_modal_has_a_valid_default_and_is_not_saved_until_changed() {
         let doc = example();
         assert_eq!(doc.product_modal, ProductModal::default());
-        assert_eq!(doc.product_modal.nodes.len(), 5);
+        assert_eq!(doc.product_modal.nodes.len(), 1);
         assert_eq!(validate(&doc), Ok(()));
         // Sin cambios no viaja en el JSON (ver `example_round_trips_through_json`).
         assert!(serde_json::to_value(&doc)
@@ -1557,13 +1551,13 @@ mod tests {
             .is_none());
 
         let mut doc = doc;
-        doc.product_modal.nodes.remove(4);
+        doc.product_modal.nodes[0].size.h = 80;
         let json = serde_json::to_value(&doc).unwrap();
-        assert_eq!(json["product_modal"]["nodes"].as_array().unwrap().len(), 4);
+        assert_eq!(json["product_modal"]["nodes"].as_array().unwrap().len(), 1);
         assert_eq!(parse_doc(json), Ok(doc.clone()));
         assert_eq!(doc.layer_of("m1"), Some(Layer::ProductModal));
         assert_eq!(doc.layer_of("n1"), Some(HOME));
-        assert!(doc.node("m2").is_some());
+        assert!(doc.node("m1").is_some());
     }
 
     #[test]
@@ -1580,11 +1574,11 @@ mod tests {
         doc.product_modal.nodes.push(node("x1", "Faq", 0, 100));
         assert_eq!(validate(&doc), Ok(()));
         // Los ids no se pueden repetir entre la página y la ficha.
-        doc.product_modal.nodes[5].id = "n1".into();
+        doc.product_modal.nodes[1].id = "n1".into();
         assert_invalid(&doc, "repetido");
         // Las superposiciones se miran dentro de cada capa.
-        doc.product_modal.nodes[5].id = "x1".into();
-        doc.product_modal.nodes[5].pos.y = 40;
+        doc.product_modal.nodes[1].id = "x1".into();
+        doc.product_modal.nodes[1].pos.y = 40;
         assert_invalid(&doc, "superponen");
     }
 

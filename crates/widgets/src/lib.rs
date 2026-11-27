@@ -23,11 +23,11 @@ pub mod cart;
 pub mod categories;
 pub mod product_page;
 pub mod tags;
-pub use anim::{AnimText, TextAnim};
 pub use account::{
     Account, AccountFooterLink, AccountNavButton, AccountState, BuyerAvatar, FavRequest,
     FavoriteHeart, HeartIcon,
 };
+pub use anim::{AnimText, TextAnim};
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton, ItemName};
 pub use product_page::{ProductImageWidget, ProductPriceWidget};
 pub use tags::{FilteredProducts, NwGrid, ProductFilter};
@@ -81,8 +81,16 @@ pub struct OpenProduct(pub RwSignal<Option<String>>);
 /// Dibuja un nodo dentro de su envoltorio de letras (`.mk-type`, ver
 /// [`domain::TextStyle`] y `style/tailwind.css`).
 pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
-    let nwl = if node.widget.is_new_design() { " mk-nwl" } else { "" };
-    let class = format!("{} {}{nwl} h-full", node.style.classes(), node.look.classes_max(node.widget.designs().len() as u8));
+    let nwl = if node.widget.is_new_design() {
+        " mk-nwl"
+    } else {
+        ""
+    };
+    let class = format!(
+        "{} {}{nwl} h-full",
+        node.style.classes(),
+        node.look.classes_max(node.widget.designs().len() as u8)
+    );
     let style = format!("{}; {}", node.style.css_vars(), node.look.css_vars());
     // Las tarjetas de producto leen su estilo del bloque que las contiene.
     let cards = match &node.widget {
@@ -94,11 +102,13 @@ pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
     };
     let inner = {
         let (node, ctx) = (node.clone(), ctx.clone());
-        move || match cards {
+        move || {
+            match cards {
             Some(cards) => {
                 view! { <leptos::context::Provider value=cards>{render_content(&node, &ctx)}</leptos::context::Provider> }.into_any()
             }
             None => render_content(&node, &ctx),
+        }
         }
     };
     // La animación del texto la leen los títulos del bloque (`AnimText`).
@@ -108,7 +118,8 @@ pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
                 id: (*id).to_string(),
                 extra: node.style.anim_text.trim().to_string(),
             };
-            view! { <leptos::context::Provider value=anim>{inner()}</leptos::context::Provider> }.into_any()
+            view! { <leptos::context::Provider value=anim>{inner()}</leptos::context::Provider> }
+                .into_any()
         }
         None => inner(),
     };
@@ -128,7 +139,8 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             view! { <TextWidget props/> }.into_any()
         }
         Widget::ProductGrid(p) => {
-            view! { <ProductGridWidget props=p.clone() products=ctx.products.clone() editing/> }.into_any()
+            view! { <ProductGridWidget props=p.clone() products=ctx.products.clone() editing/> }
+                .into_any()
         }
         Widget::TagFilter(_)
         | Widget::TagList(_)
@@ -222,6 +234,10 @@ fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
             }
             .into_any()
         }
+        Widget::ProductSheet(p) => view! {
+            <product_page::ProductSheetWidget props=p.clone() product=ctx.product.clone() editing/>
+        }
+        .into_any(),
         Widget::ProductButton(p) => {
             view! { <ProductButtonWidget props=p.clone() editing product=ctx.product.clone()/> }
                 .into_any()
@@ -320,11 +336,12 @@ pub fn ProductDialog(
                     provide_context(product_page::VariantPick::new());
                     let offers = use_context::<domain::StoreInfo>().map(|s| s.offers).unwrap_or_default();
                     let offers = if editing { offers.or_sample() } else { offers };
-                    let shown = fit_price(fit_name(nodes.get_value(), &p), &p, offers);
-                    let shown = grow_for_variants(fit_description(shown, &p), &p);
+                    let flow = nodes.with_value(|n| n.iter().any(|n| matches!(n.widget, Widget::ProductSheet(_))));
+                    let shown = if flow { nodes.get_value() } else { fit_price(fit_name(nodes.get_value(), &p), &p, offers) };
+                    let shown = if flow { shown } else { grow_for_variants(fit_description(shown, &p), &p) };
                     // Lugar para "Ver carrito y comprar / Seguir comprando" al agregar.
-                    let shown = if editing { shown } else { grow_button(shown, 13) };
-                    let shown = stretch_image(shown);
+                    let shown = if editing || flow { shown } else { grow_button(shown, 13) };
+                    let shown = if flow { shown } else { stretch_image(shown) };
                     provide_context(SharePlace { on_photo: Signal::stored(share_on_photo) });
                     let share = (!editing && !share_on_photo).then(|| view! { <ShareButton product=p.clone() on_photo=false/> });
                     let ctx = RenderCtx {
@@ -332,6 +349,9 @@ pub fn ProductDialog(
                         editing,
                         product: Some(p),
                     };
+                    if flow {
+                        return view! { <div class="mk-sheetflow">{flow_nodes(shown, &ctx)}</div> }.into_any();
+                    }
                     view! {
                         {share}
                         <div class="mk-grid">
@@ -342,7 +362,7 @@ pub fn ProductDialog(
                                 })
                                 .collect_view()}
                         </div>
-                    }
+                    }.into_any()
                 })}
             </div>
             <form method="dialog" class="modal-backdrop">
@@ -369,6 +389,7 @@ pub fn ProductSheetPreview(
             let offers = use_context::<domain::StoreInfo>()
                 .map(|s| s.offers)
                 .unwrap_or_default();
+            let flow = nodes.with_value(|n| n.iter().any(|n| matches!(n.widget, Widget::ProductSheet(_))));
             let shown = fit_price(fit_name(nodes.get_value(), &p), &p, offers);
             let shown = stretch_image(grow_for_variants(fit_description(shown, &p), &p));
             let ctx = RenderCtx {
@@ -376,6 +397,9 @@ pub fn ProductSheetPreview(
                 editing: true,
                 product: Some(p),
             };
+            if flow {
+                return view! { <div class="mk-sheetflow">{flow_nodes(nodes.get_value(), &ctx)}</div> }.into_any();
+            }
             view! {
                 <div class="mk-grid">
                     {shown
@@ -385,9 +409,18 @@ pub fn ProductSheetPreview(
                         })
                         .collect_view()}
                 </div>
-            }
+            }.into_any()
         })
     }
+}
+
+/// La ficha nueva y lo que se le sume debajo, uno tras otro a todo el ancho.
+fn flow_nodes(mut nodes: Vec<Node>, ctx: &RenderCtx) -> impl IntoView {
+    nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
+    nodes
+        .into_iter()
+        .map(|node| view! { <div class="mk-sheetnode">{render_widget(&node, ctx)}</div> })
+        .collect_view()
 }
 
 /// La descripción ocupa lo que necesita su texto (más o menos, según el
@@ -545,7 +578,13 @@ pub struct SharePlace {
 /// computadora copia el enlace del producto y avisa «Enlace copiado». Arriba
 /// de la ficha lleva texto; sobre la foto es un botón redondo.
 #[component]
-pub fn ShareButton(product: Product, on_photo: bool) -> impl IntoView {
+pub fn ShareButton(
+    product: Product,
+    on_photo: bool,
+    /// En el flujo de la ficha nueva (sin posición absoluta).
+    #[prop(optional)]
+    inline: bool,
+) -> impl IntoView {
     let id = StoredValue::new(product.id.clone());
     let name = StoredValue::new(product.name.clone());
     // None: nada que avisar; Some(true): copiado; Some(false): no se pudo.
@@ -586,6 +625,14 @@ pub fn ShareButton(product: Product, on_photo: bool) -> impl IntoView {
         view! {
             <button type="button" class="mk-fav mk-share-photo absolute right-2 z-10" aria-label="Compartir" on:click=share>{icon}</button>
             <span role="status" class="mk-share-note absolute right-12 z-10 rounded-field bg-base-100 px-2 py-1 text-xs shadow empty:hidden">{note}</span>
+        }
+        .into_any()
+    } else if inline {
+        view! {
+            <span class="nw-pdp-share">
+                <span role="status" class="text-xs">{note}</span>
+                <button type="button" class="nw-pdp-sharebtn" on:click=share>{icon}"Compartir"</button>
+            </span>
         }
         .into_any()
     } else {
@@ -794,7 +841,11 @@ fn MaybeLink(
 fn nw_on_color(color: &str) -> String {
     match domain::parse_hex(color) {
         Some(rgb) => {
-            let text = if domain::prefers_black_text(rgb) { "#000" } else { "#fff" };
+            let text = if domain::prefers_black_text(rgb) {
+                "#000"
+            } else {
+                "#fff"
+            };
             format!("--accent:{color};--on-accent:{text};")
         }
         None => String::new(),
@@ -900,7 +951,11 @@ pub fn ProductGridWidget(
         show_installments: props.show_installments,
         favorite: props.cards.card_favorite,
     };
-    let style = format!("{}--radius:{}px;", nw_colors(&props.bg, &props.ink), props.radius.clamp(0, 24));
+    let style = format!(
+        "{}--radius:{}px;",
+        nw_colors(&props.bg, &props.ink),
+        props.radius.clamp(0, 24)
+    );
     view! {
         <div class="mk-nw h-full overflow-hidden">
             <section class="nw-section" style=style>
@@ -1315,7 +1370,11 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
         None => (brand.clone(), false),
     };
     let brand_style = format!("font-size:{}px", props.size.clamp(18, 40));
-    let links_class = if props.upper { "nw-nav-links nw-upper" } else { "nw-nav-links" };
+    let links_class = if props.upper {
+        "nw-nav-links nw-upper"
+    } else {
+        "nw-nav-links"
+    };
     let search = props.search;
     let mobile_pop = view! {
         <div id=mobile_id.clone() popover="auto" class="mk-navpop">
@@ -1721,7 +1780,11 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
         "{}padding-block:{}px;text-align:{};",
         nw_colors(&props.bg, &props.ink),
         props.pad.clamp(6, 28),
-        if props.align == "left" { "left" } else { "center" }
+        if props.align == "left" {
+            "left"
+        } else {
+            "center"
+        }
     );
     let href = props.href.trim().to_string();
     view! {
