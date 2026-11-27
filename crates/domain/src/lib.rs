@@ -69,10 +69,47 @@ pub const SHARED_ON_NEW_PAGE: &[&str] = &["Navbar", "Footer"];
 /// Ancho, en píxeles, con el que se dibuja el contenido de la ficha del
 /// producto (el `max-w` del cuadro menos su relleno).
 pub const MODAL_W_PX: u16 = 800;
-pub const THEMES: &[&str] = &["light", "dark", "cupcake", "emerald", "corporate", "retro"];
+/// Todos los temas que se pueden leer: los 12 de la maqueta (los únicos que se
+/// ofrecen) y los seis anteriores, que siguen funcionando en tiendas que ya
+/// los usan hasta que su dueño elija uno nuevo.
+pub const THEMES: &[&str] = &[
+    "linea",
+    "pulso",
+    "noche",
+    "brisa",
+    "tinta",
+    "citrico",
+    "aura",
+    "brote",
+    "orbita",
+    "dalia",
+    "cacao",
+    "sol",
+    "light",
+    "dark",
+    "cupcake",
+    "emerald",
+    "corporate",
+    "retro",
+];
+
+/// Cuántos de [`THEMES`] se ofrecen para elegir (los primeros).
+pub const OFFERED_THEMES: usize = 12;
 
 /// Nombre para mostrar de cada tema, en el mismo orden que [`THEMES`].
 pub const THEME_LABELS: &[&str] = &[
+    "Línea",
+    "Pulso",
+    "Noche",
+    "Brisa",
+    "Tinta",
+    "Cítrico",
+    "Aura",
+    "Brote",
+    "Órbita",
+    "Dalia",
+    "Cacao",
+    "Sol",
     "Claro",
     "Oscuro",
     "Pastel",

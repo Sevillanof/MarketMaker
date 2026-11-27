@@ -6,7 +6,8 @@
 //! plantilla (un tema de daisyUI).
 
 use domain::{
-    theme_base, Corner, BORDER_STEPS, COLOR_KEYS, RADIUS_STEPS, SIZE_RANGE, THEMES, THEME_LABELS,
+    theme_base, Corner, BORDER_STEPS, COLOR_KEYS, OFFERED_THEMES, RADIUS_STEPS, SIZE_RANGE, THEMES,
+    THEME_LABELS,
 };
 use leptos::prelude::*;
 
@@ -140,9 +141,9 @@ fn Name() -> impl IntoView {
 fn Presets() -> impl IntoView {
     let state = expect_context::<EditorState>();
     view! {
-        <Section title="Plantilla" id="mk-th-presets">
+        <Section title="Tema" id="mk-th-presets">
             <div class="grid grid-cols-2 gap-1" role="group" aria-labelledby="mk-th-presets">
-                {THEMES.iter().zip(THEME_LABELS).map(|(t, l)| {
+                {THEMES.iter().zip(THEME_LABELS).take(OFFERED_THEMES).map(|(t, l)| {
                     let active = move || state.doc.with(|d| d.theme == *t);
                     view! {
                         <button
