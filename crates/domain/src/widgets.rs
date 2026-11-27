@@ -99,6 +99,9 @@ pub struct ProductButtonProps {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BannerProps {
+    /// Antetítulo chico sobre el título (opcional; los documentos anteriores no lo traen).
+    #[serde(default)]
+    pub kicker: String,
     pub title: String,
     pub subtitle: String,
     pub image_url: String,
@@ -652,6 +655,7 @@ const BANNER_FIELDS: &[Field] = &[
     field("title", "Título", text(80)),
     field("subtitle", "Subtítulo", text(160)),
     field("image_url", "Imagen", FieldKind::Url),
+    adv("kicker", "Antetítulo", text(40)),
     adv("button_label", "Texto del botón", text(30)),
     adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
@@ -1594,6 +1598,7 @@ impl Widget {
         };
         let widget = match type_name {
             "Banner" => Widget::Banner(BannerProps {
+                kicker: String::new(),
                 title: s("Bienvenidos a nuestra tienda"),
                 subtitle: s("Escribí acá una frase sobre tu tienda"),
                 image_url: s("/img/banner.webp"),

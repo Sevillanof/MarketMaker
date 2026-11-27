@@ -63,6 +63,7 @@ pub fn starter_doc(name: &str) -> PageDoc {
             menu_color: false,
         }),
         Widget::Banner(BannerProps {
+            kicker: String::new(),
             title: format!("Bienvenidos a {name}"),
             subtitle: s(STARTER_PLACEHOLDERS[0]),
             image_url: s("/img/banner.webp"),
