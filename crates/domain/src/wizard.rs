@@ -279,15 +279,6 @@ fn existing_of<'a>(doc: &'a PageDoc, section: Section) -> Option<&'a Node> {
 pub fn pick_from_doc(doc: &PageDoc) -> WizardPick {
     let mut p = WizardPick::default();
     if let Some(Widget::Navbar(n)) = existing_of(doc, Section::Nav).map(|n| &n.widget) {
-        p.choice[0] = match n.variant.as_str() {
-            "c" => 1,
-            "b" => 2,
-            _ => 0,
-        };
-        p.nav_tone = NAV_TONES
-            .iter()
-            .position(|(t, _)| *t == n.tone)
-            .unwrap_or(0) as u8;
         p.nav_search = n.search;
     }
     p.bg_color = doc.style.bg_color.clone();
@@ -418,8 +409,6 @@ fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -
             else {
                 return None;
             };
-            n.variant = ["a", "c", "b"][usize::from(choice)].to_string();
-            n.tone = NAV_TONES[usize::from(pick.nav_tone)].0.to_string();
             n.search = pick.nav_search;
             Some(Widget::Navbar(n))
         }
@@ -434,7 +423,8 @@ fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -
                         image_url: s.image_url.clone(),
                         button_label: s.button_label.clone(),
                         button_href: s.button_href.clone(),
-                    }),
+            ..Default::default()
+        }),
                     _ => None,
                 };
                 match banner {
@@ -840,15 +830,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(carousel.slides[0].title, title_before);
-        let nav = doc
-            .nodes
-            .iter()
-            .find_map(|n| match &n.widget {
-                Widget::Navbar(n) => Some(n.variant.clone()),
-                _ => None,
-            })
-            .unwrap();
-        assert_eq!(nav, "c");
+        assert!(doc.nodes.iter().any(|n| matches!(n.widget, Widget::Navbar(_))));
     }
 
     #[test]

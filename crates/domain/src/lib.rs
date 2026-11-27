@@ -1378,17 +1378,17 @@ mod tests {
         let Widget::Navbar(p) = w else {
             panic!("menú")
         };
-        assert_eq!((p.variant.as_str(), p.tone.as_str()), ("a", ""));
-        assert!(!p.floats() && !p.search && !p.upper && !p.menu_color);
-        let w: Widget =
-            serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
-                "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
-            }}))
-            .unwrap();
+        assert!(!p.search && !p.upper);
+        assert_eq!(p.size, 26);
+        // Un anuncio guardado con el formato anterior sigue abriéndose.
+        let w: Widget = serde_json::from_value(serde_json::json!({"type": "Announcement", "props": {
+            "variant": "b", "items": [{"text": "Hola", "link_label": "", "link_href": ""}]
+        }}))
+        .unwrap();
         let Widget::Announcement(p) = w else {
             panic!("anuncio")
         };
-        assert_eq!((p.code.as_str(), p.coupon.as_str()), ("", ""));
+        assert_eq!((p.align.as_str(), p.pad), ("center", 12));
     }
 
     /// Los enlaces guardados antes de los desplegables no traen `children`

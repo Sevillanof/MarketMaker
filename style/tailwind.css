@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./widgets-new.css";
 @source "../crates/**/*.rs";
 @source not "./daisyui{,*}.mjs";
 @plugin "./daisyui.mjs" {
@@ -1206,6 +1207,9 @@ dialog.mk-cart::backdrop {
      para que se lea también con colores muy claros, como los del tema Pastel. */
   --mk-ink: color-mix(in oklab, var(--mk-c) 40%, var(--color-base-content));
   --mk-soft: color-mix(in oklab, var(--mk-c) 14%, var(--color-base-100));
+}
+/* Los widgets nuevos (.mk-nwl) leen la línea del tema; los demás, la del color. */
+.mk-look:not(.mk-nwl) {
   --mk-line: color-mix(in oklab, var(--mk-c) 45%, transparent);
 }
 /* El color como texto (títulos, precios) tiene que leerse sobre el fondo de

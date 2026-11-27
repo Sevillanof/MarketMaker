@@ -46,6 +46,15 @@ pub(crate) fn BlockLook(
     };
     let theme = move || state.doc.with(|d| d.theme.clone());
     let store_vars = move || state.doc.with(|d| d.typography.css_vars());
+    // Los widgets nuevos traen sus propios diseños (tres) y sus colores se
+    // editan en Contenido; los demás, los cinco estilos y el color del bloque.
+    let designs: &'static [(u8, &'static str, &'static str)] = state
+        .doc
+        .with_untracked(|d| d.node(&id).map(|n| n.widget.designs()))
+        .unwrap_or(DESIGNS);
+    let own_colors = state
+        .doc
+        .with_untracked(|d| d.node(&id).is_some_and(|n| n.widget.is_new_design()));
     let group_name = format!("mk-design-{id}");
     let color_name = format!("mk-color-{id}");
     let custom_id = format!("mk-color-custom-{id}");
@@ -68,8 +77,8 @@ pub(crate) fn BlockLook(
                     "Estilo"
                     <ui::HelpTip id=format!("tip-look-{id}") label="Estilo" text="Cada estilo cambia cómo se ve el bloque. Tus textos e imágenes no cambian."/>
                 </legend>
-                <div class="grid grid-cols-5 gap-1">
-                    {DESIGNS.iter().map(|(n, name, hint)| {
+                <div class=if designs.len() == 3 { "grid grid-cols-3 gap-1" } else { "grid grid-cols-5 gap-1" }>
+                    {designs.iter().map(|(n, name, hint)| {
                         let n = *n;
                         let checked = move || look.with(|l| l.design == n);
                         view! {
@@ -120,10 +129,10 @@ pub(crate) fn BlockLook(
                     }
                 >
                     <option value="0">"Igual que escritorio"</option>
-                    {DESIGNS.iter().map(|(n, name, _)| view! { <option value=n.to_string()>{*name}</option> }).collect_view()}
+                    {designs.iter().map(|(n, name, _)| view! { <option value=n.to_string()>{*name}</option> }).collect_view()}
                 </select>
             </div>
-            <fieldset>
+            {(!own_colors).then(|| view! { <fieldset>
                 <legend class="mb-2 flex items-center gap-1 text-sm font-medium">
                     "Color"
                     <ui::HelpTip
@@ -194,7 +203,7 @@ pub(crate) fn BlockLook(
                 }.map(|t| view! {
                     <p class="mt-1.5 rounded-field bg-base-200 px-2 py-1.5 text-xs text-base-content/80" role="note">{t}</p>
                 })}
-            </fieldset>
+            </fieldset> })}
             {move || (!look.with(Look::is_default)).then(|| view! {
                 <button
                     type="button"
