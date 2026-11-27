@@ -485,7 +485,47 @@ pub struct CardProps {
     pub body: String,
     pub button_label: String,
     pub button_href: String,
+    /// Diseño de los documentos viejos (`side`, `overlay`, `vertical`); el de
+    /// ahora se elige en «Estilo y color» del bloque.
+    #[serde(default)]
     pub layout: String,
+    /// Mostrar el botón.
+    #[serde(default = "yes")]
+    pub show_button: bool,
+    /// Color propio del botón (`#rrggbb`); vacío, el del tema.
+    #[serde(default)]
+    pub button_color: String,
+    /// De qué lado va la foto en «Lado a lado» y «Retrato»: `left` o `right`.
+    #[serde(default = "card_side")]
+    pub side: String,
+    /// Fondo y texto propios (`#rrggbb`); vacío, los del tema.
+    #[serde(default)]
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
+}
+
+fn card_side() -> String {
+    "left".to_string()
+}
+
+impl Default for CardProps {
+    fn default() -> Self {
+        Self {
+            kicker: String::new(),
+            image_url: String::new(),
+            title: "Contá tu historia".to_string(),
+            body: String::new(),
+            button_label: String::new(),
+            button_href: String::new(),
+            layout: String::new(),
+            show_button: true,
+            button_color: String::new(),
+            side: card_side(),
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -509,6 +549,28 @@ pub struct FaqItem {
 pub struct FaqProps {
     pub title: String,
     pub items: Vec<FaqItem>,
+    #[serde(default)]
+    pub kicker: String,
+    /// La primera pregunta se ve abierta.
+    #[serde(default = "yes")]
+    pub open_first: bool,
+    #[serde(default)]
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
+}
+
+impl Default for FaqProps {
+    fn default() -> Self {
+        Self {
+            title: "Preguntas frecuentes".to_string(),
+            items: Vec::new(),
+            kicker: String::new(),
+            open_first: true,
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -526,15 +588,43 @@ pub struct HoverGalleryProps {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Testimonial {
+    /// Quién la dice.
     pub name: String,
     pub text: String,
     pub rating: i64,
+    /// Aclaración chica junto al nombre («Opinión de ejemplo»).
+    #[serde(default)]
+    pub note: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TestimonialsProps {
+    /// Título de los documentos viejos; el diseño nuevo no lo muestra.
+    #[serde(default)]
     pub title: String,
     pub items: Vec<Testimonial>,
+    #[serde(default = "yes")]
+    pub show_stars: bool,
+    /// Color propio de las estrellas; vacío, el del tema.
+    #[serde(default)]
+    pub star_color: String,
+    #[serde(default)]
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
+}
+
+impl Default for TestimonialsProps {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            items: Vec::new(),
+            show_stars: true,
+            star_color: String::new(),
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -562,8 +652,35 @@ pub struct ImageProps {
 pub struct FooterProps {
     pub brand: String,
     pub description: String,
+    /// Las columnas: cada enlace con `children` es una columna (su texto es
+    /// el título). Los enlaces sueltos de los documentos viejos van juntos.
     pub links: Vec<LinkItem>,
     pub legal: String,
+    /// El punto de acento después del nombre.
+    #[serde(default = "yes")]
+    pub show_dot: bool,
+    /// Mostrar la descripción bajo el nombre.
+    #[serde(default = "yes")]
+    pub show_description: bool,
+    #[serde(default)]
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
+}
+
+impl Default for FooterProps {
+    fn default() -> Self {
+        Self {
+            brand: String::new(),
+            description: String::new(),
+            links: Vec::new(),
+            legal: String::new(),
+            show_dot: true,
+            show_description: true,
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 /// Página de contacto: un lado con el título, el texto, el horario y la
@@ -1179,20 +1296,25 @@ const COUNTDOWN_FIELDS: &[Field] = &[
     adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
 
+const CARD_SIDE_OPTIONS: &[(&str, &str)] = &[("left", "Izquierda"), ("right", "Derecha")];
 const CARD_FIELDS: &[Field] = &[
-    field("image_url", "Imagen", FieldKind::Url),
-    adv("kicker", "Antetítulo", text(40)),
+    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
     field("body", "Texto", long(300)),
+    field("show_button", "Mostrar botón", FieldKind::Bool),
+    field("button_label", "Texto del botón", text(30)),
+    field("button_href", "Enlace del botón", FieldKind::Url),
+    field("button_color", "Color del botón", FieldKind::Color),
+    field("image_url", "Foto", FieldKind::Url),
     field(
-        "layout",
-        "Diseño",
+        "side",
+        "Foto a la (diseños «Lado a lado» y «Retrato»)",
         FieldKind::Select {
-            options: CARD_LAYOUT_OPTIONS,
+            options: CARD_SIDE_OPTIONS,
         },
     ),
-    adv("button_label", "Texto del botón", text(30)),
-    adv("button_href", "Enlace del botón", FieldKind::Url),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 const TAB_ITEM: &[Field] = &[
@@ -1214,6 +1336,7 @@ const FAQ_ITEM: &[Field] = &[
     field("answer", "Respuesta", long(600)),
 ];
 const FAQ_FIELDS: &[Field] = &[
+    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
     field(
         "items",
@@ -1224,6 +1347,9 @@ const FAQ_FIELDS: &[Field] = &[
             max: 12,
         },
     ),
+    field("open_first", "Primera pregunta abierta", FieldKind::Bool),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 const GALLERY_ITEM: &[Field] = &[field("image_url", "Imagen", FieldKind::Url)];
@@ -1243,21 +1369,33 @@ const HOVER_GALLERY_FIELDS: &[Field] = &[
 ];
 
 const TESTIMONIAL_ITEM: &[Field] = &[
-    field("name", "Nombre", text(40)),
     field("text", "Opinión", long(300)),
-    field("rating", "Estrellas", FieldKind::Number { min: 1, max: 5 }),
+    field("name", "Quién la dice", text(40)),
+    field("note", "Aclaración", text(40)),
+    field(
+        "rating",
+        "Puntaje",
+        FieldKind::Range {
+            min: 1,
+            max: 5,
+            unit: "★",
+        },
+    ),
 ];
 const TESTIMONIALS_FIELDS: &[Field] = &[
-    field("title", "Título", text(80)),
     field(
         "items",
-        "Testimonios",
+        "Opiniones",
         FieldKind::List {
             item: TESTIMONIAL_ITEM,
             min: 1,
-            max: 6,
+            max: 3,
         },
     ),
+    field("show_stars", "Mostrar estrellas", FieldKind::Bool),
+    field("star_color", "Color de las estrellas", FieldKind::Color),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 const LOGO_ITEM: &[Field] = &[
@@ -1371,31 +1509,35 @@ const CONTACT_FIELDS: &[Field] = &[
 
 /// Enlace del pie: con "enlaces del grupo" la lista se arma en columnas con título.
 const FOOTER_LINK_ITEM: &[Field] = &[
-    field("label", "Texto", text(30)),
-    field("href", "Enlace", FieldKind::Url),
-    adv(
+    field("label", "Título de la columna", text(30)),
+    field(
         "children",
-        "Enlaces del grupo (el texto pasa a ser el título de la columna)",
+        "Enlaces",
         FieldKind::List {
             item: SUBLINK_LEAF,
             min: 0,
             max: 8,
         },
     ),
+    adv("href", "Enlace del título (opcional)", FieldKind::Url),
 ];
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
+    field("show_dot", "Punto de acento", FieldKind::Bool),
+    field("show_description", "Mostrar descripción", FieldKind::Bool),
     field("description", "Descripción", text(200)),
     field(
         "links",
-        "Enlaces",
+        "Columnas de enlaces",
         FieldKind::List {
             item: FOOTER_LINK_ITEM,
             min: 0,
-            max: 12,
+            max: 3,
         },
     ),
     field("legal", "Texto legal", text(120)),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
 ];
 
 pub const COUPON_LOOK_OPTIONS: &[(&str, &str)] = &[
@@ -1725,6 +1867,10 @@ impl Widget {
                 | Widget::Benefits(_)
                 | Widget::Categories(_)
                 | Widget::ProductGrid(_)
+                | Widget::Card(_)
+                | Widget::Testimonials(_)
+                | Widget::Faq(_)
+                | Widget::Footer(_)
         )
     }
 
@@ -1808,6 +1954,26 @@ impl Widget {
                     "Flotante translúcida",
                     "El texto flota sobre la foto con un velo",
                 ),
+            ],
+            Widget::Card(_) => &[
+                (1, "Lado a lado", "Foto y texto en dos mitades"),
+                (2, "Panorámica", "Foto ancha arriba y el texto debajo"),
+                (3, "Retrato", "Foto circular y texto con una línea de acento"),
+            ],
+            Widget::Testimonials(_) => &[
+                (1, "Editorial", "Cita centrada, sin caja"),
+                (2, "Enmarcada", "La cita dentro de una tarjeta sobre fondo suave"),
+                (3, "Cita lateral", "Comillas de color y la cita entre filetes"),
+            ],
+            Widget::Faq(_) => &[
+                (1, "Líneas simples", "Preguntas separadas por filetes"),
+                (2, "Acordeones enmarcados", "Cada pregunta en su recuadro"),
+                (3, "Índice lateral", "Título a un lado y preguntas numeradas"),
+            ],
+            Widget::Footer(_) => &[
+                (1, "Columnas", "Marca y columnas de enlaces en una fila"),
+                (2, "Marca protagonista", "La marca centrada arriba y los enlaces abajo"),
+                (3, "Bloque contenido", "Todo dentro de un recuadro sobre el fondo"),
             ],
             _ => crate::DESIGNS,
         }
@@ -2077,8 +2243,7 @@ impl Widget {
                 body: s("Contá acá qué hay de nuevo."),
                 button_label: s("Ver más"),
                 button_href: s("/"),
-                layout: s("vertical"),
-            }),
+                layout: s("vertical"), ..Default::default() }),
             "Tabs" => Widget::Tabs(TabsProps {
                 tabs: vec![
                     TabItem {
@@ -2110,8 +2275,7 @@ impl Widget {
                         question: s("¿Cómo hago un cambio?"),
                         answer: s("Escribí acá la respuesta."),
                     },
-                ],
-            }),
+                ], ..Default::default() }),
             "HoverGallery" => Widget::HoverGallery(HoverGalleryProps {
                 images: (1..=4)
                     .map(|i| GalleryImage {
@@ -2129,10 +2293,8 @@ impl Widget {
                     .map(|i| Testimonial {
                         name: format!("Cliente {i}"),
                         text: s("Copiá acá lo que te dijo un cliente real."),
-                        rating: 5,
-                    })
-                    .collect(),
-            }),
+                        rating: 5, note: String::new() })
+                    .collect(), ..Default::default() }),
             "Logos" => Widget::Logos(LogosProps {
                 title: s("Marcas que trabajamos"),
                 items: [
@@ -2170,8 +2332,7 @@ impl Widget {
                 brand: String::new(),
                 description: s("Una frase corta sobre tu tienda."),
                 links: vec![link("Inicio", "/")],
-                legal: String::new(),
-            }),
+                legal: String::new(), ..Default::default() }),
             "Announcement" => Widget::Announcement(AnnouncementProps::default()),
             // El código se elige de los cupones de la tienda (lo completa el editor).
             "Coupon" => Widget::Coupon(CouponProps {

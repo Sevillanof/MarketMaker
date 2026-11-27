@@ -86,8 +86,7 @@ pub fn starter_doc(name: &str) -> PageDoc {
             brand: String::new(),
             description: s(STARTER_PLACEHOLDERS[2]),
             links: Vec::new(),
-            legal: String::new(),
-        }),
+            legal: String::new(), ..Default::default() }),
     ];
     let mut y = 0u16;
     let nodes = widgets
