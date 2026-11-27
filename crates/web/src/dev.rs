@@ -196,6 +196,7 @@ pub fn DevDesignsPage() -> impl IntoView {
                     node.look = domain::Look {
                         design: *n,
                         color: color.to_string(),
+                        ..domain::Look::default()
                     };
                     let shown = if color.is_empty() { "principal" } else { color };
                     (format!("{n} · {name} · {shown}"), node)

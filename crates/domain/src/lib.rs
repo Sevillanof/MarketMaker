@@ -618,6 +618,15 @@ pub enum FieldKind {
         max: i64,
     },
     Bool,
+    /// Medida con deslizador: número entero entre `min` y `max`, con su
+    /// unidad escrita al lado (`"px"`, `"%"`).
+    Range {
+        min: i64,
+        max: i64,
+        unit: &'static str,
+    },
+    /// Color propio `#rrggbb`. Vacío: el del tema de la tienda.
+    Color,
     Select {
         options: &'static [(&'static str, &'static str)],
     },
@@ -1077,6 +1086,15 @@ pub fn field_error(kind: &FieldKind, v: Option<&serde_json::Value>) -> Option<St
         FieldKind::Bool => {
             (!v.is_some_and(|v| v.is_boolean())).then(|| "Tiene que ser sí o no.".to_string())
         }
+        FieldKind::Range { min, max, .. } => match v.and_then(|v| v.as_i64()) {
+            Some(n) if (*min..=*max).contains(&n) => None,
+            _ => Some(format!("Elegí un valor entre {min} y {max}.")),
+        },
+        FieldKind::Color => match v.and_then(|v| v.as_str()) {
+            Some("") => None,
+            Some(s) if crate::look::parse_hex(s).is_some() => None,
+            _ => Some("Elegí un color o dejalo del tema.".to_string()),
+        },
         FieldKind::Select { options } => match v.and_then(|v| v.as_str()) {
             Some(s) if options.iter().any(|(k, _)| *k == s) => None,
             _ => Some("Elegí una de las opciones.".to_string()),
