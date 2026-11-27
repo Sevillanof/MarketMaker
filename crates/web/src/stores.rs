@@ -82,6 +82,7 @@ pub async fn create_store(
     name: String,
     slug: String,
     template: String,
+    theme: String,
 ) -> Result<NewStoreOutcome, ServerFnError> {
     let user = crate::auth::current_user().await?.ok_or_else(|| {
         ServerFnError::new("Tenés que entrar con tu cuenta para crear una tienda.")
@@ -118,6 +119,10 @@ pub async fn create_store(
         )));
     }
     let mut doc = domain::template_doc(&template, &name);
+    // El tema se elige aparte de la plantilla; uno que no se ofrece no se acepta.
+    if domain::THEMES[..domain::OFFERED_THEMES].contains(&theme.as_str()) {
+        doc.theme = theme;
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);

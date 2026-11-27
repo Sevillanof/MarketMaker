@@ -34,6 +34,12 @@ pub const STORE_TEMPLATES: &[StoreTemplate] = &[
         preview: "/img/plantillas/simple",
     },
     StoreTemplate {
+        id: "editorial",
+        name: "Vidriera editorial",
+        hint: "Portada con foto, categorías, productos, historia y preguntas.",
+        preview: "/img/plantillas/editorial",
+    },
+    StoreTemplate {
         id: "vidriera",
         name: "Vidriera",
         hint: "Para ropa y accesorios: carrusel, categorías y ofertas.",

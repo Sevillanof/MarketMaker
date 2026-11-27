@@ -128,8 +128,9 @@ pub(crate) fn NewStore(
     });
 
     let template = RwSignal::new(domain::STORE_TEMPLATES[0].id.to_string());
-    let create = Action::new(|(n, s, t): &(String, String, String)| {
-        create_store(n.clone(), s.clone(), t.clone())
+    let theme = RwSignal::new(domain::THEMES[0].to_string());
+    let create = Action::new(|(n, s, t, th): &(String, String, String, String)| {
+        create_store(n.clone(), s.clone(), t.clone(), th.clone())
     });
     let opening = RwSignal::new(false);
     let busy = move || create.pending().get() || opening.get();
@@ -181,7 +182,7 @@ pub(crate) fn NewStore(
         } else if s_err.is_some() {
             focus_id("nueva-tienda-direccion");
         } else {
-            create.dispatch((n, s, template.get_untracked()));
+            create.dispatch((n, s, template.get_untracked(), theme.get_untracked()));
         }
     };
     let slug_note = move || {
@@ -311,6 +312,28 @@ pub(crate) fn NewStore(
                                 </figure>
                             }
                         }}
+                    </div>
+                </fieldset>
+                <fieldset class="flex flex-col gap-2">
+                    <legend class="font-medium">"Tema"</legend>
+                    <span id="nueva-tienda-tema-ayuda" class="text-sm text-base-content/70">"Colores y letras de tu tienda. Lo cambiás cuando quieras."</span>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-describedby="nueva-tienda-tema-ayuda">
+                        {domain::THEMES.iter().zip(domain::THEME_LABELS).take(domain::OFFERED_THEMES).map(|(t, l)| {
+                            let t = *t;
+                            view! {
+                                <label class="mk-template-card !p-2">
+                                    <input type="radio" name="theme" value=t class="mk-template-input"
+                                        prop:checked=move || theme.get() == t
+                                        on:change=move |_| theme.set(t.to_string())/>
+                                    <span data-theme=t class="flex h-7 w-11 shrink-0 items-center justify-center gap-0.5 rounded-field border border-base-content/10 bg-base-100" aria-hidden="true">
+                                        <span class="h-2.5 w-2.5 rounded-full bg-primary"></span>
+                                        <span class="h-2.5 w-2.5 rounded-full bg-secondary"></span>
+                                        <span class="h-2.5 w-2.5 rounded-full bg-accent"></span>
+                                    </span>
+                                    <span class="min-w-0 truncate font-semibold">{*l}</span>
+                                </label>
+                            }
+                        }).collect_view()}
                     </div>
                 </fieldset>
                 {move || problem.get().map(|p| view! { <p role="alert" class="text-sm text-error">{p}</p> })}
