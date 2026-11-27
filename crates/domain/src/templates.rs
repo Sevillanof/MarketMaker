@@ -284,8 +284,8 @@ fn categories(title: &str) -> Widget {
 /// portada dividida, beneficios, categorías con foto, productos, historia, cita,
 /// preguntas y pie). Va con el tema Línea; cambiar de tema no mueve nada.
 fn editorial(name: &str) -> PageDoc {
-    let announcement = Widget::defaults("Announcement")
-        .expect("Announcement tiene valores por defecto");
+    let announcement =
+        Widget::defaults("Announcement").expect("Announcement tiene valores por defecto");
     let category = |label: &str, image: &str| crate::CategoryItem {
         label: s(label),
         image_url: s(image),
@@ -329,16 +329,14 @@ fn editorial(name: &str) -> PageDoc {
                     benefit("truck", "Envíos a todo el país", "Recibí donde estés"),
                     benefit("card", "Pagá como quieras", "Opciones para vos"),
                     benefit("refresh", "Cambios simples", "Comprá con tranquilidad"),
-                ],
-            }))],
+                ], ..Default::default() }))],
             vec![block(Widget::Categories(crate::CategoriesProps {
                 title: s("Explorá por categoría"),
                 items: vec![
                     category("Hogar", "/img/category-hogar.webp"),
                     category("Moda", "/img/category-moda.webp"),
                     category("Tecnología", "/img/category-tecnologia.webp"),
-                ],
-            }))
+                ], ..Default::default() }))
             .h(40)],
             vec![block(Widget::ProductGrid(ProductGridProps {
                 title: s("Hechos para acompañarte"),
@@ -349,8 +347,7 @@ fn editorial(name: &str) -> PageDoc {
                     card_installments: true,
                     card_favorite: false,
                     card_colors: false,
-                },
-            }))
+                }, ..Default::default() }))
             .h(66)],
             vec![block(Widget::Card(CardProps {
                 kicker: s("Nuestra historia"),
@@ -475,6 +472,7 @@ fn vidriera(name: &str) -> PageDoc {
                         "Contá acá si envolvés para regalo",
                     ),
                 ],
+                ..Default::default()
             }))
             .look(2, "neutral")],
             vec![block(Widget::TagTabs(TagTabsProps {
@@ -497,6 +495,7 @@ fn vidriera(name: &str) -> PageDoc {
                 cards: crate::CardOptions::default(),
                 title: s("Novedades"),
                 limit: 4,
+                ..Default::default()
             }))
             .h(60)],
             vec![
@@ -562,14 +561,12 @@ fn taller(name: &str) -> PageDoc {
                     benefit("clock", "Hecho por encargo", "Contá acá cuánto tarda un pedido"),
                     benefit("truck", "Envíos", "Contá acá cómo y adónde enviás"),
                     benefit("chat", "Te asesoramos", "Contá acá cómo pueden escribirte"),
-                ],
-            }))
+                ], ..Default::default() }))
             .look(3, "")],
             vec![block(Widget::ProductGrid(ProductGridProps {
                 cards: crate::CardOptions::default(),
                 title: s("Nuestros productos"),
-                limit: 8,
-            }))],
+                limit: 8, ..Default::default() }))],
             vec![
                 block(card("/img/gallery-1.webp", "Pedidos personalizados", "Contá acá cómo funcionan los pedidos a medida.", ("Consultar", "/contacto"), "vertical")).w(16).h(52).look(2, ""),
                 block(card("/img/gallery-2.webp", "Regalos empresariales", "Contá acá qué ofrecés para empresas y eventos.", ("Consultar", "/contacto"), "vertical")).w(16).h(52).look(2, ""),
@@ -605,8 +602,8 @@ fn noche(name: &str) -> PageDoc {
                 image_url: s("/img/banner.webp"),
                 button_label: s("Ver productos"),
                 button_href: s("/#productos"),
-            ..Default::default()
-        }))
+                ..Default::default()
+            }))
             .h(56)
             .text("larger", "center")],
             vec![block(Widget::TagSearch(TagSearchProps {
@@ -660,6 +657,7 @@ fn noche(name: &str) -> PageDoc {
                         "Contá acá en qué horarios respondés",
                     ),
                 ],
+                ..Default::default()
             }))
             .look(5, "accent")],
             vec![

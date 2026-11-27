@@ -157,6 +157,63 @@ pub struct ProductGridProps {
     pub limit: i64,
     #[serde(flatten)]
     pub cards: CardOptions,
+    /// Antetítulo chico sobre el título (diseños nuevos).
+    #[serde(default)]
+    pub kicker: String,
+    /// Enlace de la derecha del encabezado («Ver productos»).
+    #[serde(default = "yes")]
+    pub show_all: bool,
+    #[serde(default = "grid_all_label")]
+    pub all_label: String,
+    #[serde(default)]
+    pub all_href: String,
+    /// Columnas en escritorio (2 a 6). El diseño «Lateral» usa siempre 2.
+    #[serde(default = "grid_cols")]
+    pub cols: i64,
+    /// Mostrar la categoría del producto bajo el nombre.
+    #[serde(default = "yes")]
+    pub show_category: bool,
+    /// Mostrar las cuotas bajo el precio.
+    #[serde(default = "yes")]
+    pub show_installments: bool,
+    /// Esquinas de las fotos y tarjetas, en px.
+    #[serde(default = "grid_radius")]
+    pub radius: i64,
+    /// Fondo y texto propios (`#rrggbb`); vacío, los del tema.
+    #[serde(default)]
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
+}
+
+fn grid_all_label() -> String {
+    "Ver productos".to_string()
+}
+fn grid_cols() -> i64 {
+    4
+}
+fn grid_radius() -> i64 {
+    2
+}
+
+impl Default for ProductGridProps {
+    fn default() -> Self {
+        Self {
+            title: "Hechos para acompañarte".to_string(),
+            limit: 8,
+            cards: CardOptions::default(),
+            kicker: String::new(),
+            show_all: true,
+            all_label: grid_all_label(),
+            all_href: String::new(),
+            cols: grid_cols(),
+            show_category: true,
+            show_installments: true,
+            radius: grid_radius(),
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 /// Cómo se ven las tarjetas de producto de un bloque (cuadrícula, pestañas,
@@ -321,6 +378,55 @@ pub struct CategoryItem {
 pub struct CategoriesProps {
     pub title: String,
     pub items: Vec<CategoryItem>,
+    #[serde(default)]
+    pub kicker: String,
+    #[serde(default)]
+    pub show_all: bool,
+    #[serde(default = "cats_all_label")]
+    pub all_label: String,
+    #[serde(default)]
+    pub all_href: String,
+    /// Proporción de las fotos: `1.25`, `1`, `0.8` o `1.78`. En «Círculos» son cuadradas.
+    #[serde(default = "cats_ratio")]
+    pub ratio: String,
+    /// Esquinas de las fotos, en px.
+    #[serde(default = "cats_radius")]
+    pub radius: i64,
+    /// La flecha ↗ junto al nombre.
+    #[serde(default = "yes")]
+    pub arrow: bool,
+    #[serde(default)]
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
+}
+
+fn cats_all_label() -> String {
+    "Ver todo".to_string()
+}
+fn cats_ratio() -> String {
+    "1.25".to_string()
+}
+fn cats_radius() -> i64 {
+    2
+}
+
+impl Default for CategoriesProps {
+    fn default() -> Self {
+        Self {
+            title: "Explorá por categoría".to_string(),
+            items: Vec::new(),
+            kicker: String::new(),
+            show_all: false,
+            all_label: cats_all_label(),
+            all_href: String::new(),
+            ratio: cats_ratio(),
+            radius: cats_radius(),
+            arrow: true,
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -333,6 +439,28 @@ pub struct BenefitItem {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BenefitsProps {
     pub items: Vec<BenefitItem>,
+    /// Mostrar el texto chico bajo cada título.
+    #[serde(default = "yes")]
+    pub show_text: bool,
+    /// Color propio de los íconos; vacío, el del tema.
+    #[serde(default)]
+    pub icon_color: String,
+    #[serde(default)]
+    pub bg: String,
+    #[serde(default)]
+    pub ink: String,
+}
+
+impl Default for BenefitsProps {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            show_text: true,
+            icon_color: String::new(),
+            bg: String::new(),
+            ink: String::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -729,37 +857,45 @@ const TEXT_FIELDS: &[Field] = &[
     field("body", "Texto", long(1000)),
 ];
 const PRODUCT_GRID_FIELDS: &[Field] = &[
+    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
+    field(
+        "show_all",
+        "Mostrar enlace «Ver productos»",
+        FieldKind::Bool,
+    ),
+    field("all_label", "Texto del enlace", text(30)),
+    field("all_href", "Adónde lleva el enlace", FieldKind::Url),
     field(
         "limit",
         "Productos por página",
         FieldKind::Number { min: 1, max: 24 },
     ),
     field(
-        "card",
-        "Tarjetas",
-        FieldKind::Select {
-            options: CARD_STYLE_OPTIONS,
+        "cols",
+        "Columnas en escritorio",
+        FieldKind::Range {
+            min: 2,
+            max: 6,
+            unit: "",
         },
     ),
-    adv(
-        "card_transfer",
-        "Tarjeta completa: precio con transferencia",
-        FieldKind::Bool,
+    field("show_category", "Mostrar la categoría", FieldKind::Bool),
+    field("show_installments", "Mostrar las cuotas", FieldKind::Bool),
+    field(
+        "radius",
+        "Esquinas",
+        FieldKind::Range {
+            min: 0,
+            max: 24,
+            unit: "px",
+        },
     ),
-    adv(
-        "card_installments",
-        "Tarjeta completa: cuotas sin interés",
-        FieldKind::Bool,
-    ),
-    adv(
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
+    field(
         "card_favorite",
-        "Corazón de favoritos en las tarjetas y la ficha",
-        FieldKind::Bool,
-    ),
-    adv(
-        "card_colors",
-        "Puntos de color en las tarjetas",
+        "Corazón de favoritos en las tarjetas",
         FieldKind::Bool,
     ),
 ];
@@ -961,8 +1097,37 @@ const CATEGORY_ITEM: &[Field] = &[
     field("image_url", "Imagen", FieldKind::Url),
     field("href", "Enlace", FieldKind::Url),
 ];
+const CATEGORY_RATIO_OPTIONS: &[(&str, &str)] = &[
+    ("1.25", "Apaisada (5:4)"),
+    ("1", "Cuadrada"),
+    ("0.8", "Vertical (4:5)"),
+    ("1.78", "Panorámica (16:9)"),
+];
 const CATEGORIES_FIELDS: &[Field] = &[
+    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
+    field("show_all", "Mostrar enlace «Ver todo»", FieldKind::Bool),
+    field("all_label", "Texto del enlace", text(30)),
+    field("all_href", "Adónde lleva el enlace", FieldKind::Url),
+    field("arrow", "Flecha ↗ junto al nombre", FieldKind::Bool),
+    field(
+        "ratio",
+        "Proporción de las fotos",
+        FieldKind::Select {
+            options: CATEGORY_RATIO_OPTIONS,
+        },
+    ),
+    field(
+        "radius",
+        "Esquinas de las fotos",
+        FieldKind::Range {
+            min: 0,
+            max: 24,
+            unit: "px",
+        },
+    ),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
     field(
         "items",
         "Categorías",
@@ -985,15 +1150,25 @@ const BENEFIT_ITEM: &[Field] = &[
     field("title", "Título", text(40)),
     field("text", "Texto", text(100)),
 ];
-const BENEFITS_FIELDS: &[Field] = &[field(
-    "items",
-    "Beneficios",
-    FieldKind::List {
-        item: BENEFIT_ITEM,
-        min: 1,
-        max: 6,
-    },
-)];
+const BENEFITS_FIELDS: &[Field] = &[
+    field(
+        "items",
+        "Beneficios",
+        FieldKind::List {
+            item: BENEFIT_ITEM,
+            min: 1,
+            max: 6,
+        },
+    ),
+    field(
+        "show_text",
+        "Mostrar el texto de cada beneficio",
+        FieldKind::Bool,
+    ),
+    field("icon_color", "Color de los íconos", FieldKind::Color),
+    field("bg", "Color de fondo", FieldKind::Color),
+    field("ink", "Color del texto", FieldKind::Color),
+];
 
 const COUNTDOWN_FIELDS: &[Field] = &[
     field("title", "Título", text(80)),
@@ -1544,7 +1719,12 @@ impl Widget {
     pub fn is_new_design(&self) -> bool {
         matches!(
             self,
-            Widget::Announcement(_) | Widget::Navbar(_) | Widget::Banner(_)
+            Widget::Announcement(_)
+                | Widget::Navbar(_)
+                | Widget::Banner(_)
+                | Widget::Benefits(_)
+                | Widget::Categories(_)
+                | Widget::ProductGrid(_)
         )
     }
 
@@ -1552,19 +1732,82 @@ impl Widget {
     pub fn designs(&self) -> &'static [(u8, &'static str, &'static str)] {
         match self {
             Widget::Announcement(_) => &[
-                (1, "Franja directa", "Un mensaje centrado con el color principal"),
-                (2, "Etiqueta suave", "La información aparece junto a una pequeña etiqueta"),
-                (3, "Nota enmarcada", "Una superficie contenida con acento lateral"),
+                (
+                    1,
+                    "Franja directa",
+                    "Un mensaje centrado con el color principal",
+                ),
+                (
+                    2,
+                    "Etiqueta suave",
+                    "La información aparece junto a una pequeña etiqueta",
+                ),
+                (
+                    3,
+                    "Nota enmarcada",
+                    "Una superficie contenida con acento lateral",
+                ),
             ],
             Widget::Navbar(_) => &[
-                (1, "Equilibrado", "Marca a un lado y navegación en una línea"),
-                (2, "Marca al centro", "Dos niveles: marca y accesos arriba, páginas abajo"),
-                (3, "Menú contenido", "Una barra que se separa suavemente del fondo"),
+                (
+                    1,
+                    "Equilibrado",
+                    "Marca a un lado y navegación en una línea",
+                ),
+                (
+                    2,
+                    "Marca al centro",
+                    "Dos niveles: marca y accesos arriba, páginas abajo",
+                ),
+                (
+                    3,
+                    "Menú contenido",
+                    "Una barra que se separa suavemente del fondo",
+                ),
             ],
             Widget::Banner(_) => &[
-                (1, "Marco editorial", "Texto y fotografía contenidos, con aire interior"),
-                (2, "Fotografía inmersiva", "La imagen ocupa el fondo y el texto queda en primer plano"),
-                (3, "Arco", "Un recorte curvo acompaña el texto sobre fondo abierto"),
+                (
+                    1,
+                    "Marco editorial",
+                    "Texto y fotografía contenidos, con aire interior",
+                ),
+                (
+                    2,
+                    "Fotografía inmersiva",
+                    "La imagen ocupa el fondo y el texto queda en primer plano",
+                ),
+                (
+                    3,
+                    "Arco",
+                    "Un recorte curvo acompaña el texto sobre fondo abierto",
+                ),
+            ],
+            Widget::Benefits(_) => &[
+                (
+                    1,
+                    "Línea editorial",
+                    "Beneficios en fila, separados por filetes",
+                ),
+                (
+                    2,
+                    "Tarjetas ligeras",
+                    "Cada beneficio en su tarjeta, con ícono redondo",
+                ),
+                (3, "Centrado", "Íconos arriba, en círculo, y texto centrado"),
+            ],
+            Widget::Categories(_) => &[
+                (1, "Sobre la imagen", "El nombre sobre la foto, con degradé"),
+                (2, "Pie editorial", "Foto con el nombre debajo y una línea"),
+                (3, "Círculos", "Fotos redondas con el nombre centrado"),
+            ],
+            Widget::ProductGrid(_) => &[
+                (1, "Lateral", "Foto a un lado y el texto al otro, de a dos"),
+                (2, "Enmarcada", "Cada producto en una tarjeta con marco"),
+                (
+                    3,
+                    "Flotante translúcida",
+                    "El texto flota sobre la foto con un velo",
+                ),
             ],
             _ => crate::DESIGNS,
         }
@@ -1694,8 +1937,7 @@ impl Widget {
             "ProductGrid" => Widget::ProductGrid(ProductGridProps {
                 cards: CardOptions::default(),
                 title: s("Productos"),
-                limit: 8,
-            }),
+                limit: 8, ..Default::default() }),
             "TagFilter" => Widget::TagFilter(TagFilterProps {
                 title: String::new(),
                 all_label: s("Todos"),
@@ -1796,8 +2038,7 @@ impl Widget {
                     image_url: format!("/img/category-{slug}.webp"),
                     href: crate::tag_href(tag),
                 })
-                .collect(),
-            }),
+                .collect(), ..Default::default() }),
             "Benefits" => Widget::Benefits(BenefitsProps {
                 items: vec![
                     BenefitItem {
@@ -1820,8 +2061,7 @@ impl Widget {
                         title: s("Atención"),
                         text: s("Contá acá cómo te pueden contactar"),
                     },
-                ],
-            }),
+                ], ..Default::default() }),
             "Countdown" => Widget::Countdown(CountdownProps {
                 title: s("Ofertas relámpago"),
                 subtitle: s("Contá acá qué está en oferta y hasta cuándo"),

@@ -16,6 +16,15 @@ use crate::{ProductCard, RenderCtx};
 /// Lo que eligió el comprador para ver, por contexto: las cuadrículas de la
 /// página muestran solo esos productos. Está en la tienda y en la vista
 /// previa; en el lienzo del editor los filtros se ven pero no filtran.
+/// Cómo se dibuja la cuadrícula de los diseños nuevos.
+#[derive(Clone, Copy)]
+pub struct NwGrid {
+    pub cols: i64,
+    pub show_category: bool,
+    pub show_installments: bool,
+    pub favorite: bool,
+}
+
 #[derive(Clone, Copy)]
 pub struct ProductFilter {
     /// Etiquetas elegidas (vacío: todas). Con varias, alcanza con una.
@@ -232,6 +241,10 @@ pub fn FilteredProducts(
     /// buscar la pantalla baja a una cuadrícula que no cambió.
     #[prop(optional_no_strip)]
     outer: Option<ProductFilter>,
+    /// Con esto, las tarjetas y la cuadrícula son las de los diseños nuevos
+    /// (`nw-products`): columnas, categoría, cuotas y corazón.
+    #[prop(optional_no_strip)]
+    nw: Option<NwGrid>,
 ) -> impl IntoView {
     let empty = products.is_empty();
     let limit = limit.max(1);
@@ -346,10 +359,22 @@ pub fn FilteredProducts(
         {empty.then(|| view! { <div class="alert">"Todavía no hay productos."</div> })}
         // Con pocos productos (y lugar para más), cada tarjeta guarda el tamaño
         // de una fila de 4 y quedan centradas: si no, cada una ocupa media pantalla.
-        <div node_ref=grid class=format!("mk-pgrid grid min-h-0 flex-1 auto-rows-fr scroll-mt-20 gap-3 {}{}", fill_cols(shown_count), if few { " mk-pgrid-few" } else { "" })
-            style=few.then(|| format!("--mk-few: {shown_count}"))>
-            {move || shown().into_iter().map(|p| view! { <ProductCard product=p show_price=true/> }).collect_view()}
-        </div>
+        {match nw {
+            Some(g) => view! {
+                <div node_ref=grid class="nw-products" style=format!("--n:{}", g.cols)>
+                    {move || shown().into_iter().map(|p| view! {
+                        <crate::product_page::NwCard product=p show_category=g.show_category
+                            show_installments=g.show_installments favorite=g.favorite/>
+                    }).collect_view()}
+                </div>
+            }.into_any(),
+            None => view! {
+                <div node_ref=grid class=format!("mk-pgrid grid min-h-0 flex-1 auto-rows-fr scroll-mt-20 gap-3 {}{}", fill_cols(shown_count), if few { " mk-pgrid-few" } else { "" })
+                    style=few.then(|| format!("--mk-few: {shown_count}"))>
+                    {move || shown().into_iter().map(|p| view! { <ProductCard product=p show_price=true/> }).collect_view()}
+                </div>
+            }.into_any(),
+        }}
         {move || (pages() > 1).then(|| view! { <Pager current=current() pages=pages() go/> })}
     }
 }

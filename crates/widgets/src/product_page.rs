@@ -514,6 +514,48 @@ fn open_cover(id: String, name: &str) -> impl IntoView {
     })
 }
 
+/// Tarjeta de producto de los diseños nuevos de «Cuadrícula de productos»:
+/// foto, nombre, categoría, precio (con el anterior tachado) y cuotas. La
+/// forma la da el CSS del diseño elegido (`.nw-product`).
+#[component]
+pub fn NwCard(
+    product: Product,
+    show_category: bool,
+    show_installments: bool,
+    favorite: bool,
+) -> impl IntoView {
+    let offers = use_context::<domain::StoreInfo>()
+        .map(|s| s.offers)
+        .unwrap_or_default();
+    let cents = product.price_cents;
+    let per = show_installments
+        .then(|| offers.installment_cents(cents))
+        .flatten();
+    let n = offers.installments;
+    let fit = product.fit(&product.image_url);
+    view! {
+        <article class="nw-product" data-product-id=product.id.clone()>
+            <div class="nw-img">
+                <Image src=product.image_url.clone() alt=product.name.clone() fit initial=true/>
+                {favorite.then(|| view! { <crate::FavoriteHeart product_id=product.id.clone() name=product.name.clone()/> })}
+                {(!product.in_stock).then(|| view! { <span class="nw-badge">"Agotado"</span> })}
+            </div>
+            <div class="nw-product-info">
+                <h5>{product.name.clone()}</h5>
+                {(show_category && !product.category.is_empty()).then(|| view! { <p>{product.category.clone()}</p> })}
+                <strong>
+                    {format_price(cents)}
+                    {(product.compare_at_cents > cents).then(|| view! {
+                        <s><span class="sr-only">"Antes "</span>{format_price(product.compare_at_cents)}</s>
+                    })}
+                </strong>
+                {per.map(|c| view! { <p>{format!("{n} cuotas sin interés de {}", format_price(c))}</p> })}
+            </div>
+            {open_cover(product.id.clone(), &product.name)}
+        </article>
+    }
+}
+
 /// Debajo del precio de una tarjeta: los puntos de color del producto (hasta
 /// 5 y «+N»), «3 colores» si algún color no tiene punto, o los talles si solo
 /// tiene talles. Sin variantes deja el lugar si hace falta para alinear.

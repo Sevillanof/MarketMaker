@@ -75,6 +75,7 @@ pub fn starter_doc(name: &str) -> PageDoc {
             cards: crate::CardOptions::default(),
             title: s("Productos"),
             limit: 8,
+            ..Default::default()
         }),
         Widget::Text(TextProps {
             heading: s("Quiénes somos"),

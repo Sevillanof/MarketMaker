@@ -120,6 +120,22 @@ SRC = SRC.replace(
     ".products .product h5 { min-height:2.7em; }\n  .products.v1 .product h5 { min-height:0; }",
 )
 
+# Las fotos van dentro de un cuadro `.nw-img` (el componente Image arma su
+# propio envoltorio), así que las reglas de `img` pasan a ese cuadro. Las
+# columnas, la proporción y las esquinas salen de variables del bloque.
+SRC = re.sub(r"(\.category(?:\.v\d)?) img", r"\1 .img", SRC)
+SRC = re.sub(r"(\.product(?:\.v\d)?) > img", r"\1 > .img", SRC)
+SRC = SRC.replace(
+    ".benefits { display:grid; grid-template-columns:repeat(3,", ".benefits { display:grid; grid-template-columns:repeat(var(--n,3),"
+).replace(
+    ".categories { display:grid; grid-template-columns:repeat(3,", ".categories { display:grid; grid-template-columns:repeat(var(--n,3),"
+).replace(
+    ".products { display:grid; grid-template-columns:repeat(4,", ".products { display:grid; grid-template-columns:repeat(var(--n,4),"
+).replace(
+    ".category .img { width:100%; aspect-ratio:1.25; object-fit:cover; border-radius:var(--radius); }",
+    ".category .img { width:100%; aspect-ratio:var(--nw-ratio,1.25); border-radius:var(--nw-rad,var(--radius)); }",
+)
+
 HEADER = """/* Widgets nuevos (generado por scripts/gen_widgets_css.py; no editar a mano).
    Copia fiel de treinta-disenos-widgets.html. El diseño de escritorio va en
    .mk-dN y el de celular en .mk-mN del envoltorio del bloque. */
@@ -148,6 +164,13 @@ HEADER = """/* Widgets nuevos (generado por scripts/gen_widgets_css.py; no edita
 """
 
 TAIL = """
+.nw-img { position: relative; display: block; overflow: hidden; background: var(--surface); }
+.nw-img > .mk-img { position: absolute; inset: 0; }
+.nw-category { display: block; color: inherit; text-decoration: none; }
+.nw-product { position: relative; }
+.nw-product-info s { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
+.nw-badge { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 2px 8px; font-size: 10px; font-weight: 700; background: var(--ink); color: var(--bg); border-radius: var(--radius); }
+.nw-pager { display: flex; justify-content: center; margin-top: 22px; }
 .nw-ann-inner { display: block; color: inherit; text-decoration: none; }
 /* Menú del celular: el botón «Menú» abre un desplegable flotante (popover). */
 .nw-nav-mobile { position: relative; }

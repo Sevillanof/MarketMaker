@@ -10,8 +10,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    font, normalize_hex, safe_bg_image, starter_doc, CardOptions, Field, FieldKind, Look, Node, PageDoc, Size,
-    Slide, StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, ROW_PX, TEXT_ANIMATIONS,
+    font, normalize_hex, safe_bg_image, starter_doc, CardOptions, Field, FieldKind, Look, Node,
+    PageDoc, Size, Slide, StoreStyle, Widget, ALIGN_OPTIONS, GRID_COLS, MAX_BG_DIM, ROW_PX,
+    TEXT_ANIMATIONS,
 };
 
 /// Cuántos pasos tiene el asistente.
@@ -126,7 +127,10 @@ pub const WIZARD: [WizardStep; WIZARD_STEPS] = [
         hint: "Se usan los que cargues. Mientras tanto ves productos de ejemplo.",
         options: &[
             opt("Cuadrícula", "Tarjetas simples, una al lado de la otra"),
-            opt("Cuadrícula con detalle", "Con precios por transferencia y cuotas"),
+            opt(
+                "Cuadrícula con detalle",
+                "Con precios por transferencia y cuotas",
+            ),
             opt("Carrusel", "Pasan de costado con flechas"),
         ],
     },
@@ -134,7 +138,8 @@ pub const WIZARD: [WizardStep; WIZARD_STEPS] = [
         section: Section::Footer,
         name: "Pie de página",
         title: "Elegí el pie de página",
-        hint: "Es la franja del final, con tus enlaces. Después tocá «Usar este y crear mi página».",
+        hint:
+            "Es la franja del final, con tus enlaces. Después tocá «Usar este y crear mi página».",
         options: &[
             opt("Clásico", "Fondo simple, enlaces claros"),
             opt("Suave", "Fondo con un tono suave"),
@@ -247,11 +252,16 @@ impl WizardPick {
             if !ALIGN_OPTIONS.iter().any(|(k, _)| *k == self.align[i]) {
                 self.align[i].clear();
             }
-            if !self.anim[i].is_empty() && !TEXT_ANIMATIONS.iter().any(|(k, ..)| *k == self.anim[i]) {
+            if !self.anim[i].is_empty() && !TEXT_ANIMATIONS.iter().any(|(k, ..)| *k == self.anim[i])
+            {
                 self.anim[i].clear();
             }
             self.over[i].retain(|k, v| {
-                k.len() <= 40 && !matches!(v, serde_json::Value::Array(_) | serde_json::Value::Object(_))
+                k.len() <= 40
+                    && !matches!(
+                        v,
+                        serde_json::Value::Array(_) | serde_json::Value::Object(_)
+                    )
                     && v.as_str().is_none_or(|t| t.chars().count() <= 300)
             });
         }
@@ -321,7 +331,10 @@ pub fn pick_from_doc(doc: &PageDoc) -> WizardPick {
     }
     for section in Section::ALL {
         if let Some(node) = existing_of(doc, section) {
-            if let Some(i) = WIZARD_COLORS.iter().position(|(c, _)| *c == node.look.color) {
+            if let Some(i) = WIZARD_COLORS
+                .iter()
+                .position(|(c, _)| *c == node.look.color)
+            {
                 p.color[section.index()] = i as u8;
             }
             if section == Section::Footer {
@@ -350,7 +363,11 @@ pub fn is_untouched(doc: &PageDoc) -> bool {
 
 /// El bloque que sale de lo elegido en un paso, aprovechando los textos del
 /// bloque que ya está en la página (si lo hay). `None`: sin bloque.
-pub fn section_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -> Option<Widget> {
+pub fn section_widget(
+    section: Section,
+    pick: &WizardPick,
+    existing: Option<&Widget>,
+) -> Option<Widget> {
     let widget = base_widget(section, pick, existing)?;
     Some(with_overrides(widget, &pick.over[section.index()]))
 }
@@ -373,15 +390,23 @@ fn with_overrides(widget: Widget, over: &BTreeMap<String, serde_json::Value>) ->
             let val = match (fields.iter().find(|f| f.key == k.as_str()), val) {
                 // Un texto más largo que el límite del campo haría que la
                 // página no se pudiera guardar: se recorta.
-                (Some(Field { kind: FieldKind::Text { max } | FieldKind::LongText { max }, .. }), serde_json::Value::String(t)) => {
-                    serde_json::Value::String(t.chars().take(*max).collect())
-                }
-                (Some(Field { kind: FieldKind::Number { min, max }, .. }), serde_json::Value::Number(n)) => {
-                    match n.as_i64() {
-                        Some(i) => serde_json::Value::from(i.clamp(*min, *max)),
-                        None => val.clone(),
-                    }
-                }
+                (
+                    Some(Field {
+                        kind: FieldKind::Text { max } | FieldKind::LongText { max },
+                        ..
+                    }),
+                    serde_json::Value::String(t),
+                ) => serde_json::Value::String(t.chars().take(*max).collect()),
+                (
+                    Some(Field {
+                        kind: FieldKind::Number { min, max },
+                        ..
+                    }),
+                    serde_json::Value::Number(n),
+                ) => match n.as_i64() {
+                    Some(i) => serde_json::Value::from(i.clamp(*min, *max)),
+                    None => val.clone(),
+                },
                 _ => val.clone(),
             };
             props.insert(k.clone(), val);
@@ -392,10 +417,14 @@ fn with_overrides(widget: Widget, over: &BTreeMap<String, serde_json::Value>) ->
 
 /// Largo máximo de un campo de texto del bloque (`None`: sin límite conocido).
 pub fn text_max(widget: &Widget, key: &str) -> Option<usize> {
-    widget.fields().iter().find(|f| f.key == key).and_then(|f| match f.kind {
-        FieldKind::Text { max } | FieldKind::LongText { max } => Some(max),
-        _ => None,
-    })
+    widget
+        .fields()
+        .iter()
+        .find(|f| f.key == key)
+        .and_then(|f| match f.kind {
+            FieldKind::Text { max } | FieldKind::LongText { max } => Some(max),
+            _ => None,
+        })
 }
 
 fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -> Option<Widget> {
@@ -423,8 +452,8 @@ fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -
                         image_url: s.image_url.clone(),
                         button_label: s.button_label.clone(),
                         button_href: s.button_href.clone(),
-            ..Default::default()
-        }),
+                        ..Default::default()
+                    }),
                     _ => None,
                 };
                 match banner {
@@ -742,10 +771,16 @@ mod tests {
         let h = |count: u8| {
             let mut pick = pick_from_doc(&doc);
             pick.products_count = count;
-            section_node(Section::Products, &pick, &doc).expect("productos").size.h
+            section_node(Section::Products, &pick, &doc)
+                .expect("productos")
+                .size
+                .h
         };
         assert!(h(1) > h(0), "8 productos no entran en el alto de 4");
-        assert!(products_rows(24, 0) > products_rows(8, 0), "24 productos no entran en el alto de 8");
+        assert!(
+            products_rows(24, 0) > products_rows(8, 0),
+            "24 productos no entran en el alto de 8"
+        );
         // Cambiar la cantidad en una página ya armada también reajusta el alto.
         let mut pick = pick_from_doc(&doc);
         pick.over[Section::Products.index()].insert("limit".into(), 24.into());
@@ -819,7 +854,8 @@ mod tests {
         pick.choice[1] = 1; // carrusel
         pick.choice[0] = 1; // logo al centro
         let changes = apply(&mut doc, &pick);
-        assert_eq!(changes[0], Change::Replaced);
+        // El menú ya no tiene variantes en el asistente (el diseño se elige en
+        // el editor); el asistente se rehace en el PR 6.
         assert_eq!(changes[1], Change::Replaced);
         let carousel = doc
             .nodes
@@ -830,7 +866,10 @@ mod tests {
             })
             .unwrap();
         assert_eq!(carousel.slides[0].title, title_before);
-        assert!(doc.nodes.iter().any(|n| matches!(n.widget, Widget::Navbar(_))));
+        assert!(doc
+            .nodes
+            .iter()
+            .any(|n| matches!(n.widget, Widget::Navbar(_))));
     }
 
     #[test]
