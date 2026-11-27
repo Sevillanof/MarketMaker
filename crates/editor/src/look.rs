@@ -45,7 +45,6 @@ pub(crate) fn BlockLook(
         })
     };
     let theme = move || state.doc.with(|d| d.theme.clone());
-    let store_vars = move || state.doc.with(|d| d.typography.css_vars());
     // Los widgets nuevos traen sus propios diseños (tres) y sus colores se
     // editan en Contenido; los demás, los cinco estilos y el color del bloque.
     let designs: &'static [(u8, &'static str, &'static str)] = state
@@ -55,7 +54,6 @@ pub(crate) fn BlockLook(
     let own_colors = state
         .doc
         .with_untracked(|d| d.node(&id).is_some_and(|n| n.widget.is_new_design()));
-    let group_name = format!("mk-design-{id}");
     let color_name = format!("mk-color-{id}");
     let custom_id = format!("mk-color-custom-{id}");
     let mobile_id = format!("mk-design-mobile-{id}");
@@ -72,44 +70,8 @@ pub(crate) fn BlockLook(
 
     view! {
         <section class="flex flex-col gap-4">
-            <fieldset>
-                <legend class="mb-2 flex items-center gap-1 text-sm font-medium">
-                    "Estilo"
-                    <ui::HelpTip id=format!("tip-look-{id}") label="Estilo" text="Cada estilo cambia cómo se ve el bloque. Tus textos e imágenes no cambian."/>
-                </legend>
-                <div class=if designs.len() == 3 { "grid grid-cols-3 gap-1" } else { "grid grid-cols-5 gap-1" }>
-                    {designs.iter().map(|(n, name, hint)| {
-                        let n = *n;
-                        let checked = move || look.with(|l| l.design == n);
-                        view! {
-                            <label title=*hint class="group relative flex cursor-pointer flex-col items-stretch gap-1 rounded-field p-1 outline-2 outline-offset-0 outline-transparent hover:bg-base-200 has-[:checked]:bg-primary/5 has-[:checked]:outline-primary has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-base-content">
-                                <input
-                                    type="radio"
-                                    class="sr-only"
-                                    name=group_name.clone()
-                                    value=n.to_string()
-                                    prop:checked=checked
-                                    on:change=move |_| set(None, Box::new(move |l| l.design = n))
-                                />
-                                <div
-                                    data-theme=theme
-                                    class="mk-store overflow-hidden rounded-md border border-base-300 bg-base-200"
-                                    style=move || format!("{}; height:{THUMB_MAX_H}px", store_vars())
-                                    aria-hidden="true"
-                                >
-                                    {move || visible.get().then(|| node.get().map(|node| {
-                                        view! { <Thumb node design=n products/> }
-                                    }))}
-                                </div>
-                                <span class="flex items-center justify-center gap-0.5 text-center text-[11px] font-medium leading-tight" class=("text-primary", checked)>
-                                    {move || checked().then(|| view! { <Icon name="check" class="h-3 w-3 shrink-0"/> })}
-                                    {*name}
-                                </span>
-                            </label>
-                        }
-                    }).collect_view()}
-                </div>
-            </fieldset>
+            <DesignPicker id=id.clone() visible products/>
+            {(!own_colors).then(|| view! {
             <div class="flex flex-col gap-1">
                 <label for=mobile_id.clone() class="flex items-center gap-1 text-sm font-medium">
                     "Diseño en celular"
@@ -132,6 +94,7 @@ pub(crate) fn BlockLook(
                     {designs.iter().map(|(n, name, _)| view! { <option value=n.to_string()>{*name}</option> }).collect_view()}
                 </select>
             </div>
+            })}
             {(!own_colors).then(|| view! { <fieldset>
                 <legend class="mb-2 flex items-center gap-1 text-sm font-medium">
                     "Color"
@@ -215,6 +178,77 @@ pub(crate) fn BlockLook(
                 </button>
             })}
         </section>
+    }
+}
+
+/// Los diseños del bloque como miniaturas del bloque mismo: se muestran en
+/// los ajustes rápidos y en "Estilo y color".
+#[component]
+pub(crate) fn DesignPicker(
+    id: String,
+    #[prop(into)] visible: Signal<bool>,
+    products: StoredValue<Vec<Product>>,
+) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let sid = StoredValue::new(id.clone());
+    let node = Memo::new(move |_| state.doc.with(|d| sid.with_value(|id| d.node(id).cloned())));
+    let look =
+        Memo::new(move |_| node.with(|n| n.as_ref().map(|n| n.look.clone()).unwrap_or_default()));
+    let set = move |group: Option<&str>, f: Box<dyn FnOnce(&mut Look)>| {
+        sid.with_value(|id| {
+            state.apply_grouped(group, |d| {
+                if let Some(n) = d.node_mut(id) {
+                    f(&mut n.look);
+                }
+            })
+        })
+    };
+    let theme = move || state.doc.with(|d| d.theme.clone());
+    let store_vars = move || state.doc.with(|d| d.typography.css_vars());
+    let designs: &'static [(u8, &'static str, &'static str)] = state
+        .doc
+        .with_untracked(|d| d.node(&id).map(|n| n.widget.designs()))
+        .unwrap_or(DESIGNS);
+    let group_name = format!("mk-design-{id}");
+    view! {
+            <fieldset>
+                <legend class="mb-2 flex items-center gap-1 text-sm font-medium">
+                    "Diseño del widget"
+                    <ui::HelpTip id=format!("tip-look-{id}") label="Diseño del widget" text="Cada estilo cambia cómo se ve el bloque. Tus textos e imágenes no cambian."/>
+                </legend>
+                <div class=if designs.len() == 3 { "grid grid-cols-3 gap-1" } else { "grid grid-cols-5 gap-1" }>
+                    {designs.iter().map(|(n, name, hint)| {
+                        let n = *n;
+                        let checked = move || look.with(|l| l.design == n);
+                        view! {
+                            <label title=*hint class="group relative flex cursor-pointer flex-col items-stretch gap-1 rounded-field p-1 outline-2 outline-offset-0 outline-transparent hover:bg-base-200 has-[:checked]:bg-primary/5 has-[:checked]:outline-primary has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-base-content">
+                                <input
+                                    type="radio"
+                                    class="sr-only"
+                                    name=group_name.clone()
+                                    value=n.to_string()
+                                    prop:checked=checked
+                                    on:change=move |_| set(None, Box::new(move |l| l.design = n))
+                                />
+                                <div
+                                    data-theme=theme
+                                    class="mk-store overflow-hidden rounded-md border border-base-300 bg-base-200"
+                                    style=move || format!("{}; height:{THUMB_MAX_H}px", store_vars())
+                                    aria-hidden="true"
+                                >
+                                    {move || visible.get().then(|| node.get().map(|node| {
+                                        view! { <Thumb node design=n products/> }
+                                    }))}
+                                </div>
+                                <span class="flex items-center justify-center gap-0.5 text-center text-[11px] font-medium leading-tight" class=("text-primary", checked)>
+                                    {move || checked().then(|| view! { <Icon name="check" class="h-3 w-3 shrink-0"/> })}
+                                    {*name}
+                                </span>
+                            </label>
+                        }
+                    }).collect_view()}
+                </div>
+            </fieldset>
     }
 }
 

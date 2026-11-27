@@ -278,11 +278,46 @@ fn PanelSection(
     }
 }
 
+/// Sección de los ajustes avanzados a la que pertenece un campo, como en la
+/// maqueta de ajustes. Vacío: el bloque no se divide en secciones.
+fn group_title(type_name: &str, key: &str) -> &'static str {
+    match (type_name, key) {
+        ("Announcement", "message" | "show_tag" | "tag" | "href") => "Contenido",
+        ("Announcement", _) => "Presentación",
+        ("Navbar", "brand" | "size" | "logo_url" | "links" | "upper") => "Marca y enlaces",
+        ("Navbar", _) => "Presentación",
+        ("Banner", "show_kicker" | "kicker" | "title" | "subtitle" | "image_url") => "Contenido",
+        ("Banner", _) => "Fotografía y diseño",
+        ("Benefits", _) => "Beneficios",
+        ("Categories", "kicker" | "title" | "show_all" | "all_label" | "all_href" | "arrow") => {
+            "Encabezado"
+        }
+        ("Categories", "items") => "Accesos",
+        ("Categories", _) => "Presentación",
+        ("ProductGrid", "kicker" | "title" | "show_all" | "all_label" | "all_href" | "limit") => {
+            "Contenido"
+        }
+        ("ProductGrid", "show_category" | "show_installments" | "card_favorite") => {
+            "Información visible"
+        }
+        ("ProductGrid", _) => "Diseño de tarjeta",
+        ("Card", "kicker" | "title" | "body" | "show_button" | "image_url") => "Contenido",
+        ("Card", _) => "Fotografía y diseño",
+        ("Testimonials", _) => "Opinión",
+        ("Faq", "kicker" | "title" | "open_first") => "Encabezado",
+        ("Faq", "items") => "Preguntas",
+        ("Footer", "brand" | "show_dot" | "show_description" | "description") => "Marca",
+        ("Footer", _) => "Enlaces y legal",
+        _ => "",
+    }
+}
+
 #[component]
 fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget) -> impl IntoView {
     let ui = expect_context::<Ui>();
     let actions = expect_context::<Actions>();
     let label = widget.label();
+    let widget_type = widget.type_name();
     let (_, description) = block_info(widget.type_name());
     let sid = StoredValue::new(id.clone());
     let (size_sid, look_id, type_id) = (id.clone(), id.clone(), id.clone());
@@ -411,10 +446,22 @@ fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget
             })}
 
             <PanelSection which=Section::Content open title="Contenido" icon="pencil">
-                {basic
-                    .into_iter()
-                    .map(|f| view! { <ShownField products id=basic_id.clone() field=f/> })
-                    .collect_view()}
+                {{
+                    let mut last = "";
+                    basic
+                        .into_iter()
+                        .map(|f| {
+                            let title = group_title(widget_type, f.key);
+                            let heading = (!title.is_empty() && title != last).then(|| {
+                                view! { <h3 class="-mb-2 text-xs font-bold uppercase tracking-wide text-base-content/70">{title}</h3> }
+                            });
+                            if !title.is_empty() {
+                                last = title;
+                            }
+                            view! { {heading}<ShownField products id=basic_id.clone() field=f/> }
+                        })
+                        .collect_view()
+                }}
                 {button.map(|(label_field, href_field)| view! {
                     <ButtonGroup products id=button_id.clone() label_field href_field/>
                 })}
