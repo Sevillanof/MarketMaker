@@ -7,10 +7,9 @@
 //! (vidriera de moda, emprendimiento artesanal, tecnología en modo oscuro).
 
 use crate::{
-    BannerProps, BenefitItem, BenefitsProps, CardProps, CarouselProps, CategoryFilterProps,
-    CountdownProps, FaqItem, FaqProps, FooterProps, ImageProps, LinkItem, Look, NavbarProps, Node,
-    PageDoc, Pos, ProductGridProps, Slide, StoreStyle, TabItem, TabsProps, TagSearchProps,
-    TagTabsProps, TestimonialsProps, TextProps, TextStyle, Typography, Widget, GRID_COLS,
+    BannerProps, BenefitItem, BenefitsProps, CardProps, FaqItem, FaqProps, FooterProps, LinkItem,
+    Look, NavbarProps, Node, PageDoc, Pos, ProductGridProps, StoreStyle, TestimonialsProps,
+    TextStyle, Typography, Widget, GRID_COLS,
 };
 
 /// Una plantilla que se puede elegir al crear la tienda.
@@ -106,25 +105,12 @@ fn block(widget: Widget) -> Block {
 }
 
 impl Block {
-    fn w(mut self, w: u8) -> Self {
-        self.w = w;
-        self
-    }
-    fn h(mut self, h: u8) -> Self {
-        self.h = h;
-        self
-    }
     fn look(mut self, design: u8, color: &str) -> Self {
         self.look = Look {
             design,
             color: s(color),
             ..Look::default()
         };
-        self
-    }
-    fn text(mut self, size: &str, align: &str) -> Self {
-        self.style.size = s(size);
-        self.style.align = s(align);
         self
     }
 }
@@ -215,18 +201,6 @@ fn navbar(links: Vec<LinkItem>, button: (&str, &str)) -> Widget {
     })
 }
 
-fn footer(description: &str) -> Widget {
-    Widget::Footer(FooterProps {
-        brand: String::new(),
-        description: s(description),
-        links: vec![
-            link("Inicio", "/"),
-            link("Preguntas frecuentes", "/preguntas-frecuentes"),
-            link("Contacto", "/contacto"),
-        ],
-        legal: String::new(), ..Default::default() })
-}
-
 fn benefit(icon: &str, title: &str, text: &str) -> BenefitItem {
     BenefitItem {
         icon: s(icon),
@@ -235,72 +209,74 @@ fn benefit(icon: &str, title: &str, text: &str) -> BenefitItem {
     }
 }
 
-fn card(image: &str, title: &str, body: &str, button: (&str, &str), layout: &str) -> Widget {
-    Widget::Card(CardProps {
-        kicker: String::new(),
+fn category(label: &str, image: &str) -> crate::CategoryItem {
+    crate::CategoryItem {
+        label: s(label),
         image_url: s(image),
-        title: s(title),
-        body: s(body),
-        button_label: s(button.0),
-        button_href: s(button.1),
-        layout: s(layout), ..Default::default() })
-}
-
-fn text(heading: &str, body: &str) -> Widget {
-    Widget::Text(TextProps {
-        heading: s(heading),
-        body: s(body),
-        align: s("left"),
-    })
-}
-
-fn testimonials(title: &str) -> Widget {
-    Widget::defaults("Testimonials")
-        .map(|w| match w {
-            Widget::Testimonials(p) => Widget::Testimonials(TestimonialsProps {
-                title: s(title),
-                ..p
-            }),
-            w => w,
-        })
-        .expect("Testimonials tiene valores por defecto")
-}
-
-/// Tarjetas con las categorías de los productos de la tienda (con la foto de
-/// uno de cada una): así sirve para cualquier rubro.
-fn categories(title: &str) -> Widget {
-    Widget::CategoryCards(CategoryFilterProps {
-        title: s(title),
-        all_label: s("Ver todo"),
-        show_counts: false,
-    })
+        href: s("/#productos"),
+    }
 }
 
 // --- Las plantillas -----------------------------------------------------------
 
-/// Vidriera editorial: la tienda de la maqueta de los 12 temas (anuncio, menú,
-/// portada dividida, beneficios, categorías con foto, productos, historia, cita,
-/// preguntas y pie). Va con el tema Línea; cambiar de tema no mueve nada.
-fn editorial(name: &str) -> PageDoc {
+/// Cómo cambia cada plantilla la tienda de ejemplo: el tema, las letras, la
+/// forma de botones y esquinas, y el diseño (1 a 3) de cada bloque.
+struct Variant {
+    theme: &'static str,
+    fonts: (&'static str, &'static str),
+    shape: (&'static str, &'static str, &'static str),
+    announcement: u8,
+    navbar: u8,
+    hero: u8,
+    benefits: u8,
+    categories: u8,
+    products: u8,
+    story: u8,
+    testimonial: u8,
+    faq: u8,
+    footer: u8,
+    /// Título del bloque de productos y de la portada (cambian el tono).
+    hero_title: &'static str,
+    hero_kicker: &'static str,
+    products_title: &'static str,
+}
+
+const EJEMPLO: Variant = Variant {
+    theme: "linea",
+    fonts: ("", ""),
+    shape: ("", "", "base"),
+    announcement: 1,
+    navbar: 1,
+    hero: 1,
+    benefits: 1,
+    categories: 1,
+    products: 2,
+    story: 1,
+    testimonial: 1,
+    faq: 1,
+    footer: 1,
+    hero_title: "Los buenos momentos están en los detalles.",
+    hero_kicker: "Una selección para vos",
+    products_title: "Hechos para acompañarte",
+};
+
+/// La tienda de ejemplo: anuncio, menú, portada, beneficios, categorías con
+/// foto, productos, historia, cita, preguntas y pie, en el diseño `v`.
+/// Todos los bloques se pueden cambiar o borrar.
+fn example_store(name: &str, v: &Variant) -> PageDoc {
+    let typography = if v.fonts.0.is_empty() {
+        Typography::default()
+    } else {
+        fonts(v.fonts.0, v.fonts.1)
+    };
     let announcement =
         Widget::defaults("Announcement").expect("Announcement tiene valores por defecto");
-    let category = |label: &str, image: &str| crate::CategoryItem {
-        label: s(label),
-        image_url: s(image),
-        href: s("/#productos"),
-    };
-    let testimonials = Widget::Testimonials(TestimonialsProps {
-        title: s("Lo que dicen de nosotros"),
-        items: vec![crate::Testimonial {
-            name: s("Opinión de ejemplo · Cliente de Nido"),
-            text: s("Una experiencia simple, de esas a las que siempre querés volver."),
-            rating: 5, note: String::new() }], ..Default::default() });
     let mut d = doc(
-        "linea",
-        Typography::default(),
-        shape("", "", "base"),
+        v.theme,
+        typography,
+        shape(v.shape.0, v.shape.1, v.shape.2),
         vec![
-            vec![block(announcement)],
+            vec![block(announcement).look(v.announcement, "")],
             vec![block(navbar(
                 vec![
                     link("Inicio", "/"),
@@ -309,42 +285,46 @@ fn editorial(name: &str) -> PageDoc {
                     link("Contacto", "/contacto"),
                 ],
                 ("", ""),
-            ))],
+            ))
+            .look(v.navbar, "")],
             vec![block(Widget::Banner(BannerProps {
-                kicker: s("Una selección para vos"),
-                title: s("Los buenos momentos están en los detalles."),
+                kicker: s(v.hero_kicker),
+                title: s(v.hero_title),
                 subtitle: s("Una colección de objetos que te acompañan todos los días, a tu manera."),
                 image_url: s("/img/category-hogar.webp"),
                 button_label: s("Explorar la colección"),
                 button_href: s("/#productos"),
-            ..Default::default()
-        }))
-            .h(56)],
+                ..Default::default()
+            }))
+            .look(v.hero, "")],
             vec![block(Widget::Benefits(BenefitsProps {
                 items: vec![
                     benefit("truck", "Envíos a todo el país", "Recibí donde estés"),
                     benefit("card", "Pagá como quieras", "Opciones para vos"),
                     benefit("refresh", "Cambios simples", "Comprá con tranquilidad"),
-                ], ..Default::default() }))],
+                ],
+                ..Default::default()
+            }))
+            .look(v.benefits, "")],
             vec![block(Widget::Categories(crate::CategoriesProps {
+                kicker: s("Encontrá tu próximo favorito"),
                 title: s("Explorá por categoría"),
+                show_all: true,
                 items: vec![
                     category("Hogar", "/img/category-hogar.webp"),
                     category("Moda", "/img/category-moda.webp"),
                     category("Tecnología", "/img/category-tecnologia.webp"),
-                ], ..Default::default() }))
-            .h(40)],
+                ],
+                ..Default::default()
+            }))
+            .look(v.categories, "")],
             vec![block(Widget::ProductGrid(ProductGridProps {
-                title: s("Hechos para acompañarte"),
+                kicker: s("Elegidos de la semana"),
+                title: s(v.products_title),
                 limit: 4,
-                cards: crate::CardOptions {
-                    card: s("full"),
-                    card_transfer: false,
-                    card_installments: true,
-                    card_favorite: false,
-                    card_colors: false,
-                }, ..Default::default() }))
-            .h(66)],
+                ..Default::default()
+            }))
+            .look(v.products, "")],
             vec![block(Widget::Card(CardProps {
                 kicker: s("Nuestra historia"),
                 image_url: s("/img/gallery-1.webp"),
@@ -352,10 +332,21 @@ fn editorial(name: &str) -> PageDoc {
                 body: s("Creemos en elegir con intención. Cada objeto de nuestra colección está pensado para acompañarte."),
                 button_label: s("Conocé más"),
                 button_href: s("/contacto"),
-                layout: s("side"), ..Default::default() }))
-            .h(64)],
-            vec![block(testimonials)],
+                ..Default::default()
+            }))
+            .look(v.story, "")],
+            vec![block(Widget::Testimonials(TestimonialsProps {
+                items: vec![crate::Testimonial {
+                    name: s("Cliente de ejemplo"),
+                    text: s("Una experiencia simple, de esas a las que siempre querés volver."),
+                    rating: 5,
+                    note: s("Opinión de ejemplo"),
+                }],
+                ..Default::default()
+            }))
+            .look(v.testimonial, "")],
             vec![block(Widget::Faq(FaqProps {
+                kicker: s("Estamos para ayudarte"),
                 title: s("Preguntas frecuentes"),
                 items: vec![
                     FaqItem {
@@ -366,10 +357,15 @@ fn editorial(name: &str) -> PageDoc {
                         question: s("¿Qué medios de pago aceptan?"),
                         answer: s("Contá acá con qué se puede pagar."),
                     },
-                ], ..Default::default() }))],
+                ],
+                ..Default::default()
+            }))
+            .look(v.faq, "")],
             vec![block(Widget::Footer(FooterProps {
                 brand: String::new(),
-                description: format!("Objetos para disfrutar lo cotidiano. Una tienda hecha para vos, {name}."),
+                description: format!(
+                    "Objetos para disfrutar lo cotidiano. Una tienda hecha para vos, {name}."
+                ),
                 links: vec![
                     LinkItem {
                         label: s("Explorar"),
@@ -389,312 +385,92 @@ fn editorial(name: &str) -> PageDoc {
                         ..LinkItem::default()
                     },
                 ],
-                legal: String::new(), ..Default::default() }))],
+                ..Default::default()
+            }))
+            .look(v.footer, "")],
         ],
     );
-    d.theme = s("linea");
+    d.theme = s(v.theme);
     d
 }
 
-/// Vidriera: clara, fotos grandes y mucho producto, como una tienda de moda.
+/// Vidriera editorial: la tienda de ejemplo tal cual, con el tema Línea.
+fn editorial(name: &str) -> PageDoc {
+    example_store(name, &EJEMPLO)
+}
+
+/// Vidriera: fotos grandes y mucho producto, como una tienda de moda.
 fn vidriera(name: &str) -> PageDoc {
-    let slide = |i: usize, title: &str, subtitle: &str, button: &str| Slide {
-        image_url: format!("/img/slide-{i}.webp"),
-        title: s(title),
-        subtitle: s(subtitle),
-        button_label: s(button),
-        button_href: s("/#productos"),
-    };
-    doc(
-        "light",
-        fonts("montserrat", "inter"),
-        shape("pill", "round", "base"),
-        vec![
-            vec![block(navbar(
-                vec![
-                    link("Inicio", "/"),
-                    link("Preguntas frecuentes", "/preguntas-frecuentes"),
-                    link("Contacto", "/contacto"),
-                ],
-                ("Ver productos", "/#productos"),
-            ))],
-            vec![block(Widget::Carousel(CarouselProps {
-                slides: vec![
-                    slide(
-                        1,
-                        &format!("Nueva temporada en {name}"),
-                        "Escribí acá una frase sobre lo nuevo que llegó",
-                        "Ver novedades",
-                    ),
-                    slide(
-                        2,
-                        "Hasta 30% off",
-                        "Contá acá qué está en oferta y hasta cuándo",
-                        "Ver ofertas",
-                    ),
-                    slide(
-                        3,
-                        "Envíos a todo el país",
-                        "Contá acá cómo y adónde enviás",
-                        "Comprar ahora",
-                    ),
-                ],
-                autoplay: 6,
-            }))
-            .h(60)],
-            vec![block(Widget::Benefits(BenefitsProps {
-                items: vec![
-                    benefit(
-                        "truck",
-                        "Envío a todo el país",
-                        "Contá acá desde cuánto es gratis",
-                    ),
-                    benefit(
-                        "card",
-                        "Cuotas y transferencia",
-                        "Contá acá cómo te pueden pagar",
-                    ),
-                    benefit(
-                        "refresh",
-                        "Cambios sin vueltas",
-                        "Contá acá cuántos días tienen",
-                    ),
-                    benefit(
-                        "gift",
-                        "Listo para regalar",
-                        "Contá acá si envolvés para regalo",
-                    ),
-                ],
-                ..Default::default()
-            }))
-            .look(2, "neutral")],
-            vec![block(Widget::TagTabs(TagTabsProps {
-                cards: crate::CardOptions::default(),
-                title: s("Lo más elegido"),
-                limit: 8,
-                all_label: s("Todo"),
-            }))],
-            vec![block(categories("Comprá por categoría"))],
-            vec![block(Widget::Countdown(CountdownProps {
-                title: s("Ofertas de fin de temporada"),
-                subtitle: s("Contá acá qué está en oferta y hasta cuándo"),
-                ends_at: s("2026-12-31T23:59"),
-                ended_text: s("La oferta terminó. ¡Gracias por comprar!"),
-                button_label: s("Ver ofertas"),
-                button_href: s("/#productos"),
-            }))
-            .look(4, "neutral")],
-            vec![block(Widget::ProductGrid(ProductGridProps {
-                cards: crate::CardOptions::default(),
-                title: s("Novedades"),
-                limit: 4,
-                ..Default::default()
-            }))
-            .h(60)],
-            vec![
-                block(card(
-                    "/img/card.webp",
-                    "¿Buscás un regalo?",
-                    "Contá acá cómo pueden pedirte ayuda para elegir.",
-                    ("Escribinos", "/contacto"),
-                    "overlay",
-                ))
-                .w(24)
-                .h(40),
-                block(card(
-                    "/img/banner.webp",
-                    "Retiro en el local",
-                    "Contá acá dónde y cuándo pueden retirar su compra.",
-                    ("Cómo llegar", "/contacto"),
-                    "overlay",
-                ))
-                .w(24)
-                .h(40),
-            ],
-            vec![block(footer(crate::STARTER_PLACEHOLDERS[2]))],
-        ],
+    example_store(
+        name,
+        &Variant {
+            theme: "dalia",
+            fonts: ("montserrat", "inter"),
+            shape: ("pill", "round", "base"),
+            announcement: 2,
+            navbar: 2,
+            hero: 2,
+            benefits: 2,
+            categories: 3,
+            products: 3,
+            story: 2,
+            testimonial: 2,
+            faq: 2,
+            footer: 2,
+            hero_title: "Nueva temporada, nuevos favoritos.",
+            hero_kicker: "Recién llegado",
+            products_title: "Lo más elegido",
+        },
     )
 }
 
-/// Taller: cálida y cercana, para contar la historia detrás de los productos.
+/// Taller: cálida y artesanal, para emprendimientos y cosas hechas a mano.
 fn taller(name: &str) -> PageDoc {
-    doc(
-        "cupcake",
-        fonts("nunito", "nunito"),
-        shape("pill", "round", "primary"),
-        vec![
-            vec![block(navbar(
-                vec![
-                    link("Inicio", "/"),
-                    link("Preguntas frecuentes", "/preguntas-frecuentes"),
-                ],
-                ("Escribinos", "/contacto"),
-            ))],
-            vec![
-                block(text(
-                    &format!("Hecho a mano en {name}"),
-                    "Escribí acá una frase sobre tu tienda: qué hacés, con qué materiales y para quién.",
-                ))
-                .w(22)
-                .h(48)
-                .look(5, "")
-                .text("largest", "left"),
-                block(Widget::Image(ImageProps {
-                    image_url: s("/img/hero.webp"),
-                    alt: s("Foto de ejemplo de la tienda"),
-                    href: String::new(),
-                    fit: s("cover"),
-                }))
-                .w(26)
-                .h(48),
-            ],
-            vec![block(Widget::Benefits(BenefitsProps {
-                items: vec![
-                    benefit("star", "Piezas únicas", "Contá acá qué hace especial lo que hacés"),
-                    benefit("clock", "Hecho por encargo", "Contá acá cuánto tarda un pedido"),
-                    benefit("truck", "Envíos", "Contá acá cómo y adónde enviás"),
-                    benefit("chat", "Te asesoramos", "Contá acá cómo pueden escribirte"),
-                ], ..Default::default() }))
-            .look(3, "")],
-            vec![block(Widget::ProductGrid(ProductGridProps {
-                cards: crate::CardOptions::default(),
-                title: s("Nuestros productos"),
-                limit: 8, ..Default::default() }))],
-            vec![
-                block(card("/img/gallery-1.webp", "Pedidos personalizados", "Contá acá cómo funcionan los pedidos a medida.", ("Consultar", "/contacto"), "vertical")).w(16).h(52).look(2, ""),
-                block(card("/img/gallery-2.webp", "Regalos empresariales", "Contá acá qué ofrecés para empresas y eventos.", ("Consultar", "/contacto"), "vertical")).w(16).h(52).look(2, ""),
-                block(card("/img/gallery-3.webp", "Talleres y clases", "Contá acá si das clases y cuándo son.", ("Consultar", "/contacto"), "vertical")).w(16).h(52).look(2, ""),
-            ],
-            vec![block(testimonials("Lo que dicen quienes nos compraron")).look(3, "secondary")],
-            vec![block(text("Nuestra historia", crate::STARTER_PLACEHOLDERS[1])).h(24).text("", "center")],
-            vec![block(card("/img/gallery-4.webp", "¿Tenés una idea?", "Contá acá cómo pueden pedirte algo especial.", ("Escribinos", "/contacto"), "side")).h(40).look(4, "")],
-            vec![block(footer(crate::STARTER_PLACEHOLDERS[2])).look(3, "")],
-        ],
+    example_store(
+        name,
+        &Variant {
+            theme: "cacao",
+            fonts: ("nunito", "nunito"),
+            shape: ("pill", "round", "primary"),
+            announcement: 3,
+            navbar: 3,
+            hero: 3,
+            benefits: 3,
+            categories: 2,
+            products: 2,
+            story: 3,
+            testimonial: 3,
+            faq: 3,
+            footer: 3,
+            hero_title: "Hecho a mano, pensado para vos.",
+            hero_kicker: "Piezas únicas",
+            products_title: "Nuestros productos",
+        },
     )
 }
 
-/// Noche: oscura y prolija, con buscador y productos al frente.
+/// Noche: oscura y prolija, con los productos al frente.
 fn noche(name: &str) -> PageDoc {
-    doc(
-        "dark",
-        fonts("oswald", "inter"),
-        shape("square", "soft", "base"),
-        vec![
-            vec![block(navbar(
-                vec![
-                    link("Inicio", "/"),
-                    link("Preguntas frecuentes", "/preguntas-frecuentes"),
-                    link("Contacto", "/contacto"),
-                ],
-                ("Comprar", "/#productos"),
-            ))],
-            vec![block(Widget::Banner(BannerProps {
-                kicker: String::new(),
-                title: format!("{name}: tecnología que te acompaña"),
-                subtitle: s(crate::STARTER_PLACEHOLDERS[0]),
-                image_url: s("/img/banner.webp"),
-                button_label: s("Ver productos"),
-                button_href: s("/#productos"),
-                ..Default::default()
-            }))
-            .h(56)
-            .text("larger", "center")],
-            vec![block(Widget::TagSearch(TagSearchProps {
-                placeholder: s("¿Qué estás buscando?"),
-                show_counts: true,
-            }))],
-            vec![block(Widget::TagTabs(TagTabsProps {
-                cards: crate::CardOptions::default(),
-                title: s("Catálogo"),
-                limit: 8,
-                all_label: s("Todo"),
-            }))],
-            vec![
-                block(card(
-                    "/img/slide-1.webp",
-                    "Lo último",
-                    "Contá acá qué producto nuevo llegó.",
-                    ("Ver más", "/#productos"),
-                    "overlay",
-                ))
-                .w(24)
-                .h(44)
-                .look(2, "accent"),
-                block(card(
-                    "/img/slide-2.webp",
-                    "Combos con descuento",
-                    "Contá acá qué combos armaste.",
-                    ("Ver combos", "/#productos"),
-                    "overlay",
-                ))
-                .w(24)
-                .h(44)
-                .look(2, "accent"),
-            ],
-            vec![block(Widget::Benefits(BenefitsProps {
-                items: vec![
-                    benefit(
-                        "shield",
-                        "Garantía oficial",
-                        "Contá acá cuánto dura la garantía",
-                    ),
-                    benefit(
-                        "truck",
-                        "Envío en el día",
-                        "Contá acá adónde llegás en el día",
-                    ),
-                    benefit("card", "Hasta 6 cuotas", "Contá acá cómo te pueden pagar"),
-                    benefit(
-                        "chat",
-                        "Soporte por WhatsApp",
-                        "Contá acá en qué horarios respondés",
-                    ),
-                ],
-                ..Default::default()
-            }))
-            .look(5, "accent")],
-            vec![
-                block(Widget::Tabs(TabsProps {
-                    tabs: vec![
-                        TabItem {
-                            label: s("Envíos"),
-                            body: s("Contá acá cómo y adónde enviás, y cuánto tarda."),
-                        },
-                        TabItem {
-                            label: s("Pagos"),
-                            body: s("Contá acá cómo te pueden pagar."),
-                        },
-                        TabItem {
-                            label: s("Garantía"),
-                            body: s("Contá acá qué cubre la garantía y cómo se usa."),
-                        },
-                    ],
-                }))
-                .w(24)
-                .h(44),
-                block(Widget::Faq(FaqProps {
-                    title: s("Preguntas frecuentes"),
-                    items: vec![
-                        FaqItem {
-                            question: s("¿Los productos son originales?"),
-                            answer: s("Escribí acá la respuesta."),
-                        },
-                        FaqItem {
-                            question: s("¿Hacen factura?"),
-                            answer: s("Escribí acá la respuesta."),
-                        },
-                        FaqItem {
-                            question: s("¿Puedo retirar en persona?"),
-                            answer: s("Escribí acá la respuesta."),
-                        },
-                    ], ..Default::default() }))
-                .w(24)
-                .h(44)
-                .look(2, ""),
-            ],
-            vec![block(testimonials("Opiniones de clientes")).look(2, "")],
-            vec![block(footer(crate::STARTER_PLACEHOLDERS[2]))],
-        ],
+    example_store(
+        name,
+        &Variant {
+            theme: "noche",
+            fonts: ("oswald", "inter"),
+            shape: ("square", "soft", "base"),
+            announcement: 1,
+            navbar: 1,
+            hero: 2,
+            benefits: 3,
+            categories: 1,
+            products: 1,
+            story: 1,
+            testimonial: 2,
+            faq: 2,
+            footer: 3,
+            hero_title: "Tecnología que te acompaña.",
+            hero_kicker: "Novedades",
+            products_title: "Lo último",
+        },
     )
 }
 
