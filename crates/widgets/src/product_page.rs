@@ -606,6 +606,10 @@ pub fn FullCard(product: Product, show_price: bool, look: &domain::CardOptions) 
                 </div>
                 <div class="flex shrink-0 flex-col gap-0.5 px-1 pt-2 pb-1">
                     <h3 class="mk-sub truncate text-sm font-semibold">{product.name.clone()}</h3>
+                    // La categoría solo se ve en los temas de la tienda (ver tailwind.css).
+                    {(!product.category.is_empty()).then(|| view! {
+                        <p class="mk-cfull-cat truncate text-xs">{product.category.clone()}</p>
+                    })}
                     {show_price.then(|| view! {
                         <p class="mk-cfull-price flex flex-wrap items-baseline gap-x-2 text-sm font-bold">
                             {format_price(cents)}

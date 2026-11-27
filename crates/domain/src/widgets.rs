@@ -322,6 +322,9 @@ pub struct CountdownProps {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct CardProps {
+    /// Antetítulo chico sobre el título (opcional; los documentos anteriores no lo traen).
+    #[serde(default)]
+    pub kicker: String,
     pub image_url: String,
     pub title: String,
     pub body: String,
@@ -785,10 +788,6 @@ const FEATURED_PRODUCT_FIELDS: &[Field] = &[
     ),
 ];
 
-const LINK_ITEM: &[Field] = &[
-    field("label", "Texto", text(30)),
-    field("href", "Enlace", FieldKind::Url),
-];
 pub const NAV_MENU_OPTIONS: &[(&str, &str)] = &[
     ("list", "Lista simple"),
     ("panel", "Panel ancho con foto"),
@@ -955,6 +954,7 @@ const COUNTDOWN_FIELDS: &[Field] = &[
 
 const CARD_FIELDS: &[Field] = &[
     field("image_url", "Imagen", FieldKind::Url),
+    adv("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
     field("body", "Texto", long(300)),
     field(
@@ -1142,6 +1142,20 @@ const CONTACT_FIELDS: &[Field] = &[
     field("address", "Dirección (opcional)", text(120)),
 ];
 
+/// Enlace del pie: con "enlaces del grupo" la lista se arma en columnas con título.
+const FOOTER_LINK_ITEM: &[Field] = &[
+    field("label", "Texto", text(30)),
+    field("href", "Enlace", FieldKind::Url),
+    adv(
+        "children",
+        "Enlaces del grupo (el texto pasa a ser el título de la columna)",
+        FieldKind::List {
+            item: SUBLINK_LEAF,
+            min: 0,
+            max: 8,
+        },
+    ),
+];
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
     field("description", "Descripción", text(200)),
@@ -1149,7 +1163,7 @@ const FOOTER_FIELDS: &[Field] = &[
         "links",
         "Enlaces",
         FieldKind::List {
-            item: LINK_ITEM,
+            item: FOOTER_LINK_ITEM,
             min: 0,
             max: 12,
         },
@@ -1750,6 +1764,7 @@ impl Widget {
                 button_href: s("/ofertas"),
             }),
             "Card" => Widget::Card(CardProps {
+                kicker: String::new(),
                 image_url: s("/img/card.webp"),
                 title: s("Novedades de la semana"),
                 body: s("Contá acá qué hay de nuevo."),
