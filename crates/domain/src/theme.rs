@@ -105,6 +105,211 @@ pub fn readable_on(bg: &str) -> &'static str {
 
 /// Valores de fábrica de cada tema (sacados de daisyUI), en el orden de [`THEMES`].
 pub const THEME_BASES: &[ThemeBase] = &[
+    // Línea
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#faf8f4", "#f0ece4", "#d9d3c7", "#292821", "#35382e", "#fffefa", "#625e54", "#faf8f4",
+            "#35382e", "#fffefa", "#35382e", "#fffefa", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 2,
+        radius_field: 2,
+        radius_selector: 2,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Pulso
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#f6f7ff", "#e9edff", "#cbd4f5", "#10193b", "#2947c9", "#ffffff", "#485574", "#f6f7ff",
+            "#2947c9", "#ffffff", "#111d4c", "#ffffff", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 16,
+        radius_field: 32,
+        radius_selector: 16,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Noche
+    ThemeBase {
+        dark: true,
+        colors: [
+            "#18221e", "#26342c", "#485b4d", "#f4f3e8", "#c5dcae", "#17241a", "#c6d1c4", "#18221e",
+            "#c5dcae", "#17241a", "#101a15", "#f4f3e8", "#7dd3fc", "#082f49", "#86efac", "#052e16",
+            "#fcd34d", "#451a03", "#fca5a5", "#450a0a",
+        ],
+        radius_box: 10,
+        radius_field: 4,
+        radius_selector: 10,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Brisa
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#f5fafb", "#dceff0", "#567f89", "#16323b", "#17627b", "#ffffff", "#405c64", "#f5fafb",
+            "#17627b", "#ffffff", "#153f4e", "#ffffff", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 16,
+        radius_field: 32,
+        radius_selector: 16,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Tinta
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#fbfaf7", "#e8e7e2", "#817e78", "#181818", "#171717", "#ffffff", "#52514e", "#fbfaf7",
+            "#171717", "#ffffff", "#171717", "#ffffff", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 0,
+        radius_field: 0,
+        radius_selector: 0,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Cítrico
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#fffaf0", "#fff0d6", "#96704f", "#352415", "#a33b15", "#ffffff", "#705039", "#fffaf0",
+            "#a33b15", "#ffffff", "#733013", "#fffaf0", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 10,
+        radius_field: 8,
+        radius_selector: 10,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Aura
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#faf8fc", "#eee8f5", "#88719a", "#33273f", "#654778", "#ffffff", "#62526d", "#faf8fc",
+            "#654778", "#ffffff", "#49364f", "#ffffff", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 14,
+        radius_field: 32,
+        radius_selector: 14,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Brote
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#f7faf4", "#e2edda", "#6a8a6e", "#1c3323", "#315f3b", "#ffffff", "#4c634e", "#f7faf4",
+            "#315f3b", "#ffffff", "#244732", "#ffffff", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 14,
+        radius_field: 4,
+        radius_selector: 14,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Órbita
+    ThemeBase {
+        dark: true,
+        colors: [
+            "#111f33", "#223854", "#7894aa", "#f5f8fc", "#9ee4e9", "#102b38", "#c6d4e4", "#111f33",
+            "#9ee4e9", "#102b38", "#091626", "#f5f8fc", "#7dd3fc", "#082f49", "#86efac", "#052e16",
+            "#fcd34d", "#451a03", "#fca5a5", "#450a0a",
+        ],
+        radius_box: 6,
+        radius_field: 4,
+        radius_selector: 6,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Dalia
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#fff9f8", "#f7e6e5", "#9c7278", "#45262d", "#943d51", "#ffffff", "#705057", "#fff9f8",
+            "#943d51", "#ffffff", "#5b3039", "#ffffff", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 5,
+        radius_field: 2,
+        radius_selector: 5,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Cacao
+    ThemeBase {
+        dark: true,
+        colors: [
+            "#261b17", "#47332c", "#aa8d77", "#fff7eb", "#e6c49c", "#2a1b15", "#e2cec0", "#261b17",
+            "#e6c49c", "#2a1b15", "#1c120f", "#fff7eb", "#7dd3fc", "#082f49", "#86efac", "#052e16",
+            "#fcd34d", "#451a03", "#fca5a5", "#450a0a",
+        ],
+        radius_box: 3,
+        radius_field: 2,
+        radius_selector: 3,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Sol
+    ThemeBase {
+        dark: false,
+        colors: [
+            "#fffdf6", "#fff0bd", "#95752b", "#30270e", "#544000", "#ffffff", "#65552b", "#fffdf6",
+            "#544000", "#ffffff", "#3c3010", "#ffffff", "#0369a1", "#ffffff", "#15803d", "#ffffff",
+            "#b45309", "#ffffff", "#b91c1c", "#ffffff",
+        ],
+        radius_box: 10,
+        radius_field: 32,
+        radius_selector: 10,
+        size_field: 4.0,
+        size_selector: 4.0,
+        border: 1.0,
+        depth: false,
+        noise: false,
+    },
+    // Los seis temas anteriores (siguen funcionando en tiendas que ya los usan).
     ThemeBase {
         dark: false,
         colors: [
@@ -202,3 +407,16 @@ pub const THEME_BASES: &[ThemeBase] = &[
         noise: false,
     },
 ];
+
+#[cfg(test)]
+mod tests_temas {
+    use super::*;
+
+    #[test]
+    fn cada_tema_tiene_nombre_y_valores_de_fabrica() {
+        assert_eq!(crate::THEMES.len(), crate::THEME_LABELS.len());
+        assert_eq!(crate::THEMES.len(), THEME_BASES.len());
+        assert!(crate::OFFERED_THEMES <= crate::THEMES.len());
+        assert_eq!(crate::THEMES[0], "linea");
+    }
+}
