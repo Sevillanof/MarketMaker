@@ -887,7 +887,27 @@ pub(crate) fn Canvas(
                     let active = RwSignal::new(0_usize);
                     let tab = move |i: usize| move || if active.get() == i { "0" } else { "-1" };
                     let item = "flex w-full items-center gap-3 rounded-field px-3 py-2 text-left text-sm hover:bg-base-200 focus-visible:bg-base-200 focus-visible:outline-none";
+                    let (edit_id, bar_up, bar_down) = (id.clone(), id.clone(), id.clone());
                     view! {
+                        // Barra del bloque elegido: su nombre, Editar (abre todos
+                        // sus ajustes) y subir / bajar.
+                        <div
+                            data-theme="light"
+                            class="mk-bar"
+                            role="group"
+                            aria-label=move || format!("Acciones de {}", label())
+                            style=move || format!("--mk-unscale:{:.4}", 1.0 / scale.get().max(0.01))
+                            on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
+                        >
+                            <span class="mk-bar-name">{label}</span>
+                            <button type="button" class="mk-bar-btn mk-bar-edit" on:click=move |_| actions.edit(&edit_id)>"Editar"</button>
+                            <button type="button" class="mk-bar-btn" aria-label=move || format!("Subir {}", label().to_lowercase()) title="Subir" on:click=move |_| actions.move_up(&bar_up)>
+                                <Icon name="up" class="h-4 w-4"/>
+                            </button>
+                            <button type="button" class="mk-bar-btn" aria-label=move || format!("Bajar {}", label().to_lowercase()) title="Bajar" on:click=move |_| actions.move_down(&bar_down)>
+                                <Icon name="down" class="h-4 w-4"/>
+                            </button>
+                        </div>
                         <button
                             type="button"
                             data-theme="light"
@@ -899,8 +919,8 @@ pub(crate) fn Canvas(
                             popovertarget=menu_id.clone()
                             // Mismo tamaño en pantalla con cualquier escala del lienzo.
                             style=move || format!("--mk-unscale:{:.4}", 1.0 / scale.get().max(0.01))
-                            aria-label=move || format!("Opciones de {}", label())
-                            title="Opciones del bloque"
+                            aria-label=move || format!("Más opciones de {}", label().to_lowercase())
+                            title="Más opciones: duplicar, borrar…"
                             on:pointerdown=|ev: PointerEvent| ev.stop_propagation()
                             on:click=move |ev: leptos::ev::MouseEvent| {
                                 // Lugar del menú para los navegadores sin anchor positioning (ver CSS).
@@ -915,9 +935,7 @@ pub(crate) fn Canvas(
                                 }
                             }
                         >
-                            <span class="min-w-0 max-w-40 truncate">{label}</span>
-                            <span class="opacity-50" aria-hidden="true">"|"</span>
-                            "Opciones"<Icon name="chevron-down" class="h-3.5 w-3.5"/>
+                            <span aria-hidden="true">"⋯"</span>
                         </button>
                         <div
                             node_ref=menu_ref
@@ -1192,6 +1210,19 @@ pub(crate) fn Canvas(
             <p id="mk-node-help" class="sr-only">
                 "Enter para editar. Doble clic sobre un texto para cambiarlo ahí mismo. Flechas arriba y abajo para cambiar el orden, izquierda y derecha para correrlo. Mayúscula más flechas para cambiar el tamaño. Suprimir para borrar."
             </p>
+            // Qué página es y qué hacer, arriba del lienzo (como en la maqueta).
+            {move || (!ui.preview.get()).then(|| view! {
+                <div class="flex items-center justify-between gap-3 px-6 pt-3 text-sm">
+                    <strong class="truncate">
+                        {move || if state.in_modal() {
+                            "Ficha del producto".to_string()
+                        } else {
+                            format!("Página de {}", state.doc.with(|d| d.page_name(state.page.get()).to_lowercase()))
+                        }}
+                    </strong>
+                    <span class="shrink-0 text-base-content/70">"Seleccioná un bloque para editarlo"</span>
+                </div>
+            })}
             {move || ui.preview.get().then(|| view! {
                 <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-2 text-sm">
                     <Icon name="eye" class="h-4 w-4"/>

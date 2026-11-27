@@ -16,6 +16,7 @@ mod look;
 mod palette;
 mod photos;
 mod page_map;
+mod rail;
 mod pictures;
 pub use photos::{provide_photos, take_files, LinkImport, MyPhotos, UploadTray};
 
@@ -37,8 +38,6 @@ use wasm_bindgen::JsCast;
 use canvas::Canvas;
 pub use icons::Icon;
 use inspector::Inspector;
-use palette::Palette;
-use topbar::StoreMenu;
 
 /// Cuántos pasos de deshacer se guardan.
 pub const MAX_UNDO: usize = 50;
@@ -241,6 +240,19 @@ enum Status {
     Error(String),
 }
 
+/// Herramientas del riel de la izquierda; cada una abre su panel a la derecha.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Tool {
+    /// Las páginas de la tienda, cada una con sus bloques.
+    Pages,
+    /// Los bloques de la página que se edita.
+    Blocks,
+    /// Bloques para sumar a la página.
+    Add,
+    /// Colores, letras y márgenes de toda la tienda.
+    Style,
+}
+
 /// Estado de la interfaz compartido por todo el editor (por contexto).
 #[derive(Clone, Copy)]
 pub(crate) struct Ui {
@@ -256,8 +268,9 @@ pub(crate) struct Ui {
     pub preview: RwSignal<bool>,
     /// En la vista previa: cómo se ve en un celular en lugar de en la computadora.
     pub phone: RwSignal<bool>,
-    /// El cajón "Mi tienda" está abierto en lugar de la lista de bloques.
-    pub store_open: RwSignal<bool>,
+    /// Herramienta elegida en el riel de la izquierda: lo que muestra el
+    /// panel de la derecha.
+    pub tool: RwSignal<Tool>,
     /// El asistente de primera página está abierto.
     pub wizard: RwSignal<bool>,
     /// Cuántas veces el asistente armó la página: cada vez se guarda al instante.
@@ -782,6 +795,9 @@ impl Actions {
     /// Elige un bloque y lleva el foco al inspector.
     pub fn edit(&self, id: &str) {
         self.state.selected.set(Some(id.to_string()));
+        if !matches!(self.ui.tool.get_untracked(), Tool::Pages | Tool::Blocks) {
+            self.ui.tool.set(Tool::Blocks);
+        }
         // Editar lleva directo a los ajustes avanzados (después de que el
         // panel reinicie su vista por el cambio de bloque).
         let advanced = self.ui.advanced;
@@ -1028,7 +1044,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         announce: RwSignal::new(String::new()),
         preview: RwSignal::new(false),
         phone: RwSignal::new(false),
-        store_open: RwSignal::new(false),
+        tool: RwSignal::new(Tool::Blocks),
         wizard: RwSignal::new(false),
         wizard_applied: RwSignal::new(0),
         advanced: RwSignal::new(false),
@@ -1430,7 +1446,6 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                         <Icon name="arrow-left" class="h-5 w-5"/><span class="max-[1399px]:sr-only">"Panel"</span>
                     </a>
                 })}
-                <StoreMenu/>
                 </div>
                 <div class="flex items-center">
                     <div class="flex gap-0.5 rounded-field bg-base-200 p-0.5" role="group" aria-label="Modo">
@@ -1600,11 +1615,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                 }
             })}
             <div class="flex min-h-0 flex-1">
-                {move || match (ui.preview.get(), ui.store_open.get()) {
-                    (true, _) => ().into_any(),
-                    (false, true) => view! { <store_drawer::StoreDrawer/> }.into_any(),
-                    (false, false) => view! { <Palette products/> }.into_any(),
-                }}
+                {move || (!ui.preview.get()).then(|| view! { <rail::Rail/> })}
                 {view! { <Canvas products welcome/> }.into_any()}
                 {move || (!ui.preview.get()).then(|| view! { <Inspector products/> })}
             </div>
