@@ -231,6 +231,7 @@ fn benefit(icon: &str, title: &str, text: &str) -> BenefitItem {
 
 fn card(image: &str, title: &str, body: &str, button: (&str, &str), layout: &str) -> Widget {
     Widget::Card(CardProps {
+        kicker: String::new(),
         image_url: s(image),
         title: s(title),
         body: s(body),
@@ -297,7 +298,7 @@ fn editorial(name: &str) -> PageDoc {
     let testimonials = Widget::Testimonials(TestimonialsProps {
         title: s("Lo que dicen de nosotros"),
         items: vec![crate::Testimonial {
-            name: s("Cliente de ejemplo"),
+            name: s("Opinión de ejemplo · Cliente de Nido"),
             text: s("Una experiencia simple, de esas a las que siempre querés volver."),
             rating: 5,
         }],
@@ -345,20 +346,24 @@ fn editorial(name: &str) -> PageDoc {
             vec![block(Widget::ProductGrid(ProductGridProps {
                 title: s("Hechos para acompañarte"),
                 limit: 4,
-                cards: Widget::defaults("ProductGrid")
-                    .and_then(|w| match w {
-                        Widget::ProductGrid(p) => Some(p.cards),
-                        _ => None,
-                    })
-                    .expect("ProductGrid tiene valores por defecto"),
-            }))],
-            vec![block(card(
-                "/img/gallery-1.webp",
-                "Pequeñas cosas, grandes momentos.",
-                "Creemos en elegir con intención. Cada objeto de nuestra colección está pensado para acompañarte.",
-                ("Conocé más", "/contacto"),
-                "side",
-            ))
+                cards: crate::CardOptions {
+                    card: s("full"),
+                    card_transfer: false,
+                    card_installments: true,
+                    card_favorite: false,
+                    card_colors: false,
+                },
+            }))
+            .h(66)],
+            vec![block(Widget::Card(CardProps {
+                kicker: s("Nuestra historia"),
+                image_url: s("/img/gallery-1.webp"),
+                title: s("Pequeñas cosas, grandes momentos."),
+                body: s("Creemos en elegir con intención. Cada objeto de nuestra colección está pensado para acompañarte."),
+                button_label: s("Conocé más"),
+                button_href: s("/contacto"),
+                layout: s("side"),
+            }))
             .h(64)],
             vec![block(testimonials)],
             vec![block(Widget::Faq(FaqProps {
@@ -374,9 +379,30 @@ fn editorial(name: &str) -> PageDoc {
                     },
                 ],
             }))],
-            vec![block(footer(&format!(
-                "Objetos para disfrutar lo cotidiano. Una tienda hecha para vos, {name}."
-            )))],
+            vec![block(Widget::Footer(FooterProps {
+                brand: String::new(),
+                description: format!("Objetos para disfrutar lo cotidiano. Una tienda hecha para vos, {name}."),
+                links: vec![
+                    LinkItem {
+                        label: s("Explorar"),
+                        children: vec![
+                            link("Productos", "/#productos"),
+                            link("Nosotros", "/contacto"),
+                            link("Contacto", "/contacto"),
+                        ],
+                        ..LinkItem::default()
+                    },
+                    LinkItem {
+                        label: s("Ayuda"),
+                        children: vec![
+                            link("Preguntas frecuentes", "/preguntas-frecuentes"),
+                            link("Contacto", "/contacto"),
+                        ],
+                        ..LinkItem::default()
+                    },
+                ],
+                legal: String::new(),
+            }))],
         ],
     );
     d.theme = s("linea");

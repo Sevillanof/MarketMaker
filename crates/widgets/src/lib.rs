@@ -2273,6 +2273,9 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
                 </figure>
             })}
             <div class=body_class>
+                {(!props.kicker.is_empty()).then(|| view! {
+                    <p class="mk-kicker">{props.kicker.clone()}</p>
+                })}
                 <h2 class="mk-title card-title line-clamp-2"><AnimText text={props.title.clone()}/></h2>
                 {(!props.body.is_empty()).then(|| view! {
                     <p class="line-clamp-3 grow-0">{props.body.clone()}</p>
@@ -2658,6 +2661,8 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     let logo = store.logo_url.clone();
     let channels = store_channels(&store);
     let has_links = !props.links.is_empty();
+    // Con enlaces que traen "hijos", el pie se arma en columnas con título.
+    let grouped = props.links.iter().any(|l| !l.children.is_empty());
     // En la tienda, «Ingresar a mi cuenta» y el botón de arrepentimiento van
     // acá adentro, a la derecha (ver `storefront::StorefrontPage`).
     let legal_links = !editing && use_context::<LegalInFooter>().is_some();
@@ -2670,7 +2675,24 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
                     })}
                     <p class="mk-brand mk-h truncate text-lg font-bold">{brand}</p>
                 </div>
-                {has_links.then(|| view! {
+                {grouped.then(|| view! {
+                    <nav aria-label="Pie de página" class="mk-foot-groups col-span-2 row-start-2 flex flex-wrap gap-x-12 gap-y-4 text-sm @3xl:col-span-1 @3xl:col-start-2 @3xl:row-start-1 @3xl:justify-self-end">
+                        {props
+                            .links
+                            .clone()
+                            .into_iter()
+                            .map(|g| view! {
+                                <div class="mk-foot-group flex min-w-24 flex-col gap-2">
+                                    <p class="mk-foot-gtitle font-bold">{g.label}</p>
+                                    {g.children.into_iter().map(|l| view! {
+                                        <MaybeLink href=l.href editing class="mk-link link link-hover">{l.label}</MaybeLink>
+                                    }).collect_view()}
+                                </div>
+                            })
+                            .collect_view()}
+                    </nav>
+                })}
+                {(has_links && !grouped).then(|| view! {
                     <nav aria-label="Pie de página" class="col-span-2 row-start-2 flex flex-wrap gap-x-6 gap-y-1 text-sm @3xl:col-span-1 @3xl:col-start-2 @3xl:row-start-1">
                         {props
                             .links

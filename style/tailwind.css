@@ -2855,6 +2855,7 @@ dialog.mk-open-sheet .mk-dialog-box::before {
 .mk-d4 .mk-cfull { background: var(--mk-c); color: var(--mk-cc); padding: 0.4rem; }
 .mk-d4 .mk-cfull .mk-cfull-tr { color: inherit; }
 .mk-d5 .mk-cfull .mk-cfull-price { color: var(--mk-ink); }
+.mk-cfull-cat { display: none; }
 
 /* Tarjeta «Limpia con Agregar» (ver `widgets::product_page::CleanCard`):
    blanca, redondeada, sin borde, con «Agregar» en una pastilla. */
@@ -3858,3 +3859,63 @@ dialog.mk-wiz::backdrop {
 .mk-store[data-theme="pulso"] .mk-d1 .mk-banner { border-radius: 20px; }
 .mk-store[data-theme="noche"] .mk-d1 .mk-banner { border-radius: 10px; }
 .mk-store[data-theme="aura"] .mk-d1 .mk-banner { border-radius: 14px; }
+
+/* Tarjetas de producto de los 12 temas (maqueta): foto con la esquina del
+   tema, nombre, categoría, precio y cuotas; sin botón (la tarjeta abre la
+   ficha, que sí tiene «Agregar al carrito»). Cada tema elige su superficie. */
+.mk-store:is([data-theme="linea"], [data-theme="pulso"], [data-theme="noche"], [data-theme="brisa"], [data-theme="tinta"], [data-theme="citrico"], [data-theme="aura"], [data-theme="brote"], [data-theme="orbita"], [data-theme="dalia"], [data-theme="cacao"], [data-theme="sol"]) {
+  .mk-d1 .mk-cfull { background: transparent; border: 0; border-radius: var(--radius-box); }
+  .mk-d1 .mk-cfull .mk-cphoto { background: var(--color-base-200); }
+  .mk-d1 .mk-cfull > div:last-child { padding: 0.75rem 0 0; gap: 0; }
+  .mk-d1 .mk-cfull .mk-sub { font-family: var(--mk-body, inherit); font-size: 0.8125rem; line-height: 1.3; font-weight: 600; }
+  .mk-d1 .mk-cfull .mk-cfull-cat { display: block; margin-top: 0.25rem; color: var(--mk-muted); font-size: 0.6875rem; }
+  .mk-d1 .mk-cfull .mk-cfull-price { margin-top: 0.45rem; font-size: 0.8125rem; }
+  .mk-d1 .mk-cfull > div:last-child > p:not(.mk-cfull-price, .mk-cfull-cat) { color: var(--mk-muted); font-size: 0.6875rem; opacity: 1; }
+  .mk-d1 .mk-cfull .mk-cart-add { display: none; }
+}
+/* Superficie de la tarjeta según el tema. */
+.mk-store:is([data-theme="pulso"], [data-theme="brisa"], [data-theme="citrico"], [data-theme="sol"], [data-theme="orbita"], [data-theme="cacao"]) .mk-d1 .mk-cfull { background: var(--mk-panel); padding: 0.45rem; }
+.mk-store:is([data-theme="pulso"], [data-theme="citrico"], [data-theme="sol"], [data-theme="orbita"]) .mk-d1 .mk-cfull { border: 1px solid var(--mk-line); }
+.mk-store[data-theme="pulso"] .mk-d1 .mk-cfull { box-shadow: 0 5px 0 #dce2fb; }
+.mk-store[data-theme="orbita"] .mk-d1 .mk-cfull { padding: 0; }
+.mk-store[data-theme="orbita"] .mk-d1 .mk-cfull > div:last-child { padding: 0.75rem; }
+.mk-store[data-theme="cacao"] .mk-d1 .mk-cfull { border-bottom: 2px solid var(--color-primary); padding: 0; border-radius: 0; }
+.mk-store[data-theme="cacao"] .mk-d1 .mk-cfull > div:last-child { padding: 0.75rem; }
+.mk-store[data-theme="tinta"] .mk-d1 .mk-cfull { border-top: 2px solid var(--color-base-content); padding-top: 0.5rem; }
+.mk-store:is([data-theme="brote"], [data-theme="dalia"]) .mk-d1 .mk-cfull > div:last-child { padding-bottom: 0.75rem; border-bottom: 1px solid var(--mk-line); }
+.mk-store[data-theme="aura"] .mk-d1 .mk-cfull > div:last-child { text-align: center; }
+.mk-store[data-theme="aura"] .mk-d1 .mk-cfull .mk-cfull-price { justify-content: center; }
+.mk-store:is([data-theme="noche"], [data-theme="cacao"]) .mk-d1 .mk-cfull .mk-cfull-price { color: var(--color-primary); }
+.mk-store[data-theme="brote"] .mk-d1 .mk-cat { border-radius: 45% 45% 8px 8px; }
+
+/* Historia, cita, preguntas y pie de los 12 temas. */
+.mk-store:is([data-theme="linea"], [data-theme="pulso"], [data-theme="noche"], [data-theme="brisa"], [data-theme="tinta"], [data-theme="citrico"], [data-theme="aura"], [data-theme="brote"], [data-theme="orbita"], [data-theme="dalia"], [data-theme="cacao"], [data-theme="sol"]) {
+  /* Historia: foto a la mitad, texto sobre la superficie del tema. */
+  .mk-d1 .mk-card.card-side { background: var(--color-base-200); border: 0; box-shadow: none; border-radius: var(--radius-box); }
+  .mk-d1 .mk-card.card-side figure { width: 50%; }
+  .mk-d1 .mk-card.card-side .card-body { padding: 10%; gap: 0.9rem; align-items: flex-start; }
+  .mk-d1 .mk-card.card-side .card-title { font-size: 1.25rem; font-weight: var(--mk-head-weight); }
+  .mk-d1 .mk-card.card-side p:not(.mk-kicker) { color: var(--mk-muted); font-size: 0.8125rem; }
+  /* Cita: centrada, sin cajas ni avatar. */
+  .mk-d1 .mk-testi .mk-item { background: transparent; border: 0; box-shadow: none; text-align: center; }
+  .mk-d1 .mk-testi .card-body { align-items: center; gap: 1rem; }
+  .mk-d1 .mk-testi .card-body > p { font-family: var(--mk-heading, inherit); font-style: normal; font-size: 1.5rem; line-height: 1.35; max-width: 40rem; }
+  .mk-d1 .mk-testi .avatar { display: none; }
+  .mk-d1 .mk-testi .card-body > div:last-child { color: var(--mk-muted); }
+  .mk-d1 .mk-testi .card-body > div:last-child span { font-weight: 400; font-size: 0.75rem; }
+  /* Preguntas: renglones con línea, sin cajas. */
+  .mk-d1 .mk-faq .collapse, .mk-d1 .mk-faq .mk-item { background: transparent; border: 0; border-bottom: 1px solid var(--mk-line); border-radius: 0; box-shadow: none; }
+  .mk-d1 .mk-faq .collapse-title { font-size: 0.8125rem; font-weight: 700; }
+  /* Pie en columnas con título. */
+  .mk-d1 .mk-footer .mk-foot-gtitle { font-weight: 700; }
+  .mk-d1 .mk-footer .mk-foot-group { font-size: 0.75rem; }
+  .mk-d1 .mk-footer .mk-brand { font-family: var(--mk-heading, inherit); font-size: 1.5rem; letter-spacing: -0.045em; }
+}
+
+/* Ficha de producto de los 12 temas: título y precio como en la maqueta (la foto
+   y el botón ya toman las esquinas del tema). */
+.mk-store:is([data-theme="linea"], [data-theme="pulso"], [data-theme="noche"], [data-theme="brisa"], [data-theme="tinta"], [data-theme="citrico"], [data-theme="aura"], [data-theme="brote"], [data-theme="orbita"], [data-theme="dalia"], [data-theme="cacao"], [data-theme="sol"]) {
+  .mk-d1 .mk-pname .mk-title { font-size: clamp(1.75rem, 1rem + 2cqi, 2.25rem); font-weight: var(--mk-head-weight); letter-spacing: var(--mk-head-track); line-height: 1.1; }
+  .mk-d1 .mk-pprice .mk-pricetag { font-size: 1.375rem; font-weight: 800; }
+  .mk-d1 .mk-pdesc { color: var(--mk-muted); font-size: 0.8125rem; }
+}
