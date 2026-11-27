@@ -428,6 +428,7 @@ fn base_widget(section: Section, pick: &WizardPick, existing: Option<&Widget>) -
                 let banner = match existing {
                     Some(Widget::Banner(b)) => Some(b.clone()),
                     Some(Widget::Carousel(c)) => c.slides.first().map(|s| crate::BannerProps {
+                        kicker: String::new(),
                         title: s.title.clone(),
                         subtitle: s.subtitle.clone(),
                         image_url: s.image_url.clone(),

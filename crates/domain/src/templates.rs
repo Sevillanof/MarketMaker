@@ -60,6 +60,7 @@ pub fn template_doc(template: &str, name: &str) -> PageDoc {
         "vidriera" => vidriera(name),
         "taller" => taller(name),
         "noche" => noche(name),
+        "editorial" => editorial(name),
         _ => crate::starter_doc(name),
     }
 }
@@ -271,6 +272,117 @@ fn categories(title: &str) -> Widget {
 
 // --- Las plantillas -----------------------------------------------------------
 
+/// Vidriera editorial: la tienda de la maqueta de los 12 temas (anuncio, menú,
+/// portada dividida, beneficios, categorías con foto, productos, historia, cita,
+/// preguntas y pie). Va con el tema Línea; cambiar de tema no mueve nada.
+fn editorial(name: &str) -> PageDoc {
+    let announcement = Widget::defaults("Announcement")
+        .map(|w| match w {
+            Widget::Announcement(mut p) => {
+                p.items = vec![crate::AnnouncementItem {
+                    text: s("Envíos a todo el país · 3 cuotas sin interés"),
+                    link_label: String::new(),
+                    link_href: String::new(),
+                }];
+                Widget::Announcement(p)
+            }
+            w => w,
+        })
+        .expect("Announcement tiene valores por defecto");
+    let category = |label: &str, image: &str| crate::CategoryItem {
+        label: s(label),
+        image_url: s(image),
+        href: s("/#productos"),
+    };
+    let testimonials = Widget::Testimonials(TestimonialsProps {
+        title: s("Lo que dicen de nosotros"),
+        items: vec![crate::Testimonial {
+            name: s("Cliente de ejemplo"),
+            text: s("Una experiencia simple, de esas a las que siempre querés volver."),
+            rating: 5,
+        }],
+    });
+    let mut d = doc(
+        "linea",
+        Typography::default(),
+        shape("", "", "base"),
+        vec![
+            vec![block(announcement)],
+            vec![block(navbar(
+                vec![
+                    link("Inicio", "/"),
+                    link("Productos", "/#productos"),
+                    link("Preguntas frecuentes", "/preguntas-frecuentes"),
+                    link("Contacto", "/contacto"),
+                ],
+                ("", ""),
+            ))],
+            vec![block(Widget::Banner(BannerProps {
+                kicker: s("Una selección para vos"),
+                title: s("Los buenos momentos están en los detalles."),
+                subtitle: s("Una colección de objetos que te acompañan todos los días, a tu manera."),
+                image_url: s("/img/category-hogar.webp"),
+                button_label: s("Explorar la colección"),
+                button_href: s("/#productos"),
+            }))
+            .h(56)],
+            vec![block(Widget::Benefits(BenefitsProps {
+                items: vec![
+                    benefit("truck", "Envíos a todo el país", "Recibí donde estés"),
+                    benefit("card", "Pagá como quieras", "Opciones para vos"),
+                    benefit("refresh", "Cambios simples", "Comprá con tranquilidad"),
+                ],
+            }))],
+            vec![block(Widget::Categories(crate::CategoriesProps {
+                title: s("Explorá por categoría"),
+                items: vec![
+                    category("Hogar", "/img/category-hogar.webp"),
+                    category("Moda", "/img/category-moda.webp"),
+                    category("Tecnología", "/img/category-tecnologia.webp"),
+                ],
+            }))
+            .h(40)],
+            vec![block(Widget::ProductGrid(ProductGridProps {
+                title: s("Hechos para acompañarte"),
+                limit: 4,
+                cards: Widget::defaults("ProductGrid")
+                    .and_then(|w| match w {
+                        Widget::ProductGrid(p) => Some(p.cards),
+                        _ => None,
+                    })
+                    .expect("ProductGrid tiene valores por defecto"),
+            }))],
+            vec![block(card(
+                "/img/gallery-1.webp",
+                "Pequeñas cosas, grandes momentos.",
+                "Creemos en elegir con intención. Cada objeto de nuestra colección está pensado para acompañarte.",
+                ("Conocé más", "/contacto"),
+                "side",
+            ))
+            .h(64)],
+            vec![block(testimonials)],
+            vec![block(Widget::Faq(FaqProps {
+                title: s("Preguntas frecuentes"),
+                items: vec![
+                    FaqItem {
+                        question: s("¿Cómo recibo mi pedido?"),
+                        answer: s("Contá acá cómo y cuándo llegan los pedidos."),
+                    },
+                    FaqItem {
+                        question: s("¿Qué medios de pago aceptan?"),
+                        answer: s("Contá acá con qué se puede pagar."),
+                    },
+                ],
+            }))],
+            vec![block(footer(&format!(
+                "Objetos para disfrutar lo cotidiano. Una tienda hecha para vos, {name}."
+            )))],
+        ],
+    );
+    d.theme = s("linea");
+    d
+}
+
 /// Vidriera: clara, fotos grandes y mucho producto, como una tienda de moda.
 fn vidriera(name: &str) -> PageDoc {
     let slide = |i: usize, title: &str, subtitle: &str, button: &str| Slide {
@@ -464,6 +576,7 @@ fn noche(name: &str) -> PageDoc {
                 ("Comprar", "/#productos"),
             ))],
             vec![block(Widget::Banner(BannerProps {
+                kicker: String::new(),
                 title: format!("{name}: tecnología que te acompaña"),
                 subtitle: s(crate::STARTER_PLACEHOLDERS[0]),
                 image_url: s("/img/banner.webp"),
@@ -577,18 +690,18 @@ mod tests {
 
     #[test]
     fn every_template_is_valid_and_carries_the_name() {
-        for t in STORE_TEMPLATES {
-            let d = template_doc(t.id, "La Huerta");
+        for id in STORE_TEMPLATES.iter().map(|t| t.id).chain(["editorial"]) {
+            let d = template_doc(id, "La Huerta");
             assert!(
                 crate::validate(&d).is_ok(),
                 "{}: {:?}",
-                t.id,
+                id,
                 crate::validate(&d)
             );
             let json = serde_json::to_string(&d).unwrap();
-            assert!(json.contains("La Huerta"), "{}", t.id);
+            assert!(json.contains("La Huerta"), "{}", id);
             // Quedan textos de ejemplo para que el editor avise al publicar.
-            assert!(crate::placeholders_left(&d) >= 3, "{}", t.id);
+            assert!(crate::placeholders_left(&d) >= 3, "{}", id);
         }
         assert_eq!(template_doc("no-existe", "X"), crate::starter_doc("X"));
     }

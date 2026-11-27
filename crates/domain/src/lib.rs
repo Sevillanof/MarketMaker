@@ -1389,7 +1389,7 @@ mod tests {
       "theme": "light",
       "nodes": [
         { "id": "n1", "type": "Banner",
-          "props": { "title": "Ofertas de la semana", "subtitle": "", "image_url": "https://example.com/hero.jpg",
+          "props": { "kicker": "", "title": "Ofertas de la semana", "subtitle": "", "image_url": "https://example.com/hero.jpg",
                      "button_label": "", "button_href": "" },
           "pos": { "x": 0, "y": 0 }, "size": { "w": 48, "h": 48 } },
         { "id": "n2", "type": "ProductGrid",

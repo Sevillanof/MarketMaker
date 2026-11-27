@@ -20,6 +20,11 @@ T = {
  "cacao":  ("Cacao",  "#261b17","#47332c","#352720","#fff7eb","#e2cec0","#e6c49c","#2a1b15","#aa8d77",3,2,"#1c120f","#fff7eb",1),
  "sol":    ("Sol",    "#fffdf6","#fff0bd","#ffffff","#30270e","#65552b","#544000","#ffffff","#95752b",10,999,"#3c3010","#ffffff",0),
 }
+HERO = {"linea":"#e8e3d8","pulso":"#e3e9ff","noche":"#2b3d31","brisa":"#dceff0","tinta":"#ffffff","citrico":"#ffead0",
+        "aura":"#eee8f5","brote":"#e2edda","orbita":"#203854","dalia":"#f7e6e5","cacao":"#47332c","sol":"#f8e394"}
+SERIF = {"linea","noche","tinta","aura","brote","dalia","cacao"}
+# (peso, interletrado) de los títulos; el resto usa 400 y -.035em como la maqueta.
+HEAD = {"pulso":(800,"-.045em"),"brisa":(650,"-.04em"),"citrico":(800,"-.045em"),"orbita":(750,"-.04em"),"sol":(800,"-.045em")}
 LIGHT = [("#0369a1","#ffffff"),("#15803d","#ffffff"),("#b45309","#ffffff"),("#b91c1c","#ffffff")]
 DARK  = [("#7dd3fc","#082f49"),("#86efac","#052e16"),("#fcd34d","#451a03"),("#fca5a5","#450a0a")]
 KEYS = ["base-100","base-200","base-300","base-content","primary","primary-content","secondary","secondary-content",
@@ -31,6 +36,14 @@ def colors(t):
     v = [bg,sf,ln,ink,pr,onp,mu,bg,pr,onp,fb,fi]
     for a,b in st: v += [a,b]
     return v
+def skin():
+    out=["/* Valores de cada tema para las pieles de la tienda (scripts/gen_themes.py). */"]
+    for t in T:
+        _,bg,sf,pn,ink,mu,pr,onp,ln,r,br,fb,fi,dk = T[t]
+        f = 'Georgia, "Times New Roman", serif' if t in SERIF else 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif'
+        w,l = HEAD.get(t,(400,"-.035em"))
+        out.append(f'.mk-store[data-theme="{t}"] {{ --mk-heading: {f}; --mk-hero-bg: {HERO[t]}; --mk-panel: {pn}; --mk-muted: {mu}; --mk-line: {ln}; --mk-footer-bg: {fb}; --mk-footer-ink: {fi}; --mk-btn-radius: {br}px; --mk-head-weight: {w}; --mk-head-track: {l}; }}')
+    return "\n".join(out)
 def px(n): return min(n,32)
 def css():
     out=[]
@@ -63,4 +76,5 @@ def rust():
     }},''')
     return "\n".join(out)
 if __name__=="__main__":
-    print(css() if sys.argv[1:]==["css"] else rust())
+    a=sys.argv[1:]
+    print(css() if a==["css"] else skin() if a==["skin"] else rust())

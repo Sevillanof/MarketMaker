@@ -311,11 +311,16 @@ impl Typography {
     /// Variables CSS para la raíz de la tienda (`.mk-store`).
     pub fn css_vars(&self) -> String {
         let scale = factor(STORE_SIZES, &self.size);
-        format!(
-            "--mk-heading:{}; --mk-body:{}; --mk-store-scale:{scale}",
-            font_css(&self.heading),
-            font_css(&self.body)
-        )
+        // "Simple" no pisa nada: las letras las pone el tema de la tienda.
+        let mut s = String::new();
+        if self.heading != "system" {
+            s.push_str(&format!("--mk-heading:{}; ", font_css(&self.heading)));
+        }
+        if self.body != "system" {
+            s.push_str(&format!("--mk-body:{}; ", font_css(&self.body)));
+        }
+        s.push_str(&format!("--mk-store-scale:{scale}"));
+        s
     }
 
     pub fn errors(&self, errors: &mut Vec<String>) {
@@ -442,6 +447,8 @@ mod tests {
         assert!(s.css_vars().ends_with("--mk-block-scale:0.875"));
         assert_eq!(s.classes(), "mk-type mk-bold mk-align-center");
         assert_eq!(TextStyle::default().css_vars(), "--mk-block-scale:1");
+        // Con las letras por defecto, la tienda usa las del tema.
+        assert_eq!(Typography::default().css_vars(), "--mk-store-scale:1");
     }
 
     #[test]

@@ -851,6 +851,9 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
             })}
             <div class="mk-banner-body hero-content relative text-center">
                 <div class="mk-banner-panel max-w-xl">
+                    {(!props.kicker.is_empty()).then(|| view! {
+                        <p class="mk-kicker">{props.kicker.clone()}</p>
+                    })}
                     // Los textos largos se achican un poco y se parten en
                     // renglones parejos en vez de cortarse con «…».
                     <h1 class=title_class><AnimText text=props.title.clone()/></h1>
