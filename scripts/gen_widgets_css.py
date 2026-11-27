@@ -125,6 +125,7 @@ SRC = SRC.replace(
 # columnas, la proporción y las esquinas salen de variables del bloque.
 SRC = re.sub(r"(\.category(?:\.v\d)?) img", r"\1 .img", SRC)
 SRC = re.sub(r"(\.product(?:\.v\d)?) > img", r"\1 > .img", SRC)
+SRC = re.sub(r"(\.story(?:\.v\d)?) img", r"\1 .img", SRC)
 SRC = SRC.replace(
     ".benefits { display:grid; grid-template-columns:repeat(3,", ".benefits { display:grid; grid-template-columns:repeat(var(--n,3),"
 ).replace(
@@ -134,6 +135,11 @@ SRC = SRC.replace(
 ).replace(
     ".category .img { width:100%; aspect-ratio:1.25; object-fit:cover; border-radius:var(--radius); }",
     ".category .img { width:100%; aspect-ratio:var(--nw-ratio,1.25); border-radius:var(--nw-rad,var(--radius)); }",
+)
+
+SRC = SRC.replace(
+    ".footer-grid { display:grid; grid-template-columns:2fr 1fr 1fr;",
+    ".footer-grid { display:grid; grid-template-columns:2fr repeat(var(--fc,2),1fr);",
 )
 
 HEADER = """/* Widgets nuevos (generado por scripts/gen_widgets_css.py; no editar a mano).
@@ -170,6 +176,13 @@ TAIL = """
 .nw-product { position: relative; }
 .nw-product-info s { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
 .nw-badge { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 2px 8px; font-size: 10px; font-weight: 700; background: var(--ink); color: var(--bg); border-radius: var(--radius); }
+.nw-foot-link { color: inherit; text-decoration: none; }
+.nw-foot-icons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.nw-foot-icons > * { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid currentColor; border-radius: 50%; opacity: .85; }
+.nw-footer-legal { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 18px; margin-top: 18px; max-width: none; opacity: .75; }
+.nw-footer .nw-footer-legal { margin-top: 18px; max-width: none; }
+@container nw (min-width:701px) { .mk-d1 .nw-story.nw-right .nw-img, .mk-d3 .nw-story.nw-right .nw-img { order: 2; } }
+@container nw (max-width:700px) { .mk-m1 .nw-story.nw-right .nw-img, .mk-m3 .nw-story.nw-right .nw-img { order: 2; } }
 .nw-pager { display: flex; justify-content: center; margin-top: 22px; }
 .nw-ann-inner { display: block; color: inherit; text-decoration: none; }
 /* Menú del celular: el botón «Menú» abre un desplegable flotante (popover). */

@@ -224,8 +224,7 @@ fn footer(description: &str) -> Widget {
             link("Preguntas frecuentes", "/preguntas-frecuentes"),
             link("Contacto", "/contacto"),
         ],
-        legal: String::new(),
-    })
+        legal: String::new(), ..Default::default() })
 }
 
 fn benefit(icon: &str, title: &str, text: &str) -> BenefitItem {
@@ -244,8 +243,7 @@ fn card(image: &str, title: &str, body: &str, button: (&str, &str), layout: &str
         body: s(body),
         button_label: s(button.0),
         button_href: s(button.1),
-        layout: s(layout),
-    })
+        layout: s(layout), ..Default::default() })
 }
 
 fn text(heading: &str, body: &str) -> Widget {
@@ -296,9 +294,7 @@ fn editorial(name: &str) -> PageDoc {
         items: vec![crate::Testimonial {
             name: s("Opinión de ejemplo · Cliente de Nido"),
             text: s("Una experiencia simple, de esas a las que siempre querés volver."),
-            rating: 5,
-        }],
-    });
+            rating: 5, note: String::new() }], ..Default::default() });
     let mut d = doc(
         "linea",
         Typography::default(),
@@ -356,8 +352,7 @@ fn editorial(name: &str) -> PageDoc {
                 body: s("Creemos en elegir con intención. Cada objeto de nuestra colección está pensado para acompañarte."),
                 button_label: s("Conocé más"),
                 button_href: s("/contacto"),
-                layout: s("side"),
-            }))
+                layout: s("side"), ..Default::default() }))
             .h(64)],
             vec![block(testimonials)],
             vec![block(Widget::Faq(FaqProps {
@@ -371,8 +366,7 @@ fn editorial(name: &str) -> PageDoc {
                         question: s("¿Qué medios de pago aceptan?"),
                         answer: s("Contá acá con qué se puede pagar."),
                     },
-                ],
-            }))],
+                ], ..Default::default() }))],
             vec![block(Widget::Footer(FooterProps {
                 brand: String::new(),
                 description: format!("Objetos para disfrutar lo cotidiano. Una tienda hecha para vos, {name}."),
@@ -395,8 +389,7 @@ fn editorial(name: &str) -> PageDoc {
                         ..LinkItem::default()
                     },
                 ],
-                legal: String::new(),
-            }))],
+                legal: String::new(), ..Default::default() }))],
         ],
     );
     d.theme = s("linea");
@@ -694,8 +687,7 @@ fn noche(name: &str) -> PageDoc {
                             question: s("¿Puedo retirar en persona?"),
                             answer: s("Escribí acá la respuesta."),
                         },
-                    ],
-                }))
+                    ], ..Default::default() }))
                 .w(24)
                 .h(44)
                 .look(2, ""),

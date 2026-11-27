@@ -2171,55 +2171,40 @@ pub fn CountdownWidget(props: CountdownProps, editing: bool) -> impl IntoView {
     }
 }
 
+/// Historia destacada (diseños: lado a lado, panorámica, retrato).
 #[component]
 pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
-    let (card_class, figure_class) = match props.layout.as_str() {
-        "side" => (
-            "mk-box mk-card card card-side card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm",
-            "relative w-2/5 shrink-0",
-        ),
-        "overlay" => (
-            "mk-box mk-card mk-card-overlay card image-full card-sm h-full overflow-hidden shadow-sm",
-            "relative",
-        ),
-        _ => (
-            "mk-box mk-card card card-sm h-full overflow-hidden border border-base-300 bg-base-100 shadow-sm",
-            "relative min-h-0 flex-1",
-        ),
-    };
-    let has_image = !props.image_url.is_empty();
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button =
-        !props.button_label.is_empty() && (editing || !props.button_href.trim().is_empty());
-    let body_class = if props.layout == "vertical" {
-        "card-body grow-0 shrink-0"
+    let has_button = props.show_button
+        && !props.button_label.is_empty()
+        && (editing || !props.button_href.trim().is_empty());
+    let class = if props.side == "right" {
+        "nw-story nw-right"
     } else {
-        "card-body min-w-0 justify-center"
+        "nw-story"
     };
     view! {
-        <div class=card_class>
-            {has_image.then(|| view! {
-                <figure class=figure_class>
-                    <div class="absolute inset-0">
-                        <Image src=props.image_url.clone() alt=props.title.clone()/>
+        <div class="mk-nw h-full overflow-hidden">
+            <section class="nw-section">
+                <div class=class style=nw_colors(&props.bg, &props.ink)>
+                    {(!props.image_url.is_empty()).then(|| view! {
+                        <div class="nw-img"><Image src=props.image_url.clone() alt=props.title.clone()/></div>
+                    })}
+                    <div class="nw-story-copy">
+                        {(!props.kicker.is_empty()).then(|| view! { <span class="nw-kicker">{props.kicker.clone()}</span> })}
+                        <h4><AnimText text=props.title.clone()/></h4>
+                        {(!props.body.is_empty()).then(|| view! { <p>{props.body.clone()}</p> })}
+                        {has_button.then(|| view! {
+                            <span style=nw_on_color(&props.button_color)>
+                                <MaybeLink href=props.button_href.clone() editing class="nw-action">
+                                    {format!("{} ↗", props.button_label)}
+                                </MaybeLink>
+                            </span>
+                        })}
                     </div>
-                </figure>
-            })}
-            <div class=body_class>
-                {(!props.kicker.is_empty()).then(|| view! {
-                    <p class="mk-kicker">{props.kicker.clone()}</p>
-                })}
-                <h2 class="mk-title card-title line-clamp-2"><AnimText text={props.title.clone()}/></h2>
-                {(!props.body.is_empty()).then(|| view! {
-                    <p class="line-clamp-3 grow-0">{props.body.clone()}</p>
-                })}
-                {has_button.then(|| view! {
-                    <div class="card-actions">
-                        <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
-                    </div>
-                })}
-            </div>
+                </div>
+            </section>
         </div>
     }
 }
@@ -2247,30 +2232,34 @@ pub fn TabsWidget(props: TabsProps, group: String) -> impl IntoView {
     }
 }
 
+/// Preguntas frecuentes (diseños: líneas simples, acordeones enmarcados, índice lateral).
 #[component]
 pub fn FaqWidget(props: FaqProps, #[prop(default = false)] editing: bool) -> impl IntoView {
+    let _ = editing;
+    let open_first = props.open_first;
     view! {
-        <div class="mk-box mk-pad mk-faq flex h-full flex-col gap-3 overflow-hidden rounded-box">
-            {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
-            })}
-            <div class="join join-vertical min-h-0 w-full flex-1 overflow-y-auto">
-                {props
-                    .items
-                    .into_iter()
-                    .enumerate()
-                    // En el editor, la primera respuesta abierta: se ve cómo queda
-                    // sin ir a la vista previa.
-                    .map(|(i, q)| view! {
-                        <details class="mk-item collapse collapse-arrow join-item border border-base-300 bg-base-100" open={editing && i == 0}>
-                            <summary class="collapse-title font-semibold">{q.question}</summary>
-                            <div class="collapse-content text-sm">
-                                <p class="whitespace-pre-line">{q.answer}</p>
-                            </div>
-                        </details>
-                    })
-                    .collect_view()}
-            </div>
+        <div class="mk-nw h-full overflow-hidden">
+            <section class="nw-section nw-faq" style=nw_colors(&props.bg, &props.ink)>
+                <div class="nw-section-head">
+                    <div>
+                        {(!props.kicker.is_empty()).then(|| view! { <div class="nw-kicker">{props.kicker.clone()}</div> })}
+                        {(!props.title.is_empty()).then(|| view! { <h4><AnimText text=props.title.clone()/></h4> })}
+                    </div>
+                </div>
+                <div class="nw-faq-wrap">
+                    {props
+                        .items
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, it)| view! {
+                            <details open=open_first && i == 0>
+                                <summary><span>{it.question}</span></summary>
+                                <p>{it.answer}</p>
+                            </details>
+                        })
+                        .collect_view()}
+                </div>
+            </section>
         </div>
     }
 }
@@ -2305,52 +2294,45 @@ pub fn HoverGalleryWidget(props: HoverGalleryProps, editing: bool) -> impl IntoV
     }
 }
 
-#[component]
-fn Stars(rating: i64) -> impl IntoView {
-    let label = format!("{rating} de 5 estrellas");
-    view! {
-        <div class="rating rating-xs" role="img" aria-label=label>
-            {(1..=5)
-                .map(|i| view! {
-                    <div class="mask mask-star-2 bg-warning" aria-current=(i == rating).then_some("true")></div>
-                })
-                .collect_view()}
-        </div>
-    }
-}
-
+/// Cita de clientes (diseños: editorial, enmarcada, cita lateral).
 #[component]
 pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
+    let colors = nw_colors(&props.bg, &props.ink);
+    let star_style = if domain::parse_hex(&props.star_color).is_some() {
+        format!("color:{}", props.star_color)
+    } else {
+        String::new()
+    };
+    let show_stars = props.show_stars;
     view! {
-        <div class="mk-box mk-pad mk-testi @container flex h-full flex-col gap-3 overflow-hidden rounded-box">
-            {(!props.title.is_empty()).then(|| view! {
-                <h2 class="mk-title text-xl font-bold truncate"><AnimText text={props.title.clone()}/></h2>
-            })}
-            <div class="grid min-h-0 flex-1 auto-cols-[minmax(16rem,1fr)] grid-flow-col gap-3 relative overflow-x-auto">
-                {props
-                    .items
-                    .into_iter()
-                    .map(|t| {
-                        let initial = t.name.chars().next().map(String::from).unwrap_or_default();
-                        view! {
-                            <div class="mk-item card card-sm min-h-0 overflow-hidden border border-base-300 bg-base-100">
-                                <div class="card-body">
-                                    <Stars rating=t.rating/>
-                                    <p class="line-clamp-4 italic">{format!("“{}”", t.text)}</p>
-                                    <div class="flex items-center gap-2">
-                                        <div class="avatar avatar-placeholder">
-                                            <div class="mk-avatar w-8 rounded-full">
-                                                <span class="text-xs">{initial}</span>
-                                            </div>
-                                        </div>
-                                        <span class="text-sm font-semibold truncate">{t.name}</span>
-                                    </div>
+        <div class="mk-nw h-full overflow-hidden" style=colors>
+            {props
+                .items
+                .into_iter()
+                .map(|t| {
+                    let n = t.rating.clamp(1, 5) as usize;
+                    let stars = format!("{}{}", "★".repeat(n), "☆".repeat(5 - n));
+                    let who = [t.note.clone(), t.name.clone()]
+                        .into_iter()
+                        .filter(|x| !x.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    view! {
+                        <section class="nw-testimonial">
+                            <div class="nw-testimonial-inner">
+                                <span class="nw-quote-mark" aria-hidden="true">"“"</span>
+                                <div>
+                                    {show_stars.then(|| view! {
+                                        <span class="nw-stars" style=star_style.clone() role="img" aria-label=format!("{n} de 5 estrellas")>{stars.clone()}</span>
+                                    })}
+                                    <blockquote>{format!("“{}”", t.text)}</blockquote>
+                                    <small>{who}</small>
                                 </div>
                             </div>
-                        }
-                    })
-                    .collect_view()}
-            </div>
+                        </section>
+                    }
+                })
+                .collect_view()}
         </div>
     }
 }
@@ -2568,6 +2550,7 @@ pub fn ContactWidget(props: ContactProps, editing: bool) -> impl IntoView {
     }
 }
 
+/// Pie de página (diseños: columnas, marca protagonista, bloque contenido).
 #[component]
 pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     let store = use_context::<domain::StoreInfo>().unwrap_or_default();
@@ -2579,90 +2562,95 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     } else {
         props.legal.clone()
     };
-    // Abajo, en una sola línea: el texto legal, la frase (la del bloque o, si
-    // sigue la de ejemplo, la de Datos de la tienda) y los horarios.
+    // La frase del bloque o, si sigue la de ejemplo, la de Datos de la tienda.
     let own = props.description.trim();
     let phrase = if own.is_empty() || domain::is_placeholder(own) && !store.tagline.is_empty() {
         store.tagline.clone()
     } else {
         own.to_string()
     };
-    let bottom: Vec<String> = [legal, phrase, store.hours.clone()]
+    // Abajo, en una sola línea: el texto legal y los horarios.
+    let bottom: Vec<String> = [legal, store.hours.clone()]
         .into_iter()
         .filter(|t| !t.is_empty())
         .collect();
     let bottom = bottom.join(" · ");
     let logo = store.logo_url.clone();
     let channels = store_channels(&store);
-    let has_links = !props.links.is_empty();
-    // Con enlaces que traen "hijos", el pie se arma en columnas con título.
-    let grouped = props.links.iter().any(|l| !l.children.is_empty());
+    // Cada enlace con "hijos" es una columna con título; los enlaces sueltos
+    // de los documentos viejos van todos juntos en una columna.
+    let (groups, loose): (Vec<_>, Vec<_>) = props
+        .links
+        .into_iter()
+        .partition(|l| !l.children.is_empty());
+    let mut columns: Vec<(String, String, Vec<domain::LinkItem>)> = groups
+        .into_iter()
+        .map(|g| (g.label, g.href, g.children))
+        .collect();
+    if !loose.is_empty() {
+        columns.push((String::new(), String::new(), loose));
+    }
+    let n = columns.len().max(1);
     // En la tienda, «Ingresar a mi cuenta» y el botón de arrepentimiento van
-    // acá adentro, a la derecha (ver `storefront::StorefrontPage`).
+    // acá adentro (ver `storefront::StorefrontPage`).
     let legal_links = !editing && use_context::<LegalInFooter>().is_some();
+    let show_desc = props.show_description && !phrase.is_empty();
     view! {
-        <footer class="mk-box mk-footer @container flex h-full flex-col justify-center gap-4 overflow-hidden rounded-box px-6 py-5">
-            <div class="mk-foot-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-8 gap-y-3 @3xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-                <div class="flex min-w-0 items-center gap-3">
-                    {(!logo.is_empty()).then(|| view! {
-                        <img src=logo.clone() alt="" class="h-9 w-auto max-w-36 min-w-9 shrink-0 object-contain object-left"/>
-                    })}
-                    <p class="mk-brand mk-h truncate text-lg font-bold">{brand}</p>
-                </div>
-                {grouped.then(|| view! {
-                    <nav aria-label="Pie de página" class="mk-foot-groups col-span-2 row-start-2 flex flex-wrap gap-x-12 gap-y-4 text-sm @3xl:col-span-1 @3xl:col-start-2 @3xl:row-start-1 @3xl:justify-self-end">
-                        {props
-                            .links
-                            .clone()
-                            .into_iter()
-                            .map(|g| view! {
-                                <div class="mk-foot-group flex min-w-24 flex-col gap-2">
-                                    <p class="mk-foot-gtitle font-bold">{g.label}</p>
-                                    {g.children.into_iter().map(|l| view! {
-                                        <MaybeLink href=l.href editing class="mk-link link link-hover">{l.label}</MaybeLink>
-                                    }).collect_view()}
-                                </div>
-                            })
-                            .collect_view()}
-                    </nav>
-                })}
-                {(has_links && !grouped).then(|| view! {
-                    <nav aria-label="Pie de página" class="col-span-2 row-start-2 flex flex-wrap gap-x-6 gap-y-1 text-sm @3xl:col-span-1 @3xl:col-start-2 @3xl:row-start-1">
-                        {props
-                            .links
-                            .into_iter()
-                            .map(|l| view! {
-                                <MaybeLink href=l.href editing class="mk-link link link-hover">{l.label}</MaybeLink>
-                            })
-                            .collect_view()}
-                    </nav>
-                })}
-                {(!channels.is_empty()).then(|| view! {
-                    <div class="flex gap-2 justify-self-end @3xl:col-start-3 @3xl:row-start-1">
-                        {channels
-                            .into_iter()
-                            .map(|c| view! {
-                                <ChannelLink href=c.href external=c.external editing label=c.label class="mk-social grid size-10 place-items-center rounded-full border border-current/25 pointer-coarse:size-11">
-                                    <Icon name=c.icon class="h-[18px] w-[18px]"/>
-                                </ChannelLink>
-                            })
-                            .collect_view()}
+        <div class="mk-nw h-full overflow-hidden">
+            <footer class="nw-footer" style=nw_colors(&props.bg, &props.ink)>
+                <div class="nw-footer-grid" style=format!("--fc:{n}")>
+                    <div class="nw-footer-brand">
+                        <div class="nw-brand">
+                            {(!logo.is_empty()).then(|| view! {
+                                <img src=logo.clone() alt="" class="mr-2 inline-block h-8 w-auto max-w-32 object-contain align-middle"/>
+                            })}
+                            {brand}
+                            {props.show_dot.then(|| view! { <i>"."</i> })}
+                        </div>
+                        {show_desc.then(|| view! { <p>{phrase.clone()}</p> })}
+                        {(!channels.is_empty()).then(|| view! {
+                            <div class="nw-foot-icons">
+                                {channels
+                                    .into_iter()
+                                    .map(|c| view! {
+                                        <ChannelLink href=c.href external=c.external editing label=c.label class="">
+                                            <Icon name=c.icon class="h-4 w-4"/>
+                                        </ChannelLink>
+                                    })
+                                    .collect_view()}
+                            </div>
+                        })}
                     </div>
-                })}
-            </div>
-            {(!bottom.is_empty() || legal_links).then(|| view! {
-                <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-current/20 pt-3 text-xs opacity-70">
-                    <p>{bottom}</p>
-                    {legal_links.then(|| view! {
-                        <p class="mk-legal flex flex-wrap items-center gap-x-2">
-                            <crate::account::AccountFooterLink/>
-                            <span aria-hidden="true">"·"</span>
-                            <a class="link link-hover" href="/arrepentimiento">"Botón de arrepentimiento"</a>
-                        </p>
-                    })}
+                    {columns
+                        .into_iter()
+                        .map(|(title, href, links)| view! {
+                            <div>
+                                {(!title.is_empty()).then(|| view! {
+                                    <b>
+                                        <MaybeLink href=href editing class="nw-foot-link">{title.clone()}</MaybeLink>
+                                    </b>
+                                })}
+                                {links.into_iter().map(|l| view! {
+                                    <MaybeLink href=l.href editing class="nw-foot-link">{l.label}</MaybeLink>
+                                }).collect_view()}
+                            </div>
+                        })
+                        .collect_view()}
                 </div>
-            })}
-        </footer>
+                {(!bottom.is_empty() || legal_links).then(|| view! {
+                    <p class="nw-footer-legal">
+                        <span>{bottom}</span>
+                        {legal_links.then(|| view! {
+                            <span class="flex flex-wrap items-center gap-x-2">
+                                <crate::account::AccountFooterLink/>
+                                <span aria-hidden="true">"·"</span>
+                                <a class="nw-foot-link underline" href="/arrepentimiento">"Botón de arrepentimiento"</a>
+                            </span>
+                        })}
+                    </p>
+                })}
+            </footer>
+        </div>
     }
 }
 

@@ -1854,9 +1854,9 @@ mod tests {
             ..PageDoc::default()
         };
         if let Widget::Card(c) = &mut doc.nodes[0].widget {
-            c.layout = "diagonal".into();
+            c.side = "diagonal".into();
         }
-        assert_invalid(&doc, "Tarjeta › Diseño: Elegí una de las opciones");
+        assert_invalid(&doc, "Elegí una de las opciones");
     }
 
     #[test]
