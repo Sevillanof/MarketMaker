@@ -1,13 +1,15 @@
 //! Ajustes de toda la tienda que no son colores ni letras:
 //!
 //! - [`StoreLayout`]: el margen de cada lado (entre el borde de la pantalla y
-//!   los bloques) y hasta qué ancho se estira el contenido.
+//!   los bloques) y el espacio entre bloques. El contenido ocupa todo el
+//!   ancho de la pantalla menos los márgenes; `max_width` es un dato
+//!   heredado que se conserva al guardar pero ya no limita nada.
 //! - [`StoreStyle`]: la forma de los botones, las esquinas de las tarjetas y
 //!   el fondo de la página.
 //!
 //! Valen para todas las páginas. Los documentos anteriores no los traen y se
-//! ven como siempre: 16 px de margen, contenido de 1120 px y lo que traiga
-//! el tema.
+//! ven como siempre: 16 px de margen, sin espacio entre bloques y lo que
+//! traiga el tema.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -39,6 +41,12 @@ pub const FRESH_PAD_Y: u16 = 8;
 pub const FRESH_PAD_X: u16 = 24;
 /// Margen máximo de un lado, en px.
 pub const MAX_PAD: u16 = 160;
+/// Espacio entre bloques de una tienda nueva, en px.
+pub const FRESH_GAP: u16 = 10;
+/// Espacio máximo entre bloques, en px.
+pub const MAX_GAP: u16 = 40;
+/// El espacio entre bloques sube o baja de a estos píxeles.
+pub const GAP_STEP: u16 = 2;
 /// Los botones − y + del margen suman o restan de a estos píxeles.
 pub const PAD_STEP: u16 = 8;
 
@@ -90,8 +98,12 @@ pub struct StoreLayout {
     pub pad_bottom: u16,
     #[serde(default = "default_pad")]
     pub pad_left: u16,
-    /// Ancho máximo del contenido en px; `0` = ancho completo.
+    /// Dato heredado: el ancho máximo que tenían las tiendas. Se conserva al
+    /// guardar (por si hay que volver atrás) pero ya no limita el ancho.
     pub max_width: u16,
+    /// Espacio entre un bloque y el de al lado, en px (`0..=MAX_GAP`, de a
+    /// [`GAP_STEP`]). Los documentos anteriores no lo traen: 0, como se ven.
+    pub gap: u16,
 }
 
 impl Default for StoreLayout {
@@ -102,6 +114,7 @@ impl Default for StoreLayout {
             pad_bottom: DEFAULT_PAD,
             pad_left: DEFAULT_PAD,
             max_width: DEFAULT_WIDTH,
+            gap: 0,
         }
     }
 }
@@ -129,11 +142,15 @@ impl StoreLayout {
             pad_bottom: FRESH_PAD_Y,
             pad_left: FRESH_PAD_X,
             max_width: 0,
+            gap: FRESH_GAP,
         }
     }
 
-    pub fn is_full(&self) -> bool {
-        self.max_width == 0
+    /// Cambia el espacio entre bloques (de a [`GAP_STEP`], hasta [`MAX_GAP`]).
+    pub fn set_gap(&mut self, px: i32) {
+        let step = i32::from(GAP_STEP);
+        let px = (f64::from(px) / f64::from(step)).round() as i32 * step;
+        self.gap = px.clamp(0, i32::from(MAX_GAP)) as u16;
     }
 
     /// Margen de un lado, en px.
@@ -171,14 +188,9 @@ impl StoreLayout {
 
     /// Estilo del contenedor de la tienda publicada (`.mk-wrap`).
     pub fn css_vars(&self) -> String {
-        let max = if self.is_full() {
-            "100%".to_string()
-        } else {
-            format!("{}px", self.max_width)
-        };
         format!(
-            "--mk-pt:{}px; --mk-pr:{}px; --mk-pb:{}px; --mk-pl:{}px; --mk-maxw:{max}",
-            self.pad_top, self.pad_right, self.pad_bottom, self.pad_left
+            "--mk-pt:{}px; --mk-pr:{}px; --mk-pb:{}px; --mk-pl:{}px; --mk-gap:{}px",
+            self.pad_top, self.pad_right, self.pad_bottom, self.pad_left, self.gap
         )
     }
 
@@ -188,9 +200,9 @@ impl StoreLayout {
                 "Márgenes: cada lado puede tener hasta {MAX_PAD} px."
             ));
         }
-        if !self.is_full() && !(MIN_WIDTH..=MAX_WIDTH).contains(&self.max_width) {
+        if self.gap > MAX_GAP {
             errors.push(format!(
-                "Ancho de la tienda: tiene que estar entre {MIN_WIDTH} y {MAX_WIDTH} px."
+                "Espacio entre bloques: hasta {MAX_GAP} px."
             ));
         }
     }
@@ -583,7 +595,7 @@ mod tests {
     #[test]
     fn fresh_layout_is_full_width_and_old_docs_keep_their_look() {
         let f = StoreLayout::fresh();
-        assert!(f.is_full());
+        assert_eq!(f.gap, FRESH_GAP);
         assert_eq!(
             (f.pad_top, f.pad_bottom, f.pad_left, f.pad_right),
             (8, 8, 24, 24)
@@ -609,7 +621,7 @@ mod tests {
         assert_eq!(l.max_width, 1120);
         assert_eq!(
             l.css_vars(),
-            "--mk-pt:16px; --mk-pr:16px; --mk-pb:16px; --mk-pl:16px; --mk-maxw:1120px"
+            "--mk-pt:16px; --mk-pr:16px; --mk-pb:16px; --mk-pl:16px; --mk-gap:0px"
         );
         let mut e = Vec::new();
         l.errors(&mut e);
@@ -635,16 +647,35 @@ mod tests {
         l.set_all_pads(999);
         assert!(l.pads_equal());
         assert_eq!(l.pad_bottom, MAX_PAD);
+        // El ancho heredado ya no se valida ni llega al CSS.
         l.max_width = 0;
-        assert!(l.css_vars().ends_with("--mk-maxw:100%"));
+        assert!(!l.css_vars().contains("maxw"));
         let mut e = Vec::new();
         StoreLayout {
             pad_top: 500,
             max_width: 200,
+            gap: 60,
             ..StoreLayout::default()
         }
         .errors(&mut e);
         assert_eq!(e.len(), 2);
+    }
+
+    #[test]
+    fn gap_snaps_to_steps_and_old_documents_keep_zero() {
+        let mut l = StoreLayout::default();
+        l.set_gap(7);
+        assert_eq!(l.gap, 8);
+        l.set_gap(-3);
+        assert_eq!(l.gap, 0);
+        l.set_gap(999);
+        assert_eq!(l.gap, MAX_GAP);
+        assert_eq!(StoreLayout::fresh().gap, FRESH_GAP);
+        // Sin el campo: 0 (como se ven hoy); el ancho heredado se conserva.
+        let old: StoreLayout = serde_json::from_str(r#"{"max_width":960}"#).unwrap();
+        assert_eq!((old.gap, old.max_width), (0, 960));
+        let json = serde_json::to_string(&old).unwrap();
+        assert!(json.contains("\"max_width\":960"));
     }
 
     #[test]

@@ -418,20 +418,26 @@
 
 
 /* Grilla compartida por el editor y el marketplace: 48 columnas y filas de
-   8 px, sin huecos ni separación entre bloques (`grid::GAP_PX` = 0), para
-   poder ubicar y medir los bloques con precisión. La posición de cada nodo
-   viaja en variables CSS dentro de `style`. */
+   8 px, sin huecos, para poder ubicar y medir los bloques con precisión.
+   La separación entre bloques (`--mk-gap`, ver `domain::StoreLayout::gap`)
+   es un margen de la mitad alrededor de cada uno; el margen negativo de la
+   grilla compensa el de los bordes. Vale 0 si nadie lo define y en las
+   fichas. La posición de cada nodo viaja en variables CSS dentro de
+   `style`. */
 .mk-grid {
   display: grid;
   grid-template-columns: repeat(48, minmax(0, 1fr));
   grid-auto-rows: 8px;
-  margin: 0;
+  margin: calc(var(--mk-gap, 0px) / -2);
 }
+/* La ficha del producto no usa el espacio entre widgets de la página. */
+dialog .mk-grid,
+.mk-stacked { --mk-gap: 0px; }
 .mk-node {
   grid-column: var(--x) / span var(--w);
   grid-row: var(--y) / span var(--h);
   min-width: 0;
-  margin: 0;
+  margin: calc(var(--mk-gap, 0px) / 2);
   overflow: hidden;
 }
 /* El alto de cada bloque es un mínimo: si su contenido no entra (otro ancho
@@ -446,9 +452,9 @@
     contain: none;
   }
 }
-/* Contenedor de la tienda publicada: margen de cada lado y ancho máximo del
-   contenido (ver `domain::StoreLayout`). En el celular ningún margen pasa
-   de 16 px. */
+/* Contenedor de la tienda publicada: margen de cada lado (ver
+   `domain::StoreLayout`); el contenido ocupa todo el ancho que queda. En el
+   celular ningún margen pasa de 16 px. */
 .mk-wrap {
   --mk-pt-now: var(--mk-pt, 16px);
   --mk-pr-now: var(--mk-pr, 16px);
@@ -456,7 +462,6 @@
   --mk-pl-now: var(--mk-pl, 16px);
   margin-inline: auto;
   padding: var(--mk-pt-now) var(--mk-pr-now) var(--mk-pb-now) var(--mk-pl-now);
-  max-width: calc(var(--mk-maxw, 1120px) + var(--mk-pl-now) + var(--mk-pr-now));
 }
 @media (max-width: 767px) {
   .mk-wrap {
@@ -500,7 +505,7 @@
 .mk-anode {
   position: absolute;
   box-sizing: border-box;
-  padding: 8px;
+  padding: calc(var(--mk-gap, 0px) / 2);
   min-width: 0;
   touch-action: none;
   cursor: grab;
@@ -762,14 +767,14 @@
   }
   /* Apilados, cada nodo conserva su alto. */
   .mk-node {
-    height: calc(var(--h) * 8px);
+    height: calc(var(--h) * 8px - var(--mk-gap, 0px));
     flex: none;
   }
   /* Bajo un menú flotante: sube el alto del menú y crece lo mismo (en la
      computadora lo hace la grilla, ver `widgets::page_nodes`). */
   .mk-node-under {
-    margin-top: calc(var(--up) * -8px);
-    height: calc((var(--h) - var(--lift) + var(--up)) * 8px);
+    margin-top: calc(var(--mk-gap, 0px) / 2 - var(--up) * 8px);
+    height: calc((var(--h) - var(--lift) + var(--up)) * 8px - var(--mk-gap, 0px));
   }
   /* Menos columnas que en la computadora: la cuadrícula de productos tiene
      más filas que las que entran en su alto de escritorio. Crece lo que

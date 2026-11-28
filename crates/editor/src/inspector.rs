@@ -691,10 +691,8 @@ fn BlockSize(id: String, widget: Widget) -> impl IntoView {
     let custom = move || !WIDTHS.iter().any(|(w, _)| *w == size().w);
     // "Ajustar a mano": en píxeles del ancho de la tienda, y si lo escrito
     // no entra, se corrige y se avisa.
-    let page_w = state.doc.with_untracked(|d| match d.layout.max_width {
-        0 => domain::Layer::Page(0).design_width(),
-        w => w,
-    });
+    // Sin ancho máximo: el contenido ocupa la pantalla menos los márgenes.
+    let page_w = domain::Layer::Page(0).design_width();
     let page_w = if state.in_modal_untracked() {
         domain::Layer::ProductModal.design_width()
     } else {

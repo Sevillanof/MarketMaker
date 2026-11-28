@@ -54,8 +54,7 @@ pub(crate) fn page_frame(
     let avail = (screen_w - left - right).max(f64::from(GRID_COLS));
     let w = match dragging {
         Some(w) => f64::from(w),
-        None if layout.is_full() => avail,
-        None => f64::from(layout.max_width).min(avail),
+        None => avail,
     };
     Frame {
         w,
@@ -74,8 +73,6 @@ fn fit_scale(canvas_w: f64, total: f64) -> f64 {
     (canvas_w / total.max(1.0)).clamp(0.3, 1.0)
 }
 
-/// Margen de cada bloque dentro de su celda: la mitad de la separación.
-const MARGIN_PX: f64 = grid::GAP_PX / 2.0;
 /// Alto mínimo del lienzo, en filas.
 const MIN_ROWS: u32 = 48;
 /// Alto mínimo de la ficha del producto, en filas.
@@ -341,6 +338,15 @@ pub(crate) fn Canvas(
         state
             .doc
             .with(|d| page_frame(&d.layout, None, canvas_w.get(), screen_w.get()))
+    });
+    // Espacio entre bloques de la capa que se edita: el de la tienda en la
+    // página y ninguno en la ficha. Cada bloque deja la mitad como margen.
+    let gap = Memo::new(move |_| {
+        if state.in_modal() {
+            0.0
+        } else {
+            state.doc.with(|d| f64::from(d.layout.gap))
+        }
     });
     // Píxeles de pantalla por píxel de diseño de la capa que se edita.
     let scale = Memo::new(move |_| {
@@ -1043,7 +1049,7 @@ pub(crate) fn Canvas(
                 node_ref=stage_ref
                 class="mk-stage"
                 class:mk-dropzone=move || incoming.with(Option::is_some)
-                style=move || format!("height:{:.1}px", (f64::from(rows.get() * u32::from(ROW_PX)) - 2.0 * MARGIN_PX) * scale.get())
+                style=move || format!("height:{:.1}px", (f64::from(rows.get() * u32::from(ROW_PX)) - gap.get()) * scale.get())
             >
                 <div
                     node_ref=grid_ref
@@ -1051,12 +1057,14 @@ pub(crate) fn Canvas(
                     class:mk-grid-guides=move || drag.with(Option::is_some) || incoming.with(Option::is_some)
                     style=move || {
                         let k = scale.get();
+                        let half = gap.get() / 2.0;
                         format!(
-                            "width:{}px; height:{}px; transform:translate({:.2}px,{:.2}px) scale({k:.4})",
-                            design_w.get() + 2.0 * MARGIN_PX,
+                            "width:{}px; height:{}px; transform:translate({:.2}px,{:.2}px) scale({k:.4}); --mk-gap:{}px",
+                            design_w.get() + 2.0 * half,
                             rows.get() * u32::from(ROW_PX),
-                            -MARGIN_PX * k,
-                            -MARGIN_PX * k,
+                            -half * k,
+                            -half * k,
+                            gap.get(),
                         )
                     }
                     on:pointermove=on_pointer_move
@@ -1460,12 +1468,11 @@ mod tests {
     fn page_frame_follows_the_store_layout() {
         let mut l = StoreLayout::default();
         // Lienzo de 900 px en una pantalla de 1500: se dibuja la pantalla
-        // entera achicada, con el contenido de 1120 px en el medio.
+        // entera achicada; el contenido es la pantalla menos los márgenes,
+        // aunque el documento traiga un ancho máximo heredado.
         let f = page_frame(&l, None, 900.0, 1500.0);
-        assert_eq!((f.w, f.left, f.top), (1120.0, 16.0, 16.0));
+        assert_eq!((f.w, f.left, f.top), (1468.0, 16.0, 16.0));
         assert!((f.k - 900.0 / 1500.0).abs() < 1e-9);
-        // En una pantalla más angosta que el ancho máximo, el contenido se
-        // achica como en la tienda.
         assert_eq!(page_frame(&l, None, 900.0, 1000.0).w, 968.0);
         // Mientras se arrastra manda el ancho que se prueba (y si no entra
         // en la pantalla, se achica todo).
@@ -1474,8 +1481,7 @@ mod tests {
         assert!((f.k - 900.0 / 1632.0).abs() < 1e-9);
         l.set_pad(Side::Left, 48);
         l.set_pad(Side::Right, 8);
-        l.max_width = 0;
-        // Ancho completo: toda la pantalla.
+        // Toda la pantalla menos los márgenes.
         let f = page_frame(&l, None, 2000.0, 2000.0);
         assert_eq!((f.w, f.left, f.right, f.k), (1944.0, 48.0, 8.0, 1.0));
         assert!((fit_scale(576.0, 1152.0) - 0.5).abs() < 1e-9);
