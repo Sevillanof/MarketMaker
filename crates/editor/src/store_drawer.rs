@@ -149,6 +149,7 @@ pub(crate) fn Letters() -> impl IntoView {
             state.apply(|d| {
                 d.typography.heading = p.heading.into();
                 d.typography.body = p.body.into();
+                d.style.font_custom = true;
             });
         }
     };

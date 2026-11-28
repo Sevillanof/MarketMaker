@@ -127,6 +127,7 @@ fn Appearance() -> impl IntoView {
                     if let Ok(v) = event_target_value(&ev).trim().parse::<u8>() {
                         // Una sola operación deshacible para los tres radios.
                         state.apply_grouped(Some("radius"), |d| {
+                            d.style.radius_custom = true;
                             for c in [Corner::Box, Corner::Field, Corner::Selector] {
                                 d.style.set_radius(c, v);
                             }
@@ -267,7 +268,7 @@ fn Themes() -> impl IntoView {
         if let Some(t) = THEMES.get(i) {
             state.apply(|d| {
                 d.theme = (*t).to_string();
-                d.style.switch_theme();
+                d.style.switch_theme(t, &mut d.typography);
             });
         }
     };

@@ -221,7 +221,11 @@ impl Default for PageDoc {
             theme: THEMES[0].to_string(),
             typography: Typography::default(),
             layout: StoreLayout::fresh(),
-            style: StoreStyle::default(),
+            // Una tienda nueva arranca con el relieve sutil prendido.
+            style: StoreStyle {
+                depth: Some(true),
+                ..StoreStyle::default()
+            },
             nodes: Vec::new(),
             product_modal: ProductModal::default(),
             pages: Vec::new(),
