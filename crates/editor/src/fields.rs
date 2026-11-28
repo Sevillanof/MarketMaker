@@ -340,7 +340,10 @@ fn FieldInput(
                 })
             };
             // Otros bloques de la misma página (solo el destino del anuncio).
-            let allow_widget = field.label == "Destino del enlace";
+            let allow_widget = {
+                let l = field.label.to_lowercase();
+                l.starts_with("enlace") || l.starts_with("destino") || l.starts_with("adónde")
+            };
             let widget_opts = move || {
                 state.doc.with(|d| {
                     let mut nodes: Vec<_> = d.layer(state.layer.get()).iter().collect();

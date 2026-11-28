@@ -837,15 +837,6 @@ const NAV_LINK_ITEM: &[Field] = &[
 ];
 const NAVBAR_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
-    field(
-        "size",
-        "Tamaño del nombre",
-        FieldKind::Range {
-            min: 18,
-            max: 40,
-            unit: "px",
-        },
-    ),
     field("logo_url", "Logo", FieldKind::Url),
     field(
         "links",
@@ -863,10 +854,7 @@ const NAVBAR_FIELDS: &[Field] = &[
             options: NAV_MENU_OPTIONS,
         },
     ),
-    field("upper", "Enlaces en mayúsculas", FieldKind::Bool),
     field("search", "Buscador de productos", FieldKind::Bool),
-    adv("button_label", "Texto del botón", text(30)),
-    adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
 
 const CATEGORY_ITEM: &[Field] = &[
