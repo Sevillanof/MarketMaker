@@ -87,8 +87,6 @@ fn help(key: &str) -> Option<&'static str> {
         "limit" => "Cuántos productos de tu catálogo se muestran.",
         "show_price" => "Mostrar u ocultar el precio debajo del nombre.",
         "legal" => "Si lo dejás vacío, se muestra © y el nombre de tu tienda.",
-        "brand" => "Si lo dejás vacío, se usa el nombre de tu tienda (lo cambiás en Datos de la tienda).",
-        "logo_url" => "Si lo dejás vacío, se usa el logo de tu tienda (lo cambiás en Datos de la tienda).",
         _ => return None,
     })
 }
