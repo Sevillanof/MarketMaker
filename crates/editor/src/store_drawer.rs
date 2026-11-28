@@ -18,15 +18,6 @@ use crate::{EditorState, Ui};
 /// Id del botón "Mi tienda" de la barra: vuelve el foco ahí al cerrar.
 pub(crate) const STORE_BUTTON_ID: &str = "mk-rail-style";
 
-/// Clase de una opción con dibujito.
-pub(crate) fn tile(active: bool) -> &'static str {
-    if active {
-        "flex flex-col items-center gap-1 rounded-field border-2 border-primary bg-primary/10 p-1.5 text-primary"
-    } else {
-        "flex flex-col items-center gap-1 rounded-field border-2 border-base-300 p-1.5 text-base-content/80 transition-colors hover:border-primary"
-    }
-}
-
 /// Título de una sección.
 #[component]
 pub(crate) fn Section(

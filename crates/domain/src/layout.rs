@@ -14,7 +14,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::theme::{color_index, normalize_hex, readable_on, theme_base, COLOR_KEYS};
+use crate::theme::{
+    color_index, normalize_hex, opposite_colors, readable_on, theme_base, COLOR_KEYS,
+};
 
 /// Anchos máximos sugeridos del contenido, en px. `0` es "Ancho completo".
 pub const WIDTH_PRESETS: &[(u16, &str)] = &[
@@ -285,6 +287,14 @@ pub struct StoreStyle {
     /// Colores cambiados: clave de [`COLOR_KEYS`] → `#rrggbb`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub colors: BTreeMap<String, String>,
+    /// Colores cambiados de la variante opuesta del tema (la oscura de un
+    /// tema claro y al revés): clave de [`COLOR_KEYS`] → `#rrggbb`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub colors_alt: BTreeMap<String, String>,
+    /// Con `true`, elegir otro tema restablece los colores cambiados; por
+    /// defecto se conservan los de las dos variantes.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub reset_colors_on_theme: bool,
     /// Esquema de color oscuro (barras, formularios del navegador).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub dark: bool,
@@ -343,6 +353,7 @@ impl StoreStyle {
     /// Sin ningún ajuste de tema propio (ni colores, ni esquinas, ni tamaños).
     pub fn theme_is_default(&self) -> bool {
         self.colors.is_empty()
+            && self.colors_alt.is_empty()
             && !self.dark
             && self.radius_box.is_none()
             && self.radius_field.is_none()
@@ -369,8 +380,81 @@ impl StoreStyle {
             bg_image: std::mem::take(&mut self.bg_image),
             bg_dim: self.bg_dim,
             bg_fixed: self.bg_fixed,
+            reset_colors_on_theme: self.reset_colors_on_theme,
             ..Self::default()
         };
+    }
+
+    /// Cambia de tema. Por defecto se conservan los colores cambiados (de
+    /// las dos variantes), las esquinas y los demás ajustes; con
+    /// `reset_colors_on_theme` vuelve todo a como lo trae el tema.
+    pub fn switch_theme(&mut self) {
+        if self.reset_colors_on_theme {
+            self.reset_theme();
+        }
+    }
+
+    /// Colores de la variante opuesta de `theme`, ya con los cambios. Con
+    /// `alt` en `false` son los de la variante original.
+    pub fn variant_color(&self, theme: &str, key: &str, alt: bool) -> String {
+        if !alt {
+            return self.color(theme, key);
+        }
+        if let Some(c) = self.colors_alt.get(key) {
+            return c.clone();
+        }
+        if let Some(bg) = key.strip_suffix("-content") {
+            if let Some(c) = self.colors_alt.get(bg) {
+                return readable_on(c).to_string();
+            }
+        }
+        let i = color_index(key).unwrap_or(0);
+        let c = |k: &str| self.color(theme, k);
+        opposite_colors(
+            &c("base-100"),
+            &c("base-content"),
+            &c("primary"),
+            &c("accent"),
+            !theme_base(theme).dark,
+        )[i]
+            .clone()
+    }
+
+    /// Cambia un color de la variante `alt` (`None` = como se calcula).
+    pub fn set_variant_color(&mut self, key: &str, hex: Option<&str>, alt: bool) {
+        if !alt {
+            return self.set_color(key, hex);
+        }
+        if color_index(key).is_none() {
+            return;
+        }
+        match hex.and_then(normalize_hex) {
+            Some(h) => {
+                self.colors_alt.insert(key.to_string(), h);
+            }
+            None => {
+                self.colors_alt.remove(key);
+            }
+        }
+    }
+
+    /// Regla CSS de la variante opuesta: se activa con `data-mode="alt"` en
+    /// la raíz de la tienda. `!important` para ganarle a los colores que
+    /// van en el `style` de esa raíz.
+    pub fn alt_css(&self, theme: &str) -> String {
+        let mut s = String::from("[data-mode=\"alt\"]{");
+        for (k, _) in COLOR_KEYS {
+            s.push_str(&format!(
+                "--color-{k}:{} !important;",
+                self.variant_color(theme, k, true)
+            ));
+        }
+        s.push_str(if theme_base(theme).dark {
+            "color-scheme:light !important}"
+        } else {
+            "color-scheme:dark !important}"
+        });
+        s
     }
 
     /// Color que se ve de `key` con el tema `theme`: el cambiado o el del tema.
@@ -550,6 +634,7 @@ impl StoreStyle {
         if self
             .colors
             .iter()
+            .chain(self.colors_alt.iter())
             .any(|(k, v)| color_index(k).is_none() || normalize_hex(v).as_deref() != Some(v))
         {
             errors.push("Colores: alguno no es un color válido.".into());
@@ -763,5 +848,35 @@ mod tests {
         for (w, _) in WIDTH_PRESETS.iter().filter(|(w, _)| *w > 0) {
             assert_eq!(snap_width(f64::from(*w)), *w);
         }
+    }
+
+    #[test]
+    fn opposite_variant_follows_the_mockup_rules() {
+        use crate::theme::mix;
+        // Línea (clara) → versión oscura.
+        let alt = opposite_colors("#faf8f4", "#292821", "#35382e", "#d9d3c7", true);
+        assert_eq!(alt[0], mix("#faf8f4", "#10131a", 0.91));
+        assert_eq!(alt[3], "#f6f5f2");
+        assert_eq!(alt[4], mix("#35382e", "#ffffff", 0.65));
+        // El texto sobre el principal se calcula.
+        assert_eq!(alt[5], readable_on(&alt[4]));
+        assert_eq!(mix("#000000", "#ffffff", 0.5), "#808080");
+        let mut st = StoreStyle::default();
+        let dark_alt = st.variant_color("linea", "base-100", true);
+        assert_eq!(dark_alt, alt[0]);
+        // Un cambio en la variante opuesta no toca la original, y al revés.
+        st.set_variant_color("primary", Some("#ff0000"), true);
+        assert_eq!(st.variant_color("linea", "primary", true), "#ff0000");
+        assert_eq!(st.variant_color("linea", "primary", false), "#35382e");
+        assert!(st.alt_css("linea").starts_with("[data-mode=\"alt\"]{"));
+        assert!(st
+            .alt_css("linea")
+            .contains("--color-primary:#ff0000 !important"));
+        // Elegir otro tema conserva los colores salvo que se pida lo contrario.
+        st.switch_theme();
+        assert_eq!(st.colors_alt.len(), 1);
+        st.reset_colors_on_theme = true;
+        st.switch_theme();
+        assert!(st.colors_alt.is_empty() && st.reset_colors_on_theme);
     }
 }

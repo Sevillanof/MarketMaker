@@ -103,6 +103,71 @@ pub fn readable_on(bg: &str) -> &'static str {
     }
 }
 
+/// Mezcla dos colores `#rrggbb` canal por canal: `a × (1 − t) + b × t`.
+pub fn mix(a: &str, b: &str, t: f32) -> String {
+    let ch = |h: &str, i: usize| f32::from(u8::from_str_radix(&h[i..i + 2], 16).unwrap_or(0));
+    let c = |i: usize| {
+        let v = (ch(a, i) * (1.0 - t) + ch(b, i) * t)
+            .round()
+            .clamp(0.0, 255.0);
+        format!("{:02x}", v as u8)
+    };
+    format!("#{}{}{}", c(1), c(3), c(5))
+}
+
+/// Los 20 colores de la variante opuesta de un tema (la oscura de uno claro
+/// y al revés), a partir de los cuatro de la original: fondo, texto,
+/// principal y acento. Reglas de la maqueta del panel de estilo.
+pub fn opposite_colors(
+    bg: &str,
+    _ink: &str,
+    primary: &str,
+    line: &str,
+    to_dark: bool,
+) -> [String; 20] {
+    let (bg2, ink2, pri2, line2) = if to_dark {
+        (
+            mix(bg, "#10131a", 0.91),
+            "#f6f5f2".to_string(),
+            mix(primary, "#ffffff", 0.65),
+            mix(line, "#ffffff", 0.34),
+        )
+    } else {
+        (
+            mix(bg, "#ffffff", 0.94),
+            "#242528".to_string(),
+            mix(primary, "#111111", 0.66),
+            mix(line, "#333333", 0.22),
+        )
+    };
+    // Estados (información, éxito, aviso, error): los del tema de daisyUI
+    // de ese modo, con su texto calculado.
+    let state_base = theme_base(if to_dark { "dark" } else { "light" });
+    let mut out: [String; 20] = std::array::from_fn(|_| String::new());
+    for (i, (key, _)) in COLOR_KEYS.iter().enumerate() {
+        out[i] = match *key {
+            "base-100" => bg2.clone(),
+            "base-200" => mix(&bg2, &ink2, 0.08),
+            "base-300" => mix(&bg2, &ink2, 0.16),
+            "base-content" => ink2.clone(),
+            "primary" | "secondary" => pri2.clone(),
+            "accent" => line2.clone(),
+            "neutral" => ink2.clone(),
+            "info" | "success" | "warning" | "error" => state_base.colors[i].to_string(),
+            _ => String::new(),
+        };
+    }
+    for (i, (key, _)) in COLOR_KEYS.iter().enumerate() {
+        if let Some(base) = key.strip_suffix("-content") {
+            if base != "base" {
+                let j = color_index(base).unwrap_or(0);
+                out[i] = readable_on(&out[j]).to_string();
+            }
+        }
+    }
+    out
+}
+
 /// Valores de fábrica de cada tema (sacados de daisyUI), en el orden de [`THEMES`].
 pub const THEME_BASES: &[ThemeBase] = &[
     // Línea
