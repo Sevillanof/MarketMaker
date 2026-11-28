@@ -1066,6 +1066,48 @@ dialog .mk-grid,
   src: url("/fonts/playfair-display-italic.woff2") format("woff2");
 }
 @font-face {
+  font-family: "DM Sans Variable";
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+  src: url("/fonts/dm-sans-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "DM Sans Variable";
+  font-style: italic;
+  font-weight: 100 1000;
+  font-display: swap;
+  src: url("/fonts/dm-sans-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Manrope Variable";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/manrope-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Cormorant Garamond Variable";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/cormorant-garamond-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Cormorant Garamond Variable";
+  font-style: italic;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/cormorant-garamond-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk Variable";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-normal.woff2") format("woff2");
+}
+@font-face {
   font-family: "Oswald Variable";
   font-style: normal;
   font-weight: 200 700;
@@ -3978,3 +4020,107 @@ dialog.mk-wiz::backdrop {
   .mk-d1 .mk-pprice .mk-pricetag { font-size: 1.375rem; font-weight: 800; }
   .mk-d1 .mk-pdesc { color: var(--mk-muted); font-size: 0.8125rem; }
 }
+
+/* ===== Tamaños por tipo de texto (ver `domain::TEXT_ROLES`) =====
+   Los widgets nuevos tienen medidas fijas en px. Acá cada una se multiplica
+   por el tamaño general (`--mk-scale`) y por la proporción de su tipo de
+   texto (`--mk-r-<tipo>`, que solo existe si la persona tocó ese tamaño en
+   Letras): así Letras agranda o achica los widgets nuevos y se conserva la
+   jerarquía entre un texto y otro. Con todo en su valor de siempre, las
+   medidas son las de `widgets-new.css`. Los píxeles son de referencia a
+   raíz de 16 px: se emiten en rem para respetar el tamaño de fuente del
+   navegador. */
+.mk-nw {
+  --nw-s: var(--mk-scale, 1);
+}
+.mk-nw h4 { font-size: calc(clamp(1.5rem, 1.4rem + 1.2cqi, 2.375rem) * var(--nw-s) * var(--mk-r-section, 1)); }
+.nw-hero h4 { font-size: calc(clamp(1.875rem, 1.7rem + 2cqi, 3.375rem) * var(--nw-s) * var(--mk-r-title, 1)); }
+.nw-pdp h3 { font-size: calc(clamp(1.5rem, 1.1rem + 1.4cqi, 2.125rem) * var(--nw-s) * var(--mk-r-title, 1)); }
+.nw-testimonial blockquote { font-size: calc(clamp(1.3125rem, 1.1rem + 1cqi, 1.875rem) * var(--nw-s) * var(--mk-r-section, 1)); }
+.nw-kicker { font-size: calc(0.625rem * var(--nw-s) * var(--mk-r-subtitle, 1)); }
+.nw-hero-copy p { font-size: calc(0.875rem * var(--nw-s) * var(--mk-r-subtitle, 1)); }
+.nw-benefit small { font-size: calc(0.6875rem * var(--nw-s) * var(--mk-r-subtitle, 1)); }
+.nw-testimonial small { font-size: calc(0.75rem * var(--nw-s) * var(--mk-r-subtitle, 1)); }
+.nw-product p { font-size: calc(0.6875rem * var(--nw-s) * var(--mk-r-subtitle, 1)); }
+.nw-product h5 { font-size: calc(0.8125rem * var(--nw-s) * var(--mk-r-product, 1)); }
+.nw-category-label { font-size: calc(0.875rem * var(--nw-s) * var(--mk-r-product, 1)); }
+.nw-story-copy p,
+.nw-faq summary,
+.nw-faq details p,
+.nw-pdp-line,
+.nw-pdp-desc { font-size: calc(0.8125rem * var(--nw-s) * var(--mk-r-body, 1)); }
+.nw-benefit b { font-size: calc(0.75rem * var(--nw-s) * var(--mk-r-body, 1)); }
+.nw-action,
+.nw-section-link { font-size: calc(0.75rem * var(--nw-s) * var(--mk-r-button, 1)); }
+.nw-buy { font-size: calc(0.625rem * var(--nw-s) * var(--mk-r-button, 1)); }
+.nw-buy.is-plus { font-size: 1.125rem; }
+.nw-product strong { font-size: calc(0.8125rem * var(--nw-s) * var(--mk-r-price, 1)); }
+.nw-pdp-price strong { font-size: calc(1.5rem * var(--nw-s) * var(--mk-r-price, 1)); }
+.nw-ann,
+.nw-nav-links,
+.nw-footer p,
+.nw-footer b,
+.nw-footer .nw-foot-link { font-size: calc(0.75rem * var(--nw-s) * var(--mk-r-nav, 1)); }
+.nw-brand { font-size: calc(1.625rem * var(--nw-s) * var(--mk-r-brand, 1)); }
+@container nw (max-width: 420px) {
+  .nw-brand { font-size: calc(1.375rem * var(--nw-s) * var(--mk-r-brand, 1)); }
+}
+
+/* Selector de pareja tipográfica de Letras (ver `Letters` en
+   `store_drawer.rs`): flechas a los lados, una muestra al medio e
+   indicadores chicos debajo, que se desplazan si no entran. */
+.mk-fontpick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  background: var(--color-base-200);
+}
+.mk-fontarrow {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.125rem;
+  height: 2.125rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-field);
+  background: var(--color-base-100);
+  color: var(--color-primary);
+}
+.mk-fontarrow:hover { border-color: var(--color-primary); }
+.mk-fontarrow svg { width: 1.1rem; height: 1.1rem; }
+.mk-markers {
+  display: flex;
+  justify-content: flex-start;
+  justify-content: safe center;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 0.25rem;
+  scrollbar-width: thin;
+}
+.mk-markers > button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  scroll-snap-align: center;
+  touch-action: manipulation;
+}
+.mk-markers > button::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+}
+.mk-markers > button:hover::before { background: color-mix(in oklab, var(--color-base-content) 50%, transparent); }
+.mk-markers > button[aria-pressed="true"]::before {
+  width: 9px;
+  border-radius: 9px;
+  background: var(--color-primary);
+}
+.mk-typepop { width: 19rem; }

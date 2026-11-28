@@ -6,7 +6,8 @@
 //! resúmenes; las opciones nuevas se suman como una sección más.
 
 use domain::{
-    font_css, Side, StoreLayout, FONT_PAIRS, GAP_STEP, GRID_COLS, MAX_GAP, MAX_PAD, PAD_STEP, ROW_PX, STORE_SIZES,
+    font_css, Side, StoreLayout, FONT_PAIRS, GAP_STEP, GRID_COLS, MAX_GAP, MAX_PAD, PAD_STEP,
+    ROLE_MAX, ROLE_MIN, ROW_PX, SCALE_MAX, SCALE_MIN, SCALE_STEP, TEXT_ROLES,
 };
 use leptos::prelude::*;
 
@@ -103,58 +104,212 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
     }
 }
 
-/// Letras de la tienda: un desplegable con las tipografías (cada opción se
-/// ve en su letra) y el tamaño del texto.
+/// Letras de la tienda: una pareja de tipografías a la vez, con flechas e
+/// indicadores para recorrerlas; el tamaño general en porcentaje y, en un
+/// flotante, el tamaño base de cada tipo de texto.
 #[component]
 pub(crate) fn Letters() -> impl IntoView {
     let state = expect_context::<EditorState>();
     let typo = Memo::new(move |_| state.doc.with(|d| d.typography.clone()));
-    let current = move || {
+    // Posición de la pareja activa; `None` si el documento usa una
+    // combinación que no está en la lista ("Personalizada").
+    let current = Memo::new(move |_| {
         typo.with(|t| {
             FONT_PAIRS
                 .iter()
                 .position(|p| p.heading == t.heading && p.body == t.body)
         })
+    });
+    let n = FONT_PAIRS.len();
+    let pick = move |i: usize| {
+        if let Some(p) = FONT_PAIRS.get(i) {
+            state.apply(|d| {
+                d.typography.heading = p.heading.into();
+                d.typography.body = p.body.into();
+            });
+        }
     };
+    let step = move |delta: isize| {
+        let i = match current.get_untracked() {
+            Some(i) => (i as isize + delta).rem_euclid(n as isize) as usize,
+            // Primer clic explícito: elige una pareja conocida.
+            None if delta > 0 => 0,
+            None => n - 1,
+        };
+        pick(i);
+    };
+    let heading_css = move || typo.with(|t| font_css(&t.heading));
+    let body_css = move || typo.with(|t| font_css(&t.body));
+    let name = move || {
+        current
+            .get()
+            .map_or("Personalizada", |i| FONT_PAIRS[i].label)
+    };
+    let families = move || {
+        typo.with(|t| {
+            let label = |id: &str| domain::font(id).map_or(id.to_string(), |f| f.label.to_string());
+            if t.heading == t.body {
+                label(&t.heading)
+            } else {
+                format!("{} + {}", label(&t.heading), label(&t.body))
+            }
+        })
+    };
+    let percent = move || typo.with(|t| t.scale_percent());
+    let percent_text = move || format!("{} %", percent().to_string().replace('.', ","));
     view! {
-        <Section title="Letras" id="mk-dr-letters">
-            <select
-                class="mk-fontselect"
-                aria-labelledby="mk-dr-letters"
-                style=move || current().map(|i| format!("font-family:{}", font_css(FONT_PAIRS[i].heading))).unwrap_or_default()
-                on:change=move |ev| {
-                    if let Ok(i) = event_target_value(&ev).parse::<usize>() {
-                        if let Some(p) = FONT_PAIRS.get(i) {
-                            state.apply(|d| {
-                                d.typography.heading = p.heading.into();
-                                d.typography.body = p.body.into();
-                            });
-                        }
-                    }
-                }
-            >
-                {FONT_PAIRS.iter().enumerate().map(|(i, p)| view! {
-                    <option
-                        value=i.to_string()
-                        selected=move || current() == Some(i)
-                        style=format!("font-family:{}", font_css(p.heading))
-                    >{p.label}</option>
-                }).collect_view()}
-            </select>
-            <div class="mk-seg mt-2" role="group" aria-label="Tamaño del texto">
-                {STORE_SIZES.iter().map(|(id, name, _)| {
-                    let active = move || typo.with(|t| t.size == *id);
-                    view! {
+        <Section title="Letras" id="mk-dr-letters" help="Se aplica a toda la tienda.">
+            <div role="group" aria-label="Pareja tipográfica">
+                <div class="mk-fontpick">
+                    <button type="button" class="mk-fontarrow" aria-label="Tipografía anterior" on:click=move |_| step(-1)>
+                        <Icon name="chevron-left"/>
+                    </button>
+                    <div class="min-w-0 flex-1 py-1" aria-live="polite" aria-atomic="true">
+                        <span class="flex flex-wrap items-baseline gap-x-1.5 text-[11px] text-base-content/60">
+                            <span class="font-bold text-base-content/80">{name}</span>
+                            <span class="min-w-0 break-words">{families}</span>
+                            <span class="ml-auto shrink-0">
+                                {move || current.get().map(|i| format!("{} de {n}", i + 1)).unwrap_or_default()}
+                            </span>
+                        </span>
+                        <span class="mt-1 block text-[1.35rem] leading-tight text-base-content" style=move || format!("font-family:{}", heading_css())>"Pequeñas cosas."</span>
+                        <span class="mt-0.5 block text-xs text-base-content/60" style=move || format!("font-family:{}", body_css())>"Una tienda con tu estilo"</span>
+                    </div>
+                    <button type="button" class="mk-fontarrow" aria-label="Tipografía siguiente" on:click=move |_| step(1)>
+                        <Icon name="chevron-right"/>
+                    </button>
+                </div>
+                <div class="mk-markers" role="group" aria-label="Elegir tipografía">
+                    {FONT_PAIRS.iter().enumerate().map(|(i, p)| view! {
                         <button
                             type="button"
-                            class:is-active=active
-                            aria-pressed=move || active().to_string()
-                            on:click=move |_| state.apply(|d| d.typography.size = (*id).into())
-                        >{*name}</button>
+                            aria-label=p.label
+                            title=p.label
+                            aria-pressed=move || (current.get() == Some(i)).to_string()
+                            on:click=move |_| pick(i)
+                        ></button>
+                    }).collect_view()}
+                </div>
+            </div>
+            <div class="mt-3">
+                <label class="flex items-baseline justify-between text-xs font-semibold" for="mk-dr-tscale">
+                    "Tamaño general del texto"
+                    <output class="font-normal text-base-content/70" for="mk-dr-tscale">{percent_text}</output>
+                </label>
+                <input
+                    id="mk-dr-tscale"
+                    type="range"
+                    class="range range-primary range-xs mt-1 w-full"
+                    min=SCALE_MIN
+                    max=SCALE_MAX
+                    step=SCALE_STEP
+                    prop:value=move || percent().round().to_string()
+                    aria-valuetext=move || format!("{} por ciento", percent_text().trim_end_matches(" %"))
+                    on:input=move |ev| {
+                        if let Ok(v) = event_target_value(&ev).trim().parse::<u16>() {
+                            state.apply_grouped(Some("tscale"), |d| d.typography.scale = v);
+                        }
+                    }
+                />
+                <div class="flex justify-between text-[10.5px] text-base-content/55" aria-hidden="true">
+                    <span>"Más chico"</span>
+                    <span>"Más grande"</span>
+                </div>
+            </div>
+            <button
+                type="button"
+                class="mt-2.5 flex w-full items-center justify-between rounded-field border border-base-300 bg-base-200/60 px-2.5 py-2 text-left text-xs font-bold text-primary"
+                popovertarget=TYPE_POP_ID
+            >
+                "Tamaños avanzados"
+                <Icon name="chevron-down"/>
+            </button>
+            <TypeSizes/>
+        </Section>
+    }
+}
+
+const TYPE_POP_ID: &str = "mk-typepop";
+
+/// Flotante con el tamaño base (en px, a 100 %) de cada tipo de texto. Lo
+/// que se deja vacío queda como siempre.
+#[component]
+fn TypeSizes() -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let typo = Memo::new(move |_| state.doc.with(|d| d.typography.clone()));
+    view! {
+        <div
+            id=TYPE_POP_ID
+            popover="auto"
+            class="mk-colorpop mk-typepop"
+            role="group"
+            aria-labelledby="mk-typepop-title"
+            on:keydown=move |ev| {
+                // Esc cierra solo el flotante, no todo el cajón.
+                if ev.key() == "Escape" {
+                    ev.stop_propagation();
+                }
+            }
+        >
+            <div class="mb-2 flex items-start gap-2">
+                <div>
+                    <h3 id="mk-typepop-title" class="text-sm font-bold">"Tamaños avanzados"</h3>
+                    <p class="text-[11px] text-base-content/60">"Tamaño base de cada texto, en px a 100 %."</p>
+                </div>
+                <button
+                    type="button"
+                    class="btn btn-ghost btn-xs btn-square ml-auto"
+                    aria-label="Cerrar tamaños avanzados"
+                    popovertarget=TYPE_POP_ID
+                    popovertargetaction="hide"
+                >
+                    <Icon name="close"/>
+                </button>
+            </div>
+            <div class="grid gap-1.5">
+                {TEXT_ROLES.iter().map(|(id, label, reference)| {
+                    let input_id = format!("mk-type-{id}");
+                    view! {
+                        <div class="flex items-center gap-2 text-xs">
+                            <label class="flex-1" for=input_id.clone()>{*label}</label>
+                            <input
+                                id=input_id
+                                type="number"
+                                class="input input-xs w-16 text-right"
+                                min=ROLE_MIN
+                                max=ROLE_MAX
+                                step="1"
+                                placeholder=reference.to_string()
+                                prop:value=move || typo.with(|t| t.sizes.get(*id).map(|v| v.to_string()).unwrap_or_default())
+                                on:change=move |ev| {
+                                    let raw = event_target_value(&ev);
+                                    state.apply_grouped(Some(&format!("tsize-{id}")), |d| {
+                                        match raw.trim().parse::<u16>() {
+                                            Ok(v) => {
+                                                d.typography.sizes.insert((*id).to_string(), v.clamp(ROLE_MIN, ROLE_MAX));
+                                            }
+                                            Err(_) => {
+                                                d.typography.sizes.remove(*id);
+                                            }
+                                        }
+                                    });
+                                }
+                            />
+                            <span class="text-[10px] text-base-content/55">"px"</span>
+                        </div>
                     }
                 }).collect_view()}
             </div>
-        </Section>
+            <div class="mt-3 flex items-center justify-between">
+                <button
+                    type="button"
+                    class="text-[11px] font-semibold text-primary hover:underline"
+                    prop:disabled=move || typo.with(|t| t.sizes.is_empty())
+                    on:click=move |_| state.apply(|d| d.typography.sizes.clear())
+                >"Volver a los de siempre"</button>
+                <button type="button" class="btn btn-primary btn-xs" popovertarget=TYPE_POP_ID popovertargetaction="hide">"Listo"</button>
+            </div>
+        </div>
     }
 }
 
