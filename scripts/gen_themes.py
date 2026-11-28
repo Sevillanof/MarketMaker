@@ -42,7 +42,7 @@ def skin():
         _,bg,sf,pn,ink,mu,pr,onp,ln,r,br,fb,fi,dk = T[t]
         f = 'Georgia, "Times New Roman", serif' if t in SERIF else 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif'
         w,l = HEAD.get(t,(400,"-.035em"))
-        out.append(f'.mk-store[data-theme="{t}"] {{ --mk-heading: {f}; --mk-hero-bg: {HERO[t]}; --mk-panel: {pn}; --mk-muted: {mu}; --mk-line: {ln}; --mk-footer-bg: {fb}; --mk-footer-ink: {fi}; --mk-btn-radius: {br}px; --mk-head-weight: {w}; --mk-head-track: {l}; }}')
+        out.append(f'.mk-store[data-theme="{t}"] {{ --mk-heading: {f}; --mk-hero-bg: {HERO[t]}; --mk-panel: {pn}; --mk-muted: {mu}; --mk-line: var(--color-base-300); --mk-footer-bg: {fb}; --mk-footer-ink: {fi}; --mk-btn-radius: {br}px; --mk-head-weight: {w}; --mk-head-track: {l}; }}')
     return "\n".join(out)
 def px(n): return min(n,32)
 def css():
