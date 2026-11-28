@@ -177,6 +177,9 @@ pub struct ProductGridProps {
     /// Esquinas de las fotos y tarjetas, en px.
     #[serde(default = "grid_radius")]
     pub radius: i64,
+    /// Opacidad del panel del diseño «Flotante translúcida» (75 a 100 %).
+    #[serde(default = "grid_panel_opacity")]
+    pub panel_opacity: i64,
     /// Fondo y texto propios (`#rrggbb`); vacío, los del tema.
     #[serde(default)]
     pub bg: String,
@@ -184,6 +187,9 @@ pub struct ProductGridProps {
     pub ink: String,
 }
 
+fn grid_panel_opacity() -> i64 {
+    75
+}
 fn grid_all_label() -> String {
     "Ver productos".to_string()
 }
@@ -208,6 +214,7 @@ impl Default for ProductGridProps {
             show_category: true,
             show_installments: true,
             radius: grid_radius(),
+            panel_opacity: grid_panel_opacity(),
             bg: String::new(),
             ink: String::new(),
         }
@@ -738,44 +745,29 @@ const TEXT_FIELDS: &[Field] = &[
     field("body", "Texto", long(1000)),
 ];
 const PRODUCT_GRID_FIELDS: &[Field] = &[
-    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
-    field(
-        "show_all",
-        "Mostrar enlace «Ver productos»",
-        FieldKind::Bool,
-    ),
-    field("all_label", "Texto del enlace", text(30)),
-    field("all_href", "Adónde lleva el enlace", FieldKind::Url),
     field(
         "limit",
         "Productos por página",
         FieldKind::Number { min: 1, max: 24 },
     ),
+    field("all_label", "Texto del enlace", text(30)),
+    field("all_href", "Destino del enlace", FieldKind::Url),
+    field("show_category", "Mostrar categoría", FieldKind::Bool),
     field(
-        "cols",
-        "Columnas en escritorio",
-        FieldKind::Range {
-            min: 2,
-            max: 6,
-            unit: "",
-        },
-    ),
-    field("show_category", "Mostrar la categoría", FieldKind::Bool),
-    field("show_installments", "Mostrar las cuotas", FieldKind::Bool),
-    field(
-        "radius",
-        "Esquinas",
-        FieldKind::Range {
-            min: 0,
-            max: 24,
-            unit: "px",
-        },
-    ),
-    field(
-        "card_favorite",
-        "Corazón de favoritos en las tarjetas",
+        "show_installments",
+        "Mostrar cuotas de ejemplo",
         FieldKind::Bool,
+    ),
+    field("card_favorite", "Mostrar favorito", FieldKind::Bool),
+    field(
+        "panel_opacity",
+        "Opacidad del panel",
+        FieldKind::Range {
+            min: 75,
+            max: 100,
+            unit: "%",
+        },
     ),
 ];
 const TAG_FILTER_FIELDS: &[Field] = &[
@@ -837,15 +829,6 @@ const NAV_LINK_ITEM: &[Field] = &[
 ];
 const NAVBAR_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
-    field(
-        "size",
-        "Tamaño del nombre",
-        FieldKind::Range {
-            min: 18,
-            max: 40,
-            unit: "px",
-        },
-    ),
     field("logo_url", "Logo", FieldKind::Url),
     field(
         "links",
@@ -863,10 +846,7 @@ const NAVBAR_FIELDS: &[Field] = &[
             options: NAV_MENU_OPTIONS,
         },
     ),
-    field("upper", "Enlaces en mayúsculas", FieldKind::Bool),
     field("search", "Buscador de productos", FieldKind::Bool),
-    adv("button_label", "Texto del botón", text(30)),
-    adv("button_href", "Enlace del botón", FieldKind::Url),
 ];
 
 const CATEGORY_ITEM: &[Field] = &[
@@ -990,7 +970,6 @@ const FAQ_ITEM: &[Field] = &[
     field("answer", "Respuesta", long(600)),
 ];
 const FAQ_FIELDS: &[Field] = &[
-    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
     field(
         "items",
@@ -1001,7 +980,6 @@ const FAQ_FIELDS: &[Field] = &[
             max: 12,
         },
     ),
-    field("open_first", "Primera pregunta abierta", FieldKind::Bool),
 ];
 
 const TESTIMONIAL_ITEM: &[Field] = &[
@@ -1076,7 +1054,6 @@ const FOOTER_LINK_ITEM: &[Field] = &[
 ];
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
-    field("show_dot", "Punto de acento", FieldKind::Bool),
     field("show_description", "Mostrar descripción", FieldKind::Bool),
     field("description", "Descripción", text(200)),
     field(

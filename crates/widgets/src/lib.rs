@@ -547,9 +547,10 @@ pub fn ProductGridWidget(
         favorite: props.cards.card_favorite,
     };
     let style = format!(
-        "{}--radius:{}px;",
+        "{}--radius:{}px;--panel-a:{}%;",
         nw_colors(&props.bg, &props.ink),
-        props.radius.clamp(0, 24)
+        props.radius.clamp(0, 24),
+        props.panel_opacity.clamp(75, 100)
     );
     view! {
         <div class="mk-nw h-full overflow-hidden">

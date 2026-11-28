@@ -79,6 +79,7 @@ pub fn NwCard(
                     })}
                 </strong>
                 {per.map(|c| view! { <p>{format!("{n} cuotas sin interés de {}", format_price(c))}</p> })}
+                <crate::cart::CardCartButton product=product.clone()/>
             </div>
             {open_cover(product.id.clone(), &product.name)}
         </article>

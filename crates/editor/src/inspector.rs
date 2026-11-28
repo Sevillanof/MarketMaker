@@ -295,9 +295,7 @@ fn group_title(type_name: &str, key: &str) -> &'static str {
         }
         ("Categories", "items") => "Accesos",
         ("Categories", _) => "Presentación",
-        ("ProductGrid", "kicker" | "title" | "show_all" | "all_label" | "all_href" | "limit") => {
-            "Contenido"
-        }
+        ("ProductGrid", "title" | "all_label" | "all_href" | "limit") => "Contenido",
         ("ProductGrid", "show_category" | "show_installments" | "card_favorite") => {
             "Información visible"
         }
@@ -305,9 +303,9 @@ fn group_title(type_name: &str, key: &str) -> &'static str {
         ("Card", "image_url" | "image_alt") => "Fotografía y diseño",
         ("Card", _) => "Contenido",
         ("Testimonials", _) => "Opinión",
-        ("Faq", "kicker" | "title" | "open_first") => "Encabezado",
+        ("Faq", "title") => "Encabezado",
         ("Faq", "items") => "Preguntas",
-        ("Footer", "brand" | "show_dot" | "show_description" | "description") => "Marca",
+        ("Footer", "brand" | "show_description" | "description") => "Marca",
         ("Footer", _) => "Enlaces y legal",
         _ => "",
     }
@@ -529,6 +527,8 @@ fn field_condition(key: &str) -> Option<(&'static str, &'static str)> {
         "card_transfer" | "card_installments" => Some(("card", "full")),
         // La oscuridad del velo solo existe en «Fotografía inmersiva».
         "veil" => Some(("@design", "2")),
+        // La opacidad del panel solo existe en «Flotante translúcida».
+        "panel_opacity" => Some(("@design", "3")),
         _ => None,
     }
 }

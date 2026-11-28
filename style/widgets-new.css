@@ -153,8 +153,8 @@
 @container nw (max-width:700px) { .mk-m2 .nw-product { padding:8px; border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); } }
 @container nw (min-width:701px) { .mk-d2 .nw-product .nw-product-info { padding:12px 5px 7px; } }
 @container nw (max-width:700px) { .mk-m2 .nw-product .nw-product-info { padding:12px 5px 7px; } }
-@container nw (min-width:701px) { .mk-d3 .nw-product .nw-product-info { position:relative; margin:-42px 10px 0; padding:13px; background:var(--panel); background:color-mix(in srgb,var(--panel) 75%,transparent); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 8px 22px #0002; } }
-@container nw (max-width:700px) { .mk-m3 .nw-product .nw-product-info { position:relative; margin:-42px 10px 0; padding:13px; background:var(--panel); background:color-mix(in srgb,var(--panel) 75%,transparent); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 8px 22px #0002; } }
+@container nw (min-width:701px) { .mk-d3 .nw-product .nw-product-info { position:relative; margin:-42px 10px 0; padding:13px; background:var(--panel); background:color-mix(in srgb,var(--panel) var(--panel-a,75%),transparent); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 8px 22px #0002; } }
+@container nw (max-width:700px) { .mk-m3 .nw-product .nw-product-info { position:relative; margin:-42px 10px 0; padding:13px; background:var(--panel); background:color-mix(in srgb,var(--panel) var(--panel-a,75%),transparent); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 8px 22px #0002; } }
 @container nw (min-width:701px) { .mk-d3 .nw-product .nw-product-info p { color:var(--ink); } }
 @container nw (max-width:700px) { .mk-m3 .nw-product .nw-product-info p { color:var(--ink); } }
 @media (prefers-reduced-transparency:reduce) {
