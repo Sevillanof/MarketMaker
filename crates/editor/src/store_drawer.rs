@@ -63,6 +63,15 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
             aria-labelledby="mk-drawer-title"
             on:keydown=move |ev| {
                 if ev.key() == "Escape" {
+                    // Con un flotante abierto, Esc cierra solo el flotante
+                    // (lo hace el navegador), no todo el panel.
+                    if ev
+                        .target()
+                        .and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok())
+                        .is_some_and(|el| el.closest("[popover]").ok().flatten().is_some())
+                    {
+                        return;
+                    }
                     ev.prevent_default();
                     close_drawer(ui);
                 }
