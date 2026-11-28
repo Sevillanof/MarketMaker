@@ -117,7 +117,7 @@ pub fn mix(a: &str, b: &str, t: f32) -> String {
 
 /// Los 20 colores de la variante opuesta de un tema (la oscura de uno claro
 /// y al revés), a partir de los cuatro de la original: fondo, texto,
-/// principal y acento. Reglas de la maqueta del panel de estilo.
+/// principal y borde (el "Acento" de la maqueta). Reglas de la maqueta.
 pub fn opposite_colors(
     bg: &str,
     _ink: &str,
@@ -148,10 +148,10 @@ pub fn opposite_colors(
         out[i] = match *key {
             "base-100" => bg2.clone(),
             "base-200" => mix(&bg2, &ink2, 0.08),
-            "base-300" => mix(&bg2, &ink2, 0.16),
+            // El borde ("Acento" de la maqueta) vive en base-300.
+            "base-300" => line2.clone(),
             "base-content" => ink2.clone(),
-            "primary" | "secondary" => pri2.clone(),
-            "accent" => line2.clone(),
+            "primary" | "secondary" | "accent" => pri2.clone(),
             "neutral" => ink2.clone(),
             "info" | "success" | "warning" | "error" => state_base.colors[i].to_string(),
             _ => String::new(),

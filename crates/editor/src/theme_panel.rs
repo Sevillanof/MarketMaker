@@ -6,7 +6,8 @@
 //! plantilla (un tema de daisyUI).
 
 use domain::{
-    opposite_colors, theme_base, theme_label, Corner, OFFERED_THEMES, THEMES, THEME_LABELS,
+    font_css, opposite_colors, theme_base, theme_label, Corner, FONT_PAIRS, OFFERED_THEMES, THEMES,
+    THEME_DEFAULTS, THEME_LABELS,
 };
 use leptos::prelude::*;
 
@@ -74,7 +75,7 @@ fn Appearance() -> impl IntoView {
                 c("base-100"),
                 c("base-content"),
                 c("primary"),
-                c("accent"),
+                c("base-300"),
                 c("primary-content"),
             ]
         });
@@ -96,7 +97,7 @@ fn Appearance() -> impl IntoView {
         )
     };
     view! {
-        <Section title="Apariencia" id="mk-th-appearance" help="Se refleja en los widgets.">
+        <Section title="Apariencia" id="mk-th-appearance" sub=Signal::derive(|| "Se refleja en los widgets".to_string())>
             <label class="flex items-baseline justify-between text-xs font-semibold" for="mk-th-radius">
                 "Esquinas"
                 <output class="font-normal text-base-content/70" for="mk-th-radius">{label}</output>
@@ -111,7 +112,7 @@ fn Appearance() -> impl IntoView {
             <input
                 id="mk-th-radius"
                 type="range"
-                class="range range-primary range-xs mt-2 w-full"
+                class="mk-range mt-2"
                 min="0"
                 max="48"
                 step="1"
@@ -144,7 +145,8 @@ fn Appearance() -> impl IntoView {
                 <SwitchRow
                     id="mk-th-depth"
                     title="Relieve sutil"
-                    hint="Sombra en tarjetas y botones."
+                    hint="Sombra en tarjetas y botones"
+                    icon="\u{25c8}"
                     checked=Signal::derive(move || depth.get())
                     on_change=Callback::new(move |on| {
                         state.apply(|d| d.style.depth = Some(on));
@@ -154,7 +156,8 @@ fn Appearance() -> impl IntoView {
                 <SwitchRow
                     id="mk-th-noise"
                     title="Textura suave"
-                    hint="Grano fino sobre superficies, no sobre fotos."
+                    hint="Grano fino sobre superficies, no fotos"
+                    icon="\u{2059}"
                     checked=Signal::derive(move || noise.get())
                     on_change=Callback::new(move |on| {
                         state.apply(|d| d.style.noise = Some(on));
@@ -185,11 +188,13 @@ fn SwitchRow(
     id: &'static str,
     title: &'static str,
     hint: &'static str,
+    icon: &'static str,
     checked: Signal<bool>,
     on_change: Callback<bool>,
 ) -> impl IntoView {
     view! {
-        <div class="flex items-center gap-2.5 rounded-field border border-base-300 bg-base-100 p-2">
+        <div class="mk-switchrow flex items-center gap-2.5 rounded-field border border-base-300 bg-base-100 p-2">
+            <span class="mk-effecticon" aria-hidden="true">{icon}</span>
             <div class="min-w-0">
                 <label for=id class="block text-[11px] font-bold">{title}</label>
                 <small class="block text-[10px] text-base-content/60">{hint}</small>
@@ -219,7 +224,7 @@ fn sample_colors(state: EditorState, theme: &str, alt: bool) -> [String; 5] {
                 c("base-100"),
                 c("base-content"),
                 c("primary"),
-                c("accent"),
+                c("base-300"),
                 c("primary-content"),
             ]
         } else {
@@ -230,7 +235,7 @@ fn sample_colors(state: EditorState, theme: &str, alt: bool) -> [String; 5] {
                     &c("base-100"),
                     &c("base-content"),
                     &c("primary"),
-                    &c("accent"),
+                    &c("base-300"),
                     !b.dark,
                 );
                 let i = |k: &str| o[domain::color_index(k).unwrap_or(0)].clone();
@@ -238,7 +243,7 @@ fn sample_colors(state: EditorState, theme: &str, alt: bool) -> [String; 5] {
                     i("base-100"),
                     i("base-content"),
                     i("primary"),
-                    i("accent"),
+                    i("base-300"),
                     i("primary-content"),
                 ]
             } else {
@@ -246,7 +251,7 @@ fn sample_colors(state: EditorState, theme: &str, alt: bool) -> [String; 5] {
                     c("base-100"),
                     c("base-content"),
                     c("primary"),
-                    c("accent"),
+                    c("base-300"),
                     c("primary-content"),
                 ]
             }
@@ -297,6 +302,17 @@ fn Themes() -> impl IntoView {
         let t = theme.get();
         sample_colors(state, &t, alt())
     };
+    // Letras del tema (su pareja de fábrica), como en la maqueta.
+    let sample_font = move || {
+        theme.with(|t| {
+            THEME_DEFAULTS
+                .iter()
+                .find(|(id, ..)| id == t)
+                .and_then(|(_, pair, _)| FONT_PAIRS.get(*pair))
+                .map(|p| format!("font-family:{}", font_css(p.heading)))
+                .unwrap_or_default()
+        })
+    };
     let set_dark = move |dark: bool| {
         let native = theme.with_untracked(|t| theme_base(t).dark);
         ui.edit_alt.set(dark != native);
@@ -305,10 +321,10 @@ fn Themes() -> impl IntoView {
         ("base-100", "Fondo"),
         ("base-content", "Texto"),
         ("primary", "Principal"),
-        ("accent", "Acento"),
+        ("base-300", "Acento"),
     ];
     view! {
-        <Section title="Temas" id="mk-th-themes" help="Cada tema tiene versión clara y oscura, que se editan por separado.">
+        <Section title="Temas" id="mk-th-themes" sub=Signal::derive(move || format!("{} seleccionado", theme.with(|t| theme_label(t).to_string())))>
             <div role="group" aria-label="Temas de la tienda">
                 <div class="mk-fontpick">
                     <button type="button" class="mk-fontarrow" aria-label="Tema anterior" on:click=move |_| step(-1)>
@@ -333,11 +349,11 @@ fn Themes() -> impl IntoView {
                                 let [_, ink, ..] = colors();
                                 format!("border-color:color-mix(in srgb,{ink} 16%,transparent)")
                             }>
-                                <b class="text-[10px] tracking-tight">"nido."</b>
+                                <b class="text-[10px] tracking-tight" style=sample_font>"nido."</b>
                                 <span class="flex gap-[3px]"><i class="h-[5px] w-[5px] rounded-full bg-current opacity-40"></i><i class="h-[5px] w-[5px] rounded-full bg-current opacity-40"></i><i class="h-[5px] w-[5px] rounded-full bg-current opacity-40"></i></span>
                             </div>
                             <div class="flex items-center justify-between gap-2 pt-1.5">
-                                <strong class="min-w-0 text-xs leading-tight">"Tu tienda, tu estilo."</strong>
+                                <strong class="min-w-0 text-xs leading-tight" style=sample_font>"Tu tienda, tu estilo."</strong>
                                 <span class="shrink-0 rounded-[3px] px-1.5 py-1 text-[8px] font-bold" style=move || {
                                     let [_, _, pri, _, on] = colors();
                                     format!("background:{pri};color:{on}")
@@ -367,8 +383,8 @@ fn Themes() -> impl IntoView {
                     class="inline-flex items-center gap-2 rounded-field border border-base-300 bg-base-200/60 px-2.5 py-1.5 text-xs font-bold text-primary"
                     popovertarget=THEME_POP_ID
                 >
-                    <span aria-hidden="true">"◈"</span>
-                    "Editar tema"
+                    <span aria-hidden="true">"\u{270e}"</span>
+                    "Editar tema actual"
                 </button>
                 <div class="mk-modepick" role="group" aria-label="Versión del tema que se edita">
                     <button

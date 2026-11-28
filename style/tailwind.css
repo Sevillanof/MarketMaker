@@ -3902,18 +3902,18 @@ dialog.mk-wiz::backdrop {
 .mk-wiz-sws .is-custom i { background: conic-gradient(#f43f5e, #f59e0b, #10b981, #3b82f6, #8b5cf6, #f43f5e); }
 .mk-wiz-note { margin: 0; padding: 10px 14px; font-size: 0.8125rem; color: color-mix(in oklab, var(--color-base-content) 68%, transparent); }
 /* Valores de cada tema para las pieles de la tienda (scripts/gen_themes.py). */
-.mk-store[data-theme="linea"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #e8e3d8; --mk-panel: #fffefa; --mk-muted: #625e54; --mk-line: #d9d3c7; --mk-footer-bg: #35382e; --mk-footer-ink: #fffefa; --mk-btn-radius: 2px; --mk-head-weight: 400; --mk-head-track: -.035em; }
-.mk-store[data-theme="pulso"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #e3e9ff; --mk-panel: #ffffff; --mk-muted: #485574; --mk-line: #cbd4f5; --mk-footer-bg: #111d4c; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 800; --mk-head-track: -.045em; }
-.mk-store[data-theme="noche"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #2b3d31; --mk-panel: #202c26; --mk-muted: #c6d1c4; --mk-line: #485b4d; --mk-footer-bg: #101a15; --mk-footer-ink: #f4f3e8; --mk-btn-radius: 4px; --mk-head-weight: 400; --mk-head-track: -.035em; }
-.mk-store[data-theme="brisa"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #dceff0; --mk-panel: #ffffff; --mk-muted: #405c64; --mk-line: #567f89; --mk-footer-bg: #153f4e; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 650; --mk-head-track: -.04em; }
-.mk-store[data-theme="tinta"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #ffffff; --mk-panel: #ffffff; --mk-muted: #52514e; --mk-line: #817e78; --mk-footer-bg: #171717; --mk-footer-ink: #ffffff; --mk-btn-radius: 0px; --mk-head-weight: 400; --mk-head-track: -.035em; }
-.mk-store[data-theme="citrico"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #ffead0; --mk-panel: #fffdf6; --mk-muted: #705039; --mk-line: #96704f; --mk-footer-bg: #733013; --mk-footer-ink: #fffaf0; --mk-btn-radius: 8px; --mk-head-weight: 800; --mk-head-track: -.045em; }
-.mk-store[data-theme="aura"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #eee8f5; --mk-panel: #ffffff; --mk-muted: #62526d; --mk-line: #88719a; --mk-footer-bg: #49364f; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 400; --mk-head-track: -.035em; }
-.mk-store[data-theme="brote"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #e2edda; --mk-panel: #ffffff; --mk-muted: #4c634e; --mk-line: #6a8a6e; --mk-footer-bg: #244732; --mk-footer-ink: #ffffff; --mk-btn-radius: 4px; --mk-head-weight: 400; --mk-head-track: -.035em; }
-.mk-store[data-theme="orbita"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #203854; --mk-panel: #1b2c45; --mk-muted: #c6d4e4; --mk-line: #7894aa; --mk-footer-bg: #091626; --mk-footer-ink: #f5f8fc; --mk-btn-radius: 4px; --mk-head-weight: 750; --mk-head-track: -.04em; }
-.mk-store[data-theme="dalia"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #f7e6e5; --mk-panel: #ffffff; --mk-muted: #705057; --mk-line: #9c7278; --mk-footer-bg: #5b3039; --mk-footer-ink: #ffffff; --mk-btn-radius: 2px; --mk-head-weight: 400; --mk-head-track: -.035em; }
-.mk-store[data-theme="cacao"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #47332c; --mk-panel: #352720; --mk-muted: #e2cec0; --mk-line: #aa8d77; --mk-footer-bg: #1c120f; --mk-footer-ink: #fff7eb; --mk-btn-radius: 2px; --mk-head-weight: 400; --mk-head-track: -.035em; }
-.mk-store[data-theme="sol"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #f8e394; --mk-panel: #ffffff; --mk-muted: #65552b; --mk-line: #95752b; --mk-footer-bg: #3c3010; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 800; --mk-head-track: -.045em; }
+.mk-store[data-theme="linea"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #e8e3d8; --mk-panel: #fffefa; --mk-muted: #625e54; --mk-line: var(--color-base-300); --mk-footer-bg: #35382e; --mk-footer-ink: #fffefa; --mk-btn-radius: 2px; --mk-head-weight: 400; --mk-head-track: -.035em; }
+.mk-store[data-theme="pulso"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #e3e9ff; --mk-panel: #ffffff; --mk-muted: #485574; --mk-line: var(--color-base-300); --mk-footer-bg: #111d4c; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 800; --mk-head-track: -.045em; }
+.mk-store[data-theme="noche"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #2b3d31; --mk-panel: #202c26; --mk-muted: #c6d1c4; --mk-line: var(--color-base-300); --mk-footer-bg: #101a15; --mk-footer-ink: #f4f3e8; --mk-btn-radius: 4px; --mk-head-weight: 400; --mk-head-track: -.035em; }
+.mk-store[data-theme="brisa"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #dceff0; --mk-panel: #ffffff; --mk-muted: #405c64; --mk-line: var(--color-base-300); --mk-footer-bg: #153f4e; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 650; --mk-head-track: -.04em; }
+.mk-store[data-theme="tinta"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #ffffff; --mk-panel: #ffffff; --mk-muted: #52514e; --mk-line: var(--color-base-300); --mk-footer-bg: #171717; --mk-footer-ink: #ffffff; --mk-btn-radius: 0px; --mk-head-weight: 400; --mk-head-track: -.035em; }
+.mk-store[data-theme="citrico"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #ffead0; --mk-panel: #fffdf6; --mk-muted: #705039; --mk-line: var(--color-base-300); --mk-footer-bg: #733013; --mk-footer-ink: #fffaf0; --mk-btn-radius: 8px; --mk-head-weight: 800; --mk-head-track: -.045em; }
+.mk-store[data-theme="aura"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #eee8f5; --mk-panel: #ffffff; --mk-muted: #62526d; --mk-line: var(--color-base-300); --mk-footer-bg: #49364f; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 400; --mk-head-track: -.035em; }
+.mk-store[data-theme="brote"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #e2edda; --mk-panel: #ffffff; --mk-muted: #4c634e; --mk-line: var(--color-base-300); --mk-footer-bg: #244732; --mk-footer-ink: #ffffff; --mk-btn-radius: 4px; --mk-head-weight: 400; --mk-head-track: -.035em; }
+.mk-store[data-theme="orbita"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #203854; --mk-panel: #1b2c45; --mk-muted: #c6d4e4; --mk-line: var(--color-base-300); --mk-footer-bg: #091626; --mk-footer-ink: #f5f8fc; --mk-btn-radius: 4px; --mk-head-weight: 750; --mk-head-track: -.04em; }
+.mk-store[data-theme="dalia"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #f7e6e5; --mk-panel: #ffffff; --mk-muted: #705057; --mk-line: var(--color-base-300); --mk-footer-bg: #5b3039; --mk-footer-ink: #ffffff; --mk-btn-radius: 2px; --mk-head-weight: 400; --mk-head-track: -.035em; }
+.mk-store[data-theme="cacao"] { --mk-heading: Georgia, "Times New Roman", serif; --mk-hero-bg: #47332c; --mk-panel: #352720; --mk-muted: #e2cec0; --mk-line: var(--color-base-300); --mk-footer-bg: #1c120f; --mk-footer-ink: #fff7eb; --mk-btn-radius: 2px; --mk-head-weight: 400; --mk-head-track: -.035em; }
+.mk-store[data-theme="sol"] { --mk-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --mk-hero-bg: #f8e394; --mk-panel: #ffffff; --mk-muted: #65552b; --mk-line: var(--color-base-300); --mk-footer-bg: #3c3010; --mk-footer-ink: #ffffff; --mk-btn-radius: 999px; --mk-head-weight: 800; --mk-head-track: -.045em; }
 
 /* Pieles de los 12 temas (maqueta temas-tienda.html): títulos, portada y pie.
    Solo con el diseño Clásico de cada bloque (mk-d1); los otros cuatro diseños
@@ -4278,3 +4278,26 @@ dialog.mk-wiz::backdrop {
 .mk-sec-chev { transition: rotate 0.15s ease; color: color-mix(in oklab, var(--color-base-content) 55%, transparent); }
 .mk-sec:not([open]) .mk-sec-chev { rotate: -90deg; }
 .mk-sec:not([open]) .mk-sec-head { padding-bottom: 0.7rem; }
+
+/* Deslizadores del panel Estilo: el nativo, con el color de la marca. */
+.mk-range {
+  display: block;
+  width: 100%;
+  accent-color: var(--color-primary);
+}
+/* Interruptores de Apariencia: ícono en un recuadro, como la maqueta. */
+.mk-effecticon {
+  display: grid;
+  place-items: center;
+  width: 2.05rem;
+  height: 2.05rem;
+  flex: none;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-field);
+  background: var(--color-base-200);
+  color: var(--color-primary);
+  font-size: 0.95rem;
+}
+.mk-switchrow:has(input:checked) .mk-effecticon {
+  background: color-mix(in oklab, var(--color-primary) 12%, var(--color-base-100));
+}

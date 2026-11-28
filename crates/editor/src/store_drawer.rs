@@ -26,16 +26,20 @@ pub(crate) fn Section(
     /// Ayuda en un ⓘ al lado del título, si el título no se entiende solo.
     #[prop(optional)]
     help: &'static str,
+    /// Subtítulo visible al lado del título (como en la maqueta).
+    #[prop(optional, into)]
+    sub: Option<Signal<String>>,
     children: Children,
 ) -> impl IntoView {
     view! {
         <details class="mk-sec" open>
             <summary class="mk-sec-head">
                 <Icon name="chevron-down" class="mk-sec-chev h-4 w-4"/>
-                <h3 id=id class="relative flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">
+                <h3 id=id class="relative flex items-center gap-1.5 text-xs font-bold text-base-content">
                     {title}
                     {(!help.is_empty()).then(|| view! { <ui::HelpTip id=format!("tip-{id}") label=title text=help/> })}
                 </h3>
+                {sub.map(|t| view! { <small class="ml-auto truncate text-[10px] font-normal text-base-content/55">{move || t.get()}</small> })}
             </summary>
             <div class="pb-3 pt-2.5">{children()}</div>
         </details>
@@ -77,17 +81,40 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
                 }
             }
         >
-            <div class="flex h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4">
-                <h2 id="mk-drawer-title" tabindex="-1" class="font-bold focus:outline-none">"Estilo de la tienda"</h2>
+            <div class="flex h-14 shrink-0 items-center gap-2 border-b border-base-300 px-3">
+                <span class="grid h-7 w-7 shrink-0 place-items-center rounded-field bg-primary/10 text-primary" aria-hidden="true">"\u{2726}"</span>
+                <div class="min-w-0 leading-tight">
+                    <h2 id="mk-drawer-title" tabindex="-1" class="truncate font-bold focus:outline-none">"Estilo de la tienda"</h2>
+                    <p class="truncate text-[10.5px] text-base-content/60">"Personalizá los valores globales"</p>
+                </div>
                 <button
                     type="button"
-                    class="btn btn-primary btn-xs ml-auto"
+                    class="btn btn-ghost btn-xs btn-square ml-auto"
+                    aria-label="Restablecer ajustes de estilo"
+                    title="Restablecer ajustes de estilo"
+                    on:click=move |_| {
+                        // Letras, apariencia y colores de las dos versiones
+                        // vuelven a lo que trae el tema; una sola operación
+                        // deshacible.
+                        state.apply(|d| {
+                            let theme = d.theme.clone();
+                            d.style.reset_theme();
+                            d.style.depth = Some(true);
+                            d.typography.scale = 0;
+                            d.typography.sizes.clear();
+                            d.style.switch_theme(&theme, &mut d.typography);
+                        });
+                    }
+                >"\u{21ba}"</button>
+                <button
+                    type="button"
+                    class="btn btn-primary btn-xs"
                     title="Guardar el borrador (no publica)"
                     on:click=move |_| ui.save_clicks.update(|n| *n += 1)
                 >"Guardar"</button>
                 <button
                     type="button"
-                    class="btn btn-ghost btn-sm btn-square"
+                    class="btn btn-ghost btn-xs btn-square"
                     aria-label="Cerrar Estilo"
                     title="Cerrar (Esc)"
                     on:click=move |_| close_drawer(ui)
@@ -171,7 +198,12 @@ pub(crate) fn Letters() -> impl IntoView {
     };
     let families = move || {
         typo.with(|t| {
-            let label = |id: &str| domain::font(id).map_or(id.to_string(), |f| f.label.to_string());
+            let label = |id: &str| {
+                if id == "system" {
+                    return "Sistema".to_string();
+                }
+                domain::font(id).map_or(id.to_string(), |f| f.label.to_string())
+            };
             if t.heading == t.body {
                 label(&t.heading)
             } else {
@@ -182,7 +214,7 @@ pub(crate) fn Letters() -> impl IntoView {
     let percent = move || typo.with(|t| t.scale_percent());
     let percent_text = move || format!("{} %", percent().to_string().replace('.', ","));
     view! {
-        <Section title="Letras" id="mk-dr-letters" help="Se aplica a toda la tienda.">
+        <Section title="Letras" id="mk-dr-letters" sub=Signal::derive(|| "Se aplica a toda la tienda".to_string())>
             <div role="group" aria-label="Pareja tipográfica">
                 <div class="mk-fontpick">
                     <button type="button" class="mk-fontarrow" aria-label="Tipografía anterior" on:click=move |_| step(-1)>
@@ -223,7 +255,7 @@ pub(crate) fn Letters() -> impl IntoView {
                 <input
                     id="mk-dr-tscale"
                     type="range"
-                    class="range range-primary range-xs mt-1 w-full"
+                    class="mk-range mt-1.5"
                     min=SCALE_MIN
                     max=SCALE_MAX
                     step=SCALE_STEP
@@ -236,18 +268,20 @@ pub(crate) fn Letters() -> impl IntoView {
                     }
                 />
                 <div class="flex justify-between text-[10.5px] text-base-content/55" aria-hidden="true">
-                    <span>"Más chico"</span>
-                    <span>"Más grande"</span>
+                    <span>"A\u{2212} Más chico"</span>
+                    <span>"A+ Más grande"</span>
                 </div>
+                <p class="mt-1 text-[10px] leading-snug text-base-content/60">"Aumenta o reduce todos los tamaños proporcionalmente."</p>
             </div>
             <button
                 type="button"
                 class="mt-2.5 flex w-full items-center justify-between rounded-field border border-base-300 bg-base-200/60 px-2.5 py-2 text-left text-xs font-bold text-primary"
                 popovertarget=TYPE_POP_ID
             >
-                "Tamaños avanzados"
-                <Icon name="chevron-down"/>
+                "Tamaños avanzados \u{b7} editar por tipo de texto"
+                <span aria-hidden="true">"\u{2197}"</span>
             </button>
+            <p class="mt-2 text-[10px] leading-snug text-base-content/60">"Los tamaños y fuentes elegidos dentro de un widget se mantienen como excepciones."</p>
             <TypeSizes/>
         </Section>
     }
@@ -411,7 +445,6 @@ pub(crate) fn Margins() -> impl IntoView {
            <div class="mt-2.5">
                <p class="mb-1 flex items-baseline gap-1.5">
                    <span class="text-xs font-semibold" id="mk-dr-margins">"Márgenes"</span>
-                   <span class="text-[10.5px] text-base-content/55">"borde de la pantalla"</span>
                    <button
                        type="button"
                        class="ml-auto text-[11px] font-semibold text-primary hover:underline"
@@ -478,9 +511,11 @@ pub(crate) fn Margins() -> impl IntoView {
                <p class="mt-1 text-center text-[10.5px] text-base-content/55">
                    {move || {
                        let (w, h) = screen.get();
-                       format!("Tu pantalla: {w:.0} \u{d7} {h:.0} px")
+                       let _ = (w, h);
+                       "Vista de los márgenes de tu página"
                    }}
                </p>
+               <p class="mt-1 text-[10px] leading-snug text-base-content/60">"Los márgenes se aplican a cada pantalla. En pantallas pequeñas, los laterales se limitan para mantener visible el contenido."</p>
                <div class="mt-3">
                    <label class="flex items-baseline justify-between text-xs font-semibold" for="mk-dr-gap">
                        "Espacio entre widgets"
@@ -491,7 +526,7 @@ pub(crate) fn Margins() -> impl IntoView {
                    <input
                        id="mk-dr-gap"
                        type="range"
-                       class="range range-primary range-xs mt-1 w-full"
+                       class="mk-range mt-1.5"
                        min="0"
                        max=MAX_GAP
                        step=GAP_STEP
@@ -508,6 +543,7 @@ pub(crate) fn Margins() -> impl IntoView {
                        <span>"Sin espacio"</span>
                        <span>"Más aire"</span>
                    </div>
+                   <p class="mt-1 text-[10px] leading-snug text-base-content/60">"El espacio separa los bloques; no cambia su contenido ni su orden."</p>
                </div>
            </div>
        }

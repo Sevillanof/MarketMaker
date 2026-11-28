@@ -458,7 +458,7 @@ impl StoreStyle {
             &c("base-100"),
             &c("base-content"),
             &c("primary"),
-            &c("accent"),
+            &c("base-300"),
             !theme_base(theme).dark,
         )[i]
             .clone()
