@@ -6,7 +6,7 @@
 //! resúmenes; las opciones nuevas se suman como una sección más.
 
 use domain::{
-    font_css, Side, StoreLayout, FONT_PAIRS, GRID_COLS, MAX_PAD, PAD_STEP, ROW_PX, STORE_SIZES,
+    font_css, Side, StoreLayout, FONT_PAIRS, GAP_STEP, GRID_COLS, MAX_GAP, MAX_PAD, PAD_STEP, ROW_PX, STORE_SIZES,
 };
 use leptos::prelude::*;
 
@@ -268,7 +268,7 @@ pub(crate) fn Margins() -> impl IntoView {
                                let (w, _) = screen.get();
                                let l = layout.get();
                                let avail = (w - f64::from(l.pad_left) - f64::from(l.pad_right)).max(1.0);
-                               let content = if l.is_full() { avail } else { f64::from(l.max_width).min(avail) };
+                               let content = avail;
                                let cols = f64::from(GRID_COLS);
                                state
                                    .nodes()
@@ -301,6 +301,34 @@ pub(crate) fn Margins() -> impl IntoView {
                        format!("Tu pantalla: {w:.0} \u{d7} {h:.0} px")
                    }}
                </p>
+               <div class="mt-3">
+                   <label class="flex items-baseline justify-between text-xs font-semibold" for="mk-dr-gap">
+                       "Espacio entre widgets"
+                       <output class="font-normal text-base-content/70" for="mk-dr-gap">
+                           {move || format!("{} px", layout.with(|l| l.gap))}
+                       </output>
+                   </label>
+                   <input
+                       id="mk-dr-gap"
+                       type="range"
+                       class="range range-primary range-xs mt-1 w-full"
+                       min="0"
+                       max=MAX_GAP
+                       step=GAP_STEP
+                       prop:value=move || layout.with(|l| l.gap).to_string()
+                       aria-valuetext=move || format!("{} píxeles entre widgets", layout.with(|l| l.gap))
+                       on:input=move |ev| {
+                           if let Ok(px) = event_target_value(&ev).trim().parse::<i32>() {
+                               state.apply_grouped(Some("gap"), |d| d.layout.set_gap(px));
+                               ui.flash_changed("margins");
+                           }
+                       }
+                   />
+                   <div class="flex justify-between text-[10.5px] text-base-content/55" aria-hidden="true">
+                       <span>"Sin espacio"</span>
+                       <span>"Más aire"</span>
+                   </div>
+               </div>
            </div>
        }
 }

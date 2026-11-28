@@ -374,11 +374,8 @@ fn Thumb(node: Node, design: u8, products: StoredValue<Vec<Product>>) -> impl In
     let layer_w = if in_modal {
         Layer::ProductModal.design_width()
     } else {
-        // El ancho de la tienda (con "Ancho completo", el de siempre).
-        state.doc.with_untracked(|d| match d.layout.max_width {
-            0 => Layer::Page(0).design_width(),
-            w => w,
-        })
+        // Sin ancho máximo: el de siempre.
+        Layer::Page(0).design_width()
     };
     let w = f64::from(node.size.w) * f64::from(layer_w) / f64::from(domain::GRID_COLS);
     let h = f64::from(node.size.h) * f64::from(domain::ROW_PX);
