@@ -102,10 +102,15 @@ pub fn starter_doc(name: &str) -> PageDoc {
             node
         })
         .collect();
-    PageDoc {
+    let mut doc = PageDoc {
         nodes,
         ..PageDoc::default()
-    }
+    };
+    // Sin plantilla, la tienda arranca con las letras y las esquinas que la
+    // maqueta del panel de Estilo da a su tema (Línea: Editorial, 0 px).
+    let theme = doc.theme.clone();
+    doc.style.switch_theme(&theme, &mut doc.typography);
+    doc
 }
 
 /// Lo que muestra cada cifra del bloque «Cifras destacadas» hasta que la
