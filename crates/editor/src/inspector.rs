@@ -303,9 +303,9 @@ fn group_title(type_name: &str, key: &str) -> &'static str {
         ("Card", "image_url" | "image_alt") => "Fotografía y diseño",
         ("Card", _) => "Contenido",
         ("Testimonials", _) => "Opinión",
-        ("Faq", "kicker" | "title" | "open_first") => "Encabezado",
+        ("Faq", "title") => "Encabezado",
         ("Faq", "items") => "Preguntas",
-        ("Footer", "brand" | "show_dot" | "show_description" | "description") => "Marca",
+        ("Footer", "brand" | "show_description" | "description") => "Marca",
         ("Footer", _) => "Enlaces y legal",
         _ => "",
     }

@@ -970,7 +970,6 @@ const FAQ_ITEM: &[Field] = &[
     field("answer", "Respuesta", long(600)),
 ];
 const FAQ_FIELDS: &[Field] = &[
-    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
     field(
         "items",
@@ -981,7 +980,6 @@ const FAQ_FIELDS: &[Field] = &[
             max: 12,
         },
     ),
-    field("open_first", "Primera pregunta abierta", FieldKind::Bool),
 ];
 
 const TESTIMONIAL_ITEM: &[Field] = &[
@@ -1056,7 +1054,6 @@ const FOOTER_LINK_ITEM: &[Field] = &[
 ];
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
-    field("show_dot", "Punto de acento", FieldKind::Bool),
     field("show_description", "Mostrar descripción", FieldKind::Bool),
     field("description", "Descripción", text(200)),
     field(
