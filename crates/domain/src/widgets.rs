@@ -974,11 +974,6 @@ const BENEFITS_FIELDS: &[Field] = &[
             max: 6,
         },
     ),
-    field(
-        "show_text",
-        "Mostrar el texto de cada beneficio",
-        FieldKind::Bool,
-    ),
 ];
 
 const CARD_FIELDS: &[Field] = &[

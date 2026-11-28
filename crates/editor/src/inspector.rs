@@ -727,10 +727,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn button_fields_get_their_own_group() {
+    fn button_fields_stay_with_the_content() {
         let g = group_fields(Widget::defaults("Banner").unwrap().fields());
-        let (label, href) = g.button.expect("el banner tiene botón");
-        assert_eq!((label.key, href.key), ("button_label", "button_href"));
+        assert!(g.button.is_none());
+        assert!(g.basic.iter().any(|f| f.key == "button_label"));
         assert!(g.basic.iter().any(|f| f.key == "title"));
     }
 }

@@ -248,6 +248,10 @@ fn FieldInput(
     };
 
     if let FieldKind::List { item, min, max } = &field.kind {
+        if field.label == "Beneficios" || field.label == "Categorías" {
+            return view! { <RowsList products field item min=*min max=*max uid value set/> }
+                .into_any();
+        }
         return view! { <ListInput products field item min=*min max=*max uid value set/> }
             .into_any();
     }
@@ -1420,5 +1424,296 @@ fn ProductPicker(
                 }}
             </p>
         </div>
+    }
+}
+
+/// Foto de un acceso: selector flotante con Mis fotos, subir desde la
+/// computadora y pegar un enlace. Se cierra con Esc o tocando afuera.
+#[component]
+fn PhotoPopover(
+    uid: String,
+    current: Signal<String>,
+    pick: Callback<String>,
+    open: RwSignal<bool>,
+) -> impl IntoView {
+    let photos = use_context::<MyPhotos>().unwrap_or_else(MyPhotos::new);
+    photos.ensure_loaded();
+    let file_id = StoredValue::new(format!("{uid}-file"));
+    let link_open = RwSignal::new(false);
+    let done = Callback::new(move |item: MediaItem| {
+        pick.run(item.url);
+        open.set(false);
+    });
+    view! {
+        <div class="fixed inset-0 z-20" on:click=move |_| open.set(false)></div>
+        <div
+            class="absolute left-0 top-full z-30 mt-2 w-full rounded-box bg-base-100 p-4 shadow-xl ring-1 ring-base-300"
+            role="dialog"
+            aria-label="Elegir la foto"
+            on:keydown=move |ev| if ev.key() == "Escape" { open.set(false) }
+        >
+            <p class="mb-3 text-xs text-base-content/70">"Elegí una de tus fotos"</p>
+            {move || match (photos.items.get(), photos.load_error.get()) {
+                (_, Some(err)) => view! { <p class="text-xs text-error">{err}</p> }.into_any(),
+                (None, None) => view! {
+                    <div class="grid grid-cols-3 gap-2" aria-busy="true">
+                        <div class="skeleton aspect-square w-full"></div>
+                        <div class="skeleton aspect-square w-full"></div>
+                        <div class="skeleton aspect-square w-full"></div>
+                    </div>
+                }.into_any(),
+                (Some(list), None) => view! {
+                    <ul class="grid max-h-56 grid-cols-3 gap-2 overflow-y-auto p-1">
+                        {list.into_iter().map(|p| {
+                            let url = p.url.clone();
+                            let url2 = p.url.clone();
+                            let url3 = p.url.clone();
+                            let thumb = domain::media_base(&p.url)
+                                .map(|b| format!("{b}/480.webp"))
+                                .unwrap_or_else(|| p.url.clone());
+                            view! {
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="block aspect-square w-full overflow-hidden rounded-box bg-base-200"
+                                        class:ring-2=move || current.get() == url
+                                        class:ring-primary=move || current.get() == url2
+                                        class:ring-offset-2=move || current.get() == url3
+                                        aria-label=p.name.clone()
+                                        on:click={
+                                            let u = p.url.clone();
+                                            move |_| { pick.run(u.clone()); open.set(false); }
+                                        }
+                                    >
+                                        <img src=thumb alt="" loading="lazy" class="h-full w-full object-cover"/>
+                                    </button>
+                                </li>
+                            }
+                        }).collect_view()}
+                        <li>
+                            <label
+                                for=file_id.get_value()
+                                class="grid aspect-square w-full cursor-pointer place-items-center rounded-box border border-dashed border-base-content/30 text-base-content/70"
+                                tabindex="0"
+                                role="button"
+                                aria-label="Subir una foto nueva"
+                            >
+                                <Icon name="plus" class="h-5 w-5"/>
+                            </label>
+                        </li>
+                    </ul>
+                }.into_any(),
+            }}
+            {move || {
+                let errors = photos.upload_errors.get();
+                (!errors.is_empty()).then(|| view! {
+                    <ul class="mt-2 text-xs text-error" role="alert">
+                        {errors.into_iter().map(|e| view! { <li>{e}</li> }).collect_view()}
+                    </ul>
+                })
+            }}
+            <input
+                id=file_id.get_value()
+                type="file"
+                class="sr-only"
+                tabindex="-1"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                on:change=move |ev| photos.upload(take_files(&ev), done)
+            />
+            <div class="mt-4 flex items-center justify-between text-sm font-semibold text-primary">
+                <label for=file_id.get_value() class="cursor-pointer">"Subir desde la compu"</label>
+                <button type="button" class="font-semibold" on:click=move |_| link_open.update(|o| *o = !*o)>
+                    "Pegar enlace"
+                </button>
+            </div>
+            <div class="mt-3" class:hidden=move || !link_open.get()>
+                <LinkImport photos done uid=format!("{uid}-link") small=true/>
+            </div>
+        </div>
+    }
+}
+
+/// Lista en filas limpias, sin acordeón: Beneficios (ícono a la vista) y
+/// Accesos (foto, nombre y destino).
+#[component]
+fn RowsList(
+    products: StoredValue<Vec<Product>>,
+    field: &'static Field,
+    item: &'static [Field],
+    min: usize,
+    max: usize,
+    uid: String,
+    value: Signal<serde_json::Value>,
+    set: Callback<serde_json::Value>,
+) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let benefits = field.label == "Beneficios";
+    let len = Memo::new(move |_| value.with(|v| v.as_array().map_or(0, Vec::len)));
+    let update = move |f: &dyn Fn(&mut Vec<serde_json::Value>)| {
+        let mut list = value.get_untracked().as_array().cloned().unwrap_or_default();
+        f(&mut list);
+        set.run(serde_json::Value::Array(list));
+    };
+    let update_once = move |f: &dyn Fn(&mut Vec<serde_json::Value>)| {
+        state.end_group();
+        update(f);
+        state.end_group();
+    };
+    let set_key = move |i: usize, key: &'static str, v: serde_json::Value| {
+        update(&|list| {
+            if let Some(obj) = list.get_mut(i).and_then(|it| it.as_object_mut()) {
+                obj.insert(key.to_string(), v.clone());
+            }
+        });
+    };
+    let get_str = move |i: usize, key: &'static str| {
+        value.with(|v| {
+            v.get(i)
+                .and_then(|it| it.get(key))
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_string()
+        })
+    };
+    let href_field = item.iter().find(|f| f.key == "href");
+
+    view! {
+        <fieldset class="flex flex-col">
+            <legend class="mb-1 text-xs font-semibold uppercase tracking-wide text-base-content/70">{field.label}</legend>
+            {move || {
+                let n = len.get();
+                (0..n).map(|i| {
+                    let row_uid = format!("{uid}-{i}");
+                    let photo_open = RwSignal::new(false);
+                    let dest_open = RwSignal::new(false);
+                    let controls = view! {
+                        <div class="flex shrink-0 flex-col items-center">
+                            <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Subir"
+                                disabled={i == 0}
+                                on:click=move |_| update_once(&|l| l.swap(i, i - 1))>
+                                <Icon name="up" class="h-3.5 w-3.5"/>
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Bajar"
+                                disabled={i + 1 >= n}
+                                on:click=move |_| update_once(&|l| l.swap(i, i + 1))>
+                                <Icon name="down" class="h-3.5 w-3.5"/>
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-xs btn-square text-base-content/60" aria-label="Quitar"
+                                disabled={n <= min}
+                                title=(n <= min).then(|| format!("Tiene que quedar al menos {min}"))
+                                on:click=move |_| update_once(&|l| { l.remove(i); })>
+                                <Icon name="trash" class="h-3.5 w-3.5"/>
+                            </button>
+                        </div>
+                    };
+                    if benefits {
+                        let icon = move || get_str(i, "icon");
+                        view! {
+                            <div class="flex items-start gap-4 border-t border-base-200 py-4 first:border-t-0">
+                                <div class="grid h-11 w-11 shrink-0 place-items-center rounded-box bg-base-200">
+                                    {move || {
+                                        let cur = icon();
+                                        let name = domain::BENEFIT_ICON_OPTIONS.iter().find(|(k, _)| *k == cur).map_or("star", |(k, _)| *k);
+                                        view! { <Icon name=name class="h-5 w-5"/> }
+                                    }}
+                                </div>
+                                <div class="flex min-w-0 flex-1 flex-col gap-2">
+                                    <input type="text" maxlength="40" aria-label="Título del beneficio"
+                                        class="input input-sm w-full font-semibold"
+                                        prop:value=move || get_str(i, "title")
+                                        on:input=move |ev| set_key(i, "title", event_target_value(&ev).into())/>
+                                    <input type="text" maxlength="100" aria-label="Detalle del beneficio"
+                                        class="input input-sm w-full"
+                                        prop:value=move || get_str(i, "text")
+                                        on:input=move |ev| set_key(i, "text", event_target_value(&ev).into())/>
+                                    <div class="flex flex-wrap gap-1.5" role="group" aria-label="Ícono">
+                                        {domain::BENEFIT_ICON_OPTIONS.iter().map(|(k, label)| view! {
+                                            <button type="button"
+                                                class="grid h-8 w-8 place-items-center rounded-field bg-base-200 text-base-content"
+                                                class:ring-2=move || icon() == *k
+                                                class:ring-primary=move || icon() == *k
+                                                aria-label=*label
+                                                aria-pressed=move || (icon() == *k).to_string()
+                                                title=*label
+                                                on:click=move |_| set_key(i, "icon", (*k).into())>
+                                                <Icon name=*k class="h-4 w-4"/>
+                                            </button>
+                                        }).collect_view()}
+                                    </div>
+                                </div>
+                                {controls}
+                            </div>
+                        }.into_any()
+                    } else {
+                        let img = Signal::derive(move || get_str(i, "image_url"));
+                        let href_value = Signal::derive(move || {
+                            value.with(|v| v.get(i).and_then(|it| it.get("href")).cloned())
+                                .unwrap_or(serde_json::Value::Null)
+                        });
+                        let href_set = Callback::new(move |v: serde_json::Value| set_key(i, "href", v));
+                        view! {
+                            <div class="relative border-t border-base-200 py-4 first:border-t-0">
+                                <div class="flex items-center gap-4">
+                                    <button type="button"
+                                        class="h-14 w-14 shrink-0 overflow-hidden rounded-box bg-base-200"
+                                        class:ring-2=move || photo_open.get()
+                                        class:ring-primary=move || photo_open.get()
+                                        class:ring-offset-2=move || photo_open.get()
+                                        aria-label="Cambiar la foto"
+                                        aria-expanded=move || photo_open.get().to_string()
+                                        on:click=move |_| photo_open.update(|o| *o = !*o)>
+                                        {move || {
+                                            let s = img.get();
+                                            if s.is_empty() {
+                                                view! { <Icon name="image" class="mx-auto h-5 w-5 text-base-content/60"/> }.into_any()
+                                            } else {
+                                                view! { <img src=s alt="" class="h-full w-full object-cover"/> }.into_any()
+                                            }
+                                        }}
+                                    </button>
+                                    <div class="min-w-0 flex-1">
+                                        <input type="text" maxlength="40" aria-label="Nombre del acceso"
+                                            class="w-full border-0 border-b border-base-300 bg-transparent py-1 text-sm font-semibold focus:border-primary focus:outline-none"
+                                            prop:value=move || get_str(i, "label")
+                                            on:input=move |ev| set_key(i, "label", event_target_value(&ev).into())/>
+                                        <div class="mt-1.5 flex items-center justify-between gap-2 text-xs text-base-content/70">
+                                            <span class="truncate">{move || {
+                                                let h = get_str(i, "href");
+                                                if h.is_empty() { "Sin destino".to_string() } else { h }
+                                            }}</span>
+                                            <button type="button" class="shrink-0 font-semibold text-primary"
+                                                aria-expanded=move || dest_open.get().to_string()
+                                                on:click=move |_| dest_open.update(|o| *o = !*o)>
+                                                {move || if dest_open.get() { "Listo" } else { "Cambiar" }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {controls}
+                                </div>
+                                <div class="mt-3" class:hidden=move || !dest_open.get()>
+                                    {href_field.map(|hf| view! {
+                                        <FieldInput products field=hf uid=format!("{row_uid}-href") value=href_value set=href_set/>
+                                    })}
+                                </div>
+                                {move || photo_open.get().then(|| view! {
+                                    <PhotoPopover uid=row_uid.clone() current=img
+                                        pick=Callback::new(move |u: String| set_key(i, "image_url", u.into()))
+                                        open=photo_open/>
+                                })}
+                            </div>
+                        }.into_any()
+                    }
+                }).collect_view()
+            }}
+            <button type="button" class="btn btn-sm btn-outline mt-2"
+                disabled=move || { len.get() >= max }
+                on:click=move |_| {
+                    let next = new_list_item(&value.get_untracked().as_array().cloned().unwrap_or_default(), item);
+                    update_once(&|list| list.push(next.clone()));
+                }>
+                <Icon name="plus"/>
+                {move || format!("Agregar {} ({} de {max})", item_noun(field.label).to_lowercase(), len.get())}
+            </button>
+        </fieldset>
     }
 }
