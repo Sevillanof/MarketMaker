@@ -21,18 +21,21 @@ use crate::{Actions, EditorState, Tool, Ui};
 /// Un bloque del mapa: su id y el nombre de su tipo.
 type Row = (String, &'static str);
 
-/// Los ajustes rápidos de cada tipo de bloque. Los demás muestran sus dos
+/// Los ajustes rápidos de cada tipo de bloque (los campos que están en los
+/// rápidos no se repiten en los avanzados). Los demás muestran sus dos
 /// primeros campos.
-fn quick_keys(type_name: &str) -> Option<&'static [&'static str]> {
+pub(crate) fn quick_keys(type_name: &str) -> Option<&'static [&'static str]> {
     match type_name {
-        "Announcement" => Some(&["message", "show_tag", "tag"]),
+        "Announcement" => Some(&["message", "tag"]),
         "Navbar" => Some(&["brand", "logo_url", "search"]),
         "Banner" => Some(&["title", "image_url"]),
-        "Benefits" => Some(&["items"]),
+        // El primer beneficio (`FIRST_BENEFIT`).
+        "Benefits" => Some(&[]),
         "Categories" => Some(&["title"]),
-        "ProductGrid" => Some(&["title", "limit"]),
+        "ProductGrid" => Some(&["title", "limit", "cart_action"]),
         "Card" => Some(&["title", "image_url"]),
-        "Testimonials" => Some(&["items"]),
+        // La cita destacada (`FIRST_QUOTE`).
+        "Testimonials" => Some(&[]),
         "Faq" => Some(&["title"]),
         "Footer" => Some(&["brand"]),
         "Text" => Some(&["heading", "body"]),
@@ -40,19 +43,39 @@ fn quick_keys(type_name: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+/// Un ajuste rápido: un campo del bloque o el texto del primer elemento de
+/// una lista (primer beneficio, cita destacada).
+enum Quick {
+    Field(&'static Field),
+    First(&'static str, &'static Field),
+}
+
 /// Campos de los ajustes rápidos de un bloque.
-fn quick_fields(widget: &Widget) -> Vec<&'static Field> {
+fn quick_fields(widget: &Widget) -> Vec<Quick> {
     let all = widget.fields();
+    let mut out: Vec<Quick> = Vec::new();
+    match widget.type_name() {
+        "Benefits" => out.push(Quick::First("title", &crate::fields::FIRST_BENEFIT)),
+        "Testimonials" => out.push(Quick::First("text", &crate::fields::FIRST_QUOTE)),
+        _ => {}
+    }
     if let Some(keys) = quick_keys(widget.type_name()) {
         let found: Vec<_> = keys
             .iter()
             .filter_map(|k| all.iter().find(|f| f.key == *k))
+            .map(Quick::Field)
             .collect();
-        if !found.is_empty() {
-            return found;
+        if !found.is_empty() || !out.is_empty() {
+            out.extend(found);
+            return out;
         }
     }
-    group_fields(all).basic.into_iter().take(2).collect()
+    group_fields(all)
+        .basic
+        .into_iter()
+        .take(2)
+        .map(Quick::Field)
+        .collect()
 }
 
 /// Bloques de una página, en el orden en que se ven (de arriba a abajo).
@@ -283,7 +306,6 @@ fn BlockItem(
             .unwrap_or_else(|| description.to_string())
     };
     let opens_modal = matches!(type_name, "ProductGrid" | "TagTabs" | "FeaturedProduct");
-    let has_links = matches!(type_name, "Navbar" | "Footer");
     let quick_id = id.clone();
     let has_designs = widget.as_ref().is_some_and(Widget::is_new_design);
     let open_advanced = move || {
@@ -336,19 +358,17 @@ fn BlockItem(
                 {has_designs.then(|| view! { <DesignPicker id=quick_id.clone() visible=selected products/> })}
                 {fields
                     .into_iter()
-                    .map(|f| view! { <ShownField products id=quick_id.clone() field=f/> })
+                    .map(|q| match q {
+                        Quick::Field(f) => view! { <ShownField products id=quick_id.clone() field=f/> }.into_any(),
+                        Quick::First(sub, f) => view! { <crate::fields::FirstItemField products id=quick_id.clone() sub field=f/> }.into_any(),
+                    })
                     .collect_view()}
                 {opens_modal.then(|| view! {
                     <button type="button" class="btn btn-link btn-sm h-auto min-h-0 justify-start p-0 no-underline" on:click=move |_| actions.open_modal(None)>
                         "Diseñar ficha de producto ↗"
                     </button>
                 })}
-                {has_links.then(|| view! {
-                    <button type="button" class="btn btn-link btn-sm h-auto min-h-0 justify-start p-0 no-underline" on:click=move |_| open_advanced()>
-                        "Editar enlaces →"
-                    </button>
-                })}
-                <button type="button" class="btn btn-outline btn-sm self-start border-base-300" on:click=move |_| open_advanced()>
+                <button type="button" class="btn btn-neutral btn-block" on:click=move |_| open_advanced()>
                     "Ajustes avanzados"<Icon name="arrow-right" class="h-3.5 w-3.5"/>
                 </button>
             </div>

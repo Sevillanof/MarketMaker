@@ -166,6 +166,63 @@ pub(crate) fn PropField(
     view! { <FieldInput products field uid value set on_photo/> }
 }
 
+/// «Primer beneficio»: el título del primer elemento de la lista, en los
+/// ajustes rápidos.
+pub(crate) static FIRST_BENEFIT: Field = Field {
+    key: "items",
+    label: "Primer beneficio",
+    kind: FieldKind::Text { max: 40 },
+    advanced: false,
+};
+/// «Cita destacada»: el texto de la primera opinión, en los ajustes rápidos.
+pub(crate) static FIRST_QUOTE: Field = Field {
+    key: "items",
+    label: "Cita destacada",
+    kind: FieldKind::LongText { max: 300 },
+    advanced: false,
+};
+
+/// Un campo de texto que edita `sub` del primer elemento de la lista
+/// `items` del bloque (el resto de la lista se edita en los avanzados).
+#[component]
+pub(crate) fn FirstItemField(
+    products: StoredValue<Vec<Product>>,
+    id: String,
+    sub: &'static str,
+    field: &'static Field,
+) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let uid = format!("f-{id}-first-{sub}");
+    let id = StoredValue::new(id);
+    let value = Signal::derive(move || {
+        let items = state
+            .doc
+            .with(|d| id.with_value(|rid| field_value(d, rid, "items")));
+        items
+            .get(0)
+            .and_then(|first| first.get(sub))
+            .cloned()
+            .unwrap_or_else(|| serde_json::Value::String(String::new()))
+    });
+    let set = Callback::new(move |v: serde_json::Value| {
+        id.with_value(|rid| {
+            let group = format!("{rid}/items/0/{sub}");
+            state.apply_grouped(Some(&group), |d| {
+                let mut items = field_value(d, rid, "items");
+                if let Some(first) = items
+                    .as_array_mut()
+                    .and_then(|a| a.first_mut())
+                    .and_then(|f| f.as_object_mut())
+                {
+                    first.insert(sub.to_string(), v);
+                    set_field(d, rid, "items", items);
+                }
+            });
+        });
+    });
+    view! { <FieldInput products field uid value set/> }
+}
+
 /// Control de un campo según su tipo. `value` es el valor actual y `set`
 /// reemplaza el valor entero (en una lista, la lista entera). Los cambios
 /// seguidos de un mismo campo son un solo paso de deshacer; al salir del

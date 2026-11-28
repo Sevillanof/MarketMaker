@@ -180,6 +180,10 @@ pub struct ProductGridProps {
     /// Opacidad del panel del diseño «Flotante translúcida» (75 a 100 %).
     #[serde(default = "grid_panel_opacity")]
     pub panel_opacity: i64,
+    /// Cómo se agrega al carrito desde la tarjeta: `text` («Agregar al
+    /// carrito») o `plus` (un botón «+»).
+    #[serde(default = "grid_cart_action")]
+    pub cart_action: String,
     /// Fondo y texto propios (`#rrggbb`); vacío, los del tema.
     #[serde(default)]
     pub bg: String,
@@ -187,6 +191,9 @@ pub struct ProductGridProps {
     pub ink: String,
 }
 
+fn grid_cart_action() -> String {
+    "text".to_string()
+}
 fn grid_panel_opacity() -> i64 {
     75
 }
@@ -215,6 +222,7 @@ impl Default for ProductGridProps {
             show_installments: true,
             radius: grid_radius(),
             panel_opacity: grid_panel_opacity(),
+            cart_action: grid_cart_action(),
             bg: String::new(),
             ink: String::new(),
         }
@@ -723,7 +731,7 @@ pub const BENEFIT_ICON_OPTIONS: &[(&str, &str)] = &[
 const BANNER_FIELDS: &[Field] = &[
     field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
-    field("subtitle", "Descripción", text(160)),
+    field("subtitle", "Descripción", long(160)),
     field("image_url", "Foto de la portada", FieldKind::Url),
     field("image_alt", "Descripción de la fotografía", text(120)),
     field("button_label", "Texto del botón", text(30)),
@@ -744,15 +752,25 @@ const TEXT_FIELDS: &[Field] = &[
     field("heading", "Título", text(80)),
     field("body", "Texto", long(1000)),
 ];
+const CART_ACTION_OPTIONS: &[(&str, &str)] = &[("text", "Agregar al carrito"), ("plus", "Botón +")];
 const PRODUCT_GRID_FIELDS: &[Field] = &[
     field("title", "Título", text(80)),
     field(
         "limit",
         "Productos por página",
-        FieldKind::Number { min: 1, max: 24 },
+        FieldKind::Range {
+            min: 1,
+            max: 24,
+            unit: "",
+        },
     ),
-    field("all_label", "Texto del enlace", text(30)),
-    field("all_href", "Destino del enlace", FieldKind::Url),
+    field(
+        "cart_action",
+        "Acción para agregar al carrito",
+        FieldKind::Select {
+            options: CART_ACTION_OPTIONS,
+        },
+    ),
     field("show_category", "Mostrar categoría", FieldKind::Bool),
     field(
         "show_installments",
@@ -780,7 +798,7 @@ const TAG_FILTER_FIELDS: &[Field] = &[
     ),
 ];
 pub const NAV_MENU_OPTIONS: &[(&str, &str)] = &[
-    ("list", "Lista simple"),
+    ("list", "Lista"),
     ("panel", "Panel ancho con foto"),
     ("columns", "En columnas con título"),
 ];
@@ -828,8 +846,8 @@ const NAV_LINK_ITEM: &[Field] = &[
     adv("image_url", "Foto del panel ancho", FieldKind::Url),
 ];
 const NAVBAR_FIELDS: &[Field] = &[
-    field("brand", "Nombre de la tienda", text(40)),
-    field("logo_url", "Logo", FieldKind::Url),
+    field("brand", "Nombre de la marca", text(40)),
+    field("logo_url", "Foto o logo de la tienda (opcional)", FieldKind::Url),
     field(
         "links",
         "Enlaces",
@@ -841,12 +859,12 @@ const NAVBAR_FIELDS: &[Field] = &[
     ),
     field(
         "menu",
-        "Desplegable",
+        "Presentación del desplegable",
         FieldKind::Select {
             options: NAV_MENU_OPTIONS,
         },
     ),
-    field("search", "Buscador de productos", FieldKind::Bool),
+    field("search", "Mostrar búsqueda", FieldKind::Bool),
 ];
 
 const CATEGORY_ITEM: &[Field] = &[
@@ -900,28 +918,7 @@ const CATEGORY_RATIO_OPTIONS: &[(&str, &str)] = &[
     ("1.78", "Panorámica (16:9)"),
 ];
 const CATEGORIES_FIELDS: &[Field] = &[
-    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
-    field("show_all", "Mostrar enlace «Ver todo»", FieldKind::Bool),
-    field("all_label", "Texto del enlace", text(30)),
-    field("all_href", "Adónde lleva el enlace", FieldKind::Url),
-    field("arrow", "Flecha ↗ junto al nombre", FieldKind::Bool),
-    field(
-        "ratio",
-        "Proporción de las fotos",
-        FieldKind::Select {
-            options: CATEGORY_RATIO_OPTIONS,
-        },
-    ),
-    field(
-        "radius",
-        "Esquinas de las fotos",
-        FieldKind::Range {
-            min: 0,
-            max: 24,
-            unit: "px",
-        },
-    ),
     field(
         "items",
         "Categorías",
@@ -984,11 +981,10 @@ const FAQ_FIELDS: &[Field] = &[
 
 const TESTIMONIAL_ITEM: &[Field] = &[
     field("text", "Opinión", long(300)),
-    field("name", "Quién la dice", text(40)),
-    field("note", "Aclaración", text(40)),
+    field("name", "Autor", text(40)),
     field(
         "rating",
-        "Puntaje",
+        "Estrellas de la opinión",
         FieldKind::Range {
             min: 1,
             max: 5,
@@ -1006,7 +1002,6 @@ const TESTIMONIALS_FIELDS: &[Field] = &[
             max: 3,
         },
     ),
-    field("show_stars", "Mostrar estrellas", FieldKind::Bool),
 ];
 
 pub const VARIANT_PRODUCT_IMAGE: &[(&str, &str)] = &[
@@ -1054,7 +1049,6 @@ const FOOTER_LINK_ITEM: &[Field] = &[
 ];
 const FOOTER_FIELDS: &[Field] = &[
     field("brand", "Nombre de la tienda", text(40)),
-    field("show_description", "Mostrar descripción", FieldKind::Bool),
     field("description", "Descripción", text(200)),
     field(
         "links",
@@ -1077,8 +1071,7 @@ pub const COUPON_LOOK_OPTIONS: &[(&str, &str)] = &[
 const BAR_ALIGN_OPTIONS: &[(&str, &str)] = &[("center", "Centrado"), ("left", "A la izquierda")];
 const ANNOUNCEMENT_FIELDS: &[Field] = &[
     field("message", "Mensaje", text(120)),
-    field("show_tag", "Mostrar etiqueta", FieldKind::Bool),
-    field("tag", "Etiqueta", text(20)),
+    field("tag", "Texto de la etiqueta", text(20)),
     field("link_label", "Texto del enlace", text(30)),
     field("href", "Destino del enlace", FieldKind::Url),
     field(
@@ -1285,15 +1278,15 @@ impl Widget {
             Widget::Benefits(_) => &[
                 (
                     1,
-                    "Línea editorial",
+                    "En línea",
                     "Beneficios en fila, separados por filetes",
                 ),
                 (
                     2,
-                    "Tarjetas ligeras",
+                    "Tarjetas suaves",
                     "Cada beneficio en su tarjeta, con ícono redondo",
                 ),
-                (3, "Centrado", "Íconos arriba, en círculo, y texto centrado"),
+                (3, "Sellos", "Íconos arriba, en círculo, y texto centrado"),
             ],
             Widget::Categories(_) => &[
                 (1, "Sobre la imagen", "El nombre sobre la foto, con degradé"),

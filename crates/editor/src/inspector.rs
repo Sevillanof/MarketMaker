@@ -106,15 +106,15 @@ pub(crate) fn Inspector(products: StoredValue<Vec<Product>>) -> impl IntoView {
                     None => ().into_any(),
                     Some(id) => match state.node(&id) {
                         Some(node) => view! {
-                            {(!state.in_modal()).then(|| view! {
+                            {(!state.in_modal()).then(|| { let node = node.clone(); view! {
                                 <button type="button" class="btn btn-ghost btn-sm mb-3 -ml-2 gap-1.5" on:click=move |_| {
                                     ui.advanced.set(false);
                                     request_animation_frame(|| crate::focus_selector("#mk-inspector-title"));
                                 }>
                                     <Icon name="arrow-left" class="h-4 w-4"/>
-                                    {move || if ui.tool.get() == Tool::Pages { "Páginas" } else { "Bloques" }}
+                                    {move || if has_new_panel(node.widget.type_name()) { "Volver a rápidos" } else if ui.tool.get() == Tool::Pages { "Páginas" } else { "Bloques" }}
                                 </button>
-                            })}
+                            }})}
                             <NodeInspector products id widget=node.widget/>
                         }.into_any(),
                         None => ().into_any(),
@@ -283,36 +283,132 @@ fn PanelSection(
 /// maqueta de ajustes. Vacío: el bloque no se divide en secciones.
 fn group_title(type_name: &str, key: &str) -> &'static str {
     match (type_name, key) {
-        ("Announcement", "message" | "show_tag" | "tag" | "link_label" | "href") => "Contenido",
-        ("Announcement", _) => "Presentación",
-        ("Navbar", "brand" | "size" | "logo_url" | "links" | "upper") => "Marca y enlaces",
-        ("Navbar", _) => "Presentación",
+        ("Announcement", "align") => "Presentación",
+        ("Announcement", _) => "Contenido",
+        ("Navbar", "menu") => "Presentación",
+        ("Navbar", _) => "Marca y enlaces",
         ("Banner", "veil") => "Fotografía y diseño",
         ("Banner", _) => "Contenido",
         ("Benefits", _) => "Beneficios",
-        ("Categories", "kicker" | "title" | "show_all" | "all_label" | "all_href" | "arrow") => {
-            "Encabezado"
-        }
-        ("Categories", "items") => "Accesos",
-        ("Categories", _) => "Presentación",
-        ("ProductGrid", "title" | "all_label" | "all_href" | "limit") => "Contenido",
-        ("ProductGrid", "show_category" | "show_installments" | "card_favorite") => {
-            "Información visible"
-        }
-        ("ProductGrid", _) => "Diseño de tarjeta",
-        ("Card", "image_url" | "image_alt") => "Fotografía y diseño",
+        ("Categories", _) => "Accesos",
+        ("ProductGrid", "panel_opacity") => "Diseño de tarjeta",
+        ("ProductGrid", _) => "Información visible",
+        ("Card", "image_alt") => "Fotografía y diseño",
         ("Card", _) => "Contenido",
         ("Testimonials", _) => "Opinión",
-        ("Faq", "title") => "Encabezado",
-        ("Faq", "items") => "Preguntas",
-        ("Footer", "brand" | "show_description" | "description") => "Marca",
+        ("Faq", _) => "Preguntas",
+        ("Footer", "description") => "Marca",
         ("Footer", _) => "Enlaces y legal",
         _ => "",
     }
 }
 
+/// Los bloques con el panel de la maqueta de ajustes: ajustes rápidos y,
+/// aparte, avanzados en secciones con «Estilo general» al final.
+pub(crate) fn has_new_panel(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "Announcement"
+            | "Navbar"
+            | "Banner"
+            | "Benefits"
+            | "Categories"
+            | "ProductGrid"
+            | "Card"
+            | "Testimonials"
+            | "Faq"
+            | "Footer"
+    )
+}
+
+/// Ajustes avanzados de la maqueta: cada sección es una caja con su título
+/// (sin repetir lo que está en los rápidos) y, al final, «Estilo general».
+#[component]
+fn NewAdvanced(products: StoredValue<Vec<Product>>, id: String, widget: Widget) -> impl IntoView {
+    let actions = expect_context::<Actions>();
+    let state = expect_context::<EditorState>();
+    let label = widget.label();
+    let type_name = widget.type_name();
+    let (_, description) = block_info(type_name);
+    let sid = StoredValue::new(id.clone());
+    let quick = crate::page_map::quick_keys(type_name).unwrap_or(&[]);
+    let mut groups: Vec<(&'static str, Vec<&'static Field>)> = Vec::new();
+    for f in widget.fields().iter().filter(|f| !quick.contains(&f.key)) {
+        let title = group_title(type_name, f.key);
+        match groups.iter_mut().find(|(t, _)| *t == title) {
+            Some((_, v)) => v.push(f),
+            None => groups.push((title, vec![f])),
+        }
+    }
+    let designs = widget.designs();
+    let boxes = groups
+        .into_iter()
+        .map(|(title, fields)| {
+            let gid = id.clone();
+            let list = fields.clone();
+            let visible = move || {
+                sid.with_value(|id| list.iter().any(|f| field_visible(state, id, f)))
+            };
+            view! {
+                <section class="flex flex-col gap-4 rounded-box border border-base-300 bg-base-200/50 p-3" class:hidden=move || !visible()>
+                    <h3 class="text-sm font-bold">{title}</h3>
+                    {fields.into_iter().map(|f| view! { <ShownField products id=gid.clone() field=f/> }).collect_view()}
+                </section>
+            }
+        })
+        .collect_view();
+    view! {
+        <div class="flex flex-col gap-4">
+            <div class="flex items-start gap-3">
+                <Mini type_name products/>
+                <div class="min-w-0 flex-1">
+                    <h2 id="mk-inspector-title" tabindex="-1" class="text-lg font-bold leading-tight">{label}</h2>
+                    <p class="text-sm text-base-content/75">
+                        {move || (!state.in_modal()).then(|| format!("{} · ", state.doc.with(|d| d.page_name(state.page.get()).to_string())))}
+                        {description}
+                    </p>
+                </div>
+            </div>
+            <div class="-mt-1 flex gap-2" role="group" aria-label="Acciones del bloque">
+                <button type="button" class="btn btn-outline btn-sm gap-1.5 border-base-300"
+                    aria-label=format!("Duplicar {}", label.to_lowercase())
+                    on:click=move |_| sid.with_value(|id| actions.duplicate(id))
+                ><Icon name="copy"/>"Duplicar"</button>
+                <button type="button"
+                    class="btn btn-outline btn-sm gap-1.5 border-base-300 text-red-700 hover:border-red-700 hover:bg-red-700 hover:text-white"
+                    aria-label=format!("Borrar {}", label.to_lowercase())
+                    title="Borrar (Suprimir)"
+                    on:click=move |_| sid.with_value(|id| actions.delete(id))
+                ><Icon name="trash"/>"Borrar"</button>
+            </div>
+            <h3 class="text-base font-bold">"Ajustes avanzados"</h3>
+            {boxes}
+            <section class="flex flex-col gap-4 rounded-box border border-base-300 bg-base-200/50 p-3">
+                <h3 class="text-sm font-bold">"Estilo general"</h3>
+                <crate::look::AccentSelect id=id.clone()/>
+                <div class="flex flex-col gap-1">
+                    <span class="flex items-center gap-1 text-sm font-medium">
+                        "Letras"
+                        <ui::HelpTip id=format!("tip-letters-{id}") label="Letras" text="Lo que no cambies sigue a las letras de toda la tienda."/>
+                    </span>
+                    <BlockTypography id=id.clone()/>
+                </div>
+                <crate::look::MobileDesign id=id.clone() designs/>
+            </section>
+        </div>
+    }
+}
+
 #[component]
 fn NodeInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget) -> impl IntoView {
+    if has_new_panel(widget.type_name()) {
+        return view! { <NewAdvanced products id widget/> }.into_any();
+    }
+    view! { <LegacyInspector products id widget/> }.into_any()
+}
+
+#[component]
+fn LegacyInspector(products: StoredValue<Vec<Product>>, id: String, widget: Widget) -> impl IntoView {
     let ui = expect_context::<Ui>();
     let actions = expect_context::<Actions>();
     let label = widget.label();
@@ -527,10 +623,28 @@ fn field_condition(key: &str) -> Option<(&'static str, &'static str)> {
         "card_transfer" | "card_installments" => Some(("card", "full")),
         // La oscuridad del velo solo existe en «Fotografía inmersiva».
         "veil" => Some(("@design", "2")),
+        // La etiqueta solo existe en «Etiqueta suave».
+        "tag" => Some(("@design", "2")),
         // La opacidad del panel solo existe en «Flotante translúcida».
         "panel_opacity" => Some(("@design", "3")),
         _ => None,
     }
+}
+
+/// ¿Se muestra el campo ahora? Los que dependen de una opción (ver
+/// [`field_condition`]) solo con esa opción elegida.
+pub(crate) fn field_visible(state: EditorState, id: &str, field: &'static Field) -> bool {
+    let Some((key, want)) = field_condition(field.key) else {
+        return true;
+    };
+    state.doc.with(|d| {
+        if key == "@design" {
+            return d.node(id).is_some_and(|n| n.look.design.to_string() == want);
+        }
+        let v = crate::fields::field_value(d, id, key);
+        // Si el bloque no tiene esa opción (el bloque Cupón), se muestra.
+        v.is_null() || v.as_str() == Some(want)
+    })
 }
 
 /// Un campo del panel que se muestra solo si su opción está elegida (ver
@@ -543,24 +657,9 @@ pub(crate) fn ShownField(
 ) -> impl IntoView {
     let state = expect_context::<EditorState>();
     let sid = StoredValue::new(id.clone());
-    let cond = field_condition(field.key);
     // Un Memo: el campo se redibuja solo si cambia la opción, no con cada
     // tecla (perdería el foco).
-    let shown = Memo::new(move |_| {
-        let Some((key, want)) = cond else {
-            return true;
-        };
-        state.doc.with(|d| {
-            sid.with_value(|id| {
-                if key == "@design" {
-                    return d.node(id).is_some_and(|n| n.look.design.to_string() == want);
-                }
-                let v = crate::fields::field_value(d, id, key);
-                // Si el bloque no tiene esa opción (el bloque Cupón), se muestra.
-                v.is_null() || v.as_str() == Some(want)
-            })
-        })
-    });
+    let shown = Memo::new(move |_| sid.with_value(|id| field_visible(state, id, field)));
     move || {
         shown
             .get()
