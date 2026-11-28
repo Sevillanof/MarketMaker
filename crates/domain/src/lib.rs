@@ -1962,6 +1962,7 @@ mod tests {
             heading: "playfair".into(),
             body: "inter".into(),
             size: "large".into(),
+            ..Typography::default()
         };
         doc.nodes[0].style = TextStyle {
             font: "oswald".into(),

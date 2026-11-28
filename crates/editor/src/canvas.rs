@@ -1192,7 +1192,10 @@ pub(crate) fn Canvas(
         };
         let href = el.get_attribute("data-href").unwrap_or_default();
         // Un enlace a otro widget: baja hasta él, como en la tienda.
-        if let Some(target) = href.strip_prefix('#').filter(|_| href.starts_with(domain::WIDGET_HREF_PREFIX)) {
+        if let Some(target) = href
+            .strip_prefix('#')
+            .filter(|_| href.starts_with(domain::WIDGET_HREF_PREFIX))
+        {
             if let Some(dest) = document().get_element_by_id(target) {
                 dest.scroll_into_view();
             } else {

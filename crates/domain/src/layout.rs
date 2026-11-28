@@ -201,9 +201,7 @@ impl StoreLayout {
             ));
         }
         if self.gap > MAX_GAP {
-            errors.push(format!(
-                "Espacio entre bloques: hasta {MAX_GAP} px."
-            ));
+            errors.push(format!("Espacio entre bloques: hasta {MAX_GAP} px."));
         }
     }
 }

@@ -8,6 +8,7 @@
 //! acentos y eñes, y se sirven desde `/fonts` (sin depender de terceros).
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Una fuente de la lista.
 #[derive(Debug, PartialEq)]
@@ -71,6 +72,30 @@ pub const FONTS: &[Font] = &[
         hint: "Angosta y fuerte, para títulos",
         css: "'Oswald Variable', ui-sans-serif, system-ui, sans-serif",
     },
+    Font {
+        id: "dmsans",
+        label: "DM Sans",
+        hint: "Natural y cercana",
+        css: "'DM Sans Variable', ui-sans-serif, system-ui, sans-serif",
+    },
+    Font {
+        id: "manrope",
+        label: "Manrope",
+        hint: "Contemporánea y limpia",
+        css: "'Manrope Variable', ui-sans-serif, system-ui, sans-serif",
+    },
+    Font {
+        id: "cormorant",
+        label: "Cormorant Garamond",
+        hint: "Refinada, para títulos",
+        css: "'Cormorant Garamond Variable', ui-serif, Georgia, serif",
+    },
+    Font {
+        id: "spacegrotesk",
+        label: "Space Grotesk",
+        hint: "Urbana, con carácter",
+        css: "'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif",
+    },
 ];
 
 pub fn font(id: &str) -> Option<&'static Font> {
@@ -90,20 +115,37 @@ pub struct FontPair {
     pub body: &'static str,
 }
 
-/// Combinaciones sugeridas, para elegir de un clic.
+/// Combinaciones sugeridas, para elegir de un clic (en el orden del selector
+/// de Letras). Los ids de fuente son los que se guardan: renombrar una
+/// combinación no cambia ninguna tienda.
 pub const FONT_PAIRS: &[FontPair] = &[
     FontPair {
-        label: "Simple",
-        heading: "system",
-        body: "system",
+        label: "Editorial",
+        heading: "lora",
+        body: "inter",
     },
     FontPair {
-        label: "Moderna",
+        label: "Simple",
         heading: "inter",
         body: "inter",
     },
     FontPair {
-        label: "Con presencia",
+        label: "Impacto",
+        heading: "oswald",
+        body: "inter",
+    },
+    FontPair {
+        label: "Legible",
+        heading: "atkinson",
+        body: "atkinson",
+    },
+    FontPair {
+        label: "Del dispositivo",
+        heading: "system",
+        body: "system",
+    },
+    FontPair {
+        label: "Geométrica",
         heading: "montserrat",
         body: "inter",
     },
@@ -123,14 +165,24 @@ pub const FONT_PAIRS: &[FontPair] = &[
         body: "inter",
     },
     FontPair {
-        label: "Impacto",
-        heading: "oswald",
-        body: "inter",
+        label: "Natural",
+        heading: "dmsans",
+        body: "dmsans",
     },
     FontPair {
-        label: "Fácil de leer",
-        heading: "atkinson",
-        body: "atkinson",
+        label: "Contemporánea",
+        heading: "manrope",
+        body: "manrope",
+    },
+    FontPair {
+        label: "Refinada",
+        heading: "cormorant",
+        body: "dmsans",
+    },
+    FontPair {
+        label: "Urbana",
+        heading: "spacegrotesk",
+        body: "dmsans",
     },
 ];
 
@@ -139,6 +191,30 @@ pub const STORE_SIZES: &[(&str, &str, f32)] = &[
     ("normal", "Normal", 1.0),
     ("large", "Grande", 1.125),
     ("xlarge", "Muy grande", 1.25),
+];
+
+/// Tamaño general en porcentaje: mínimo, máximo y paso del deslizador.
+pub const SCALE_MIN: u16 = 80;
+pub const SCALE_MAX: u16 = 150;
+pub const SCALE_STEP: u16 = 5;
+/// Tamaño base mínimo y máximo de un tipo de texto, en px de referencia.
+pub const ROLE_MIN: u16 = 8;
+pub const ROLE_MAX: u16 = 72;
+
+/// Tipos de texto con tamaño propio: `(id, nombre, px de referencia)`. El
+/// valor de referencia es el tamaño que tiene hoy ese texto en los widgets:
+/// al elegir otro, todos los textos de ese tipo se agrandan o achican en la
+/// misma proporción (así se conserva la jerarquía entre ellos).
+pub const TEXT_ROLES: &[(&str, &str, u16)] = &[
+    ("title", "Título principal", 42),
+    ("section", "Títulos de sección", 30),
+    ("subtitle", "Subtítulos y detalles", 12),
+    ("product", "Nombres de productos", 13),
+    ("body", "Texto y descripciones", 13),
+    ("button", "Botones", 12),
+    ("price", "Precios", 13),
+    ("nav", "Menú y pie", 12),
+    ("brand", "Nombre de tienda", 26),
 ];
 
 /// Tamaño de un bloque respecto del de la tienda: `(id, nombre, factor)`.
@@ -289,8 +365,14 @@ pub struct Typography {
     pub heading: String,
     /// Fuente del resto del texto.
     pub body: String,
-    /// Tamaño general (id de [`STORE_SIZES`]).
+    /// Tamaño general (id de [`STORE_SIZES`]). Sigue valiendo mientras no
+    /// haya un porcentaje propio (`scale`).
     pub size: String,
+    /// Tamaño general en porcentaje (`80..=150`, de a 5); `0` = el de `size`.
+    pub scale: u16,
+    /// Tamaño base de cada tipo de texto, en px (ver [`TEXT_ROLES`]). Los
+    /// que faltan quedan como siempre.
+    pub sizes: BTreeMap<String, u16>,
 }
 
 impl Default for Typography {
@@ -299,18 +381,43 @@ impl Default for Typography {
             heading: "system".into(),
             body: "system".into(),
             size: "normal".into(),
+            scale: 0,
+            sizes: BTreeMap::new(),
         }
     }
 }
 
 impl Typography {
+    /// Factor del tamaño general: el porcentaje si lo hay, si no el de `size`.
+    pub fn scale_factor(&self) -> f32 {
+        if self.scale > 0 {
+            f32::from(self.scale) / 100.0
+        } else {
+            factor(STORE_SIZES, &self.size)
+        }
+    }
+
+    /// Porcentaje del tamaño general (112,5 para "Grande").
+    pub fn scale_percent(&self) -> f32 {
+        self.scale_factor() * 100.0
+    }
+
+    /// Tamaño base de un tipo de texto, en px (el de referencia si no se tocó).
+    pub fn role_px(&self, id: &str) -> u16 {
+        self.sizes
+            .get(id)
+            .copied()
+            .or_else(|| TEXT_ROLES.iter().find(|(k, _, _)| *k == id).map(|r| r.2))
+            .unwrap_or(16)
+    }
+
     pub fn is_default(&self) -> bool {
         *self == Self::default()
     }
 
     /// Variables CSS para la raíz de la tienda (`.mk-store`).
     pub fn css_vars(&self) -> String {
-        let scale = factor(STORE_SIZES, &self.size);
+        let scale = self.scale_factor();
         // "Simple" no pisa nada: las letras las pone el tema de la tienda.
         let mut s = String::new();
         if self.heading != "system" {
@@ -320,6 +427,14 @@ impl Typography {
             s.push_str(&format!("--mk-body:{}; ", font_css(&self.body)));
         }
         s.push_str(&format!("--mk-store-scale:{scale}"));
+        // Un tipo de texto tocado: cuánto se agranda respecto de su tamaño
+        // de referencia (ver `style/tailwind.css`, "Tamaños por tipo").
+        for (id, _, reference) in TEXT_ROLES {
+            if let Some(px) = self.sizes.get(*id) {
+                let r = f32::from(*px) / f32::from(*reference);
+                s.push_str(&format!("; --mk-r-{id}:{r:.4}"));
+            }
+        }
         s
     }
 
@@ -332,6 +447,22 @@ impl Typography {
         }
         if !STORE_SIZES.iter().any(|(k, _, _)| *k == self.size) {
             errors.push("Letras › Tamaño: Elegí una de las opciones.".into());
+        }
+        if self.scale != 0
+            && (!(SCALE_MIN..=SCALE_MAX).contains(&self.scale) || self.scale % SCALE_STEP != 0)
+        {
+            errors.push(format!(
+                "Letras › Tamaño general: entre {SCALE_MIN} % y {SCALE_MAX} %."
+            ));
+        }
+        for (id, px) in &self.sizes {
+            if !TEXT_ROLES.iter().any(|(k, _, _)| k == id) {
+                errors.push(format!("Letras › Tamaños: «{id}» no es un tipo de texto."));
+            } else if !(ROLE_MIN..=ROLE_MAX).contains(px) {
+                errors.push(format!(
+                    "Letras › Tamaños: entre {ROLE_MIN} y {ROLE_MAX} px."
+                ));
+            }
         }
     }
 }
@@ -423,7 +554,10 @@ mod tests {
             assert!(font(p.heading).is_some(), "{}", p.label);
             assert!(font(p.body).is_some(), "{}", p.label);
         }
-        assert_eq!(FONT_PAIRS[0].heading, Typography::default().heading);
+        assert_eq!(FONT_PAIRS.len(), 13);
+        assert!(FONT_PAIRS
+            .iter()
+            .any(|p| p.heading == "system" && p.body == "system"));
     }
 
     #[test]
@@ -432,10 +566,12 @@ mod tests {
             heading: "playfair".into(),
             body: "inter".into(),
             size: "large".into(),
+            ..Typography::default()
         };
         let v = t.css_vars();
         assert!(v.contains("--mk-heading:'Playfair Display Variable'"));
         assert!(v.contains("--mk-store-scale:1.125"));
+        assert!(!v.contains("--mk-r-"));
         let s = TextStyle {
             font: "lora".into(),
             size: "smaller".into(),
@@ -473,5 +609,34 @@ mod tests {
             assert!(text_animation(id).is_some());
         }
         assert_eq!(TEXT_ANIMATIONS.len(), 20);
+    }
+
+    #[test]
+    fn scale_and_role_sizes() {
+        let mut t = Typography::default();
+        // Sin porcentaje propio vale el tamaño de siempre, sin redondear.
+        t.size = "large".into();
+        assert_eq!(t.scale_percent(), 112.5);
+        t.scale = 125;
+        assert!(t.css_vars().contains("--mk-store-scale:1.25"));
+        // Un tipo de texto tocado: proporción respecto de su referencia.
+        t.sizes.insert("price".into(), 26);
+        assert_eq!(t.role_px("price"), 26);
+        assert_eq!(t.role_px("nav"), 12);
+        assert!(t.css_vars().contains("--mk-r-price:2.0000"));
+        let mut e = Vec::new();
+        t.errors(&mut e);
+        assert!(e.is_empty(), "{e:?}");
+        t.scale = 83;
+        t.sizes.insert("price".into(), 5);
+        t.sizes.insert("zzz".into(), 20);
+        let mut e = Vec::new();
+        t.errors(&mut e);
+        assert_eq!(e.len(), 3);
+        // Un documento anterior (sin los campos nuevos) carga igual.
+        let old: Typography =
+            serde_json::from_str(r#"{"heading":"lora","size":"xlarge"}"#).unwrap();
+        assert_eq!(old.scale_percent(), 125.0);
+        assert!(old.sizes.is_empty());
     }
 }
