@@ -40,9 +40,10 @@ pub(crate) struct FieldGroups {
 }
 
 pub(crate) fn group_fields(fields: &'static [Field]) -> FieldGroups {
-    let find = |key: &str| fields.iter().find(|f| f.key == key);
-    let button = find("button_label").zip(find("button_href"));
-    let is_button = |f: &Field| button.is_some() && matches!(f.key, "button_label" | "button_href");
+    // El texto y el destino del botón son campos comunes, como en la maqueta
+    // de ajustes (vacío = sin botón).
+    let button: Option<(&'static Field, &'static Field)> = None;
+    let is_button = |_: &Field| false;
     FieldGroups {
         basic: fields
             .iter()
@@ -286,8 +287,8 @@ fn group_title(type_name: &str, key: &str) -> &'static str {
         ("Announcement", _) => "Presentación",
         ("Navbar", "brand" | "size" | "logo_url" | "links" | "upper") => "Marca y enlaces",
         ("Navbar", _) => "Presentación",
-        ("Banner", "show_kicker" | "kicker" | "title" | "subtitle" | "image_url") => "Contenido",
-        ("Banner", _) => "Fotografía y diseño",
+        ("Banner", "veil") => "Fotografía y diseño",
+        ("Banner", _) => "Contenido",
         ("Benefits", _) => "Beneficios",
         ("Categories", "kicker" | "title" | "show_all" | "all_label" | "all_href" | "arrow") => {
             "Encabezado"
@@ -301,8 +302,8 @@ fn group_title(type_name: &str, key: &str) -> &'static str {
             "Información visible"
         }
         ("ProductGrid", _) => "Diseño de tarjeta",
-        ("Card", "kicker" | "title" | "body" | "show_button" | "image_url") => "Contenido",
-        ("Card", _) => "Fotografía y diseño",
+        ("Card", "image_url" | "image_alt") => "Fotografía y diseño",
+        ("Card", _) => "Contenido",
         ("Testimonials", _) => "Opinión",
         ("Faq", "kicker" | "title" | "open_first") => "Encabezado",
         ("Faq", "items") => "Preguntas",
@@ -526,6 +527,8 @@ fn field_condition(key: &str) -> Option<(&'static str, &'static str)> {
     match key {
         "code" | "note" | "coupon" => Some(("variant", "d")),
         "card_transfer" | "card_installments" => Some(("card", "full")),
+        // La oscuridad del velo solo existe en «Fotografía inmersiva».
+        "veil" => Some(("@design", "2")),
         _ => None,
     }
 }
@@ -549,6 +552,9 @@ pub(crate) fn ShownField(
         };
         state.doc.with(|d| {
             sid.with_value(|id| {
+                if key == "@design" {
+                    return d.node(id).is_some_and(|n| n.look.design.to_string() == want);
+                }
                 let v = crate::fields::field_value(d, id, key);
                 // Si el bloque no tiene esa opción (el bloque Cupón), se muestra.
                 v.is_null() || v.as_str() == Some(want)
