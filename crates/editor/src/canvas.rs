@@ -1486,7 +1486,7 @@ mod tests {
 /// Los de fotos (banner con imagen de fondo, galerías, productos) mantienen
 /// su alto, porque su foto se acomoda sola. Es la misma lista que en la
 /// tienda (ver `.mk-grid` en el CSS).
-pub(crate) const FIT_SELECTOR: &str = ".mk-text, .mk-benefits, .mk-ann, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-tagrow, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social, .mk-contact, .mk-footer, .mk-testi, .mk-pprice, .mk-banner";
+pub(crate) const FIT_SELECTOR: &str = ".mk-text, .mk-benefits, .mk-ann, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-tagrow, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social, .mk-contact, .mk-footer, .mk-testi, .mk-pprice, .mk-banner, .mk-nw-fit";
 
 /// Agranda los bloques de la capa que se edita cuyo contenido no entra.
 fn fit_contents(state: EditorState, drag: RwSignal<Option<Drag>>) {

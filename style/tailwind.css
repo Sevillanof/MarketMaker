@@ -444,7 +444,7 @@
 @media (min-width: 768px) {
   .mk-grid { grid-auto-rows: minmax(8px, auto); }
   .mk-grid > .mk-node { contain: size; }
-  .mk-grid > .mk-node:has(:is(.mk-text, .mk-benefits, .mk-ann, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-tagrow, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social, .mk-contact, .mk-footer, .mk-testi, .mk-pprice, .mk-banner)) {
+  .mk-grid > .mk-node:has(:is(.mk-text, .mk-benefits, .mk-ann, .mk-steps, .mk-stats, .mk-logos, .mk-tagcol, .mk-tagrow, .mk-catside, .mk-catpage, .mk-catcards, .mk-faq, .mk-social, .mk-contact, .mk-footer, .mk-testi, .mk-pprice, .mk-banner, .mk-nw-fit)) {
     contain: none;
   }
 }

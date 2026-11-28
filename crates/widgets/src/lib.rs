@@ -466,7 +466,7 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
         f64::from(props.veil.clamp(60, 85) as i32) / 100.0
     );
     view! {
-        <div class="mk-nw h-full overflow-hidden">
+        <div class="mk-nw mk-nw-fit h-full overflow-hidden">
             <div class="nw-hero-wrap"><section class="nw-hero nw-veil" style=root_style>
                 <div class="nw-hero-copy" style=copy_style>
                     {(!props.kicker.is_empty()).then(|| view! {
@@ -949,7 +949,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
         </div>
     };
     view! {
-        <div class="mk-nw h-full">
+        <div class="mk-nw mk-nw-fit h-full">
             <header class="nw-navigation" style=nw_colors(&props.bg, &props.ink)>
                 <div class="nw-nav-row">
                     <MaybeLink href="/" editing class="nw-brand flex min-w-0 items-center gap-2">
@@ -1043,7 +1043,7 @@ pub fn BenefitsWidget(props: BenefitsProps) -> impl IntoView {
     let icon_style = String::new();
     let show_text = props.show_text;
     view! {
-        <div class="mk-nw h-full overflow-hidden">
+        <div class="mk-nw mk-nw-fit h-full overflow-hidden">
             <div class="nw-benefits" style=format!("{}--n:{n}", nw_colors(&props.bg, &props.ink))>
                 {props
                     .items
@@ -1117,7 +1117,7 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
     );
     let href = props.href.trim().to_string();
     view! {
-        <div class="mk-nw h-full">
+        <div class="mk-nw mk-nw-fit h-full">
             <div class="nw-ann" style=style>
                 {if props.link_label.trim().is_empty() {
                     // Barras de antes: todo el mensaje es el enlace.
@@ -1162,7 +1162,7 @@ pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
         && (editing || !props.button_href.trim().is_empty());
     let class = "nw-story";
     view! {
-        <div class="mk-nw h-full overflow-hidden">
+        <div class="mk-nw mk-nw-fit h-full overflow-hidden">
             <section class="nw-section">
                 <div class=class style=nw_colors(&props.bg, &props.ink)>
                     {(!props.image_url.is_empty()).then(|| view! {
@@ -1191,7 +1191,7 @@ pub fn FaqWidget(props: FaqProps, #[prop(default = false)] editing: bool) -> imp
     let _ = editing;
     let open_first = props.open_first;
     view! {
-        <div class="mk-nw h-full overflow-hidden">
+        <div class="mk-nw mk-nw-fit h-full overflow-hidden">
             <section class="nw-section nw-faq" style=nw_colors(&props.bg, &props.ink)>
                 <div class="nw-section-head">
                     <div>
@@ -1224,7 +1224,7 @@ pub fn TestimonialsWidget(props: TestimonialsProps) -> impl IntoView {
     let star_style = String::new();
     let show_stars = props.show_stars;
     view! {
-        <div class="mk-nw h-full overflow-hidden" style=colors>
+        <div class="mk-nw mk-nw-fit h-full overflow-hidden" style=colors>
             {props
                 .items
                 .into_iter()
@@ -1472,7 +1472,7 @@ pub fn FooterWidget(props: FooterProps, editing: bool) -> impl IntoView {
     let legal_links = !editing && use_context::<LegalInFooter>().is_some();
     let show_desc = props.show_description && !phrase.is_empty();
     view! {
-        <div class="mk-nw h-full overflow-hidden">
+        <div class="mk-nw mk-nw-fit h-full overflow-hidden">
             <footer class="nw-footer" style=nw_colors(&props.bg, &props.ink)>
                 <div class="nw-footer-grid" style=format!("--fc:{n}")>
                     <div class="nw-footer-brand">
