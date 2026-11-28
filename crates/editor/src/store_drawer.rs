@@ -254,7 +254,7 @@ fn TypeSizes() -> impl IntoView {
             <div class="mb-2 flex items-start gap-2">
                 <div>
                     <h3 id="mk-typepop-title" class="text-sm font-bold">"Tamaños avanzados"</h3>
-                    <p class="text-[11px] text-base-content/60">"Tamaño base de cada texto, en px a 100 %."</p>
+                    <p class="text-[11px] text-base-content/60">"Personalizá cada tipo de texto."</p>
                 </div>
                 <button
                     type="button"
@@ -266,6 +266,7 @@ fn TypeSizes() -> impl IntoView {
                     <Icon name="close"/>
                 </button>
             </div>
+            <p class="mb-2 text-[10.5px] leading-snug text-base-content/60">"Valores base en px al 100 %. El tamaño general se aplica sobre cada uno."</p>
             <div class="grid gap-1.5">
                 {TEXT_ROLES.iter().map(|(id, label, reference)| {
                     let input_id = format!("mk-type-{id}");
