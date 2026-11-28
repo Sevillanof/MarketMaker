@@ -1941,11 +1941,11 @@ mod tests {
     #[test]
     fn rejects_unknown_select_option() {
         let mut doc = PageDoc {
-            nodes: vec![node("c", "Card", 0, 0)],
+            nodes: vec![node("a", "Announcement", 0, 0)],
             ..PageDoc::default()
         };
-        if let Widget::Card(c) = &mut doc.nodes[0].widget {
-            c.side = "diagonal".into();
+        if let Widget::Announcement(a) = &mut doc.nodes[0].widget {
+            a.align = "diagonal".into();
         }
         assert_invalid(&doc, "Elegí una de las opciones");
     }
@@ -2011,7 +2011,7 @@ mod tests {
         }
         assert_invalid(
             &doc,
-            "Banner › Enlace del botón: Escribí una página de tu tienda",
+            "Banner › Destino del botón: Escribí una página de tu tienda",
         );
     }
 

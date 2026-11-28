@@ -102,12 +102,14 @@ pub struct BannerProps {
     pub title: String,
     pub subtitle: String,
     pub image_url: String,
+    /// Descripción de la foto para quien no la ve.
+    pub image_alt: String,
     pub show_button: bool,
     pub button_label: String,
     pub button_href: String,
     /// Color propio del botón (`#rrggbb`); vacío, el del tema.
     pub button_color: String,
-    /// Oscuridad del velo sobre la foto en «Fotografía inmersiva» (0 a 90).
+    /// Oscuridad del velo sobre la foto en «Fotografía inmersiva» (60 a 85).
     pub veil: i64,
     /// Alineación del texto: `start` o `center`.
     pub align: String,
@@ -124,6 +126,7 @@ impl Default for BannerProps {
             title: "Bienvenidos a nuestra tienda".to_string(),
             subtitle: "Escribí acá una frase sobre tu tienda".to_string(),
             image_url: "/img/banner.webp".to_string(),
+            image_alt: String::new(),
             show_button: true,
             button_label: String::new(),
             button_href: String::new(),
@@ -410,6 +413,9 @@ pub struct CardProps {
     #[serde(default)]
     pub kicker: String,
     pub image_url: String,
+    /// Descripción de la foto para quien no la ve.
+    #[serde(default)]
+    pub image_alt: String,
     pub title: String,
     pub body: String,
     pub button_label: String,
@@ -443,6 +449,7 @@ impl Default for CardProps {
         Self {
             kicker: String::new(),
             image_url: String::new(),
+            image_alt: String::new(),
             title: "Contá tu historia".to_string(),
             body: String::new(),
             button_label: String::new(),
@@ -706,29 +713,20 @@ pub const BENEFIT_ICON_OPTIONS: &[(&str, &str)] = &[
     ("clock", "Rapidez"),
 ];
 
-const HERO_ALIGN_OPTIONS: &[(&str, &str)] = &[("start", "A la izquierda"), ("center", "Centrado")];
 const BANNER_FIELDS: &[Field] = &[
-    field("show_kicker", "Mostrar antetítulo", FieldKind::Bool),
     field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
-    field("subtitle", "Texto", text(160)),
-    field("image_url", "Foto", FieldKind::Url),
-    field("show_button", "Mostrar botón", FieldKind::Bool),
+    field("subtitle", "Descripción", text(160)),
+    field("image_url", "Foto de la portada", FieldKind::Url),
+    field("image_alt", "Descripción de la fotografía", text(120)),
     field("button_label", "Texto del botón", text(30)),
-    field("button_href", "Enlace del botón", FieldKind::Url),
-    field(
-        "align",
-        "Alineación del texto",
-        FieldKind::Select {
-            options: HERO_ALIGN_OPTIONS,
-        },
-    ),
+    field("button_href", "Destino del botón", FieldKind::Url),
     field(
         "veil",
-        "Oscuridad del velo sobre la foto",
+        "Oscurecer la fotografía",
         FieldKind::Range {
-            min: 0,
-            max: 90,
+            min: 60,
+            max: 85,
             unit: "%",
         },
     ),
@@ -976,29 +974,15 @@ const BENEFITS_FIELDS: &[Field] = &[
             max: 6,
         },
     ),
-    field(
-        "show_text",
-        "Mostrar el texto de cada beneficio",
-        FieldKind::Bool,
-    ),
 ];
 
-const CARD_SIDE_OPTIONS: &[(&str, &str)] = &[("left", "Izquierda"), ("right", "Derecha")];
 const CARD_FIELDS: &[Field] = &[
-    field("kicker", "Antetítulo", text(40)),
     field("title", "Título", text(80)),
-    field("body", "Texto", long(300)),
-    field("show_button", "Mostrar botón", FieldKind::Bool),
+    field("body", "Descripción", long(300)),
     field("button_label", "Texto del botón", text(30)),
-    field("button_href", "Enlace del botón", FieldKind::Url),
-    field("image_url", "Foto", FieldKind::Url),
-    field(
-        "side",
-        "Foto a la (diseños «Lado a lado» y «Retrato»)",
-        FieldKind::Select {
-            options: CARD_SIDE_OPTIONS,
-        },
-    ),
+    field("button_href", "Destino del botón", FieldKind::Url),
+    field("image_url", "Foto de la historia", FieldKind::Url),
+    field("image_alt", "Descripción de la fotografía", text(120)),
 ];
 
 const FAQ_ITEM: &[Field] = &[

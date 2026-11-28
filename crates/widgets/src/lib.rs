@@ -452,8 +452,8 @@ fn nw_on_color(_color: &str) -> String {
 pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button = props.show_button
-        && !props.button_label.is_empty()
+    // El botón se muestra si tiene texto (vacío = sin botón).
+    let has_button = !props.button_label.is_empty()
         && (editing || !props.button_href.trim().is_empty());
     let copy_style = if props.align == "center" {
         "align-items:center;text-align:center;"
@@ -463,13 +463,13 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
     let root_style = format!(
         "{}--nw-veil:{};",
         nw_colors(&props.bg, &props.ink),
-        f64::from(props.veil.clamp(0, 90) as i32) / 100.0
+        f64::from(props.veil.clamp(60, 85) as i32) / 100.0
     );
     view! {
         <div class="mk-nw h-full overflow-hidden">
             <div class="nw-hero-wrap"><section class="nw-hero nw-veil" style=root_style>
                 <div class="nw-hero-copy" style=copy_style>
-                    {(props.show_kicker && !props.kicker.is_empty()).then(|| view! {
+                    {(!props.kicker.is_empty()).then(|| view! {
                         <span class="nw-kicker">{props.kicker.clone()}</span>
                     })}
                     <h4><AnimText text=props.title.clone()/></h4>
@@ -483,7 +483,7 @@ pub fn BannerWidget(props: BannerProps, editing: bool) -> impl IntoView {
                     })}
                 </div>
                 <div class="nw-hero-photo">
-                    <Image src=props.image_url.clone() alt="" eager=true/>
+                    <Image src=props.image_url.clone() alt=props.image_alt.clone() eager=true/>
                 </div>
             </section></div>
         </div>
@@ -1156,23 +1156,17 @@ pub fn split_seconds(total: i64) -> [i64; 4] {
 pub fn CardWidget(props: CardProps, editing: bool) -> impl IntoView {
     // Sin adónde llevar, el botón no se muestra en la tienda (en el editor sí,
     // con un aviso en el panel).
-    let has_button = props.show_button
-        && !props.button_label.is_empty()
+    let has_button = !props.button_label.is_empty()
         && (editing || !props.button_href.trim().is_empty());
-    let class = if props.side == "right" {
-        "nw-story nw-right"
-    } else {
-        "nw-story"
-    };
+    let class = "nw-story";
     view! {
         <div class="mk-nw h-full overflow-hidden">
             <section class="nw-section">
                 <div class=class style=nw_colors(&props.bg, &props.ink)>
                     {(!props.image_url.is_empty()).then(|| view! {
-                        <div class="nw-img"><Image src=props.image_url.clone() alt=props.title.clone()/></div>
+                        <div class="nw-img"><Image src=props.image_url.clone() alt=if props.image_alt.is_empty() { props.title.clone() } else { props.image_alt.clone() }/></div>
                     })}
                     <div class="nw-story-copy">
-                        {(!props.kicker.is_empty()).then(|| view! { <span class="nw-kicker">{props.kicker.clone()}</span> })}
                         <h4><AnimText text=props.title.clone()/></h4>
                         {(!props.body.is_empty()).then(|| view! { <p>{props.body.clone()}</p> })}
                         {has_button.then(|| view! {
