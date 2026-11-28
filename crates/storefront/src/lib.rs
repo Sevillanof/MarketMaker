@@ -68,6 +68,13 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     let theme = doc.theme.clone();
     let style = format!("{}; {}", doc.typography.css_vars(), doc.style.css_vars());
     let layout = doc.layout.css_vars();
+    // Modo claro u oscuro a elección del visitante (ver `widgets::mode`).
+    let native_dark = domain::theme_base(&doc.theme).dark;
+    let alt_css = doc.style.alt_css(&doc.theme);
+    let mode = {
+        let alt_css = alt_css.clone();
+        move || view! { <widgets::StoreMode native_dark alt_css=alt_css.clone()/> }
+    };
     // Los bloques de una grilla, en orden de lectura (y, x): en pantallas
     // angostas se apilan así.
     let grid = move |mut nodes: Vec<domain::Node>| {
@@ -125,7 +132,9 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
             provide_context(widgets::LegalInFooter);
         }
         return view! {
-            <div data-theme=theme class="mk-store flex min-h-screen flex-col bg-base-200 text-base-content" style=style>
+            <div data-theme=theme data-mode="orig" class="mk-store flex min-h-screen flex-col bg-base-200 text-base-content" style=style>
+                {mode()}
+                {navs.is_empty().then(|| view! { <widgets::ModeFloat/> })}
                 {(!navs.is_empty()).then(|| view! { <div class="w-full">{grid(navs)}</div> })}
                 <main class="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
                     <h1 class="mk-h text-2xl font-bold">"No encontramos esta página"</h1>
@@ -144,6 +153,9 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     };
     let nodes = doc.layer(Layer::Page(page)).clone();
     let has_footer = nodes.iter().any(is_footer);
+    let has_nav = nodes
+        .iter()
+        .any(|n| matches!(n.widget, domain::Widget::Navbar(_)));
     // Toda página necesita un título principal (lectores de pantalla y
     // buscadores). Lo pone el banner; si la página no tiene, va uno oculto.
     let has_h1 = nodes
@@ -161,7 +173,9 @@ pub fn StorefrontPage(view: PageView, #[prop(into)] path: String) -> impl IntoVi
     }
 
     view! {
-        <div data-theme=theme class="mk-store min-h-screen bg-base-200 text-base-content" style=style>
+        <div data-theme=theme data-mode="orig" class="mk-store min-h-screen bg-base-200 text-base-content" style=style>
+            {mode()}
+            {(!has_nav).then(|| view! { <widgets::ModeFloat/> })}
             {heading}
             {grid(nodes)}
             {legal(has_footer)}

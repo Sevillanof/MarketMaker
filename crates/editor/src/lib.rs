@@ -265,6 +265,9 @@ pub(crate) struct Ui {
     undo_notice: StoredValue<Option<u64>>,
     /// Texto para lectores de pantalla (región `role=status` invisible).
     announce: RwSignal<String>,
+    /// Se está editando (y viendo en el lienzo) la variante opuesta del
+    /// tema: la oscura de un tema claro y al revés. No se guarda.
+    pub edit_alt: RwSignal<bool>,
     pub preview: RwSignal<bool>,
     /// En la vista previa: cómo se ve en un celular en lugar de en la computadora.
     pub phone: RwSignal<bool>,
@@ -1043,6 +1046,7 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         undo: Callback::new(move |_: ()| state.undo()),
         undo_notice: StoredValue::new(None),
         announce: RwSignal::new(String::new()),
+        edit_alt: RwSignal::new(false),
         preview: RwSignal::new(false),
         phone: RwSignal::new(false),
         tool: RwSignal::new(Tool::Blocks),

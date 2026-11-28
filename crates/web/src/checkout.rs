@@ -781,8 +781,10 @@ fn error_text(e: &ServerFnError) -> String {
 pub(crate) fn StoreFrame(view: PageView, children: Children) -> impl IntoView {
     let doc = view.doc;
     view! {
-        <div data-theme=doc.theme.clone() class="mk-store min-h-screen bg-base-200 text-base-content"
+        <div data-theme=doc.theme.clone() data-mode="orig" class="mk-store min-h-screen bg-base-200 text-base-content"
             style=format!("{}; {}", doc.typography.css_vars(), doc.style.css_vars())>
+            <widgets::StoreMode native_dark=domain::theme_base(&doc.theme).dark alt_css=doc.style.alt_css(&doc.theme)/>
+            <widgets::ModeFloat/>
             <div class="mx-auto flex max-w-[1120px] flex-col gap-5 px-4 py-4">
                 {children()}
             </div>

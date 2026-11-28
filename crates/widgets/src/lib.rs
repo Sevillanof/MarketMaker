@@ -19,6 +19,7 @@ pub mod account;
 pub mod anim;
 pub mod cart;
 pub mod categories;
+pub mod mode;
 pub mod product_page;
 pub mod tags;
 pub use account::{
@@ -27,6 +28,7 @@ pub use account::{
 };
 pub use anim::{AnimText, TextAnim};
 pub use cart::{AddToCart, CardCartButton, Cart, CartBar, CartDrawer, CartNavButton, ItemName};
+pub use mode::{ModeButton, ModeFloat, StoreMode};
 pub use tags::{FilteredProducts, NwGrid, ProductFilter};
 
 /// Contexto que recibe todo widget al dibujarse.
@@ -946,6 +948,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
             })}
             {search.then(|| view! { <NavSearch editing class="p-2 pb-0"/> })}
             <ul class="menu w-64 p-2">{mobile}</ul>
+            <div class="border-t border-base-300 p-2"><ModeButton editing=editing labeled=true class="mk-modebtn-row"/></div>
         </div>
     };
     view! {
@@ -969,6 +972,7 @@ pub fn NavbarWidget(props: NavbarProps, editing: bool, uid: String) -> impl Into
                                 <Button label=props.button_label.clone() href=props.button_href.clone() disabled=editing/>
                             </span>
                         })}
+                        <ModeButton editing=editing/>
                         <AccountNavButton/>
                         <CartNavButton/>
                     </div>
