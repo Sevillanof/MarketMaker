@@ -368,7 +368,7 @@ fn BlockItem(
                         "Diseñar ficha de producto ↗"
                     </button>
                 })}
-                <button type="button" class="btn btn-neutral btn-block" on:click=move |_| open_advanced()>
+                <button type="button" class="btn btn-primary btn-block" on:click=move |_| open_advanced()>
                     "Ajustes avanzados"<Icon name="arrow-right" class="h-3.5 w-3.5"/>
                 </button>
             </div>
