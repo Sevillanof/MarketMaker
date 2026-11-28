@@ -117,7 +117,9 @@ pub fn render_widget(node: &Node, ctx: &RenderCtx) -> AnyView {
         }
         None => inner(),
     };
-    view! { <div class=class style=style>{content}</div> }.into_any()
+    // Cada bloque se puede nombrar en un enlace (`#w-<id>`).
+    let anchor = format!("w-{}", node.id);
+    view! { <div id=anchor class=class style=style>{content}</div> }.into_any()
 }
 
 fn render_content(node: &Node, ctx: &RenderCtx) -> AnyView {
@@ -1115,12 +1117,29 @@ pub fn AnnouncementWidget(props: AnnouncementProps, editing: bool) -> impl IntoV
     view! {
         <div class="mk-nw h-full">
             <div class="nw-ann" style=style>
-                <MaybeLink href=href editing class="nw-ann-inner">
-                    {(props.show_tag && !props.tag.is_empty()).then(|| view! {
-                        <span class="nw-ann-mark">{props.tag.clone()}</span>
-                    })}
-                    <span>{props.message.clone()}</span>
-                </MaybeLink>
+                {if props.link_label.trim().is_empty() {
+                    // Barras de antes: todo el mensaje es el enlace.
+                    view! {
+                        <MaybeLink href=href editing class="nw-ann-inner">
+                            {(props.show_tag && !props.tag.is_empty()).then(|| view! {
+                                <span class="nw-ann-mark">{props.tag.clone()}</span>
+                            })}
+                            <span>{props.message.clone()}</span>
+                        </MaybeLink>
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="nw-ann-inner">
+                            {(props.show_tag && !props.tag.is_empty()).then(|| view! {
+                                <span class="nw-ann-mark">{props.tag.clone()}</span>
+                            })}
+                            <span>{props.message.clone()}</span>
+                            <MaybeLink href=href editing class="nw-ann-link">
+                                {props.link_label.clone()}
+                            </MaybeLink>
+                        </div>
+                    }.into_any()
+                }}
             </div>
         </div>
     }

@@ -282,7 +282,7 @@ fn PanelSection(
 /// maqueta de ajustes. Vacío: el bloque no se divide en secciones.
 fn group_title(type_name: &str, key: &str) -> &'static str {
     match (type_name, key) {
-        ("Announcement", "message" | "show_tag" | "tag" | "href") => "Contenido",
+        ("Announcement", "message" | "show_tag" | "tag" | "link_label" | "href") => "Contenido",
         ("Announcement", _) => "Presentación",
         ("Navbar", "brand" | "size" | "logo_url" | "links" | "upper") => "Marca y enlaces",
         ("Navbar", _) => "Presentación",

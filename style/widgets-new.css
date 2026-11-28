@@ -417,3 +417,6 @@
 .nw-pdp-main .mk-fav { right:12px; top:12px; }
 .nw-pdp-price s { text-decoration:line-through; }
 .nw-pdp-stock { font-weight:700; color:var(--accent); }
+
+/* Barra de anuncio: el enlace va aparte del mensaje. */
+.mk-nw .nw-ann .nw-ann-link { margin-inline-start: .5em; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: inherit; }

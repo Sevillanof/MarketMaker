@@ -596,6 +596,9 @@ pub struct AnnouncementProps {
     /// Etiqueta chica junto al mensaje (se ve en el diseño «Etiqueta suave»).
     pub tag: String,
     pub show_tag: bool,
+    /// Texto del enlace, aparte del mensaje. Vacío: todo el mensaje es el
+    /// enlace (como en las barras de antes).
+    pub link_label: String,
     /// A dónde lleva la barra al tocarla. Vacío: no es un enlace.
     pub href: String,
     /// `center` o `left`.
@@ -614,6 +617,7 @@ impl Default for AnnouncementProps {
             message: "Envíos a todo el país · 3 cuotas sin interés".to_string(),
             tag: "Novedades".to_string(),
             show_tag: true,
+            link_label: String::new(),
             href: String::new(),
             align: "center".to_string(),
             pad: 12,
@@ -1114,21 +1118,13 @@ const ANNOUNCEMENT_FIELDS: &[Field] = &[
     field("message", "Mensaje", text(120)),
     field("show_tag", "Mostrar etiqueta", FieldKind::Bool),
     field("tag", "Etiqueta", text(20)),
-    field("href", "Al tocar el mensaje va a", FieldKind::Url),
+    field("link_label", "Texto del enlace", text(30)),
+    field("href", "Destino del enlace", FieldKind::Url),
     field(
         "align",
         "Alineación",
         FieldKind::Select {
             options: BAR_ALIGN_OPTIONS,
-        },
-    ),
-    field(
-        "pad",
-        "Alto de la barra",
-        FieldKind::Range {
-            min: 6,
-            max: 28,
-            unit: "px",
         },
     ),
 ];

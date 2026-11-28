@@ -335,6 +335,18 @@ fn FieldInput(
                         .collect::<Vec<_>>()
                 })
             };
+            // Otros bloques de la misma página (solo el destino del anuncio).
+            let allow_widget = field.label == "Destino del enlace";
+            let widget_opts = move || {
+                state.doc.with(|d| {
+                    let mut nodes: Vec<_> = d.layer(state.layer.get()).iter().collect();
+                    nodes.sort_by_key(|n| (n.pos.y, n.pos.x));
+                    nodes
+                        .into_iter()
+                        .map(|n| (domain::widget_href(&n.id), crate::palette::label_of(n.widget.type_name()).to_string()))
+                        .collect::<Vec<_>>()
+                })
+            };
             let uid = StoredValue::new(uid.clone());
             let described = StoredValue::new(described.clone());
             // Un desplegable con las opciones; `empty` si no hay ninguna.
@@ -362,8 +374,9 @@ fn FieldInput(
             view! {
                 <div class="flex flex-col gap-1.5">
                     <div class="join w-full" role="group" aria-label="Adónde lleva">
-                        {[(LinkKind::Page, "Página"), (LinkKind::Product, "Producto"), (LinkKind::Category, "Categoría"), (LinkKind::Other, "Otra")]
+                        {[(LinkKind::Page, "Página"), (LinkKind::Product, "Producto"), (LinkKind::Category, "Categoría"), (LinkKind::Widget, "Widget"), (LinkKind::Other, "Otra")]
                             .into_iter()
+                            .filter(|(k, _)| allow_widget || *k != LinkKind::Widget)
                             .map(|(k, label)| view! {
                                 <button
                                     type="button"
@@ -386,6 +399,11 @@ fn FieldInput(
                             cat_opts.get_value(),
                             "Elegí una categoría…",
                             "Tus productos todavía no tienen categorías. Las asignás en Productos.",
+                        ),
+                        LinkKind::Widget => picker(
+                            widget_opts(),
+                            "Elegí un widget de esta página…",
+                            "Esta página no tiene otros widgets.",
                         ),
                         LinkKind::Other => view! {
                             <input
