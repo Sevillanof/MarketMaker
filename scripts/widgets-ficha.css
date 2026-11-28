@@ -40,6 +40,8 @@
 @container nw (max-width:700px) { .mk-m1 .nw-pdp { grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); } }
 @container nw (min-width:701px) { .mk-d1 .nw-pdp .nw-pdp-gallery { grid-template-columns:auto minmax(0,1fr); align-items:start; } }
 @container nw (max-width:700px) { .mk-m1 .nw-pdp .nw-pdp-gallery { grid-template-columns:auto minmax(0,1fr); align-items:start; } }
+/* Una sola foto: sin miniaturas no hay columna lateral (si no, la foto queda en una columna de ancho 0) */
+.mk-nw .nw-pdp .nw-pdp-gallery:not(:has(.nw-pdp-thumbs)) { grid-template-columns:minmax(0,1fr); }
 @container nw (min-width:701px) { .mk-d1 .nw-pdp .nw-pdp-thumbs { flex-direction:column; order:-1; } }
 @container nw (max-width:700px) { .mk-m1 .nw-pdp .nw-pdp-thumbs { flex-direction:column; order:-1; } }
 @container nw (min-width:701px) { .mk-d1 .nw-pdp .nw-pdp-price { padding-bottom:14px; border-bottom:1px solid var(--line); } }
