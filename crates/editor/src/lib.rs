@@ -278,6 +278,11 @@ pub(crate) struct Ui {
     pub wizard: RwSignal<bool>,
     /// Cuántas veces el asistente armó la página: cada vez se guarda al instante.
     pub wizard_applied: RwSignal<u32>,
+    /// Veces que se tocó «Guardar» en el panel de Estilo: cada una guarda el
+    /// borrador ahora (sin publicar), igual que Ctrl+S.
+    pub save_clicks: RwSignal<u32>,
+    /// Cómo está el guardado, para mostrarlo en el panel de Estilo.
+    pub save_label: RwSignal<&'static str>,
     /// El panel de la derecha muestra los ajustes avanzados del bloque
     /// elegido en lugar del mapa de la tienda.
     pub advanced: RwSignal<bool>,
@@ -1052,6 +1057,8 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
         tool: RwSignal::new(Tool::Blocks),
         wizard: RwSignal::new(false),
         wizard_applied: RwSignal::new(0),
+        save_clicks: RwSignal::new(0),
+        save_label: RwSignal::new(""),
         advanced: RwSignal::new(false),
         flash: RwSignal::new(("", 0)),
         new_drag: RwSignal::new(None),
@@ -1303,6 +1310,25 @@ pub fn Editor(initial: PageView, save: SaveAction, publish: PublishAction) -> im
                 }
             },
             AUTOSAVE_DELAY,
+        );
+    });
+
+    // «Guardar» del panel de Estilo: el mismo guardado del borrador de
+    // siempre; nunca publica.
+    Effect::new(move |prev: Option<()>| {
+        ui.save_clicks.track();
+        if prev.is_some() {
+            save_now();
+        }
+    });
+    Effect::new(move |_| {
+        ui.save_label.set(
+            match (state.dirty(), save.pending().get(), state.unpublished()) {
+                (true, true, _) => "Guardando…",
+                (true, false, _) => "Sin guardar",
+                (false, _, true) => "Guardado, sin publicar",
+                (false, _, false) => "Publicado",
+            },
         );
     });
 
