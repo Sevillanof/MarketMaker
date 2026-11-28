@@ -22,6 +22,8 @@ pub struct NwGrid {
     pub show_category: bool,
     pub show_installments: bool,
     pub favorite: bool,
+    /// Botón de agregar al carrito: `text` o `plus`.
+    pub cart_action: &'static str,
 }
 
 #[derive(Clone, Copy)]
@@ -320,7 +322,8 @@ pub fn FilteredProducts(
                 <div node_ref=grid class="nw-products" style=format!("--n:{}", g.cols)>
                     {move || shown().into_iter().map(|p| view! {
                         <crate::product_page::NwCard product=p show_category=g.show_category
-                            show_installments=g.show_installments favorite=g.favorite/>
+                            show_installments=g.show_installments favorite=g.favorite
+                            cart_action=g.cart_action/>
                     }).collect_view()}
                 </div>
             }.into_any(),

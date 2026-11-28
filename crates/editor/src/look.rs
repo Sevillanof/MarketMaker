@@ -181,6 +181,100 @@ pub(crate) fn BlockLook(
 
 /// Los diseños del bloque como miniaturas del bloque mismo: se muestran en
 /// los ajustes rápidos y en "Estilo y color".
+/// «Acento del widget»: los botones y detalles del widget usan el color
+/// principal del tema o el color del texto. Es el único color que se elige
+/// por bloque; todos los demás vienen del tema de la tienda.
+#[component]
+pub(crate) fn AccentSelect(id: String) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let sid = StoredValue::new(id.clone());
+    let select_id = format!("mk-accent-{id}");
+    let value = move || {
+        state.doc.with(|d| {
+            sid.with_value(|id| {
+                d.node(id)
+                    .is_some_and(|n| n.look.color == domain::ACCENT_INK)
+            })
+        })
+    };
+    view! {
+        <div class="flex flex-col gap-1">
+            <label for=select_id.clone() class="flex items-center gap-1 text-sm font-medium">
+                "Acento del widget"
+                <ui::HelpTip
+                    id=format!("tip-accent-{id}")
+                    label="Acento del widget"
+                    text="Solo cambia los elementos que usan un acento en esta variante."
+                />
+            </label>
+            <select
+                id=select_id
+                class="select select-sm w-full"
+                prop:value=move || if value() { "ink" } else { "theme" }
+                on:change=move |ev| {
+                    let ink = event_target_value(&ev) == "ink";
+                    sid.with_value(|id| {
+                        state.apply(|d| {
+                            if let Some(n) = d.node_mut(id) {
+                                n.look.color = if ink { domain::ACCENT_INK.to_string() } else { String::new() };
+                            }
+                        })
+                    });
+                }
+            >
+                <option value="theme">"Usar el tema"</option>
+                <option value="ink">"Texto principal"</option>
+            </select>
+        </div>
+    }
+}
+
+/// «Diseño en celular»: el mismo que en escritorio u otro de los tres.
+#[component]
+pub(crate) fn MobileDesign(
+    id: String,
+    designs: &'static [(u8, &'static str, &'static str)],
+) -> impl IntoView {
+    let state = expect_context::<EditorState>();
+    let sid = StoredValue::new(id.clone());
+    let mobile_id = format!("mk-design-mobile-{id}");
+    let current = move || {
+        state.doc.with(|d| {
+            sid.with_value(|id| d.node(id).map(|n| n.look.design_m).unwrap_or(0))
+        })
+    };
+    view! {
+        <div class="flex flex-col gap-1">
+            <label for=mobile_id.clone() class="flex items-center gap-1 text-sm font-medium">
+                "Diseño en celular"
+                <ui::HelpTip
+                    id=format!("tip-mobile-{id}")
+                    label="Diseño en celular"
+                    text="Por defecto el celular usa el mismo diseño que escritorio. Elegí otro si querés que en pantallas angostas se vea distinto."
+                />
+            </label>
+            <select
+                id=mobile_id
+                class="select select-sm w-full"
+                prop:value=move || current().to_string()
+                on:change=move |ev| {
+                    let n = event_target_value(&ev).parse::<u8>().unwrap_or(0);
+                    sid.with_value(|id| {
+                        state.apply(|d| {
+                            if let Some(node) = d.node_mut(id) {
+                                node.look.design_m = n;
+                            }
+                        })
+                    });
+                }
+            >
+                <option value="0">"Igual que escritorio"</option>
+                {designs.iter().map(|(n, name, _)| view! { <option value=n.to_string()>{*name}</option> }).collect_view()}
+            </select>
+        </div>
+    }
+}
+
 #[component]
 pub(crate) fn DesignPicker(
     id: String,

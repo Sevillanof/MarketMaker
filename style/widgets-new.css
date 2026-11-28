@@ -8,8 +8,8 @@
   --panel: var(--mk-panel, var(--color-base-100));
   --ink: var(--color-base-content);
   --muted: var(--mk-muted, color-mix(in oklab, var(--color-base-content) 75%, transparent));
-  --accent: var(--color-primary);
-  --on-accent: var(--color-primary-content);
+  --accent: var(--mk-accent, var(--color-primary));
+  --on-accent: var(--mk-on-accent, var(--color-primary-content));
   --line: var(--mk-line, var(--color-base-300));
   --radius: var(--radius-box);
   --button-radius: var(--mk-btn-radius, var(--radius-field));
@@ -314,6 +314,13 @@
   .mk-m2 .nw-navigation .nw-nav-icons { grid-column: 3; grid-row: 1; justify-self: end; }
 }
 .nw-ann-mark { display: none; }
+/* Botón de la tarjeta de la cuadrícula: chico, del color de acento, al lado del precio. */
+.nw-purchase-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:7px; min-width:0; margin-top:7px; }
+.nw-purchase-row strong { margin-top:0; }
+.nw-buy { display:flex; flex:none; align-items:center; justify-content:center; width:max-content; min-height:30px; max-width:100%; margin:0 0 0 auto; padding:5px 8px; border:0; border-radius:var(--button-radius); background:var(--accent); color:var(--on-accent); font-size:10px; font-weight:750; line-height:1.2; text-align:center; cursor:pointer; }
+.nw-buy.is-plus { min-width:30px; font-size:18px; line-height:1; }
+.nw-purchase-row .mk-qty { margin-top:0; width:auto; min-width:96px; }
+
 @container nw (min-width: 701px) { .mk-d2 .nw-ann .nw-ann-mark { display: inline-block; } }
 @container nw (max-width: 700px) { .mk-m2 .nw-ann .nw-ann-mark { display: inline-block; } }
 /* La portada llena el alto del bloque (en la maqueta crece con su contenido). */

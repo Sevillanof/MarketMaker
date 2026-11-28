@@ -545,6 +545,7 @@ pub fn ProductGridWidget(
         show_category: props.show_category,
         show_installments: props.show_installments,
         favorite: props.cards.card_favorite,
+        cart_action: if props.cart_action == "plus" { "plus" } else { "text" },
     };
     let style = format!(
         "{}--radius:{}px;--panel-a:{}%;",

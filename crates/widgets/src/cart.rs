@@ -461,14 +461,32 @@ fn trash_icon() -> impl IntoView {
 /// Botón de una tarjeta de producto: "Agregar al carrito"; si ya está, un
 /// selector − n + en el mismo lugar (así ese lugar siempre cambia la
 /// cantidad). Sin stock no se muestra.
+///
+/// `nw` es para las tarjetas de los diseños nuevos: un botón chico del color
+/// de acento, al lado del precio. `"text"` dice «Agregar al carrito» y
+/// `"plus"` es un botón «+».
 #[component]
-pub fn CardCartButton(product: Product) -> impl IntoView {
+pub fn CardCartButton(
+    product: Product,
+    #[prop(optional)] nw: Option<&'static str>,
+) -> impl IntoView {
     if !product.in_stock {
         return ().into_any();
     }
+    let plus = nw == Some("plus");
+    let (class, text) = match nw {
+        Some(_) => (
+            if plus { "nw-buy is-plus relative z-10" } else { "nw-buy relative z-10" },
+            if plus { "+" } else { "Agregar al carrito" },
+        ),
+        None => (
+            "btn btn-sm btn-block btn-soft btn-primary mk-cart-add relative z-10 mt-2",
+            "Agregar al carrito",
+        ),
+    };
     let Some(cart) = use_context::<Cart>() else {
         return view! {
-            <span class="btn btn-sm btn-block btn-soft btn-primary mk-cart-add mt-2" aria-hidden="true">"Agregar al carrito"</span>
+            <span class=class.replace(" relative z-10", "") aria-hidden="true">{text}</span>
         }
         .into_any();
     };
@@ -476,9 +494,9 @@ pub fn CardCartButton(product: Product) -> impl IntoView {
         // Con colores o talles se elige en la ficha.
         let id = product.id.clone();
         return view! {
-            <button type="button" class="btn btn-sm btn-block btn-soft btn-primary mk-cart-add relative z-10 mt-2"
+            <button type="button" class=class
                 aria-label=format!("Elegir color o talle de {}", product.name)
-                on:click=move |_| crate::product_page::open_product(&id)>"Elegir opciones"</button>
+                on:click=move |_| crate::product_page::open_product(&id)>{if plus { "+" } else { "Elegir opciones" }}</button>
         }
         .into_any();
     }
@@ -490,10 +508,10 @@ pub fn CardCartButton(product: Product) -> impl IntoView {
     let label = format!("Agregar {name} al carrito");
     view! {
         <Show when=move || in_cart.get() fallback=move || view! {
-            <button type="button" class="btn btn-sm btn-block btn-soft btn-primary mk-cart-add relative z-10 mt-2"
+            <button type="button" class=class
                 aria-label=label.clone()
                 data-wait="Agregando…"
-                on:click=move |_| id.with_value(|id| cart.add(id, 1))>"Agregar al carrito"</button>
+                on:click=move |_| id.with_value(|id| cart.add(id, 1))>{text}</button>
         }>
             <CartQty id name=name.clone() cart card=true/>
         </Show>

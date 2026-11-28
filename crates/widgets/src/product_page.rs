@@ -52,6 +52,7 @@ pub fn NwCard(
     show_category: bool,
     show_installments: bool,
     favorite: bool,
+    cart_action: &'static str,
 ) -> impl IntoView {
     let offers = use_context::<domain::StoreInfo>()
         .map(|s| s.offers)
@@ -72,14 +73,16 @@ pub fn NwCard(
             <div class="nw-product-info">
                 <h5>{product.name.clone()}</h5>
                 {(show_category && !product.category.is_empty()).then(|| view! { <p>{product.category.clone()}</p> })}
-                <strong>
-                    {format_price(cents)}
-                    {(product.compare_at_cents > cents).then(|| view! {
-                        <s><span class="sr-only">"Antes "</span>{format_price(product.compare_at_cents)}</s>
-                    })}
-                </strong>
+                <div class="nw-purchase-row">
+                    <strong>
+                        {format_price(cents)}
+                        {(product.compare_at_cents > cents).then(|| view! {
+                            <s><span class="sr-only">"Antes "</span>{format_price(product.compare_at_cents)}</s>
+                        })}
+                    </strong>
+                    <crate::cart::CardCartButton product=product.clone() nw=cart_action/>
+                </div>
                 {per.map(|c| view! { <p>{format!("{n} cuotas sin interés de {}", format_price(c))}</p> })}
-                <crate::cart::CardCartButton product=product.clone()/>
             </div>
             {open_cover(product.id.clone(), &product.name)}
         </article>

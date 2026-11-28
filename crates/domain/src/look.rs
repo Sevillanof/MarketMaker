@@ -35,6 +35,10 @@ pub const THEME_COLORS: &[(&str, &str)] = &[
     ("error", "Rojo"),
 ];
 
+/// Acento «Texto principal» (`Look::color`) de los widgets nuevos: en vez del
+/// color principal del tema, usan el del texto.
+pub const ACCENT_INK: &str = "ink";
+
 /// Diseño y color de un bloque. El valor por defecto es el diseño de siempre.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
@@ -88,6 +92,12 @@ impl Look {
         if self.color.is_empty() {
             return String::new();
         }
+        // Acento «Texto principal» de los widgets nuevos: sus botones y
+        // detalles toman el color del texto del tema.
+        if self.color == ACCENT_INK {
+            return "--mk-accent:var(--color-base-content); --mk-on-accent:var(--color-base-100); "
+                .to_string();
+        }
         if let Some(rgb) = parse_hex(&self.color) {
             let text = if prefers_black_text(rgb) {
                 "#000"
@@ -112,7 +122,7 @@ impl Look {
         if self.design_m > 5 {
             errors.push(format!("{path}Diseño en celular: Elegí uno de la lista."));
         }
-        let known = THEME_COLORS.iter().any(|(id, _)| *id == self.color);
+        let known = self.color == ACCENT_INK || THEME_COLORS.iter().any(|(id, _)| *id == self.color);
         if !known && parse_hex(&self.color).is_none() {
             errors.push(format!("{path}Color: Elegí uno de la lista o uno propio."));
         }
