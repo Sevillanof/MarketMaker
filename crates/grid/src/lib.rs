@@ -12,7 +12,7 @@ pub const ROW_PX: f64 = domain::ROW_PX as f64;
 /// Separación visible entre bloques. No es un hueco de la grilla: cada bloque
 /// deja la mitad como margen alrededor (ver `.mk-node` en el CSS), así la
 /// grilla no tiene huecos y el paso de columnas y filas es parejo.
-pub const GAP_PX: f64 = 16.0;
+pub const GAP_PX: f64 = 0.0;
 /// Con `false` se desactiva la compactación y se permiten huecos verticales.
 pub const COMPACT: bool = true;
 

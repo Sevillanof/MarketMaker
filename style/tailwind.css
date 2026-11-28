@@ -418,22 +418,20 @@
 
 
 /* Grilla compartida por el editor y el marketplace: 48 columnas y filas de
-   8 px, sin huecos, para poder ubicar y medir los bloques con precisión.
-   La separación entre bloques es un margen de 8 px alrededor de cada uno
-   (16 px entre dos vecinos); el margen negativo de la grilla compensa el de
-   los bordes. Ver `grid::GAP_PX`. La posición de cada nodo viaja en
-   variables CSS dentro de `style`. */
+   8 px, sin huecos ni separación entre bloques (`grid::GAP_PX` = 0), para
+   poder ubicar y medir los bloques con precisión. La posición de cada nodo
+   viaja en variables CSS dentro de `style`. */
 .mk-grid {
   display: grid;
   grid-template-columns: repeat(48, minmax(0, 1fr));
   grid-auto-rows: 8px;
-  margin: -8px;
+  margin: 0;
 }
 .mk-node {
   grid-column: var(--x) / span var(--w);
   grid-row: var(--y) / span var(--h);
   min-width: 0;
-  margin: 8px;
+  margin: 0;
   overflow: hidden;
 }
 /* El alto de cada bloque es un mínimo: si su contenido no entra (otro ancho
@@ -764,14 +762,14 @@
   }
   /* Apilados, cada nodo conserva su alto. */
   .mk-node {
-    height: calc(var(--h) * 8px - 16px);
+    height: calc(var(--h) * 8px);
     flex: none;
   }
   /* Bajo un menú flotante: sube el alto del menú y crece lo mismo (en la
      computadora lo hace la grilla, ver `widgets::page_nodes`). */
   .mk-node-under {
-    margin-top: calc(8px - var(--up) * 8px);
-    height: calc((var(--h) - var(--lift) + var(--up)) * 8px - 16px);
+    margin-top: calc(var(--up) * -8px);
+    height: calc((var(--h) - var(--lift) + var(--up)) * 8px);
   }
   /* Menos columnas que en la computadora: la cuadrícula de productos tiene
      más filas que las que entran en su alto de escritorio. Crece lo que
@@ -2625,7 +2623,7 @@ dialog.mk-cart::backdrop {
   /* Con el aviso de «Agregaste…» el bloque de compra crece lo que necesite. */
   .mk-dialog-box .mk-node:has(.mk-added) {
     height: auto;
-    min-height: calc(var(--h) * 8px - 16px);
+    min-height: calc(var(--h) * 8px);
   }
 }
 
@@ -2877,9 +2875,9 @@ dialog.mk-open-sheet .mk-dialog-box {
 dialog.mk-open-drawer .mk-grid,
 dialog.mk-open-auto .mk-grid { display: flex; flex-direction: column; }
 dialog.mk-open-drawer .mk-node,
-dialog.mk-open-auto .mk-node { height: calc(var(--h) * 8px - 16px); flex: none; }
+dialog.mk-open-auto .mk-node { height: calc(var(--h) * 8px); flex: none; }
 dialog.mk-open-drawer .mk-node:has(.mk-added),
-dialog.mk-open-auto .mk-node:has(.mk-added) { height: auto; min-height: calc(var(--h) * 8px - 16px); }
+dialog.mk-open-auto .mk-node:has(.mk-added) { height: auto; min-height: calc(var(--h) * 8px); }
 /* La hoja lleva su manija arriba. */
 dialog.mk-open-sheet .mk-dialog-box::before {
   content: ""; position: absolute; top: 0.6rem; left: 50%; translate: -50% 0;
@@ -3291,8 +3289,8 @@ dialog.mk-pzoom::backdrop {
 /* Ficha apilada en el lienzo del editor (cajón y celular), igual que
    `dialog.mk-open-drawer` en la tienda; un clic elige el bloque. */
 .mk-stacked { display: flex; flex-direction: column; }
-.mk-stacked > .mk-node { height: calc(var(--h) * 8px - 16px); flex: none; }
-.mk-stacked > .mk-node:has(.mk-added) { height: auto; min-height: calc(var(--h) * 8px - 16px); }
+.mk-stacked > .mk-node { height: calc(var(--h) * 8px); flex: none; }
+.mk-stacked > .mk-node:has(.mk-added) { height: auto; min-height: calc(var(--h) * 8px); }
 .mk-stacked > .mk-stacked-sel { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
 /* ===== Animación del texto (Letras › Animación; ver crates/widgets/src/anim.rs) =====
