@@ -6,8 +6,7 @@
 //! plantilla (un tema de daisyUI).
 
 use domain::{
-    opposite_colors, theme_base, theme_label, Corner, BORDER_STEPS, OFFERED_THEMES, RADIUS_STEPS,
-    SIZE_RANGE, THEMES, THEME_LABELS,
+    opposite_colors, theme_base, theme_label, Corner, OFFERED_THEMES, THEMES, THEME_LABELS,
 };
 use leptos::prelude::*;
 
@@ -20,59 +19,161 @@ pub(crate) fn ThemePanel() -> impl IntoView {
     view! {
         <Themes/>
         <Letters/>
-        <Corners/>
-        <Effects/>
-        <Sizes/>
-        <Borders/>
-        <Options/>
+        <Appearance/>
+        <Spacing/>
     }
 }
 
-/// Una fila de cinco esquinas para una familia de componentes.
+/// Esquinas de tarjetas y botones (un solo valor para los tres radios del
+/// tema), relieve y textura, con una muestra que cambia en vivo.
 #[component]
-fn RadiusRow(which: Corner, title: &'static str, hint: &'static str) -> impl IntoView {
+fn Appearance() -> impl IntoView {
     let state = expect_context::<EditorState>();
     let ui = expect_context::<Ui>();
+    // Los tres radios ya resueltos con el tema. Si difieren, son
+    // "Personalizadas": no se redondean ni se tocan hasta que la persona
+    // mueve el deslizador.
+    let radii = Memo::new(move |_| {
+        state.doc.with(|d| {
+            [Corner::Box, Corner::Field, Corner::Selector].map(|c| d.style.radius(&d.theme, c))
+        })
+    });
+    let custom = move || {
+        let r = radii.get();
+        r[0] != r[1] || r[1] != r[2]
+    };
+    let px = move || radii.get()[0];
+    let shape = move || match px() {
+        0 => "Rectas",
+        24.. => "Redondeadas",
+        _ => "Suaves",
+    };
+    let label = move || {
+        if custom() {
+            "Personalizadas".to_string()
+        } else {
+            format!("{} px · {}", px(), shape())
+        }
+    };
+    let depth = Memo::new(move |_| {
+        state
+            .doc
+            .with(|d| d.style.depth.unwrap_or_else(|| theme_base(&d.theme).depth))
+    });
+    let noise = Memo::new(move |_| {
+        state
+            .doc
+            .with(|d| d.style.noise.unwrap_or_else(|| theme_base(&d.theme).noise))
+    });
+    // Colores de la muestra: los de la versión que se está viendo.
+    let sample_style = move || {
+        let alt = ui.edit_alt.get();
+        let [bg, ink, pri, line, on] = state.doc.with(|d| {
+            let c = |k: &str| d.style.variant_color(&d.theme, k, alt);
+            [
+                c("base-100"),
+                c("base-content"),
+                c("primary"),
+                c("accent"),
+                c("primary-content"),
+            ]
+        });
+        let r = px();
+        let shadow = if depth.get() {
+            "0 2px 3px #00000018, 0 8px 18px #00000026"
+        } else {
+            "none"
+        };
+        let grain = if noise.get() {
+            format!(
+                "radial-gradient({ink}1e .5px,transparent .7px),radial-gradient({ink}1e .35px,transparent .6px)"
+            )
+        } else {
+            "none".to_string()
+        };
+        format!(
+            "--s-bg:{bg};--s-ink:{ink};--s-pri:{pri};--s-line:{line};--s-on:{on};--s-r:{r}px;--s-shadow:{shadow};--s-grain:{grain}"
+        )
+    };
     view! {
-        <div class="mt-2.5 first:mt-0">
-            <p class="mb-1 flex items-baseline gap-1.5">
-                <span class="text-xs font-semibold">{title}</span>
-                <span class="text-[10.5px] text-base-content/55">{hint}</span>
-            </p>
-            <div class="grid grid-cols-5 gap-1" role="group" aria-label=title>
-                {RADIUS_STEPS.iter().map(|px| {
-                    let px = *px;
-                    let active = move || state.doc.with(|d| d.style.radius(&d.theme, which) == px);
-                    view! {
-                        <button
-                            type="button"
-                            class="mk-rad"
-                            style=format!("--r:{}px", f32::from(px) * 0.75)
-                            aria-pressed=move || active().to_string()
-                            aria-label=format!("{title}: {px} px")
-                            on:click=move |_| {
-                                state.apply(|d| d.style.set_radius(which, px));
-                                ui.flash_changed(match which {
-                                    Corner::Box => "box",
-                                    Corner::Field => "field",
-                                    Corner::Selector => "selector",
-                                });
-                            }
-                        ></button>
-                    }
-                }).collect_view()}
+        <Section title="Apariencia" id="mk-th-appearance" help="Se refleja en los widgets.">
+            <label class="flex items-baseline justify-between text-xs font-semibold" for="mk-th-radius">
+                "Esquinas"
+                <output class="font-normal text-base-content/70" for="mk-th-radius">{label}</output>
+            </label>
+            <div class="mk-appsample mt-1.5" style=sample_style>
+                <div class="mk-appcard" aria-hidden="true"><i></i><i></i><span></span></div>
+                <div class="min-w-0">
+                    <b class="block text-[11px]">"Tarjetas y botones"</b>
+                    <small class="mt-0.5 block text-[10px] text-base-content/60">"Así se ven tus bordes y efectos."</small>
+                </div>
             </div>
-        </div>
+            <input
+                id="mk-th-radius"
+                type="range"
+                class="range range-primary range-xs mt-2 w-full"
+                min="0"
+                max="48"
+                step="1"
+                prop:value=move || px().to_string()
+                aria-valuetext=move || {
+                    if custom() {
+                        "Esquinas personalizadas".to_string()
+                    } else {
+                        format!("{} píxeles, esquinas {}", px(), shape().to_lowercase())
+                    }
+                }
+                on:input=move |ev| {
+                    if let Ok(v) = event_target_value(&ev).trim().parse::<u8>() {
+                        // Una sola operación deshacible para los tres radios.
+                        state.apply_grouped(Some("radius"), |d| {
+                            d.style.radius_custom = true;
+                            for c in [Corner::Box, Corner::Field, Corner::Selector] {
+                                d.style.set_radius(c, v);
+                            }
+                        });
+                        ui.flash_changed("field selector box");
+                    }
+                }
+            />
+            <div class="flex justify-between text-[10.5px] text-base-content/55" aria-hidden="true">
+                <span>"Rectas"</span>
+                <span>"Redondeadas"</span>
+            </div>
+            <div class="mt-3 grid gap-1.5">
+                <SwitchRow
+                    id="mk-th-depth"
+                    title="Relieve sutil"
+                    hint="Sombra en tarjetas y botones."
+                    checked=Signal::derive(move || depth.get())
+                    on_change=Callback::new(move |on| {
+                        state.apply(|d| d.style.depth = Some(on));
+                        ui.flash_changed("field selector");
+                    })
+                />
+                <SwitchRow
+                    id="mk-th-noise"
+                    title="Textura suave"
+                    hint="Grano fino sobre superficies, no sobre fotos."
+                    checked=Signal::derive(move || noise.get())
+                    on_change=Callback::new(move |on| {
+                        state.apply(|d| d.style.noise = Some(on));
+                        ui.flash_changed("field selector");
+                    })
+                />
+            </div>
+            <p class="mt-2 text-[10px] leading-snug text-base-content/60">
+                "Las transparencias se ajustan en el widget correspondiente, para no afectar la legibilidad del texto."
+            </p>
+        </Section>
     }
 }
 
+/// Márgenes de la página y espacio entre widgets.
 #[component]
-fn Corners() -> impl IntoView {
+fn Spacing() -> impl IntoView {
     view! {
-        <Section title="Esquinas" id="mk-th-corners">
-            <RadiusRow which=Corner::Box title="Tarjetas" hint="tarjetas, ventanas, avisos"/>
-            <RadiusRow which=Corner::Field title="Botones y campos" hint="botones, campos, pestañas"/>
-            <RadiusRow which=Corner::Selector title="Casillas e interruptores" hint="casillas, interruptores, etiquetas"/>
+        <Section title="Márgenes y espaciado" id="mk-th-spacing">
             <Margins/>
         </Section>
     }
@@ -88,208 +189,20 @@ fn SwitchRow(
     on_change: Callback<bool>,
 ) -> impl IntoView {
     view! {
-        <div class="flex items-center justify-between gap-3 py-1.5">
-            <div class="relative flex min-w-0 items-center gap-1.5">
-                <label for=id class="text-[13px] font-semibold">{title}</label>
-                <ui::HelpTip id=format!("tip-{id}") label=title text=hint/>
+        <div class="flex items-center gap-2.5 rounded-field border border-base-300 bg-base-100 p-2">
+            <div class="min-w-0">
+                <label for=id class="block text-[11px] font-bold">{title}</label>
+                <small class="block text-[10px] text-base-content/60">{hint}</small>
             </div>
             <input
                 id=id
                 type="checkbox"
                 role="switch"
-                class="toggle toggle-sm shrink-0"
+                class="toggle toggle-sm ml-auto shrink-0"
                 prop:checked=move || checked.get()
                 on:change=move |ev| on_change.run(event_target_checked(&ev))
             />
         </div>
-    }
-}
-
-#[component]
-fn Effects() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let ui = expect_context::<Ui>();
-    view! {
-        <Section title="Efectos" id="mk-th-effects">
-            <SwitchRow
-                id="mk-th-depth"
-                title="Relieve"
-                hint="Sombra suave que hace que los campos y selectores parezcan levantados."
-                checked=Signal::derive(move || state.doc.with(|d| d.style.depth.unwrap_or_else(|| theme_base(&d.theme).depth)))
-                on_change=Callback::new(move |on| {
-                    state.apply(|d| d.style.depth = Some(on));
-                    ui.flash_changed("field selector");
-                })
-            />
-            <SwitchRow
-                id="mk-th-noise"
-                title="Textura"
-                hint="Un grano fino sobre los campos y selectores, como papel."
-                checked=Signal::derive(move || state.doc.with(|d| d.style.noise.unwrap_or_else(|| theme_base(&d.theme).noise)))
-                on_change=Callback::new(move |on| {
-                    state.apply(|d| d.style.noise = Some(on));
-                    ui.flash_changed("field selector");
-                })
-            />
-        </Section>
-    }
-}
-
-fn px_text(v: f32) -> String {
-    format!("{v:.1}").replace('.', ",")
-}
-
-/// Tamaño base (de 3 a 5 px) con barritas de XS a XL y un deslizador.
-#[component]
-fn SizeCard(
-    title: &'static str,
-    hint: &'static str,
-    value: Signal<f32>,
-    on_change: Callback<f32>,
-    bars: [u8; 5],
-) -> impl IntoView {
-    let (lo, _, step) = SIZE_RANGE;
-    let idx = move || (((value.get() - lo) / step).round() as i32).clamp(0, 4);
-    view! {
-        <div class="mt-2.5 first:mt-0">
-            <p class="mb-1 flex items-baseline gap-1.5">
-                <span class="text-xs font-semibold">{title}</span>
-                <span class="text-[10.5px] text-base-content/55">{hint}</span>
-            </p>
-            <div class="flex items-center gap-3 rounded-box bg-base-200/70 px-3 py-2">
-                <div class="flex h-9 items-end gap-1.5" aria-hidden="true">
-                    {bars.iter().enumerate().map(|(i, h)| view! {
-                        <span class="flex flex-col items-center gap-0.5">
-                            <i
-                                class="block w-[5px] rounded-sm"
-                                class=("bg-primary", move || idx() == i as i32)
-                                class=("bg-base-content/35", move || idx() != i as i32)
-                                style=format!("height:{h}px")
-                            ></i>
-                            <span class="text-[8.5px] font-semibold text-base-content/55">{["XS", "SM", "MD", "LG", "XL"][i]}</span>
-                        </span>
-                    }).collect_view()}
-                </div>
-                <div class="min-w-0 flex-1">
-                    <p class="text-right text-sm font-bold leading-none">{move || px_text(value.get())}<span class="ml-0.5 text-[10px] font-semibold text-base-content/55">"px"</span></p>
-                    <input
-                        type="range"
-                        min="0"
-                        max="4"
-                        step="1"
-                        class="range range-xs w-full"
-                        aria-label=title
-                        aria-valuetext=move || format!("{} píxeles", px_text(value.get()))
-                        prop:value=move || idx().to_string()
-                        on:input=move |ev| {
-                            if let Ok(i) = event_target_value(&ev).parse::<f32>() {
-                                on_change.run(lo + i * step);
-                            }
-                        }
-                    />
-                </div>
-            </div>
-        </div>
-    }
-}
-
-#[component]
-fn Sizes() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let ui = expect_context::<Ui>();
-    view! {
-        <Section title="Tamaños" id="mk-th-sizes">
-            <SizeCard
-                title="Botones y campos"
-                hint="botones, campos, pestañas"
-                bars=[10, 16, 22, 28, 34]
-                value=Signal::derive(move || state.doc.with(|d| d.style.size_field.unwrap_or_else(|| theme_base(&d.theme).size_field)))
-                on_change=Callback::new(move |v| {
-                    state.apply_grouped(Some("size-field"), |d| d.style.size_field = Some(v));
-                    ui.flash_changed("field");
-                })
-            />
-            <SizeCard
-                title="Casillas e interruptores"
-                hint="casilla, interruptor, etiqueta"
-                bars=[8, 12, 16, 20, 26]
-                value=Signal::derive(move || state.doc.with(|d| d.style.size_selector.unwrap_or_else(|| theme_base(&d.theme).size_selector)))
-                on_change=Callback::new(move |v| {
-                    state.apply_grouped(Some("size-selector"), |d| d.style.size_selector = Some(v));
-                    ui.flash_changed("selector");
-                })
-            />
-        </Section>
-    }
-}
-
-#[component]
-fn Borders() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    let ui = expect_context::<Ui>();
-    let value = move || {
-        state.doc.with(|d| {
-            d.style
-                .border
-                .unwrap_or_else(|| theme_base(&d.theme).border)
-        })
-    };
-    let idx = move || {
-        let v = value();
-        BORDER_STEPS
-            .iter()
-            .position(|s| (*s - v).abs() < 0.01)
-            .unwrap_or(1)
-    };
-    view! {
-        <Section title="Grosor de bordes" id="mk-th-border" help="Qué tan gruesas son las líneas alrededor de botones, campos y tarjetas.">
-            <div class="relative rounded-box bg-base-200/70 px-3 pb-1.5 pt-6">
-                <span
-                    class="pointer-events-none absolute top-1.5 -translate-x-1/2 rounded-full bg-neutral px-2 py-0.5 text-[10.5px] font-semibold text-neutral-content"
-                    style=move || format!("left:calc(0.75rem + (100% - 1.5rem) * {} / 4)", idx())
-                    aria-hidden="true"
-                >{move || format!("{}px", px_text(value()).trim_end_matches(",0"))}</span>
-                <input
-                    type="range"
-                    min="0"
-                    max="4"
-                    step="1"
-                    class="range range-xs w-full"
-                    aria-label="Grosor de bordes"
-                    aria-valuetext=move || format!("{} píxeles", px_text(value()))
-                    prop:value=move || idx().to_string()
-                    on:input=move |ev| {
-                        if let Ok(i) = event_target_value(&ev).parse::<usize>() {
-                            let v = BORDER_STEPS[i.min(4)];
-                            state.apply_grouped(Some("border"), |d| d.style.border = Some(v));
-                            ui.flash_changed("box field selector");
-                        }
-                    }
-                />
-            </div>
-        </Section>
-    }
-}
-
-#[component]
-fn Options() -> impl IntoView {
-    let state = expect_context::<EditorState>();
-    view! {
-        <Section title="Opciones" id="mk-th-options">
-            <SwitchRow
-                id="mk-th-dark"
-                title="Esquema de color oscuro"
-                hint="Los formularios y las barras del navegador se ven en oscuro. Conviene si tu tienda tiene fondo oscuro."
-                checked=Signal::derive(move || state.doc.with(|d| d.style.dark))
-                on_change=Callback::new(move |on| state.apply(|d| d.style.dark = on))
-            />
-            <button
-                type="button"
-                class="btn btn-sm mt-2 w-full border-0 bg-base-200 font-semibold text-error"
-                disabled=move || state.doc.with(|d| d.style.theme_is_default() && d.style.name.is_empty())
-                on:click=move |_| state.apply(|d| d.style.reset_theme())
-            >"↺ Volver a la plantilla"</button>
-        </Section>
     }
 }
 
@@ -355,7 +268,7 @@ fn Themes() -> impl IntoView {
         if let Some(t) = THEMES.get(i) {
             state.apply(|d| {
                 d.theme = (*t).to_string();
-                d.style.switch_theme();
+                d.style.switch_theme(t, &mut d.typography);
             });
         }
     };

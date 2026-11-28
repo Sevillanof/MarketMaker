@@ -4198,3 +4198,83 @@ dialog.mk-wiz::backdrop {
   color: var(--color-primary);
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
 }
+
+/* Muestra de "Apariencia" (ver `Appearance` en `theme_panel.rs`): una
+   tarjeta y un botón con las esquinas, el relieve y la textura elegidos. */
+.mk-appsample {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.9rem;
+  padding: 0.6rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  background: var(--color-base-200);
+}
+.mk-appcard {
+  display: grid;
+  align-content: center;
+  flex: none;
+  gap: 5px;
+  width: 72px;
+  height: 55px;
+  padding: 8px;
+  border: 1px solid var(--s-line);
+  border-radius: var(--s-r);
+  background-color: var(--s-bg);
+  background-image: var(--s-grain);
+  background-size: 5px 7px, 9px 11px;
+  background-position: 0 0, 3px 2px;
+  box-shadow: var(--s-shadow);
+}
+.mk-appcard i {
+  width: 70%;
+  height: 4px;
+  border-radius: 5px;
+  background: var(--s-ink);
+  opacity: 0.65;
+}
+.mk-appcard span {
+  width: 70%;
+  height: 12px;
+  border-radius: var(--s-r);
+  background: var(--s-pri);
+  box-shadow: var(--s-shadow);
+}
+
+/* Relieve y textura globales (`StoreStyle.depth` y `noise`, que llegan como
+   `--depth` y `--noise`: 1 o 0). DaisyUI los usa en sus controles; acá se
+   suman a las superficies propias de los widgets nuevos: sombra suave en
+   tarjetas y botones, y un grano fino detrás del contenido del bloque (las
+   fotos lo tapan, el texto va encima con muy poca intensidad). */
+.nw-product,
+.nw-action,
+.nw-buy {
+  box-shadow:
+    0 calc(var(--depth, 0) * 2px) calc(var(--depth, 0) * 3px) rgb(0 0 0 / calc(var(--depth, 0) * 0.09)),
+    0 calc(var(--depth, 0) * 8px) calc(var(--depth, 0) * 18px) rgb(0 0 0 / calc(var(--depth, 0) * 0.15));
+}
+.mk-nw {
+  background-image:
+    radial-gradient(color-mix(in srgb, var(--ink) calc(var(--noise, 0) * 12%), transparent) 0.5px, transparent 0.7px),
+    radial-gradient(color-mix(in srgb, var(--ink) calc(var(--noise, 0) * 12%), transparent) 0.35px, transparent 0.6px);
+  background-size: 5px 7px, 9px 11px;
+  background-position: 0 0, 3px 2px;
+}
+
+/* Sección plegable del panel de Estilo (ver `Section` en `store_drawer.rs`). */
+.mk-sec { border-bottom: 1px solid var(--color-base-300); }
+.mk-sec:last-of-type { border-bottom: 0; }
+.mk-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 0 0;
+  cursor: pointer;
+  list-style: none;
+}
+.mk-sec-head::-webkit-details-marker { display: none; }
+.mk-sec-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.mk-sec-chev { transition: rotate 0.15s ease; color: color-mix(in oklab, var(--color-base-content) 55%, transparent); }
+.mk-sec:not([open]) .mk-sec-chev { rotate: -90deg; }
+.mk-sec:not([open]) .mk-sec-head { padding-bottom: 0.7rem; }

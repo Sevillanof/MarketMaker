@@ -29,13 +29,16 @@ pub(crate) fn Section(
     children: Children,
 ) -> impl IntoView {
     view! {
-        <section class="mt-3" aria-labelledby=id>
-            <h3 id=id class="relative mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">
-                {title}
-                {(!help.is_empty()).then(|| view! { <ui::HelpTip id=format!("tip-{id}") label=title text=help/> })}
-            </h3>
-            {children()}
-        </section>
+        <details class="mk-sec" open>
+            <summary class="mk-sec-head">
+                <Icon name="chevron-down" class="mk-sec-chev h-4 w-4"/>
+                <h3 id=id class="relative flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">
+                    {title}
+                    {(!help.is_empty()).then(|| view! { <ui::HelpTip id=format!("tip-{id}") label=title text=help/> })}
+                </h3>
+            </summary>
+            <div class="pb-3 pt-2.5">{children()}</div>
+        </details>
     }
 }
 
@@ -53,12 +56,22 @@ pub(crate) fn close_drawer(ui: Ui) {
 #[component]
 pub(crate) fn StoreDrawer() -> impl IntoView {
     let ui = expect_context::<Ui>();
+    let state = expect_context::<EditorState>();
     view! {
         <aside
             class="flex min-h-0 w-full flex-1 flex-col bg-base-100"
             aria-labelledby="mk-drawer-title"
             on:keydown=move |ev| {
                 if ev.key() == "Escape" {
+                    // Con un flotante abierto, Esc cierra solo el flotante
+                    // (lo hace el navegador), no todo el panel.
+                    if ev
+                        .target()
+                        .and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok())
+                        .is_some_and(|el| el.closest("[popover]").ok().flatten().is_some())
+                    {
+                        return;
+                    }
                     ev.prevent_default();
                     close_drawer(ui);
                 }
@@ -68,7 +81,13 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
                 <h2 id="mk-drawer-title" tabindex="-1" class="font-bold focus:outline-none">"Estilo de la tienda"</h2>
                 <button
                     type="button"
-                    class="btn btn-ghost btn-sm btn-square ml-auto"
+                    class="btn btn-primary btn-xs ml-auto"
+                    title="Guardar el borrador (no publica)"
+                    on:click=move |_| ui.save_clicks.update(|n| *n += 1)
+                >"Guardar"</button>
+                <button
+                    type="button"
+                    class="btn btn-ghost btn-sm btn-square"
                     aria-label="Cerrar Estilo"
                     title="Cerrar (Esc)"
                     on:click=move |_| close_drawer(ui)
@@ -85,11 +104,24 @@ pub(crate) fn StoreDrawer() -> impl IntoView {
                     <Icon name="page" class="h-5 w-5 shrink-0"/>
                     <span class="flex flex-col leading-tight">
                         <span class="font-bold">"Asistente de página"</span>
-                        <span class="text-xs text-base-content/70">"Armá o renová tu página en 5 pasos"</span>
+                        <span class="text-xs text-base-content/70">"Armá o renová tu página paso a paso"</span>
                     </span>
                 </button>
                 <ThemePanel/>
-                <div class="mt-5 border-t border-base-300"></div>
+            </div>
+            <div class="flex shrink-0 items-center gap-2 border-t border-base-300 px-3 py-2.5">
+                <button
+                    type="button"
+                    class="text-[11px] font-bold text-base-content/70 hover:text-base-content"
+                    on:click=move |_| state.undo()
+                >"↶ Deshacer"</button>
+                <span class="ml-auto text-[10px] text-base-content/65" role="status" aria-live="polite">{move || ui.save_label.get()}</span>
+                <button
+                    type="button"
+                    class="btn btn-primary btn-xs"
+                    title="Guardar el borrador (no publica)"
+                    on:click=move |_| ui.save_clicks.update(|n| *n += 1)
+                >"Guardar"</button>
             </div>
         </aside>
     }
@@ -117,6 +149,7 @@ pub(crate) fn Letters() -> impl IntoView {
             state.apply(|d| {
                 d.typography.heading = p.heading.into();
                 d.typography.body = p.body.into();
+                d.style.font_custom = true;
             });
         }
     };

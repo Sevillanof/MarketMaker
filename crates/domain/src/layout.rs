@@ -317,7 +317,30 @@ pub struct StoreStyle {
     pub depth: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub noise: Option<bool>,
+    /// Las esquinas las eligió la persona: al cambiar de tema no se pisan.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub radius_custom: bool,
+    /// Lo mismo para la pareja de letras.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub font_custom: bool,
 }
+
+/// Letras (posición en `FONT_PAIRS`) y esquinas (px) que trae cada tema,
+/// según la tabla de la maqueta del panel de Estilo.
+pub const THEME_DEFAULTS: &[(&str, usize, u8)] = &[
+    ("linea", 0, 0),
+    ("pulso", 1, 18),
+    ("noche", 0, 10),
+    ("brisa", 1, 18),
+    ("tinta", 0, 0),
+    ("citrico", 1, 10),
+    ("aura", 0, 18),
+    ("brote", 0, 18),
+    ("orbita", 1, 10),
+    ("dalia", 0, 10),
+    ("cacao", 0, 0),
+    ("sol", 1, 10),
+];
 
 fn is_zero(v: &u8) -> bool {
     *v == 0
@@ -363,6 +386,8 @@ impl StoreStyle {
             && self.border.is_none()
             && self.depth.is_none()
             && self.noise.is_none()
+            && !self.radius_custom
+            && !self.font_custom
     }
 
     pub fn is_default(&self) -> bool {
@@ -388,9 +413,28 @@ impl StoreStyle {
     /// Cambia de tema. Por defecto se conservan los colores cambiados (de
     /// las dos variantes), las esquinas y los demás ajustes; con
     /// `reset_colors_on_theme` vuelve todo a como lo trae el tema.
-    pub fn switch_theme(&mut self) {
+    pub fn switch_theme(&mut self, theme: &str, typo: &mut crate::Typography) {
+        let keep = (self.radius_custom, self.font_custom, self.depth, self.noise);
         if self.reset_colors_on_theme {
             self.reset_theme();
+        }
+        (self.radius_custom, self.font_custom, self.depth, self.noise) = keep;
+        // Como en la maqueta: si no las eligió la persona, el tema trae sus
+        // esquinas y su pareja de letras.
+        if let Some((_, pair, radius)) = THEME_DEFAULTS.iter().find(|(id, ..)| *id == theme) {
+            if !self.radius_custom {
+                self.radius_box = Some(*radius);
+                self.radius_field = Some(*radius);
+                self.radius_selector = Some(*radius);
+                self.buttons.clear();
+                self.corners.clear();
+            }
+            if !self.font_custom {
+                if let Some(p) = crate::FONT_PAIRS.get(*pair) {
+                    typo.heading = p.heading.into();
+                    typo.body = p.body.into();
+                }
+            }
         }
     }
 
@@ -851,6 +895,21 @@ mod tests {
     }
 
     #[test]
+    fn switching_theme_brings_its_radius_and_letters_unless_chosen() {
+        let mut st = StoreStyle::default();
+        let mut ty = crate::Typography::default();
+        st.switch_theme("pulso", &mut ty);
+        assert_eq!(st.radius_box, Some(18));
+        assert_eq!((ty.heading.as_str(), ty.body.as_str()), ("inter", "inter"));
+        st.radius_custom = true;
+        st.font_custom = true;
+        st.set_radius(Corner::Box, 7);
+        st.switch_theme("tinta", &mut ty);
+        assert_eq!(st.radius_box, Some(7));
+        assert_eq!(ty.heading, "inter");
+    }
+
+    #[test]
     fn opposite_variant_follows_the_mockup_rules() {
         use crate::theme::mix;
         // Línea (clara) → versión oscura.
@@ -873,10 +932,10 @@ mod tests {
             .alt_css("linea")
             .contains("--color-primary:#ff0000 !important"));
         // Elegir otro tema conserva los colores salvo que se pida lo contrario.
-        st.switch_theme();
+        st.switch_theme("pulso", &mut crate::Typography::default());
         assert_eq!(st.colors_alt.len(), 1);
         st.reset_colors_on_theme = true;
-        st.switch_theme();
+        st.switch_theme("pulso", &mut crate::Typography::default());
         assert!(st.colors_alt.is_empty() && st.reset_colors_on_theme);
     }
 }
